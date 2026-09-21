@@ -8,7 +8,6 @@ import Testing
 /// match rather than trapping in Dictionary(uniqueKeysWithValues:).
 @MainActor
 struct BudgetStoreAutomationEditorTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -102,7 +101,7 @@ struct BudgetStoreAutomationEditorTests {
                         || char(10) || '#cleanup Archived sink');
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
@@ -147,7 +146,8 @@ struct BudgetStoreAutomationEditorTests {
             categoryId: "cat-x",
             templates: data.entries.map(\.template),
             cleanup: data.cleanup.toCleanupTemplates(),
-            cleanupGroups: data.cleanupGroups)
+            cleanupGroups: data.cleanupGroups
+        )
 
         let liveGroups = try await database.fetchCleanupGroups()
         #expect(liveGroups.contains { $0.name == "New Pool" })

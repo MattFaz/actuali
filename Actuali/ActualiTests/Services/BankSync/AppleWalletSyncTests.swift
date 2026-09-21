@@ -117,7 +117,7 @@ struct AppleWalletSyncTests {
     @Test func anOverpaidCardComesOutPositive() {
         #expect(AppleWalletAccount.owedBalance(
             fromRemainingCredit: 510_000, creditLimitCents: 500_000
-        ) == 10_000)
+        ) == 10000)
     }
 
     /// With no known limit there's no way to work out what's owed; no balance
@@ -133,13 +133,13 @@ struct AppleWalletSyncTests {
         let older = AppleWalletBalance(
             accountId: accountId,
             cents: -40000,
-            asOfDate: Date(timeIntervalSince1970: 1_000),
+            asOfDate: Date(timeIntervalSince1970: 1000),
             includesPending: false
         )
         let newer = AppleWalletBalance(
             accountId: accountId,
             cents: -50000,
-            asOfDate: Date(timeIntervalSince1970: 2_000),
+            asOfDate: Date(timeIntervalSince1970: 2000),
             includesPending: true
         )
 
@@ -152,13 +152,13 @@ struct AppleWalletSyncTests {
         let older = AppleWalletBalance(
             accountId: Self.cardId,
             cents: -50000,
-            asOfDate: Date(timeIntervalSince1970: 1_000),
+            asOfDate: Date(timeIntervalSince1970: 1000),
             includesPending: false
         )
         let newer = AppleWalletBalance(
             accountId: Self.cardId,
             cents: nil,
-            asOfDate: Date(timeIntervalSince1970: 2_000),
+            asOfDate: Date(timeIntervalSince1970: 2000),
             includesPending: true
         )
 
@@ -179,7 +179,7 @@ struct AppleWalletSyncTests {
 
         let set = try await AppleWalletProvider(store: store).download([
             BankSyncTarget(externalId: Self.cardId, startDay: startDay),
-            BankSyncTarget(externalId: "not-in-this-wallet", startDay: startDay)
+            BankSyncTarget(externalId: "not-in-this-wallet", startDay: startDay),
         ])
 
         // The unknown account is left out entirely for the caller to skip.
@@ -230,12 +230,12 @@ struct AppleWalletSyncTests {
             )],
             transactionsByAccount: [Self.cardId: [
                 transaction(id: "11111111-1111-1111-1111-111111111111", date: daysAgo(2)),
-                transaction(id: "33333333-3333-3333-3333-333333333333", date: daysAgo(30))
+                transaction(id: "33333333-3333-3333-3333-333333333333", date: daysAgo(30)),
             ]]
         )
 
         let set = try await AppleWalletProvider(store: store).download([
-            BankSyncTarget(externalId: Self.cardId, startDay: Transaction.yyyymmdd(from: daysAgo(7)))
+            BankSyncTarget(externalId: Self.cardId, startDay: Transaction.yyyymmdd(from: daysAgo(7))),
         ])
 
         let download = try #require(set.byAccount[Self.cardId])

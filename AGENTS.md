@@ -43,6 +43,7 @@ What the compiler can't guard is anything the OS resolves at runtime, so CI runs
 - **Reuse the existing simulator; don't `simctl create`/`delete` per run.** Resolve the UDID once from `xcrun simctl list devices available` and reuse it. Booting a fresh device costs more than the test run.
 - **Narrow the test run.** `-only-testing:ActualiTests/SomeTests` for a single suite; `-skip-testing:ActualiUITests` is the CI-equivalent full run. Don't run UI tests to validate a unit-level change.
 - **Pipe to a filter, don't read raw output.** `xcodebuild ... 2>&1 | grep -E 'error:|warning:|\*\* (TEST|BUILD) (SUCCEEDED|FAILED) \*\*'` — full xcodebuild output is tens of thousands of lines.
+- **Format before committing.** SwiftFormat (`brew install swiftformat`, config in `.swiftformat`) is enforced by a required CI check. Run `swiftformat Actuali` on your changes before committing — or install the pre-commit hook once (`ln -s "$(pwd)/dev/scripts/pre-commit" "$(git rev-parse --git-path hooks)/pre-commit"`) and it happens automatically. `Actuali/Actuali/Generated/` is excluded: never reformat it.
 - CI is GitHub Actions. `gh pr checks` exits **8** when checks are still pending — that is a state, not a failure, so don't retry on it. To wait, use `gh pr checks <pr> --watch` rather than polling in a loop.
 
 ### Concurrency (Swift 6)
@@ -117,6 +118,13 @@ Rules:
 - No dead code: don't leave commented-out blocks, unused parameters, or "just in case" branches.
 - Comments explain *why* (constraints, upstream parity, non-obvious invariants), not *what* the next line does.
 - Keep changes scoped: don't reformat, rename, or refactor code unrelated to the task at hand.
+- Tag new views for UI tests: `.accessibilityIdentifier()` on the elements a UI test attaches to (buttons, fields, rows), using the dotted, feature-scoped names already in the codebase (`categoryEditor.name`, `transactionRow.<id>`). Identifiers are not user-facing and stay out of the String Catalogs.
+
+### Localization
+
+- Every user-facing string must come from the appropriate String Catalog through `String(localized:)` or a localized SwiftUI initializer; this includes accessibility labels, errors, notifications, AppIntents, and service messages. Main app strings go in `Actuali/Actuali/Localizable.xcstrings`, App Shortcut phrases in `Actuali/Actuali/AppShortcuts.xcstrings`, and widget strings in `Actuali/ActualiWidgets/Localizable.xcstrings`.
+- Add all seven supported locale values when introducing a catalog key, keep format placeholders identical, and run `python3 dev/scripts/validate-localization.py`.
+- When adding a language, update both the catalog and the Xcode `knownRegions` metadata, then extend the validator's supported locale list.
 
 Not lazy about:
 - Input validation at trust boundaries, error handling that prevents data loss, security, accessibility, or anything explicitly requested.

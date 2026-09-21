@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Regression coverage for actios-2v0: the Log Transaction Shortcut reported
@@ -10,7 +10,6 @@ import GRDB
 /// direct database read when the cache is empty.
 @MainActor
 struct BudgetStoreAccountsForIntentTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -74,7 +73,7 @@ struct BudgetStoreAccountsForIntentTests {
         }
 
         let store = try await makeStore(database: db)
-        #expect(store.accounts.isEmpty)  // preview store never auto-loads
+        #expect(store.accounts.isEmpty) // preview store never auto-loads
 
         let resolved = await store.accountsForIntent()
         #expect(Set(resolved.map(\.id)) == ["acct-checking", "acct-closed"])
@@ -102,7 +101,7 @@ struct BudgetStoreAccountsForIntentTests {
         let store = try await makeStore(database: db)
         store.accounts = [
             Account(id: "from-cache", name: "From Cache", type: .checking,
-                    offBudget: false, closed: false, sortOrder: 0, balance: 0)
+                    offBudget: false, closed: false, sortOrder: 0, balance: 0),
         ]
 
         let resolved = await store.accountsForIntent()
@@ -110,7 +109,7 @@ struct BudgetStoreAccountsForIntentTests {
     }
 
     /// No budget/database available: resolve to empty rather than crashing.
-    @Test func returnsEmptyWhenNoDatabaseAvailable() async throws {
+    @Test func returnsEmptyWhenNoDatabaseAvailable() async {
         let store = BudgetStore.previewInstance()
         #expect(store.accounts.isEmpty)
 

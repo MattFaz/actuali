@@ -9,7 +9,9 @@ struct NoteLink: Identifiable, Equatable {
     /// Position within the note, so repeated links stay distinct rows.
     let position: Int
 
-    var id: Int { position }
+    var id: Int {
+        position
+    }
 }
 
 /// Turns note text into tappable links (GH #190). Notes written in Actual
@@ -21,7 +23,6 @@ struct NoteLink: Identifiable, Equatable {
 /// unlinked, so `[label](url)` and pasted URLs both become links without
 /// double-linking the markdown ones.
 enum NoteLinkText {
-
     /// The note rendered for display: markdown links become link runs, bare
     /// URLs are linkified in place. Falls back to the raw text if markdown
     /// parsing rejects the note — a note must never display as empty.

@@ -18,11 +18,12 @@ struct CategoryGroup: Identifiable, Hashable {
     var categories: [Category]
 }
 
-
 // MARK: - CRDTSyncable
 
 extension Category: CRDTSyncable {
-    static var datasetName: String { "categories" }
+    static var datasetName: String {
+        "categories"
+    }
 
     /// The columns upstream's `insertCategory` writes. Goal templates
     /// (`goal_def`) and note cleanups (`cleanup_def`) stay untouched — the
@@ -34,13 +35,15 @@ extension Category: CRDTSyncable {
             "is_income": isIncome ? 1 : 0,
             "hidden": hidden ? 1 : 0,
             "tombstone": 0,
-            "sort_order": sortOrder
+            "sort_order": sortOrder,
         ]
     }
 }
 
 extension CategoryGroup: CRDTSyncable {
-    static var datasetName: String { "category_groups" }
+    static var datasetName: String {
+        "category_groups"
+    }
 
     /// `categories` is the assembled child list, not a column — the rows it
     /// holds sync as their own `categories` messages.
@@ -50,7 +53,7 @@ extension CategoryGroup: CRDTSyncable {
             "is_income": isIncome ? 1 : 0,
             "hidden": hidden ? 1 : 0,
             "tombstone": 0,
-            "sort_order": sortOrder
+            "sort_order": sortOrder,
         ]
     }
 }
@@ -68,11 +71,13 @@ struct CategoryMapping: Identifiable, Hashable {
 }
 
 extension CategoryMapping: CRDTSyncable {
-    static var datasetName: String { "category_mapping" }
+    static var datasetName: String {
+        "category_mapping"
+    }
 
     var syncableFields: [String: Any?] {
         [
-            "transferId": targetId
+            "transferId": targetId,
         ]
     }
 }

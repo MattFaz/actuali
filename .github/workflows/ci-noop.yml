@@ -31,3 +31,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo "No app code changed — skipping iOS 18 tests."
+
+  swiftformat:
+    name: SwiftFormat
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No app code changed — skipping SwiftFormat check."

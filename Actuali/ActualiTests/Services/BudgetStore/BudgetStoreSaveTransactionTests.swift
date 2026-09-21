@@ -5,7 +5,6 @@ import Testing
 
 @MainActor
 struct BudgetStoreSaveTransactionTests {
-
     /// transactions, payees and messages_crdt normally come from the
     /// downloaded budget file, so create them with the upstream schema
     /// (matches BudgetDatabaseTransferAtomicityTests).
@@ -15,53 +14,63 @@ struct BudgetStoreSaveTransactionTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT
-                )
-                """)
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY,
+                starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
+                acct TEXT,
+                category TEXT,
+                amount INTEGER,
+                description TEXT,
+                notes TEXT,
+                date INTEGER,
+                imported_description TEXT,
+                financial_id TEXT,
+                transferred_id TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                parent_id TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE payees (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                transfer_acct TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                )
-                """)
+            CREATE TABLE payee_mapping (
+                id TEXT PRIMARY KEY,
+                targetId TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE rules (
+                id TEXT PRIMARY KEY,
+                stage TEXT,
+                conditions_op TEXT,
+                conditions TEXT,
+                actions TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
+            try db.execute(sql: """
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     /// Store wired to a real database and sync client so saveTransaction can
@@ -90,7 +99,9 @@ struct BudgetStoreSaveTransactionTests {
         type: TransactionType = .expense,
         amount: String = "10.50",
         payeeName: String = "",
-        transferToAccountId: String? = nil
+        transferToAccountId: String? = nil,
+        categoryId: String? = nil,
+        categoryIsExplicit: Bool = false
     ) -> BudgetStore.TransactionForm {
         BudgetStore.TransactionForm(
             accountId: "acct-1",
@@ -98,10 +109,11 @@ struct BudgetStoreSaveTransactionTests {
             amount: amount,
             payeeName: payeeName,
             transferToAccountId: transferToAccountId,
-            categoryId: nil,
+            categoryId: categoryId,
             notes: "",
             date: Date(),
-            cleared: false
+            cleared: false,
+            categoryIsExplicit: categoryIsExplicit
         )
     }
 
@@ -113,7 +125,7 @@ struct BudgetStoreSaveTransactionTests {
         Transaction(
             id: "tx-1",
             accountId: "acct-1",
-            date: 20260610,
+            date: 20_260_610,
             amount: -500,
             payeeId: payeeId,
             payeeName: payeeName,
@@ -185,7 +197,7 @@ struct BudgetStoreSaveTransactionTests {
         store.payees = [payee(id: "p-joe", name: "Trader Joe's")]
         let resolved = try await store.resolvePayeeId(name: "TRADER JOE'S", editing: nil)
         #expect(resolved == "p-joe")
-        #expect(store.payees.count == 1)  // matched, not created
+        #expect(store.payees.count == 1) // matched, not created
     }
 
     @Test func newPayeeNameTriggersCreation() async {
@@ -232,6 +244,118 @@ struct BudgetStoreSaveTransactionTests {
         #expect(row["tombstone"] == 0)
     }
 
+    @Test func ruleCategoryOnlyReplacesSuggestedCategory() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.payees = [payee(id: "payee-amazon", name: "Amazon")]
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "INSERT INTO payees (id, name) VALUES ('payee-amazon', 'Amazon')"
+            )
+            try db.execute(sql: """
+            INSERT INTO rules (id, conditions_op, conditions, actions)
+            VALUES ('amazon-category', 'and',
+                '[{"op":"is","field":"description","value":"payee-amazon"}]',
+                '[{"op":"set","field":"category","value":"cat-clothing"}]')
+            """)
+        }
+
+        let explicitId = try #require(try await store.saveTransaction(
+            form(
+                payeeName: "Amazon",
+                categoryId: "cat-groceries",
+                categoryIsExplicit: true
+            )
+        ))
+        let suggestedId = try #require(try await store.saveTransaction(
+            form(payeeName: "Amazon", categoryId: "cat-groceries")
+        ))
+
+        let rows = try transactionRows(path: path)
+        let explicitRow = try #require(rows.first { $0["id"] == explicitId })
+        let suggestedRow = try #require(rows.first { $0["id"] == suggestedId })
+        #expect(explicitRow["category"] == "cat-groceries")
+        #expect(suggestedRow["category"] == "cat-clothing")
+    }
+
+    @Test func automaticCategoryShowsRuleResultInsteadOfPayeeHistory() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.payees = [payee(id: "payee-cafe", name: "Cafe")]
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "INSERT INTO payees (id, name) VALUES ('payee-cafe', 'Cafe')"
+            )
+            try db.execute(sql: """
+            INSERT INTO transactions
+                (id, acct, category, amount, description, date, tombstone)
+            VALUES
+                ('previous-cafe', 'acct-1', 'cat-gifts', -500,
+                 'payee-cafe', 20260913, 0)
+            """)
+            try db.execute(sql: """
+            INSERT INTO rules (id, conditions_op, conditions, actions)
+            VALUES ('cafe-category', 'and',
+                '[{"op":"is","field":"description","value":"payee-cafe"}]',
+                '[{"op":"set","field":"category","value":"cat-dining"}]')
+            """)
+        }
+
+        let preview = try await store.automaticCategoryPreview(
+            for: form(payeeName: "Cafe")
+        )
+        let historyOnly = try await store.automaticCategoryPreview(
+            for: form(payeeName: "Cafe"),
+            applyRules: false
+        )
+
+        #expect(preview.sourceCategoryId == "cat-gifts")
+        #expect(preview.resultCategoryId == "cat-dining")
+        #expect(historyOnly.resultCategoryId == "cat-gifts")
+    }
+
+    @Test func automaticCategoryPreviewDoesNotChangeTheSaveRuleInput() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.payees = [payee(id: "payee-cafe", name: "Cafe")]
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "INSERT INTO payees (id, name) VALUES ('payee-cafe', 'Cafe')"
+            )
+            try db.execute(sql: """
+            INSERT INTO transactions
+                (id, acct, category, amount, description, date, tombstone)
+            VALUES
+                ('previous-cafe', 'acct-1', 'cat-gifts', -500,
+                 'payee-cafe', 20260913, 0)
+            """)
+            try db.execute(sql: """
+            INSERT INTO rules (id, conditions_op, conditions, actions)
+            VALUES ('cafe-category', 'and',
+                '[{"op":"is","field":"description","value":"payee-cafe"},
+                  {"op":"is","field":"category","value":"cat-gifts"}]',
+                '[{"op":"set","field":"category","value":"cat-dining"},
+                  {"op":"set","field":"notes","value":"rule-ran"}]')
+            """)
+        }
+
+        let preview = try await store.automaticCategoryPreview(
+            for: form(payeeName: "Cafe")
+        )
+        var savedForm = form(payeeName: "Cafe", categoryId: preview.resultCategoryId)
+        savedForm.automaticCategoryPreview = preview
+        let savedId = try #require(try await store.saveTransaction(
+            savedForm
+        ))
+
+        let row = try #require(try transactionRows(path: path).first { $0["id"] == savedId })
+        #expect(row["category"] == "cat-dining")
+        #expect(row["notes"] as String? == "rule-ran")
+    }
+
     @Test func editingATransactionReturnsNoCreatedID() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
@@ -252,16 +376,43 @@ struct BudgetStoreSaveTransactionTests {
         let store = try await makeStore(database: database)
         store.accounts = [
             Account(id: "acct-1", name: "Brokerage", type: .investment,
-                    offBudget: true, closed: false, sortOrder: 0, balance: 0)
+                    offBudget: true, closed: false, sortOrder: 0, balance: 0),
         ]
         var offBudgetForm = form(amount: "10.50")
         offBudgetForm.categoryId = "cat-food"
         offBudgetForm.splits = [
             .init(categoryId: "cat-food", amount: "5.25"),
-            .init(categoryId: "cat-fun", amount: "5.25")
+            .init(categoryId: "cat-fun", amount: "5.25"),
         ]
 
         try await store.saveTransaction(offBudgetForm)
+
+        let rows = try transactionRows(path: path)
+        #expect(rows.count == 1)
+        let row = try #require(rows.first)
+        #expect(row["category"] == nil)
+        #expect(row["isParent"] == 0)
+    }
+
+    @Test func editingAnOffBudgetTransactionDropsCategoriesAndSplits() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.accounts = [
+            Account(id: "acct-1", name: "Brokerage", type: .investment,
+                    offBudget: true, closed: false, sortOrder: 0, balance: 0),
+        ]
+        var original = transaction(payeeId: nil, payeeName: nil)
+        original.categoryId = "cat-food"
+        try database.insertTransaction(original)
+        var edit = form()
+        edit.categoryId = "cat-food"
+        edit.splits = [
+            .init(categoryId: "cat-food", amount: "5.25"),
+            .init(categoryId: "cat-fun", amount: "5.25"),
+        ]
+
+        try await store.saveTransaction(edit, editing: original)
 
         let rows = try transactionRows(path: path)
         #expect(rows.count == 1)
@@ -335,7 +486,7 @@ struct BudgetStoreSaveTransactionTests {
     // MARK: - YYYYMMDD encoding
 
     @Test func yyyymmddRoundTripsThroughDate() {
-        let encoded = 20251209
+        let encoded = 20_251_209
         let decoded = Transaction.date(fromYYYYMMDD: encoded)
         #expect(Transaction.yyyymmdd(from: decoded) == encoded)
     }

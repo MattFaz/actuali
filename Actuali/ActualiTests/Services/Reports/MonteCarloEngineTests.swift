@@ -6,6 +6,14 @@ import Testing
 /// volatility) scenarios are hand-computable; seeded scenarios pin values
 /// computed with the upstream mulberry32/Box-Muller PRNG in node.
 struct MonteCarloEngineTests {
+    @Test func widgetPercentageUsesInjectedLocale() {
+        #expect(MonteCarloWidgetFormatting.percentage(
+            85.5, locale: Locale(identifier: "en_US")
+        ) == "85.5%")
+        #expect(MonteCarloWidgetFormatting.percentage(
+            85.5, locale: Locale(identifier: "fr_FR")
+        ) == "85,5\u{00A0}%")
+    }
 
     /// Upstream makePot: custom preset, mean 0.06, stdDev 0.1, balance 50M cents.
     private func pot(
@@ -80,7 +88,7 @@ struct MonteCarloEngineTests {
         var random = MonteCarloRandom(seed: 42)
         let expected = [
             0.60110375192016363, 0.44829055899754167, 0.85246579349040985,
-            0.66973404143936932, 0.17481389874592423
+            0.66973404143936932, 0.17481389874592423,
         ]
         for value in expected {
             #expect(random.next() == value)
@@ -92,7 +100,7 @@ struct MonteCarloEngineTests {
         var random = MonteCarloRandom(seed: 42)
         let expected = [
             -1.2848381576290195, -0.94535280997472959,
-            -0.61128028465146289, -0.56583258521268753
+            -0.61128028465146289, -0.56583258521268753,
         ]
         for value in expected {
             #expect(random.nextNormal() == value)
@@ -138,7 +146,7 @@ struct MonteCarloEngineTests {
 
     @Test func survivesWhenReturnsOutpaceWithdrawals() {
         let result = MonteCarloEngine.simulate(
-            config: config(pots: [pot(balance: 100_000, mean: 0.05, stdDev: 0)], annualWithdrawal: 3_000),
+            config: config(pots: [pot(balance: 100_000, mean: 0.05, stdDev: 0)], annualWithdrawal: 3000),
             seed: 42
         )
         #expect(result.successRate == 1)
@@ -156,7 +164,7 @@ struct MonteCarloEngineTests {
 
     @Test func depletesInYearOneWhenWithdrawalExceedsPot() {
         let result = MonteCarloEngine.simulate(
-            config: config(pots: [pot(balance: 10_000)], annualWithdrawal: 20_000),
+            config: config(pots: [pot(balance: 10000)], annualWithdrawal: 20000),
             seed: 42
         )
         #expect(result.successRate == 0)
@@ -192,8 +200,8 @@ struct MonteCarloEngineTests {
             config: config(
                 pots: [pot(balance: 1_000_000, mean: 0, stdDev: 0)],
                 phases: [
-                    MonteCarloSpendingPhase(id: "phase-1", fromAge: nil, annualWithdrawal: 10_000),
-                    MonteCarloSpendingPhase(id: "phase-2", fromAge: 65, annualWithdrawal: 20_000)
+                    MonteCarloSpendingPhase(id: "phase-1", fromAge: nil, annualWithdrawal: 10000),
+                    MonteCarloSpendingPhase(id: "phase-2", fromAge: 65, annualWithdrawal: 20000),
                 ],
                 horizonYears: 13
             ),
@@ -201,7 +209,7 @@ struct MonteCarloEngineTests {
         )
         #expect(result.percentileBands[5].p50 == 950_000)
         #expect(result.percentileBands[6].p50 == 930_000)
-        #expect(result.percentileBands[13].p50 == 1_000_000 - 5 * 10_000 - 8 * 20_000)
+        #expect(result.percentileBands[13].p50 == 1_000_000 - 5 * 10000 - 8 * 20000)
     }
 
     // MARK: Withdrawal rules
@@ -210,7 +218,7 @@ struct MonteCarloEngineTests {
         // 10% withdrawal rate on a flat pot depletes in exactly year 10
         let base = config(
             pots: [pot(balance: 100_000, mean: 0, stdDev: 0)],
-            annualWithdrawal: 10_000
+            annualWithdrawal: 10000
         )
         let withoutRule = MonteCarloEngine.simulate(config: base, seed: 42)
         #expect(firstDepletedYear(withoutRule) == 10)
@@ -231,7 +239,7 @@ struct MonteCarloEngineTests {
         let result = MonteCarloEngine.simulate(
             config: config(
                 pots: [pot(balance: 100_000, mean: 0, stdDev: 0)],
-                annualWithdrawal: 10_000, rule: rule
+                annualWithdrawal: 10000, rule: rule
             ),
             seed: 42
         )
@@ -243,7 +251,7 @@ struct MonteCarloEngineTests {
         // the extra income leaves a lower ending balance than no rule
         let base = config(
             pots: [pot(balance: 100_000, mean: 0.2, stdDev: 0)],
-            annualWithdrawal: 4_000, horizonYears: 20
+            annualWithdrawal: 4000, horizonYears: 20
         )
         let withoutRule = MonteCarloEngine.simulate(config: base, seed: 42)
         var rule = MonteCarloWithdrawalRule()
@@ -259,7 +267,7 @@ struct MonteCarloEngineTests {
     @Test func ratchetingIncreasesWithdrawalsAfterConsecutiveYears() {
         let base = config(
             pots: [pot(balance: 100_000, mean: 0.3, stdDev: 0)],
-            annualWithdrawal: 1_000, horizonYears: 20
+            annualWithdrawal: 1000, horizonYears: 20
         )
         let withoutRule = MonteCarloEngine.simulate(config: base, seed: 42)
         var rule = MonteCarloWithdrawalRule()
@@ -277,7 +285,7 @@ struct MonteCarloEngineTests {
     @Test func minimumWithdrawalFloorNeutralizesRuleCuts() {
         let base = config(
             pots: [pot(balance: 100_000, mean: 0, stdDev: 0)],
-            annualWithdrawal: 10_000
+            annualWithdrawal: 10000
         )
         let withoutRule = MonteCarloEngine.simulate(config: base, seed: 42)
 
@@ -285,7 +293,7 @@ struct MonteCarloEngineTests {
         rule.type = .boundaries
         var flooredConfig = base
         flooredConfig.withdrawalRule = rule
-        flooredConfig.minimumWithdrawal = 10_000
+        flooredConfig.minimumWithdrawal = 10000
         let cutsFloored = MonteCarloEngine.simulate(config: flooredConfig, seed: 42)
 
         #expect(cutsFloored.percentileBands == withoutRule.percentileBands)
@@ -295,10 +303,10 @@ struct MonteCarloEngineTests {
         // Upstream: with no rule the planned spending is taken as-is
         let base = config(
             pots: [pot(balance: 100_000, mean: 0, stdDev: 0)],
-            annualWithdrawal: 5_000
+            annualWithdrawal: 5000
         )
         var flooredConfig = base
-        flooredConfig.minimumWithdrawal = 50_000
+        flooredConfig.minimumWithdrawal = 50000
         let result = MonteCarloEngine.simulate(config: flooredConfig, seed: 42)
         let baseline = MonteCarloEngine.simulate(config: base, seed: 42)
         #expect(result.percentileBands == baseline.percentileBands)
@@ -313,7 +321,7 @@ struct MonteCarloEngineTests {
             config: config(
                 pots: [
                     pot(id: "isa", balance: 100, mean: 0, stdDev: 0),
-                    pot(id: "pension", balance: 1_000, mean: 0, stdDev: 0, accessAge: 120)
+                    pot(id: "pension", balance: 1000, mean: 0, stdDev: 0, accessAge: 120),
                 ],
                 annualWithdrawal: 30, horizonYears: 20
             ),
@@ -329,7 +337,7 @@ struct MonteCarloEngineTests {
             config: config(
                 pots: [
                     pot(id: "isa", balance: 100, mean: 0, stdDev: 0),
-                    pot(id: "pension", balance: 1_000, mean: 0, stdDev: 0, accessAge: 63)
+                    pot(id: "pension", balance: 1000, mean: 0, stdDev: 0, accessAge: 63),
                 ],
                 annualWithdrawal: 30, horizonYears: 20
             ),
@@ -350,8 +358,8 @@ struct MonteCarloEngineTests {
         let result = MonteCarloEngine.simulate(
             config: config(
                 pots: [
-                    pot(id: "locked", balance: 1_000, mean: 0, stdDev: 0, accessAge: 200),
-                    pot(id: "open", balance: 100, mean: 0, stdDev: 0)
+                    pot(id: "locked", balance: 1000, mean: 0, stdDev: 0, accessAge: 200),
+                    pot(id: "open", balance: 100, mean: 0, stdDev: 0),
                 ],
                 annualWithdrawal: 10, strategy: .sequential, horizonYears: 20
             ),
@@ -368,14 +376,14 @@ struct MonteCarloEngineTests {
         // 95,000 funds nine full years and fails in year ten
         let result = MonteCarloEngine.simulate(
             config: config(
-                pots: [pot(balance: 95_000, mean: 0, stdDev: 0, taxRate: 0.2)],
-                annualWithdrawal: 8_000, horizonYears: 12
+                pots: [pot(balance: 95000, mean: 0, stdDev: 0, taxRate: 0.2)],
+                annualWithdrawal: 8000, horizonYears: 12
             ),
             seed: 42
         )
         #expect(result.successRate == 0)
         #expect(firstDepletedYear(result) == 10)
-        #expect(result.percentileBands[9].p50 == 5_000)
+        #expect(result.percentileBands[9].p50 == 5000)
     }
 
     @Test func taxBandsGrossUpProgressively() {
@@ -384,11 +392,11 @@ struct MonteCarloEngineTests {
         let result = MonteCarloEngine.simulate(
             config: config(
                 pots: [pot(balance: 200_000, mean: 0, stdDev: 0)],
-                annualWithdrawal: 18_000,
+                annualWithdrawal: 18000,
                 taxModel: .bands,
                 taxBands: [
                     MonteCarloTaxBand(id: "a", from: 0, rate: 0),
-                    MonteCarloTaxBand(id: "b", from: 10_000, rate: 0.2)
+                    MonteCarloTaxBand(id: "b", from: 10000, rate: 0.2),
                 ],
                 horizonYears: 3
             ),
@@ -407,13 +415,13 @@ struct MonteCarloEngineTests {
             config: config(
                 pots: [
                     pot(id: "isa", balance: 100_000, mean: 0, stdDev: 0, taxableFraction: 0),
-                    pot(id: "pension", balance: 100_000, mean: 0, stdDev: 0, taxableFraction: 0.75)
+                    pot(id: "pension", balance: 100_000, mean: 0, stdDev: 0, taxableFraction: 0.75),
                 ],
-                annualWithdrawal: 40_000,
+                annualWithdrawal: 40000,
                 taxModel: .bands,
                 taxBands: [
                     MonteCarloTaxBand(id: "a", from: 0, rate: 0),
-                    MonteCarloTaxBand(id: "b", from: 10_000, rate: 0.2)
+                    MonteCarloTaxBand(id: "b", from: 10000, rate: 0.2),
                 ],
                 horizonYears: 1
             ),
@@ -459,13 +467,13 @@ struct MonteCarloEngineTests {
     @Test func fixedFeeDeductedAtYearEnd() {
         let result = MonteCarloEngine.simulate(
             config: config(
-                pots: [pot(balance: 100_000, mean: 0, stdDev: 0, feeFixed: 1_000)],
+                pots: [pot(balance: 100_000, mean: 0, stdDev: 0, feeFixed: 1000)],
                 annualWithdrawal: 0, horizonYears: 5
             ),
             seed: 42
         )
-        #expect(result.percentileBands[1].p50 == 99_000)
-        #expect(result.percentileBands[2].p50 == 98_000)
+        #expect(result.percentileBands[1].p50 == 99000)
+        #expect(result.percentileBands[2].p50 == 98000)
     }
 
     @Test func percentageFeeDeductedFromEndOfYearBalance() {
@@ -476,14 +484,14 @@ struct MonteCarloEngineTests {
             ),
             seed: 42
         )
-        #expect(result.percentileBands[1].p50 == 99_000)
-        #expect(result.percentileBands[2].p50 == 98_010)
+        #expect(result.percentileBands[1].p50 == 99000)
+        #expect(result.percentileBands[2].p50 == 98010)
     }
 
     @Test func feesAloneCanDepleteAPlan() {
         let result = MonteCarloEngine.simulate(
             config: config(
-                pots: [pot(balance: 10_000, mean: 0, stdDev: 0, feeFixed: 5_000)],
+                pots: [pot(balance: 10000, mean: 0, stdDev: 0, feeFixed: 5000)],
                 annualWithdrawal: 0, horizonYears: 10
             ),
             seed: 42
@@ -500,7 +508,7 @@ struct MonteCarloEngineTests {
         let result = MonteCarloEngine.simulate(
             config: config(
                 pots: [pot(balance: 100_000, mean: 0, stdDev: 0, preset: .equity60)],
-                annualWithdrawal: 10_000,
+                annualWithdrawal: 10000,
                 returnModel: .historicalBootstrap,
                 horizonYears: 5
             ),
@@ -508,15 +516,15 @@ struct MonteCarloEngineTests {
             historicalReturns: [MonteCarloHistoricalReturn(year: 2000, stocks: 0.1, bonds: 0.1, cash: 0.1)]
         )
         // (100,000 - 10,000) * 1.1 = 99,000; (99,000 - 10,000) * 1.1 = 97,900
-        #expect(result.percentileBands[1].p50 == 99_000)
-        #expect(result.percentileBands[2].p50 == 97_900)
+        #expect(result.percentileBands[1].p50 == 99000)
+        #expect(result.percentileBands[2].p50 == 97900)
     }
 
     @Test func sequenceModeRunsOneScenarioPerStartYear() {
         let history = [
             MonteCarloHistoricalReturn(year: 2000, stocks: 0.1, bonds: 0.1, cash: 0.1),
             MonteCarloHistoricalReturn(year: 2001, stocks: -0.2, bonds: -0.2, cash: -0.2),
-            MonteCarloHistoricalReturn(year: 2002, stocks: 0.05, bonds: 0.05, cash: 0.05)
+            MonteCarloHistoricalReturn(year: 2002, stocks: 0.05, bonds: 0.05, cash: 0.05),
         ]
         let result = MonteCarloEngine.simulate(
             config: config(
@@ -588,7 +596,7 @@ struct MonteCarloEngineTests {
         #expect(config.simulationCount == 5000)
     }
 
-    @Test func computeResolvesAccountLinkedPotBalances() throws {
+    @Test func computeResolvesAccountLinkedPotBalances() {
         // A pot linked to an account takes the account's live balance
         // (clamped at zero); unlinked pots keep their stored balance
         let meta = MonteCarloMeta(
@@ -598,7 +606,7 @@ struct MonteCarloEngineTests {
                     expectedReturnMean: 0, returnStdDev: 0, accessAge: nil, accountId: "acct-1",
                     withdrawalTaxRate: nil, taxableFraction: nil, annualFeeFixed: nil,
                     feeAdjustsWithInflation: nil, annualFeeRate: nil
-                )
+                ),
             ],
             spendingPhases: [MonteCarloSpendingPhaseMeta(id: "s1", name: nil, fromAge: nil, annualWithdrawal: 100_000)],
             inflationMean: .some(nil),

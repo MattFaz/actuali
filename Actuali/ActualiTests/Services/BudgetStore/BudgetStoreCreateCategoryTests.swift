@@ -9,7 +9,6 @@ import Testing
 /// pushes onto siblings, which is what upstream compatibility hangs on.
 @MainActor
 struct BudgetStoreCreateCategoryTests {
-
     /// The category tables plus the message log the sync layer writes to.
     /// `refreshDataOnly` fetches more than this after a write, but it swallows
     /// its own failures, same as in BudgetStoreCreateAccountTests.
@@ -62,7 +61,7 @@ struct BudgetStoreCreateCategoryTests {
                     ('cat-fuel', 'cat-fuel');
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
@@ -111,7 +110,7 @@ struct BudgetStoreCreateCategoryTests {
         #expect(group.name == "Fun Money")
 
         #expect(try messagedColumns(path: url, dataset: "category_groups", row: group.id) == [
-            "hidden", "is_income", "name", "sort_order", "tombstone"
+            "hidden", "is_income", "name", "sort_order", "tombstone",
         ])
     }
 
@@ -123,14 +122,15 @@ struct BudgetStoreCreateCategoryTests {
         let category = try await store.createCategory(name: "Coffee", groupId: "grp-daily")
 
         #expect(try messagedColumns(path: url, dataset: "categories", row: category.id) == [
-            "cat_group", "hidden", "is_income", "name", "sort_order", "tombstone"
+            "cat_group", "hidden", "is_income", "name", "sort_order", "tombstone",
         ])
 
         // The self-mapping upstream pairs with every category, pointing at
         // itself — without it the transaction joins resolve to nothing.
         let mapping = try rows(
             path: url,
-            sql: "SELECT column, value FROM messages_crdt WHERE dataset = 'category_mapping' AND row = '\(category.id)'")
+            sql: "SELECT column, value FROM messages_crdt WHERE dataset = 'category_mapping' AND row = '\(category.id)'"
+        )
         #expect(mapping.count == 1)
         #expect(mapping[0]["column"] == "transferId")
         #expect(mapping[0]["value"] == "S:\(category.id)")
@@ -154,10 +154,11 @@ struct BudgetStoreCreateCategoryTests {
         let moved = try rows(
             path: url,
             sql: """
-                SELECT row, value FROM messages_crdt
-                WHERE dataset = 'categories' AND column = 'sort_order' AND row != '\(category.id)'
-                ORDER BY row
-                """)
+            SELECT row, value FROM messages_crdt
+            WHERE dataset = 'categories' AND column = 'sort_order' AND row != '\(category.id)'
+            ORDER BY row
+            """
+        )
         #expect(moved.map { $0["row"] as String } == ["cat-fuel", "cat-groceries"])
 
         // Each message carries the value actually written to its row, so a
@@ -167,7 +168,8 @@ struct BudgetStoreCreateCategoryTests {
             let value: String = message["value"]
             let stored: Double = try rows(
                 path: url,
-                sql: "SELECT sort_order FROM categories WHERE id = '\(id)'")[0]["sort_order"]
+                sql: "SELECT sort_order FROM categories WHERE id = '\(id)'"
+            )[0]["sort_order"]
             #expect(CRDTValue.deserialize(value) == stored.databaseValue)
         }
     }
@@ -182,9 +184,9 @@ struct BudgetStoreCreateCategoryTests {
         #expect(try count(
             path: url,
             sql: """
-                SELECT COUNT(*) FROM messages_crdt
-                WHERE dataset = 'categories' AND column = 'sort_order' AND row != '\(category.id)'
-                """
+            SELECT COUNT(*) FROM messages_crdt
+            WHERE dataset = 'categories' AND column = 'sort_order' AND row != '\(category.id)'
+            """
         ) == 0)
     }
 
@@ -222,6 +224,55 @@ struct BudgetStoreCreateCategoryTests {
             dataset: "categories",
             row: "cat-groceries"
         ) == ["name"])
+    }
+
+    @Test func renamingAnIncomeGroupWritesOnlyItsNameMessage() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            UPDATE category_groups SET is_income = 1 WHERE id = 'grp-daily'
+            """)
+        }
+
+        try await store.renameCategoryGroup(
+            id: "grp-daily",
+            name: "  Everyday  ",
+            month: "2026-07"
+        )
+
+        let renamed: String = try rows(
+            path: url,
+            sql: "SELECT name FROM category_groups WHERE id = 'grp-daily'"
+        )[0]["name"]
+        #expect(renamed == "Everyday")
+        #expect(try messagedColumns(
+            path: url,
+            dataset: "category_groups",
+            row: "grp-daily"
+        ) == ["name"])
+    }
+
+    @Test func aRejectedDuplicateGroupRenameEmitsNothing() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO category_groups (id, name, sort_order)
+            VALUES ('grp-savings', 'Épargne', 32768.0)
+            """)
+        }
+
+        await #expect(throws: BudgetDatabase.CategoryWriteError.duplicateGroupName("Épargne")) {
+            try await store.renameCategoryGroup(
+                id: "grp-daily",
+                name: "épargne",
+                month: "2026-07"
+            )
+        }
+        #expect(try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt") == 0)
     }
 
     @Test func aRejectedRenameEmitsNothing() async throws {

@@ -9,7 +9,6 @@ import Testing
 /// mutation and after a sync.
 @MainActor
 struct BudgetStoreDataVersionTests {
-
     /// Every table `refreshDataOnly()` reads, so the refresh completes
     /// without error (matches BudgetStoreSyncCancellationTests).
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
@@ -100,7 +99,7 @@ struct BudgetStoreDataVersionTests {
                     ('t1', 'acct-1', -500, 20260701, 0, 1.0);
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     /// Store wired to a real database and sync client. The server client is
@@ -129,7 +128,7 @@ struct BudgetStoreDataVersionTests {
         let transaction = Transaction(
             id: "t1",
             accountId: "acct-1",
-            date: 20260701,
+            date: 20_260_701,
             amount: -500,
             payeeId: nil,
             payeeName: nil,

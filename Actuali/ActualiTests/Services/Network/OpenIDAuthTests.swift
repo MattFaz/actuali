@@ -3,6 +3,35 @@ import Testing
 @testable import Actuali
 
 struct OpenIDAuthTests {
+    private var actualiBundle: Bundle {
+        Bundle(identifier: "com.mfazz.ActualiOS")!
+    }
+
+    @Test func sessionStartFailureDescriptionUsesFrenchAppLocalization() {
+        let frenchBundlePath = actualiBundle.path(forResource: "fr", ofType: "lproj")
+        #expect(frenchBundlePath != nil)
+
+        let description = OpenIDAuthError.sessionStartFailureDescription(
+            locale: Locale(identifier: "fr_FR"),
+            bundle: actualiBundle
+        )
+
+        #expect(description == "Impossible de démarrer la session de connexion")
+
+        let error = NSError(
+            domain: "OpenIDAuthenticator",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: description]
+        )
+        #expect(error.localizedDescription == "Impossible de démarrer la session de connexion")
+    }
+
+    @Test func adjacentOpenIDErrorsRemainLocalizedByTheAppAtRuntime() {
+        #expect(OpenIDAuthError.cancelled.errorDescription == "Sign-in was cancelled")
+        #expect(OpenIDAuthError.missingToken.errorDescription == "The server did not return a sign-in token")
+        #expect(OpenIDAuthError.noWindow.errorDescription == "Sign-in needs an open window. Try again with the app in the foreground.")
+        #expect(OpenIDAuthError.server("access_denied").errorDescription == "Sign-in failed: access_denied")
+    }
 
     // MARK: - Callback token extraction
 
@@ -59,7 +88,7 @@ struct OpenIDAuthTests {
         let decoded = try JSONDecoder().decode(LoginMethodsResponse.self, from: json)
         #expect(decoded.methods?.count == 2)
         #expect(decoded.methods?.first?.method == "password")
-        #expect(decoded.methods?.allSatisfy { $0.isActive } == true)
+        #expect(decoded.methods?.allSatisfy(\.isActive) == true)
     }
 
     @Test func inactiveLoginMethodReportsNotActive() throws {

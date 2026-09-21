@@ -1,14 +1,12 @@
 import Foundation
+import GRDB
 import Testing
 @testable import Actuali
 
 @MainActor
 struct BudgetStoreAccountMappingTests {
-
     /// Runs `body` with a store whose budget is `test-budget`, then restores
-    /// the UserDefaults state the store's `currentBudgetId.didSet` and the
-    /// mappings setter persist — so tests don't leak into the host app's
-    /// defaults (same convention as BudgetStoreEnsureBudgetReadyTests).
+    /// the UserDefaults state the store's `currentBudgetId.didSet` persists.
     private func withMappingStore(_ body: @MainActor (BudgetStore) async -> Void) async {
         let savedDefault = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer {
@@ -20,17 +18,235 @@ struct BudgetStoreAccountMappingTests {
         await body(store)
     }
 
+    private func makeStore() throws -> (BudgetStore, BudgetFileManager, String, URL) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mapping-tests-\(UUID().uuidString)", isDirectory: true)
+        let manager = BudgetFileManager(rootDirectoryForTesting: root)
+        let store = BudgetStore.previewInstance()
+        store.setFileManagerForTesting(manager)
+        return (store, manager, "budget-\(UUID().uuidString)", root)
+    }
+
+    private func seedBudget(id: String, in manager: BudgetFileManager) async throws {
+        let dir = manager.budgetDirectory(for: id)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
+        try await dbQueue.write { db in
+            try db.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema)
+        }
+        try JSONEncoder().encode(BudgetMetadata(
+            id: id, budgetName: "Seed", cloudFileId: "cf-1", groupId: "group-1",
+            resetClock: nil, lastUploaded: nil, encryptKeyId: nil
+        )).write(to: manager.metadataPath(for: id))
+    }
+
     private func account(_ id: String, _ name: String, closed: Bool = false) -> Account {
         Account(id: id, name: name, type: .checking, offBudget: false, closed: closed,
                 sortOrder: 0, balance: 0)
     }
 
-    @Test func cardAccountMappingsPersistToUserDefaults() async {
-        await withMappingStore { store in
-            store.cardAccountMappings = ["1234": "acct_hsbc", "9876": "acct_hdfc"]
-            #expect(store.cardAccountMappings["1234"] == "acct_hsbc")
-            #expect(store.cardAccountMappings["9876"] == "acct_hdfc")
+    @Test func legacyDefaultsMigrateOnLoad() async throws {
+        let (store, manager, budgetId, root) = try makeStore()
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            UserDefaults.standard.removeObject(forKey: "cardAccountMappings_\(budgetId)")
         }
+
+        try await seedBudget(id: budgetId, in: manager)
+
+        UserDefaults.standard.set(
+            ["1234": "acct_hsbc", "9876": "acct_hdfc", " 5678 ": "acct_chase", "  ": "acct_blank"],
+            forKey: "cardAccountMappings_\(budgetId)"
+        )
+
+        await store.loadLocalBudget(budgetId)
+
+        #expect(store.cardAccountMappings["1234"] == "acct_hsbc")
+        #expect(store.cardAccountMappings["9876"] == "acct_hdfc")
+        #expect(store.cardAccountMappings["5678"] == "acct_chase")
+        #expect(store.cardAccountMappings[" 5678 "] == nil)
+        #expect(store.cardAccountMappings[""] == nil)
+        #expect(store.cardAccountMappings["  "] == nil)
+
+        // Legacy UserDefaults key must be erased
+        #expect(UserDefaults.standard.dictionary(forKey: "cardAccountMappings_\(budgetId)") == nil)
+    }
+
+    @Test func setCardAccountMappingsPersistsThroughSync() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let queue = try DatabaseQueue(path: tempURL.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL);
+            """)
+        }
+        let database = try BudgetDatabase(path: tempURL)
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = "test-budget"
+        store.configureForTesting(database: database, syncClient: syncClient)
+
+        await store.setCardAccountMappings(accountId: "acct_chase", keywords: ["1234"])
+
+        #expect(store.cardAccountMappings["1234"] == "acct_chase")
+
+        var fetched = try await database.fetchCardAccountMappings()
+        #expect(fetched["1234"] == "acct_chase")
+
+        // Removing mapping
+        await store.setCardAccountMappings(accountId: nil, keywords: ["1234"])
+        #expect(store.cardAccountMappings["1234"] == nil)
+
+        fetched = try await database.fetchCardAccountMappings()
+        #expect(fetched.isEmpty)
+    }
+
+    @Test func setCardAccountMappingsRemovingKeywordsPersistsInOneWrite() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let queue = try DatabaseQueue(path: tempURL.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL);
+            """)
+        }
+        let database = try BudgetDatabase(path: tempURL)
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = "test-budget"
+        store.configureForTesting(database: database, syncClient: syncClient)
+
+        await store.setCardAccountMappings(accountId: "acct_chase", keywords: ["1234"])
+        await store.setCardAccountMappings(accountId: "acct_hdfc", keywords: ["4321"])
+
+        // Rename: new key written and old key dropped in one persisted write.
+        await store.setCardAccountMappings(accountId: "acct_amex", keywords: ["4321"], removingKeywords: ["1234"])
+
+        #expect(store.cardAccountMappings == ["4321": "acct_amex"])
+        let fetched = try await database.fetchCardAccountMappings()
+        #expect(fetched == ["4321": "acct_amex"])
+
+        // Account-only edit keeps the key.
+        await store.setCardAccountMappings(accountId: "acct_chase", keywords: ["4321"])
+        #expect(store.cardAccountMappings == ["4321": "acct_chase"])
+    }
+
+    @Test func deleteCardAccountMappingsRemovesEveryKeyword() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let queue = try DatabaseQueue(path: tempURL.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL);
+            """)
+        }
+        let database = try BudgetDatabase(path: tempURL)
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = "test-budget"
+        store.configureForTesting(database: database, syncClient: syncClient)
+
+        await store.setCardAccountMappings(accountId: "acct_chase", keywords: ["1234"])
+        await store.setCardAccountMappings(accountId: "acct_hsbc", keywords: ["HSBC"])
+
+        // Deleting non-existent keywords should be a safe no-op
+        await store.deleteCardAccountMappings(keywords: ["UNKNOWN"])
+        #expect(store.cardAccountMappings.count == 2)
+
+        await store.deleteCardAccountMappings(keywords: [" 1234 ", "HSBC"])
+
+        #expect(store.cardAccountMappings.isEmpty)
+        let fetched = try await database.fetchCardAccountMappings()
+        #expect(fetched.isEmpty)
+    }
+
+    @Test func setCardAccountMappingsPersistsMultipleAndRemovesSpecified() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let queue = try DatabaseQueue(path: tempURL.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL);
+            """)
+        }
+        let database = try BudgetDatabase(path: tempURL)
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = "test-budget"
+        store.configureForTesting(database: database, syncClient: syncClient)
+
+        // Map initial keywords
+        await store.setCardAccountMappings(
+            accountId: "acct_chase",
+            keywords: ["1234", "5678", "CSR"]
+        )
+        #expect(store.cardAccountMappings == [
+            "1234": "acct_chase",
+            "5678": "acct_chase",
+            "CSR": "acct_chase",
+        ])
+
+        // Edit: remove 5678, add 9999, retain 1234 and CSR
+        await store.setCardAccountMappings(
+            accountId: "acct_chase",
+            keywords: ["1234", "CSR", " 9999 "],
+            removingKeywords: ["5678"]
+        )
+        #expect(store.cardAccountMappings == [
+            "1234": "acct_chase",
+            "CSR": "acct_chase",
+            "9999": "acct_chase",
+        ])
+
+        let fetched = try await database.fetchCardAccountMappings()
+        #expect(fetched == [
+            "1234": "acct_chase",
+            "CSR": "acct_chase",
+            "9999": "acct_chase",
+        ])
+    }
+
+    @Test func cardAccountMappingsScopedPerBudget() async throws {
+        let (store, manager, budgetA, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let budgetB = "budget-\(UUID().uuidString)"
+
+        try await seedBudget(id: budgetA, in: manager)
+        try await seedBudget(id: budgetB, in: manager)
+
+        let dbQueueA = try DatabaseQueue(path: manager.databasePath(for: budgetA).path)
+        try await dbQueueA.write { db in
+            try db.execute(
+                sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
+                arguments: [BudgetDatabase.cardMappingPreferenceKey(for: "1234"), "acct_chase"]
+            )
+        }
+
+        await store.loadLocalBudget(budgetA)
+        #expect(store.cardAccountMappings["1234"] == "acct_chase")
+
+        await store.loadLocalBudget(budgetB)
+        #expect(store.cardAccountMappings.isEmpty)
+
+        await store.loadLocalBudget(budgetA)
+        #expect(store.cardAccountMappings["1234"] == "acct_chase")
     }
 
     @Test func resolveAccountIdMatchesMappingKeyword() async {
@@ -100,6 +316,30 @@ struct BudgetStoreAccountMappingTests {
         }
     }
 
+    @Test func resolveAccountIdFallsBackToDatabaseFileWhenDatabaseIsNil() async throws {
+        let (store, manager, budgetId, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try await seedBudget(id: budgetId, in: manager)
+
+        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: budgetId).path)
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: "INSERT INTO accounts (id, name, type, offbudget, closed, tombstone) VALUES (?, ?, ?, 0, 0, 0)",
+                arguments: ["acct_hsbc", "HSBC Checking", "checking"]
+            )
+            try db.execute(
+                sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
+                arguments: [BudgetDatabase.cardMappingPreferenceKey(for: "1234"), "acct_hsbc"]
+            )
+        }
+
+        store.currentBudgetId = budgetId
+
+        let resolved = await store.resolveAccountId(hint: "1234")
+        #expect(resolved == "acct_hsbc")
+    }
+
     // The static entry point is what the pending-import edit form calls;
     // these cover its edges without a store.
 
@@ -107,7 +347,8 @@ struct BudgetStoreAccountMappingTests {
         let resolved = BudgetStore.resolveAccountId(
             hint: "1234",
             accounts: [account("acct1", "HSBC", closed: true), account("acct2", "Cash")],
-            cardMappings: ["1234": "acct1"])
+            cardMappings: ["1234": "acct1"]
+        )
         #expect(resolved == nil)
     }
 
@@ -115,7 +356,8 @@ struct BudgetStoreAccountMappingTests {
         let resolved = BudgetStore.resolveAccountId(
             hint: "  ",
             accounts: [account("acct1", "Cash")],
-            cardMappings: [:])
+            cardMappings: [:]
+        )
         #expect(resolved == nil)
     }
 }

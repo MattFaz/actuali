@@ -14,6 +14,7 @@ import Testing
 ///   full sync. Building that scaffolding is out of scope for this task.
 /// - Toggle/toast UI behavior (Task 8 E2E).
 struct SchedulePostingWiringTests {
+    private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     /// A failed sync must report false — an unconfigured client fails fast
     /// and locally (SyncError.notConfigured), the same failure funnel as any
@@ -26,7 +27,21 @@ struct SchedulePostingWiringTests {
 
     @MainActor
     @Test func schedulePostNoticePluralizes() {
-        #expect(BudgetStore.schedulePostNoticeText(count: 1) == "Posted 1 scheduled transaction")
-        #expect(BudgetStore.schedulePostNoticeText(count: 2) == "Posted 2 scheduled transactions")
+        #expect(BudgetStore.schedulePostNoticeText(
+            count: 1, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == "Posted 1 scheduled transaction")
+        #expect(BudgetStore.schedulePostNoticeText(
+            count: 2, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == "Posted 2 scheduled transactions")
+    }
+
+    @MainActor
+    @Test func schedulePostNoticeUsesRequestedFrenchLocale() {
+        #expect(BudgetStore.schedulePostNoticeText(
+            count: 1, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == "1 transaction planifiée publiée")
+        #expect(BudgetStore.schedulePostNoticeText(
+            count: 2, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == "2 transactions planifiées publiées")
     }
 }

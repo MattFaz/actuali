@@ -16,14 +16,14 @@
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^14.0.0",
+    "@astrojs/cloudflare": "^14.3.1",
     "@tailwindcss/vite": "^4.2.2",
-    "astro": "^7.0.2",
+    "astro": "^7.2.8",
     "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240821.1",
-    "wrangler": "^4.85.0"
+    "@cloudflare/workers-types": "^5.20260914.1",
+    "wrangler": "^4.131.2"
   },
   "overrides": {
     "vite": "^8"

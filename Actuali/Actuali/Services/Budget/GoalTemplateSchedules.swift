@@ -22,7 +22,6 @@ struct GoalScheduleInfo: Sendable {
 /// schedule's plain amount condition; upgrade path is wiring RulesEngine in
 /// once it learns `set-split-amount`.
 enum GoalTemplateSchedules {
-
     struct ScheduleTarget {
         /// Position of the source template in the caller's template array,
         /// for per-template contribution attribution (dry-run projections).
@@ -41,11 +40,10 @@ enum GoalTemplateSchedules {
     /// then rounded — kept in that exact order because percent adjustments see
     /// the unrounded midpoint.
     static func scheduleAmount(_ amount: ScheduledAmount?, template: GoalTemplate) -> Int {
-        var value: Double
-        switch amount {
-        case .fixed(let cents): value = Double(cents)
-        case .range(let num1, let num2): value = Double(num1 + num2) / 2
-        case nil: value = 0
+        var value: Double = switch amount {
+        case .fixed(let cents): Double(cents)
+        case .range(let num1, let num2): Double(num1 + num2) / 2
+        case nil: 0
         }
         if let adjustment = template.adjustment, let adjustmentType = template.adjustmentType {
             switch adjustmentType {
@@ -73,15 +71,14 @@ enum GoalTemplateSchedules {
         for (templateIndex, template) in templates where template.type == .schedule {
             // Prefer scheduleId (UI-managed templates) so renames don't break
             // the lookup; fall back to the trimmed name for notes templates.
-            let schedule: GoalScheduleInfo?
-            if let scheduleId = template.scheduleId {
-                schedule = schedules.first { $0.id == scheduleId }
+            let schedule: GoalScheduleInfo? = if let scheduleId = template.scheduleId {
+                schedules.first { $0.id == scheduleId }
             } else if let name = template.name?.trimmingCharacters(in: .whitespaces) {
-                schedule = schedules.first {
+                schedules.first {
                     $0.name?.trimmingCharacters(in: .whitespaces) == name
                 }
             } else {
-                schedule = nil
+                nil
             }
             guard let schedule else { continue }
 
@@ -119,7 +116,8 @@ enum GoalTemplateSchedules {
                     config: config,
                     monthStart: monthStart,
                     boundaryMonth: BudgetMonthMath.addMonths(currentMonth, numMonths + 1),
-                    perOccurrence: target)
+                    perOccurrence: target
+                )
             }
 
             targets.append(ScheduleTarget(
@@ -131,7 +129,8 @@ enum GoalTemplateSchedules {
                 targetFrequency: targetFrequency,
                 numMonths: numMonths,
                 full: template.full ?? false,
-                repeating: repeating))
+                repeating: repeating
+            ))
         }
         return targets
     }
@@ -151,7 +150,8 @@ enum GoalTemplateSchedules {
             frequency: config.frequency, interval: config.interval, start: config.start,
             patterns: config.patterns, skipWeekend: false,
             weekendSolveMode: config.weekendSolveMode, endMode: config.endMode,
-            endOccurrences: config.endOccurrences, endDate: config.endDate)
+            endOccurrences: config.endOccurrences, endDate: config.endDate
+        )
 
         func solved(_ date: DayDate) -> DayDate {
             guard config.skipWeekend, date.isWeekend else { return date }
@@ -168,20 +168,25 @@ enum GoalTemplateSchedules {
             total += perOccurrence
             let currentDate = baseDate
             guard let next = ScheduleRecurrence.nextOccurrence(
-                config: baseConfig, onOrAfter: baseDate.adding(days: 1))
+                config: baseConfig, onOrAfter: baseDate.adding(days: 1)
+            )
             else { break }
             baseDate = next
             comparisonDate = solved(baseDate)
             // An exhausted bounded schedule keeps returning its last
             // occurrence; upstream breaks on the zero-day difference.
-            if currentDate.days(until: baseDate) == 0 { break }
+            if currentDate.days(until: baseDate) == 0 {
+                break
+            }
         }
         return total
     }
 
     private static func previousFriday(from date: DayDate) -> DayDate {
         var result = date
-        while result.weekday != 6 { result = result.adding(days: -1) }
+        while result.weekday != 6 {
+            result = result.adding(days: -1)
+        }
         return result
     }
 
@@ -205,7 +210,8 @@ enum GoalTemplateSchedules {
         var toBudget = toBudget
         let targets = createScheduleList(
             templates: templates, currentMonth: currentMonth,
-            categoryIsIncome: categoryIsIncome, schedules: schedules)
+            categoryIsIncome: categoryIsIncome, schedules: schedules
+        )
 
         func isPayMonthOf(_ c: ScheduleTarget) -> Bool {
             c.full
@@ -252,7 +258,8 @@ enum GoalTemplateSchedules {
             }
         } else {
             let (totalSinkingContribution, sinkingPerTemplate) = sinkingContributionBreakdown(
-                sinking, lastMonthBalance: lastMonthBalance)
+                sinking, lastMonthBalance: lastMonthBalance
+            )
             if sinking.isEmpty {
                 toBudget += BudgetMonthMath.jsRound(totalPayMonthOf + totalSinkingContribution)
                     - lastMonthBalance
@@ -281,14 +288,20 @@ enum GoalTemplateSchedules {
         case "weekly":
             let previous = BudgetMonthMath.subWeeks(schedule.nextDateString, schedule.targetInterval)
             var intervalMonths = BudgetMonthMath.differenceInCalendarMonths(
-                schedule.nextDateString, previous)
-            if intervalMonths == 0 { intervalMonths = 1 }
+                schedule.nextDateString, previous
+            )
+            if intervalMonths == 0 {
+                intervalMonths = 1
+            }
             return target / Double(intervalMonths)
         case "daily":
             let previous = BudgetMonthMath.subDays(schedule.nextDateString, schedule.targetInterval)
             var intervalMonths = BudgetMonthMath.differenceInCalendarMonths(
-                schedule.nextDateString, previous)
-            if intervalMonths == 0 { intervalMonths = 1 }
+                schedule.nextDateString, previous
+            )
+            if intervalMonths == 0 {
+                intervalMonths = 1
+            }
             return target / Double(intervalMonths)
         default:
             return target / interval

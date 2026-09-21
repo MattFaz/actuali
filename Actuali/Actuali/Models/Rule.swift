@@ -19,7 +19,9 @@ struct Rule: Identifiable, Equatable, Hashable {
         case `default` = 1
         case post = 2
 
-        static func < (lhs: Stage, rhs: Stage) -> Bool { lhs.rawValue < rhs.rawValue }
+        static func < (lhs: Stage, rhs: Stage) -> Bool {
+            lhs.rawValue < rhs.rawValue
+        }
 
         init(raw: String?) {
             switch raw {
@@ -33,17 +35,17 @@ struct Rule: Identifiable, Equatable, Hashable {
         /// same as upstream.
         var storedValue: String? {
             switch self {
-            case .pre: return "pre"
-            case .post: return "post"
-            case .default: return nil
+            case .pre: "pre"
+            case .post: "post"
+            case .default: nil
             }
         }
 
-        var label: String {
+        func label(locale: Locale, bundle: Bundle = .main) -> String {
             switch self {
-            case .pre: return "Pre"
-            case .default: return "Default"
-            case .post: return "Post"
+            case .pre: ReportStrings.text("Pre", locale: locale, bundle: bundle)
+            case .default: ReportStrings.text("Default", locale: locale, bundle: bundle)
+            case .post: ReportStrings.text("Post", locale: locale, bundle: bundle)
             }
         }
     }
@@ -56,19 +58,21 @@ struct Rule: Identifiable, Equatable, Hashable {
             self = raw?.lowercased() == "or" ? .or : .and
         }
 
-        var label: String { self == .and ? "all" : "any" }
+        var label: String {
+            self == .and ? String(localized: "all") : String(localized: "any")
+        }
     }
 
     struct Condition: Equatable, Hashable {
         var op: String
-        var field: String        // public field name, e.g. "imported_payee"
+        var field: String // public field name, e.g. "imported_payee"
         var value: RuleValue
         var options: [String: RuleValue]?
     }
 
     struct Action: Equatable, Hashable {
         var op: String
-        var field: String?       // nil for ops without a field (link-schedule, …)
+        var field: String? // nil for ops without a field (link-schedule, …)
         var value: RuleValue
         var options: [String: RuleValue]?
     }
@@ -97,12 +101,12 @@ extension Rule {
         conditionsJSON: String?,
         actionsJSON: String?
     ) throws -> Rule {
-        Rule(
+        try Rule(
             id: id,
             stage: Stage(raw: stage),
             conditionsOp: ConditionsOp(raw: conditionsOp),
-            conditions: try parseConditions(conditionsJSON),
-            actions: try parseActions(actionsJSON)
+            conditions: parseConditions(conditionsJSON),
+            actions: parseActions(actionsJSON)
         )
     }
 
@@ -146,7 +150,9 @@ extension Rule {
         guard let json, let data = json.data(using: .utf8) else { return [] }
         let any = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
         guard let array = any as? [[String: Any]] else {
-            if any is NSNull { return [] }
+            if any is NSNull {
+                return []
+            }
             throw RuleParseError.notArray
         }
         return array
@@ -161,7 +167,7 @@ extension Rule.Condition {
         var object: [String: Any] = [
             "op": op,
             "field": RuleSchema.internalField(from: field),
-            "value": value.jsonObject
+            "value": value.jsonObject,
         ]
         if let type = RuleSchema.fieldType(field)?.rawValue {
             object["type"] = type
@@ -185,7 +191,9 @@ extension Rule.Action {
         case "set":
             if let field {
                 object["field"] = RuleSchema.internalField(from: field)
-                if let type = RuleSchema.fieldType(field)?.rawValue { object["type"] = type }
+                if let type = RuleSchema.fieldType(field)?.rawValue {
+                    object["type"] = type
+                }
             }
         case "set-split-amount":
             object["field"] = NSNull()
@@ -209,8 +217,13 @@ extension Rule.Action {
 }
 
 extension Rule {
-    var conditionsJSON: String { Self.encode(conditions.map(\.jsonObject)) }
-    var actionsJSON: String { Self.encode(actions.map(\.jsonObject)) }
+    var conditionsJSON: String {
+        Self.encode(conditions.map(\.jsonObject))
+    }
+
+    var actionsJSON: String {
+        Self.encode(actions.map(\.jsonObject))
+    }
 
     private static func encode(_ array: [[String: Any]]) -> String {
         // .sortedKeys so a rule that round-trips through the editor unchanged
@@ -218,7 +231,9 @@ extension Rule {
         // review and in tests.
         do {
             let data = try JSONSerialization.data(withJSONObject: array, options: [.sortedKeys])
-            if let json = String(data: data, encoding: .utf8) { return json }
+            if let json = String(data: data, encoding: .utf8) {
+                return json
+            }
         } catch {
             logger.error("Rule serialization failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -228,7 +243,7 @@ extension Rule {
         logger.error("Rule serialization produced no JSON; refusing to blank the rule")
         return "[]"
     }
-    
+
     /// Whether both blobs will survive a round trip to JSON. Checked before a
     /// save so a rule can never be written to the server as an empty one.
     var isSerializable: Bool {
@@ -240,7 +255,9 @@ extension Rule {
 // MARK: - CRDTSyncable
 
 extension Rule: CRDTSyncable {
-    static var datasetName: String { "rules" }
+    static var datasetName: String {
+        "rules"
+    }
 
     var syncableFields: [String: Any?] {
         [
@@ -248,7 +265,7 @@ extension Rule: CRDTSyncable {
             "conditions_op": conditionsOp.rawValue,
             "conditions": conditionsJSON,
             "actions": actionsJSON,
-            "tombstone": tombstone ? 1 : 0
+            "tombstone": tombstone ? 1 : 0,
         ]
     }
 }

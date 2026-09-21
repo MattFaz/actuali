@@ -4,7 +4,6 @@ import Testing
 @testable import Actuali
 
 struct SyncClientSetBudgetAmountTests {
-
     /// The budget table and messages_crdt normally come from the downloaded
     /// budget file, so create them with the upstream schema.
     private func makeDatabase(budgetTable: String? = "zero_budgets") throws -> (BudgetDatabase, URL) {
@@ -14,27 +13,27 @@ struct SyncClientSetBudgetAmountTests {
         try queue.write { db in
             if let budgetTable {
                 try db.execute(sql: """
-                    CREATE TABLE \(budgetTable) (
-                        id TEXT PRIMARY KEY,
-                        month INTEGER,
-                        category TEXT,
-                        amount INTEGER DEFAULT 0,
-                        carryover INTEGER DEFAULT 0
-                    )
-                    """)
-            }
-            try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
+                CREATE TABLE \(budgetTable) (
+                    id TEXT PRIMARY KEY,
+                    month INTEGER,
+                    category TEXT,
+                    amount INTEGER DEFAULT 0,
+                    carryover INTEGER DEFAULT 0
                 )
                 """)
+            }
+            try db.execute(sql: """
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     /// Sync client wired to a real database. The server client is
@@ -64,6 +63,31 @@ struct SyncClientSetBudgetAmountTests {
         }
     }
 
+    @Test func envelopeBufferCreatesMissingTableRowAndPersistsCRDTMessage() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+
+        try await syncClient.setBudgetBuffer(month: "2026-07", amount: 2500)
+
+        let queue = try DatabaseQueue(path: path.path)
+        let buffered = try await queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT buffered FROM zero_budget_months WHERE id = ?",
+                arguments: ["2026-07"]
+            )
+        }
+        #expect(buffered == 2500)
+
+        let messages = try messageRows(path: path)
+        let message = try #require(messages.first)
+        #expect(message["dataset"] == "zero_budget_months")
+        #expect(message["row"] == "2026-07")
+        #expect(message["column"] == "buffered")
+        #expect(message["value"] == "N:2500")
+    }
+
     @Test func newCellInsertsRowAndEmitsFullInsertMessages() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
@@ -75,7 +99,7 @@ struct SyncClientSetBudgetAmountTests {
         #expect(rows.count == 1)
         let row = try #require(rows.first)
         #expect(row["id"] == "202607-cat-1")
-        #expect(row["month"] == 202607)
+        #expect(row["month"] == 202_607)
         #expect(row["category"] == "cat-1")
         #expect(row["amount"] == 12345)
 
@@ -98,8 +122,8 @@ struct SyncClientSetBudgetAmountTests {
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO zero_budgets (id, month, category, amount) VALUES ('legacy-id', 202607, 'cat-1', 500)
-                """)
+            INSERT INTO zero_budgets (id, month, category, amount) VALUES ('legacy-id', 202607, 'cat-1', 500)
+            """)
         }
         let syncClient = try await makeSyncClient(database: database)
 

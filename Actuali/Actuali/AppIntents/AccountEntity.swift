@@ -4,7 +4,9 @@ struct AccountEntity: AppEntity, Identifiable {
     let id: String
     let name: String
 
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Account"
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(
+        name: LocalizedStringResource("Account")
+    )
 
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(title: "\(name)")
@@ -14,7 +16,6 @@ struct AccountEntity: AppEntity, Identifiable {
 }
 
 struct AccountEntityQuery: EntityQuery {
-
     @MainActor
     func entities(for identifiers: [AccountEntity.ID]) async throws -> [AccountEntity] {
         // Use accountsForIntent() so a cold/headless Shortcut launch can still

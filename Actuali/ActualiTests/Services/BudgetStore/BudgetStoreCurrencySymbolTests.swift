@@ -6,7 +6,6 @@ import Testing
 /// persist like the other display settings (GH #83).
 @MainActor
 struct BudgetStoreCurrencySymbolTests {
-
     @Test func standardSymbolsByDefault() {
         let store = BudgetStore.previewInstance()
         #expect(!store.useNarrowCurrencySymbol)

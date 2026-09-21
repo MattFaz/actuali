@@ -8,11 +8,15 @@ import XCTest
 /// isolate Coffee in the budget table; covering it from Coffee's own balance
 /// must empty the filter again.
 final class OverspentCategoriesUITests: XCTestCase {
-
     @MainActor
-    func testOverspentFilterIsolatesAndResolvesOverspentCategories() throws {
+    func testOverspentFilterIsolatesAndResolvesOverspentCategories() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
+        // Pin both preferences this test reads. Earlier suites leave their own
+        // values behind in UserDefaults: "compact" for the style (whose row
+        // labels carry a trailing status/amount clause the assertions below
+        // don't expect — nightly run 34151727684), and the strip switched off.
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean",
+                               "-showBudgetCheckInStrip", "YES", "-initialTab", "1"]
         app.launch()
 
         let budgetTab = app.tabBars.buttons["Budget"]

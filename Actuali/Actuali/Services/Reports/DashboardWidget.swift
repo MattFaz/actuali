@@ -33,9 +33,11 @@ struct WidgetRuleCondition: Codable, Equatable {
 /// Untyped Codable wrapper for nested JSON values. Stores the original
 /// JSON-encoded data so the value can be re-emitted unchanged.
 struct AnyCodable: Codable, Equatable {
-    let raw: Data  // original JSON bytes (e.g. "\"groceries\"", "42", "true", "null", arrays, objects)
+    let raw: Data // original JSON bytes (e.g. "\"groceries\"", "42", "true", "null", arrays, objects)
 
-    init(rawJSON: Data) { self.raw = rawJSON }
+    init(rawJSON: Data) {
+        self.raw = rawJSON
+    }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -220,7 +222,7 @@ struct AgeOfMoneyMeta: Codable, Equatable {
     let timeFrame: WidgetTimeFrame?
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
-    let granularity: String?  // "daily" | "weekly" | "monthly"; nil = monthly
+    let granularity: String? // "daily" | "weekly" | "monthly"; nil = monthly
 }
 
 struct FormulaQueryMeta: Codable, Equatable {
@@ -287,47 +289,47 @@ enum DashboardWidget: Equatable {
              .balanceForecast(let id, _),
              .monteCarlo(let id, _),
              .unsupported(let id, _):
-            return id
+            id
         }
     }
 
     var typeLabel: String {
         switch self {
-        case .summary: return "Summary"
-        case .netWorth: return "Net Worth"
-        case .cashFlow: return "Cash Flow"
-        case .spending: return "Spending"
-        case .markdown: return "Notes"
-        case .ageOfMoney: return "Age of Money"
-        case .formula: return "Formula"
-        case .customReport: return "Custom Report"
-        case .calendar: return "Calendar"
-        case .crossover: return "Crossover"
-        case .budgetAnalysis: return "Budget Analysis"
-        case .sankey: return "Sankey"
-        case .balanceForecast: return "Balance Forecast"
-        case .monteCarlo: return "Monte Carlo"
-        case .unsupported(_, let type): return type
+        case .summary: String(localized: "Summary")
+        case .netWorth: String(localized: "Net Worth")
+        case .cashFlow: String(localized: "Cash Flow")
+        case .spending: String(localized: "Spending")
+        case .markdown: String(localized: "Notes")
+        case .ageOfMoney: String(localized: "Age of Money")
+        case .formula: String(localized: "Formula")
+        case .customReport: String(localized: "Custom Report")
+        case .calendar: String(localized: "Calendar")
+        case .crossover: String(localized: "Crossover")
+        case .budgetAnalysis: String(localized: "Budget Analysis")
+        case .sankey: String(localized: "Sankey")
+        case .balanceForecast: String(localized: "Balance Forecast")
+        case .monteCarlo: String(localized: "Monte Carlo")
+        case .unsupported(_, let type): type
         }
     }
 
     var displayName: String {
         switch self {
-        case .summary(_, let meta): return meta?.name ?? typeLabel
-        case .netWorth(_, let meta): return meta?.name ?? typeLabel
-        case .cashFlow(_, let meta): return meta?.name ?? typeLabel
-        case .spending(_, let meta): return meta?.name ?? typeLabel
-        case .markdown: return typeLabel
-        case .ageOfMoney(_, let meta): return meta?.name ?? typeLabel
-        case .formula(_, let meta): return meta?.name ?? typeLabel
-        case .customReport(_, let meta): return meta?.name ?? typeLabel
-        case .calendar(_, let meta): return meta?.name ?? typeLabel
-        case .crossover(_, let meta): return meta?.name ?? typeLabel
-        case .budgetAnalysis(_, let meta): return meta?.name ?? typeLabel
-        case .sankey(_, let meta): return meta?.name ?? typeLabel
-        case .balanceForecast(_, let meta): return meta?.name ?? typeLabel
-        case .monteCarlo(_, let meta): return meta?.name ?? typeLabel
-        case .unsupported: return typeLabel
+        case .summary(_, let meta): meta?.name ?? typeLabel
+        case .netWorth(_, let meta): meta?.name ?? typeLabel
+        case .cashFlow(_, let meta): meta?.name ?? typeLabel
+        case .spending(_, let meta): meta?.name ?? typeLabel
+        case .markdown: typeLabel
+        case .ageOfMoney(_, let meta): meta?.name ?? typeLabel
+        case .formula(_, let meta): meta?.name ?? typeLabel
+        case .customReport(_, let meta): meta?.name ?? typeLabel
+        case .calendar(_, let meta): meta?.name ?? typeLabel
+        case .crossover(_, let meta): meta?.name ?? typeLabel
+        case .budgetAnalysis(_, let meta): meta?.name ?? typeLabel
+        case .sankey(_, let meta): meta?.name ?? typeLabel
+        case .balanceForecast(_, let meta): meta?.name ?? typeLabel
+        case .monteCarlo(_, let meta): meta?.name ?? typeLabel
+        case .unsupported: typeLabel
         }
     }
 

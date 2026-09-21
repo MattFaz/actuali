@@ -25,11 +25,16 @@ struct MainTabView: View {
     /// The numeric tab badge isn't surfaced to accessibility on its own, so
     /// mirror it as a spoken value on the tab label.
     private var overspentBadgeValue: String {
-        switch overspentCount {
-        case 0: ""
-        case 1: "1 overspent category"
-        default: "\(overspentCount) overspent categories"
-        }
+        Self.overspentBadgeValue(count: overspentCount)
+    }
+
+    nonisolated static func overspentBadgeValue(
+        count: Int,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+        guard count > 0 else { return "" }
+        return ReportStrings.localized("\(count) overspent categories", locale: locale, bundle: bundle)
     }
 
     var body: some View {
@@ -47,12 +52,16 @@ struct MainTabView: View {
             }
         }
         .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
-            if pending { selectedTab = 0 }
+            if pending {
+                selectedTab = 0
+            }
         }
         // A save in the tab-hosted add flow routes to the account's
         // transaction list, which lives on the Accounts tab.
         .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
-            if accountId != nil { selectedTab = 0 }
+            if accountId != nil {
+                selectedTab = 0
+            }
         }
         // Cancel in the tab-hosted add flow returns to the user's Start Page.
         .onChange(of: notificationRouter.pendingTabNavigation) { _, tab in
@@ -83,13 +92,13 @@ struct MainTabView: View {
             Tab(value: 0) {
                 AccountsListView()
             } label: {
-                Label("Accounts", systemImage: "banknote")
+                Label("Accounts", systemImage: "building.columns")
             }
 
             Tab(value: 2) {
-                AddTransactionTabView()
+                AddTransactionTabView(isSelected: selectedTab == 2)
             } label: {
-                Label("Add", systemImage: "plus.circle.fill")
+                Label("Add", systemImage: "plus")
             }
 
             Tab(value: 3) {
@@ -110,6 +119,7 @@ struct MainTabView: View {
 struct AddTransactionTabView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var showingDefaultAccountAlert = false
+    var isSelected = false
 
     private func handleManualTransactionSaved(_ savedTransactionId: String?) {
         CategoryFundingAutomation.processIfNeeded(savedTransactionId, using: budgetStore)
@@ -125,23 +135,24 @@ struct AddTransactionTabView: View {
         if let account = validDefaultAccount ?? fallbackAccount {
             AddTransactionView(
                 accountId: account.id,
+                autofocusAmount: isSelected,
                 onSaved: handleManualTransactionSaved
             )
-                .onAppear {
-                    if configuredId != nil && validDefaultAccount == nil {
-                        budgetStore.defaultAccountId = nil
-                        showingDefaultAccountAlert = true
-                    }
+            .onAppear {
+                if configuredId != nil, validDefaultAccount == nil {
+                    budgetStore.defaultAccountId = nil
+                    showingDefaultAccountAlert = true
                 }
-                .alert("Default Account Unavailable", isPresented: $showingDefaultAccountAlert) {
-                    Button("OK") {}
-                } message: {
-                    Text("Your default account is no longer available. Please configure a new default in More → Transactions & Automation.")
-                }
+            }
+            .alert(String(localized: "Default Account Unavailable"), isPresented: $showingDefaultAccountAlert) {
+                Button(String(localized: "OK")) {}
+            } message: {
+                Text(String(localized: "Your default account is no longer available. Please configure a new default in More → Transactions & Automation."))
+            }
         } else {
             ContentUnavailableView(
                 "No Accounts",
-                systemImage: "banknote",
+                systemImage: "building.columns",
                 description: Text("Add an account to create transactions")
             )
         }

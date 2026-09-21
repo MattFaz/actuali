@@ -5,11 +5,12 @@ import XCTest
 /// scroll — a large title stretching on overscroll, or collapsing on scroll-up
 /// — therefore slides over it (GH #253). Assert the bar stays a fixed height.
 final class BudgetSummaryPinUITests: XCTestCase {
-
     @MainActor
-    func testBudgetNavigationBarDoesNotResizeWithScrolling() throws {
+    func testBudgetNavigationBarDoesNotResizeWithScrolling() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        // Pin the style: "Details for Groceries" is the Clean row's exact
+        // label; Compact appends the category's status to it.
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()
@@ -33,7 +34,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
     }
 
     @MainActor
-    func testMonthStepperStaysReachableAfterScrolling() throws {
+    func testMonthStepperStaysReachableAfterScrolling() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData"]
         app.launch()
@@ -55,7 +56,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
     /// and the stepper clears the slot by 2pt, so this is the guard for the
     /// next thing that widens it.
     @MainActor
-    func testMonthStepperIsCenteredInTheBar() throws {
+    func testMonthStepperIsCenteredInTheBar() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData"]
         app.launch()

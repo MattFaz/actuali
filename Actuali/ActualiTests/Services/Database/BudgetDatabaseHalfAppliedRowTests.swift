@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins the upstream `v_transactions_internal` validity filter (GH #275):
@@ -13,7 +13,6 @@ import GRDB
 /// garbage date and skews the account balance.
 @MainActor
 struct BudgetDatabaseHalfAppliedRowTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -124,13 +123,13 @@ struct BudgetDatabaseHalfAppliedRowTests {
         try await seed(db)
 
         let account = try #require(try await db.fetchAccounts().first { $0.id == "acct-a" })
-        #expect(account.balance == -275425)
+        #expect(account.balance == -275_425)
 
         let cleared = try await db.clearedBalance(accountId: "acct-a")
-        #expect(cleared == -275425)
+        #expect(cleared == -275_425)
 
         let breakdown = try await db.balanceBreakdown(accountId: "acct-a")
-        #expect(breakdown.cleared == -275425)
+        #expect(breakdown.cleared == -275_425)
         #expect(breakdown.uncleared == 0)
     }
 
@@ -152,10 +151,10 @@ struct BudgetDatabaseHalfAppliedRowTests {
         }
 
         let account = try #require(try await db.fetchAccounts().first { $0.id == "acct-a" })
-        #expect(account.balance == -275425)
+        #expect(account.balance == -275_425)
 
         let breakdown = try await db.balanceBreakdown(accountId: "acct-a")
-        #expect(breakdown.cleared == -275425)
+        #expect(breakdown.cleared == -275_425)
 
         let reportRows = try await db.fetchTransactionsForReports()
         #expect(reportRows.map(\.id) == ["t-real"])

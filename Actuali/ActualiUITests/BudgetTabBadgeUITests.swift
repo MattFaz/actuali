@@ -8,12 +8,13 @@ import XCTest
 /// toggle must hide and restore it, and restoring the budget must hide it
 /// again.
 final class BudgetTabBadgeUITests: XCTestCase {
-
     @MainActor
-    func testBadgeTracksOverspentCategories() throws {
+    func testBadgeTracksOverspentCategories() {
         let app = XCUIApplication()
+        // Pin the style: setBudget finds the row by the Clean edit button's
+        // exact label; Compact appends the budgeted amount to it.
         app.launchArguments = [
-            "-loadDemoData", "-initialTab", "1",
+            "-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1",
             "-showOverspentBadge", "YES",
         ]
         app.launch()
@@ -77,7 +78,9 @@ final class BudgetTabBadgeUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             let value = badgeValue(of: tab)
-            if expected.isEmpty ? value.isEmpty : value.contains(expected) { return true }
+            if expected.isEmpty ? value.isEmpty : value.contains(expected) {
+                return true
+            }
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         return false

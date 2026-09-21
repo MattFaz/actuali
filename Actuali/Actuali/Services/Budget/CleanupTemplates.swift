@@ -38,11 +38,14 @@ extension CleanupTemplate {
             guard let role = (object["role"] as? String).flatMap(Role.init(rawValue:))
             else { return nil }
             let groupId = object["groupId"] as? String
-            if role == .overspend, groupId == nil { return nil }
+            if role == .overspend, groupId == nil {
+                return nil
+            }
             return CleanupTemplate(
                 role: role,
                 groupId: groupId,
-                weight: (object["weight"] as? NSNumber)?.doubleValue ?? 1)
+                weight: (object["weight"] as? NSNumber)?.doubleValue ?? 1
+            )
         }
     }
 
@@ -57,7 +60,8 @@ extension CleanupTemplate {
             return object
         }
         guard let data = try? JSONSerialization.data(
-            withJSONObject: objects, options: [.sortedKeys]) else { return nil }
+            withJSONObject: objects, options: [.sortedKeys]
+        ) else { return nil }
         return String(decoding: data, as: UTF8.self)
     }
 }
@@ -103,7 +107,9 @@ enum CleanupNotes {
 
         func weight(from text: String) -> Double? {
             let trimmed = text.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { return 1 }
+            if trimmed.isEmpty {
+                return 1
+            }
             guard trimmed.allSatisfy({ $0.isNumber && $0.isASCII }) else { return nil }
             return Double(trimmed) == 0 ? 1 : Double(trimmed)
         }
@@ -141,10 +147,14 @@ enum CleanupNotes {
             let groupId = row.groupName.flatMap(groupIdForName)
             switch row.kind {
             case .source:
-                if row.groupName != nil, groupId == nil { return nil }
+                if row.groupName != nil, groupId == nil {
+                    return nil
+                }
                 return .source(groupId: groupId)
             case .sink(let weight):
-                if row.groupName != nil, groupId == nil { return nil }
+                if row.groupName != nil, groupId == nil {
+                    return nil
+                }
                 return .sink(groupId: groupId, weight: weight)
             case .overspend:
                 guard let groupId else { return nil }
@@ -170,7 +180,9 @@ enum CleanupNotes {
                     guard let name = groupName(id) else { return nil }
                     scope = "\(name) "
                 }
-                if row.role == .source { return "#cleanup \(scope)source" }
+                if row.role == .source {
+                    return "#cleanup \(scope)source"
+                }
                 let weight = row.weight != 1 ? " \(formatWeight(row.weight))" : ""
                 return "#cleanup \(scope)sink\(weight)"
             }
@@ -195,7 +207,10 @@ struct CleanupConfig: Equatable, Sendable {
     }
 
     struct Group: Equatable, Sendable, Identifiable {
-        var id: String { groupId }
+        var id: String {
+            groupId
+        }
+
         var groupId: String
         var send = false
         var take = false
@@ -215,7 +230,9 @@ struct CleanupConfig: Equatable, Sendable {
         var groupsById: [String: Int] = [:]
 
         func groupIndex(_ groupId: String) -> Int {
-            if let index = groupsById[groupId] { return index }
+            if let index = groupsById[groupId] {
+                return index
+            }
             config.groups.append(Group(groupId: groupId))
             groupsById[groupId] = config.groups.count - 1
             return config.groups.count - 1
@@ -256,10 +273,16 @@ struct CleanupConfig: Equatable, Sendable {
     func toCleanupTemplates() -> [CleanupTemplate] {
         guard isConfigured else { return [] }
         var rows: [CleanupTemplate] = []
-        if global.send { rows.append(.source()) }
-        if global.take { rows.append(.sink(weight: global.weight)) }
+        if global.send {
+            rows.append(.source())
+        }
+        if global.take {
+            rows.append(.sink(weight: global.weight))
+        }
         for group in groups {
-            if group.send { rows.append(.source(groupId: group.groupId)) }
+            if group.send {
+                rows.append(.source(groupId: group.groupId))
+            }
             if group.take {
                 rows.append(group.overspendOnly
                     ? .overspend(groupId: group.groupId)

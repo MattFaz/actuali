@@ -1,7 +1,7 @@
 
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins `fetchSchedules()` and `fetchPaidScheduleIds(for:)`. The list fetch is
@@ -66,7 +66,7 @@ struct ScheduleListFetchTests {
             try db.execute(sql: "INSERT INTO payee_mapping (id, targetId) VALUES ('payee-1', 'payee-1')")
             try db.execute(sql: "INSERT INTO payee_mapping (id, targetId) VALUES ('payee-old', 'payee-1')")
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     /// Inserts a schedule + rule + next-date row. Pass `ruleId: nil` to model a
@@ -76,35 +76,35 @@ struct ScheduleListFetchTests {
         id: String,
         name: String? = nil,
         conditions: String = """
-            [{"op":"is","field":"account","value":"acct-1"},
-             {"op":"is","field":"payee","value":"payee-1"},
-             {"op":"isapprox","field":"date","value":"2026-08-13"},
-             {"op":"isapprox","field":"amount","value":-1250}]
-            """,
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"is","field":"payee","value":"payee-1"},
+         {"op":"isapprox","field":"date","value":"2026-08-13"},
+         {"op":"isapprox","field":"amount","value":-1250}]
+        """,
         actions: String = #"[{"op":"link-schedule","value":"sched-1"}]"#,
         ruleId: String? = "rule-1",
-        nextDate: Int? = 20260813,
+        nextDate: Int? = 20_260_813,
         postsTransaction: Bool = false,
         completed: Bool = false
     ) throws {
         try database.dbQueueForTesting.write { db in
             if let ruleId {
                 try db.execute(sql: """
-                    INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
-                    VALUES (?, NULL, 'and', ?, ?, 0)
-                    """, arguments: [ruleId, conditions, actions])
+                INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+                VALUES (?, NULL, 'and', ?, ?, 0)
+                """, arguments: [ruleId, conditions, actions])
             }
             try db.execute(sql: """
-                INSERT INTO schedules (id, rule, name, completed, posts_transaction, tombstone)
-                VALUES (?, ?, ?, ?, ?, 0)
-                """, arguments: [id, ruleId, name, completed ? 1 : 0, postsTransaction ? 1 : 0])
+            INSERT INTO schedules (id, rule, name, completed, posts_transaction, tombstone)
+            VALUES (?, ?, ?, ?, ?, 0)
+            """, arguments: [id, ruleId, name, completed ? 1 : 0, postsTransaction ? 1 : 0])
             if let nextDate {
                 try db.execute(sql: """
-                    INSERT INTO schedules_next_date
-                        (id, schedule_id, local_next_date, local_next_date_ts,
-                         base_next_date, base_next_date_ts)
-                    VALUES (?, ?, ?, 100, ?, 100)
-                    """, arguments: ["nd-\(id)", id, nextDate, nextDate])
+                INSERT INTO schedules_next_date
+                    (id, schedule_id, local_next_date, local_next_date_ts,
+                     base_next_date, base_next_date_ts)
+                VALUES (?, ?, ?, 100, ?, 100)
+                """, arguments: ["nd-\(id)", id, nextDate, nextDate])
             }
         }
     }
@@ -124,7 +124,7 @@ struct ScheduleListFetchTests {
         #expect(schedule.amount == .fixed(-1250))
         #expect(schedule.amountOp == .isApprox)
         #expect(schedule.dateOp == "isapprox")
-        #expect(schedule.nextDate == DayDate(yyyymmdd: 20260813))
+        #expect(schedule.nextDate == DayDate(yyyymmdd: 20_260_813))
         #expect(schedule.nextDateRowId == "nd-sched-1")
         #expect(schedule.isCustom == false)
         #expect(schedule.isRecurring == false)
@@ -169,11 +169,11 @@ struct ScheduleListFetchTests {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", conditions: """
-            [{"op":"is","field":"account","value":"acct-1"},
-             {"op":"is","field":"payee","value":"payee-old"},
-             {"op":"isapprox","field":"date","value":"2026-08-13"},
-             {"op":"is","field":"amount","value":-500}]
-            """)
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"is","field":"payee","value":"payee-old"},
+         {"op":"isapprox","field":"date","value":"2026-08-13"},
+         {"op":"is","field":"amount","value":-500}]
+        """)
 
         let schedule = try #require(try await database.fetchSchedules().first)
         #expect(schedule.payeeId == "payee-1")
@@ -184,11 +184,11 @@ struct ScheduleListFetchTests {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", conditions: """
-            [{"op":"is","field":"account","value":"acct-1"},
-             {"op":"isapprox","field":"date","value":
-               {"frequency":"monthly","start":"2026-01-15","interval":1}},
-             {"op":"isbetween","field":"amount","value":{"num1":-1200,"num2":-1000}}]
-            """)
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"isapprox","field":"date","value":
+           {"frequency":"monthly","start":"2026-01-15","interval":1}},
+         {"op":"isbetween","field":"amount","value":{"num1":-1200,"num2":-1000}}]
+        """)
 
         let schedule = try #require(try await database.fetchSchedules().first)
         #expect(schedule.isRecurring)
@@ -206,11 +206,11 @@ struct ScheduleListFetchTests {
         defer { try? FileManager.default.removeItem(at: url) }
         // A legacy config with a string interval: RecurConfig rejects it.
         try insertSchedule(database, id: "sched-1", conditions: """
-            [{"op":"is","field":"account","value":"acct-1"},
-             {"op":"isapprox","field":"date","value":
-               {"frequency":"monthly","start":"2026-01-15","interval":"2"}},
-             {"op":"is","field":"amount","value":-500}]
-            """)
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"isapprox","field":"date","value":
+           {"frequency":"monthly","start":"2026-01-15","interval":"2"}},
+         {"op":"is","field":"amount","value":-500}]
+        """)
 
         let schedule = try #require(try await database.fetchSchedules().first)
         #expect(schedule.dateCondition == .unsupported)
@@ -221,9 +221,9 @@ struct ScheduleListFetchTests {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", conditions: """
-            [{"op":"is","field":"account","value":"acct-1"},
-             {"op":"is","field":"amount","value":-500}]
-            """)
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"is","field":"amount","value":-500}]
+        """)
 
         let schedule = try #require(try await database.fetchSchedules().first)
         #expect(schedule.dateCondition == .unsupported)
@@ -234,11 +234,11 @@ struct ScheduleListFetchTests {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", conditions: """
-            [{"op":"is","field":"account","value":"acct-1"},
-             {"op":"isapprox","field":"date","value":"2026-08-13"},
-             {"op":"is","field":"amount","value":-500},
-             {"op":"contains","field":"notes","value":"rent"}]
-            """)
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"isapprox","field":"date","value":"2026-08-13"},
+         {"op":"is","field":"amount","value":-500},
+         {"op":"contains","field":"notes","value":"rent"}]
+        """)
         #expect(try #require(try await database.fetchSchedules().first).isCustom)
     }
 
@@ -246,9 +246,9 @@ struct ScheduleListFetchTests {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", actions: """
-            [{"op":"link-schedule","value":"sched-1"},
-             {"op":"set","field":"category","value":"cat-1"}]
-            """)
+        [{"op":"link-schedule","value":"sched-1"},
+         {"op":"set","field":"category","value":"cat-1"}]
+        """)
         #expect(try #require(try await database.fetchSchedules().first).isCustom)
     }
 
@@ -259,25 +259,40 @@ struct ScheduleListFetchTests {
         defer { try? FileManager.default.removeItem(at: url) }
         // Exact-date schedule: no lookback allowed.
         try insertSchedule(database, id: "sched-exact", conditions: """
-            [{"op":"is","field":"account","value":"acct-1"},
-             {"op":"is","field":"date","value":"2026-08-13"},
-             {"op":"is","field":"amount","value":-500}]
-            """, ruleId: "rule-1")
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"is","field":"date","value":"2026-08-13"},
+         {"op":"is","field":"amount","value":-500}]
+        """, ruleId: "rule-1")
         // Manual approximate schedule: two days of lookback.
         try insertSchedule(database, id: "sched-approx", ruleId: "rule-2")
+        // Recurring exact-date schedule: frequency allows four days of lookback.
+        try insertSchedule(database, id: "sched-recurring", conditions: """
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-08-13","interval":1}},
+         {"op":"is","field":"amount","value":-500}]
+        """, ruleId: "rule-3")
+        // A future occurrence must not steal a late payment from the current one.
+        try insertSchedule(database, id: "sched-future", conditions: """
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"is","field":"date","value":{"frequency":"weekly","start":"2026-08-20","interval":1}},
+         {"op":"is","field":"amount","value":-500}]
+        """, ruleId: "rule-4", nextDate: 20_260_820, postsTransaction: true)
 
         try await database.dbQueueForTesting.write { db in
-            // Two days early — covers the approx schedule only.
             try db.execute(sql: """
-                INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
-                VALUES ('t1', 'acct-1', 20260811, -500, 'sched-exact', 0),
-                       ('t2', 'acct-1', 20260811, -500, 'sched-approx', 0)
-                """)
+            INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
+            VALUES ('t1', 'acct-1', 20260811, -500, 'sched-exact', 0),
+                   ('t2', 'acct-1', 20260811, -500, 'sched-approx', 0),
+                   ('t3', 'acct-1', 20260809, -500, 'sched-recurring', 0),
+                   ('t4', 'acct-1', 20260818, -500, 'sched-future', 0)
+            """)
         }
 
         let schedules = try await database.fetchSchedules()
-        let paid = try await database.fetchPaidScheduleIds(for: schedules)
-        #expect(paid == ["sched-approx"])
+        let paid = try await database.fetchPaidScheduleIds(
+            for: schedules, today: DayDate(yyyymmdd: 20_260_813)!
+        )
+        #expect(paid == ["sched-approx", "sched-recurring"])
     }
 
     @Test func tombstonedTransactionsDoNotCountAsPaid() async throws {
@@ -286,12 +301,30 @@ struct ScheduleListFetchTests {
         try insertSchedule(database, id: "sched-1")
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
-                VALUES ('t1', 'acct-1', 20260813, -500, 'sched-1', 1)
-                """)
+            INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
+            VALUES ('t1', 'acct-1', 20260813, -500, 'sched-1', 1)
+            """)
         }
         let schedules = try await database.fetchSchedules()
         #expect(try await database.fetchPaidScheduleIds(for: schedules).isEmpty)
+    }
+
+    @Test func paymentDatesIncludeOnlyLiveLinkedTransactions() async throws {
+        let (database, url) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try insertSchedule(database, id: "sched-1")
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
+            VALUES ('live', 'acct-1', 20260813, -500, 'sched-1', 0),
+                   ('deleted', 'acct-1', 20260713, -500, 'sched-1', 1)
+            """)
+        }
+
+        let schedules = try await database.fetchSchedules()
+        #expect(try await database.fetchSchedulePaymentDates(for: schedules) == [
+            "sched-1": [DayDate(yyyymmdd: 20_260_813)!],
+        ])
     }
 
     @Test func noSchedulesMeansNoQuery() async throws {

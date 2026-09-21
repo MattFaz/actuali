@@ -2,7 +2,7 @@ import XCTest
 
 final class CompactBudgetParityUITests: XCTestCase {
     @MainActor
-    func testExpenseCellsReachExistingActionFlows() throws {
+    func testExpenseCellsReachExistingActionFlows() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -30,9 +30,10 @@ final class CompactBudgetParityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["All Time"].exists)
         app.navigationBars.buttons["Budget"].tap()
 
-        let add = app.navigationBars["Budget"].buttons["Add"]
-        XCTAssertTrue(add.exists, "Compact keeps the shared category creation menu")
-        add.tap()
+        let optionsMenu = app.buttons["Budget options"]
+        XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10),
+                      "Compact keeps the shared category creation menu")
+        optionsMenu.tap()
         XCTAssertTrue(app.buttons["New Category"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["New Category Group"].exists)
         app.buttons["New Category Group"].tap()
@@ -74,7 +75,7 @@ final class CompactBudgetParityUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(balance.waitForExistence(timeout: 5))
         XCTAssertTrue(balance.label.contains("$"))
-        XCTAssertTrue(balance.label.contains("positive"),
+        XCTAssertTrue(balance.label.localizedCaseInsensitiveContains("positive"),
                       "VoiceOver communicates balance status without relying on green")
         balance.tap()
         XCTAssertTrue(app.navigationBars["Move Money"].waitForExistence(timeout: 5),
@@ -83,7 +84,7 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testKeepsSharedMonthSwipeNavigation() throws {
+    func testKeepsSharedMonthSwipeNavigation() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -104,7 +105,7 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testCategoryFilterUsesSharedEmptyAndRecoveryFlow() throws {
+    func testCategoryFilterUsesSharedEmptyAndRecoveryFlow() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -127,7 +128,7 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testEmptyCategoryStatusDotAndProgressBarRespectIndependentSettings() throws {
+    func testEmptyCategoryStatusDotAndProgressBarRespectIndependentSettings() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -186,7 +187,7 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testIncomeNameAndReceivedReachTheirTransactionScopes() throws {
+    func testIncomeNameAndReceivedReachTheirTransactionScopes() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -217,7 +218,7 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testIncomeContextMenuHidesAndShowsCategory() throws {
+    func testIncomeContextMenuHidesAndShowsCategory() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", "compact",
@@ -245,19 +246,6 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    private func scrollUntilHittable(
-        _ element: XCUIElement,
-        in app: XCUIApplication,
-        maxSwipes: Int = 12
-    ) {
-        var swipesLeft = maxSwipes
-        while !element.isHittable && swipesLeft > 0 {
-            app.swipeUp()
-            swipesLeft -= 1
-        }
-    }
-
-    @MainActor
     private func ensureGroupExpanded(
         _ name: String,
         revealing element: XCUIElement,
@@ -280,12 +268,5 @@ final class CompactBudgetParityUITests: XCTestCase {
 
     private func currentMonthTitle() -> String {
         monthTitle(offset: 0)
-    }
-
-    private func monthTitle(offset: Int) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        let date = Calendar.current.date(byAdding: .month, value: offset, to: Date()) ?? Date()
-        return formatter.string(from: date)
     }
 }

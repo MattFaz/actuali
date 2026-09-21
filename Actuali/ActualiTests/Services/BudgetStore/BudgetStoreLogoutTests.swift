@@ -11,7 +11,6 @@ import Testing
 /// refresh, and remove encrypted budgets' keys from the Keychain.
 @MainActor
 struct BudgetStoreLogoutTests {
-
     /// Store + file manager rooted in a unique temp directory. logout wipes
     /// *all* local budgets, and suites run in parallel against the shared
     /// Budgets directory, so isolation is mandatory for these tests.
@@ -80,7 +79,7 @@ struct BudgetStoreLogoutTests {
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
         try seedBudget(id: "budget-a", in: manager)
-        store.configureForTesting(database: try makeOpenDatabase(), syncClient: makeSyncClient())
+        try store.configureForTesting(database: makeOpenDatabase(), syncClient: makeSyncClient())
 
         store.logout()
 
@@ -97,14 +96,14 @@ struct BudgetStoreLogoutTests {
         store.currentBudgetId = "budget-a"
         store.accounts = [
             Account(id: "a1", name: "Checking", type: .checking,
-                    offBudget: false, closed: false, sortOrder: 0, balance: 100)
+                    offBudget: false, closed: false, sortOrder: 0, balance: 100),
         ]
         store.transactions = [
-            Transaction(id: "t1", accountId: "a1", date: 20260810, amount: -500,
+            Transaction(id: "t1", accountId: "a1", date: 20_260_810, amount: -500,
                         payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
                         notes: nil, cleared: false, reconciled: false, transferId: nil,
                         isParent: false, parentId: nil, tombstone: false, sortOrder: nil,
-                        importedPayee: nil)
+                        importedPayee: nil),
         ]
         store.uncategorizedCount = 3
         store.payees = [Payee(id: "p1", name: "Grocer")]
@@ -147,7 +146,7 @@ struct BudgetStoreLogoutTests {
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
         try seedBudget(id: "budget-a", in: manager)
-        store.configureForTesting(database: try makeOpenDatabase(), syncClient: makeSyncClient())
+        try store.configureForTesting(database: makeOpenDatabase(), syncClient: makeSyncClient())
 
         store.logout(clearLocalData: false)
 

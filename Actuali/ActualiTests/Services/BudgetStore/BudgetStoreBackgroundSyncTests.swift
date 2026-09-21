@@ -5,7 +5,6 @@ import Testing
 
 @MainActor
 struct BudgetStoreBackgroundSyncTests {
-
     /// Minimal upstream schema so SyncClient.configure can load its clock
     /// (matches BudgetStoreSaveTransactionTests).
     private func makeDatabase() throws -> BudgetDatabase {
@@ -14,15 +13,15 @@ struct BudgetStoreBackgroundSyncTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
         return try BudgetDatabase(path: tempURL)
     }

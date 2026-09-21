@@ -8,20 +8,23 @@ import Foundation
 /// same slightly-permissive inputs upstream accepts ("#template 3days…",
 /// "repeatevery") parse identically here.
 enum GoalTemplateParser {
-
     struct ParseError: Error {
         let message: String
     }
 
     /// Parse one `#template…` / `#goal…` line (already trimmed to start at
     /// the `#`). Throws on lines that match no grammar alternative.
-    static func parse(_ line: String) throws -> GoalTemplate {
+    static func parse(
+        _ line: String,
+        locale: Locale = .autoupdatingCurrent,
+        bundle: Bundle = .main
+    ) throws -> GoalTemplate {
         var scanner = Scanner(line)
 
         // `#goal`i amount
         if scanner.matchLiteral("#goal", caseInsensitive: true) {
             guard let amount = scanner.amount(), scanner.isAtEnd else {
-                throw ParseError(message: "Invalid #goal syntax")
+                throw ParseError(message: localizedError("Invalid #goal syntax", locale: locale, bundle: bundle))
             }
             var template = GoalTemplate(type: .goal, directive: .goal, priority: nil)
             template.amount = amount
@@ -30,13 +33,15 @@ enum GoalTemplateParser {
 
         // `#template` is case-sensitive upstream.
         guard scanner.matchLiteral("#template", caseInsensitive: false) else {
-            throw ParseError(message: "Line is not a template")
+            throw ParseError(message: localizedError(
+                "Line is not a template", locale: locale, bundle: bundle
+            ))
         }
         // priority = '-' number; absent coerces to 0 (upstream's `+null`).
         var priority = 0
         if scanner.matchLiteral("-", caseInsensitive: false) {
             guard let n = scanner.number() else {
-                throw ParseError(message: "Invalid priority")
+                throw ParseError(message: localizedError("Invalid priority", locale: locale, bundle: bundle))
             }
             priority = n
         }
@@ -53,7 +58,12 @@ enum GoalTemplateParser {
                 return template
             }
         }
-        throw ParseError(message: "Invalid template syntax")
+        throw ParseError(message: localizedError("Invalid template syntax", locale: locale, bundle: bundle))
+    }
+
+    private static func localizedError(_ key: String, locale: Locale, bundle: Bundle) -> String {
+        ReportStrings.localizedBundle(for: locale, in: bundle)
+            .localizedString(forKey: key, value: key, table: nil)
     }
 
     // MARK: - Alternatives (bodies after the `#template[-N]` prefix)
@@ -246,7 +256,9 @@ enum GoalTemplateParser {
             characters = Array(string)
         }
 
-        var isAtEnd: Bool { position >= characters.count }
+        var isAtEnd: Bool {
+            position >= characters.count
+        }
 
         private func peek(_ offset: Int = 0) -> Character? {
             let index = position + offset
@@ -255,7 +267,9 @@ enum GoalTemplateParser {
 
         /// `_` in the grammar: zero or more spaces/tabs.
         mutating func skipWhitespace() {
-            while let c = peek(), c == " " || c == "\t" { position += 1 }
+            while let c = peek(), c == " " || c == "\t" {
+                position += 1
+            }
         }
 
         mutating func matchLiteral(_ literal: String, caseInsensitive: Bool) -> Bool {
@@ -266,7 +280,9 @@ enum GoalTemplateParser {
                 let matches = caseInsensitive
                     ? String(actual).lowercased() == String(expected).lowercased()
                     : actual == expected
-                if !matches { return false }
+                if !matches {
+                    return false
+                }
             }
             position += target.count
             return true
@@ -330,7 +346,9 @@ enum GoalTemplateParser {
             text += whole
             if peek() == "." {
                 position += 1
-                if let fraction = digits() { text += ".\(fraction)" }
+                if let fraction = digits() {
+                    text += ".\(fraction)"
+                }
             }
             skipWhitespace()
             guard peek() == "%" else {
@@ -394,10 +412,18 @@ enum GoalTemplateParser {
             let start = position
             guard let n = number() else { return nil }
             skipWhitespace()
-            if matchLiteral("days", caseInsensitive: true) { return .init(period: .day, amount: n) }
-            if matchLiteral("weeks", caseInsensitive: true) { return .init(period: .week, amount: n) }
-            if matchLiteral("months", caseInsensitive: true) { return .init(period: .month, amount: n) }
-            if matchLiteral("years", caseInsensitive: true) { return .init(period: .year, amount: n) }
+            if matchLiteral("days", caseInsensitive: true) {
+                return .init(period: .day, amount: n)
+            }
+            if matchLiteral("weeks", caseInsensitive: true) {
+                return .init(period: .week, amount: n)
+            }
+            if matchLiteral("months", caseInsensitive: true) {
+                return .init(period: .month, amount: n)
+            }
+            if matchLiteral("years", caseInsensitive: true) {
+                return .init(period: .year, amount: n)
+            }
             position = start
             return nil
         }
@@ -423,8 +449,12 @@ enum GoalTemplateParser {
             let start = position
             guard let n = positive() else { return nil }
             skipWhitespace()
-            if matchLiteral("months", caseInsensitive: true) { return (false, n) }
-            if matchLiteral("years", caseInsensitive: true) { return (true, n) }
+            if matchLiteral("months", caseInsensitive: true) {
+                return (false, n)
+            }
+            if matchLiteral("years", caseInsensitive: true) {
+                return (true, n)
+            }
             position = start
             return nil
         }
@@ -500,14 +530,18 @@ enum GoalTemplateParser {
             text += whole
             if peek() == "." {
                 position += 1
-                if let fraction = digits() { text += ".\(fraction)" }
+                if let fraction = digits() {
+                    text += ".\(fraction)"
+                }
             }
             // The grammar allows whitespace before '%' but requires ']'
             // immediately after the value/percent — "[increase 5 ]" fails.
             var afterValue = self
             afterValue.skipWhitespace()
             let isPercent = afterValue.matchLiteral("%", caseInsensitive: false)
-            if isPercent { self = afterValue }
+            if isPercent {
+                self = afterValue
+            }
             guard matchLiteral("]", caseInsensitive: false), let value = Double(text) else {
                 position = start
                 return nil
@@ -581,14 +615,14 @@ enum GoalTemplateNotes {
                    adjustment <= -100 || adjustment > 1000 {
                     var errorTemplate = GoalTemplate(type: .error, directive: .error)
                     errorTemplate.line = line
-                    errorTemplate.error = "Invalid adjustment percentage (\(trimTrailingZeros(adjustment))%). Must be between -100% and 1000%"
+                    errorTemplate.error = String(localized: "Invalid adjustment percentage (\(trimTrailingZeros(adjustment))%). Must be between -100% and 1000%")
                     template = errorTemplate
                 }
             } catch {
                 var errorTemplate = GoalTemplate(type: .error, directive: .error)
                 errorTemplate.line = line
                 errorTemplate.error = (error as? GoalTemplateParser.ParseError)?.message
-                    ?? "Invalid template syntax"
+                    ?? String(localized: "Invalid template syntax")
                 template = errorTemplate
             }
             template.description = description

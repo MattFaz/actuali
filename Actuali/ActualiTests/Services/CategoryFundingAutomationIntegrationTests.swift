@@ -107,7 +107,7 @@ struct CategoryFundingAutomationIntegrationTests {
                 INSERT INTO zero_budgets (id, month, category, amount) VALUES ('202607-cat-income', 202607, 'cat-income', 2000);
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
@@ -125,7 +125,7 @@ struct CategoryFundingAutomationIntegrationTests {
                 closed: false,
                 sortOrder: 0,
                 balance: -1500
-            )
+            ),
         ]
         store.categoryGroups = [
             CategoryGroup(
@@ -158,9 +158,9 @@ struct CategoryFundingAutomationIntegrationTests {
                         isIncome: true,
                         hidden: false,
                         sortOrder: 2
-                    )
+                    ),
                 ]
-            )
+            ),
         ]
         return store
     }
@@ -190,7 +190,7 @@ struct CategoryFundingAutomationIntegrationTests {
         let transaction = Transaction(
             id: id,
             accountId: accountId,
-            date: 20260725,
+            date: 20_260_725,
             amount: amount,
             payeeId: nil,
             payeeName: "Restaurant",

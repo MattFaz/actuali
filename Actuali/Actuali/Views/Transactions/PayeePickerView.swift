@@ -5,26 +5,37 @@ struct PayeePickerView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
     @Binding var nearbyPayees: [NearbyPayee]
+    let transferFromAccountId: String?
     let onSelect: (Payee) -> Void
     let onCommit: (String) -> Void
     let onDeleteNearby: (NearbyPayee) -> Void
 
     @State private var searchText: String
+    @State private var searchSelection: TextSelection?
+    @State private var hasAutoSelectedAll = false
     @State private var suggestedPayees: [Payee] = []
-    @State private var isSearchPresented = true
+    @FocusState private var searchFocused: Bool
 
     init(
         payeeName: String,
         nearbyPayees: Binding<[NearbyPayee]>,
+        transferFromAccountId: String? = nil,
         onSelect: @escaping (Payee) -> Void,
         onCommit: @escaping (String) -> Void,
         onDeleteNearby: @escaping (NearbyPayee) -> Void
     ) {
         _nearbyPayees = nearbyPayees
+        self.transferFromAccountId = transferFromAccountId
         self.onSelect = onSelect
         self.onCommit = onCommit
         self.onDeleteNearby = onDeleteNearby
         _searchText = State(initialValue: payeeName)
+    }
+
+    /// Select the whole pre-filled payee name so the first keystroke replaces
+    /// it instead of appending to it (GH #486).
+    private func selectAllSearchText() {
+        searchSelection = TextSelection(range: searchText.startIndex..<searchText.endIndex)
     }
 
     private var trimmedSearchText: String {
@@ -32,7 +43,12 @@ struct PayeePickerView: View {
     }
 
     private var filteredPayees: [Payee] {
-        Self.filteredPayees(from: budgetStore.payees, searchText: trimmedSearchText)
+        Self.filteredPayees(
+            from: budgetStore.payees,
+            accounts: budgetStore.accounts,
+            transferFromAccountId: transferFromAccountId,
+            searchText: trimmedSearchText
+        )
     }
 
     nonisolated static func allowedPayees(_ payees: [Payee]) -> [Payee] {
@@ -45,35 +61,81 @@ struct PayeePickerView: View {
         from payees: [Payee],
         searchText: String
     ) -> [Payee] {
-        let usablePayees = allowedPayees(payees)
+        filteredPayees(
+            from: payees, accounts: [], transferFromAccountId: nil,
+            searchText: searchText
+        )
+    }
+
+    nonisolated static func filteredPayees(
+        from payees: [Payee],
+        accounts: [Account],
+        transferFromAccountId: String?,
+        searchText: String
+    ) -> [Payee] {
+        let accountNames = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0.name) })
+        let openAccountIds = Set(accounts.filter { !$0.closed }.map(\.id))
+        let usablePayees = payees.filter { payee in
+            guard !payee.tombstone else { return false }
+            guard let transferAccountId = payee.transferAccountId else { return true }
+            return transferFromAccountId != nil
+                && transferAccountId != transferFromAccountId
+                && openAccountIds.contains(transferAccountId)
+        }
+        func name(_ payee: Payee) -> String {
+            displayName(for: payee, accountNames: accountNames)
+        }
 
         guard !searchText.isEmpty else {
-            return usablePayees
-                .sorted {
-                    $0.name.localizedCaseInsensitiveCompare($1.name)
-                        == .orderedAscending
-                }
-                .prefix(20)
-                .map { $0 }
+            let sorted = usablePayees.sorted {
+                name($0).localizedCaseInsensitiveCompare(name($1))
+                    == .orderedAscending
+            }
+            guard transferFromAccountId != nil else {
+                return Array(sorted.prefix(20))
+            }
+            return Array(sorted.filter { $0.transferAccountId == nil }.prefix(20))
+                + sorted.filter { $0.transferAccountId != nil }
         }
 
         let lower = searchText.lowercased()
 
         return usablePayees
-            .filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+            .filter { name($0).localizedCaseInsensitiveContains(searchText) }
             .sorted { lhs, rhs in
-                let lhsPrefix = lhs.name.lowercased().hasPrefix(lower)
-                let rhsPrefix = rhs.name.lowercased().hasPrefix(lower)
+                let lhsName = name(lhs)
+                let rhsName = name(rhs)
+                let lhsPrefix = lhsName.lowercased().hasPrefix(lower)
+                let rhsPrefix = rhsName.lowercased().hasPrefix(lower)
 
                 if lhsPrefix != rhsPrefix {
                     return lhsPrefix
                 }
 
-                return lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                return lhsName.localizedCaseInsensitiveCompare(rhsName)
                     == .orderedAscending
             }
             .prefix(20)
-            .map { $0 }
+            .map(\.self)
+    }
+
+    nonisolated static func displayName(
+        for payee: Payee,
+        accounts: [Account]
+    ) -> String {
+        displayName(
+            for: payee,
+            accountNames: Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0.name) })
+        )
+    }
+
+    private nonisolated static func displayName(
+        for payee: Payee,
+        accountNames: [String: String]
+    ) -> String {
+        guard let accountId = payee.transferAccountId,
+              let accountName = accountNames[accountId] else { return payee.name }
+        return "\(String(localized: "Transfer")): \(accountName)"
     }
 
     private var nonSuggestedPayees: [Payee] {
@@ -106,12 +168,20 @@ struct PayeePickerView: View {
         }
     }
 
+    nonisolated static func committedPayeeId(
+        currentName: String,
+        currentId: String?,
+        committedName: String
+    ) -> String? {
+        currentName == committedName ? currentId : nil
+    }
+
     private func payeeButton(_ payee: Payee) -> some View {
         Button {
             onSelect(payee)
         } label: {
             Label {
-                Text(payee.name)
+                Text(Self.displayName(for: payee, accounts: budgetStore.accounts))
                     .foregroundStyle(.primary)
             } icon: {
                 Image(systemName: "clock.arrow.circlepath")
@@ -186,7 +256,7 @@ struct PayeePickerView: View {
                             HStack {
                                 Image(systemName: "plus.circle")
                                     .foregroundStyle(.tint)
-                                Text("Use \"\(trimmedSearchText)\"")
+                                Text(String(format: String(localized: "Use \"%@\""), trimmedSearchText))
                                     .foregroundStyle(.primary)
                                 Spacer()
                             }
@@ -194,16 +264,23 @@ struct PayeePickerView: View {
                     }
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                searchBar
+            }
             .navigationTitle("Payee")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(
-                text: $searchText,
-                isPresented: $isSearchPresented,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search payees"
-            )
-            .autocorrectionDisabled()
-            .textInputAutocapitalization(.words)
+            .scrollDismissesKeyboard(.immediately)
+            .onAppear {
+                searchFocused = true
+            }
+            .onChange(of: searchFocused) { _, focused in
+                // Select the pre-filled name only when focus first lands.
+                // Re-selecting on every refocus would wipe a query the user
+                // typed before scrolling (GH #486 review).
+                guard focused, !hasAutoSelectedAll else { return }
+                hasAutoSelectedAll = true
+                selectAllSearchText()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -221,10 +298,63 @@ struct PayeePickerView: View {
                 }
             }
             .task {
-                suggestedPayees = Self.allowedPayees(
-                    await budgetStore.fetchCommonPayees()
+                suggestedPayees = await Self.allowedPayees(
+                    budgetStore.fetchCommonPayees()
                 )
             }
         }
+    }
+}
+
+/// The picker's search field. `TextField(_:text:selection:)` (iOS 16+) is the
+/// whole fix for GH #486: writing a select-all `TextSelection` while the field
+/// is focused makes the first keystroke replace the pre-filled name — the
+/// `.searchable` drawer field ignores `.searchSelection` writes entirely.
+private extension PayeePickerView {
+    var searchBar: some View {
+        PickerSearchBar(text: $searchText, clearButtonIdentifier: "payeePicker.clearSearch") {
+            TextField("Search payees", text: $searchText, selection: $searchSelection)
+                .focused($searchFocused)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+                .onSubmit { searchFocused = false }
+        }
+    }
+}
+
+struct PickerSearchBar<Field: View>: View {
+    @Binding private var text: String
+    private let clearButtonIdentifier: String
+    private let field: () -> Field
+
+    init(
+        text: Binding<String>,
+        clearButtonIdentifier: String,
+        @ViewBuilder field: @escaping () -> Field
+    ) {
+        _text = text
+        self.clearButtonIdentifier = clearButtonIdentifier
+        self.field = field
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            field()
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityIdentifier(clearButtonIdentifier)
+                .accessibilityLabel("Clear text")
+            }
+        }
+        .padding(8)
+        .background(.bar)
     }
 }

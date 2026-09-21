@@ -1,6 +1,6 @@
 import Foundation
-import UserNotifications
 import os
+import UserNotifications
 
 private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "TransactionLogNotifier")
 
@@ -9,7 +9,9 @@ private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "Transac
 enum TransactionLoggedMarker {
     static let kind = "com.mfazz.Actuali.transactionLogged"
 
-    static var userInfo: [AnyHashable: Any] { ["kind": kind] }
+    static var userInfo: [AnyHashable: Any] {
+        ["kind": kind]
+    }
 
     static func isPresent(in userInfo: [AnyHashable: Any]) -> Bool {
         userInfo["kind"] as? String == kind
@@ -18,7 +20,6 @@ enum TransactionLoggedMarker {
 
 @MainActor
 enum TransactionLogNotifier {
-
     /// - Parameter synced: false when the row is written locally but hasn't
     ///   reached the server yet, which the banner says outright — otherwise the
     ///   transaction looks logged while the budget on the server is unchanged.
@@ -37,7 +38,9 @@ enum TransactionLogNotifier {
         guard granted else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = synced ? "Logged transaction" : "Saved locally"
+        content.title = synced
+            ? String(localized: "Logged transaction")
+            : String(localized: "Saved locally")
         content.body = composeSuccessBody(payee: payee, amountCents: amountCents,
                                           currencyCode: currencyCode, narrowSymbol: narrowSymbol,
                                           synced: synced, numberFormat: numberFormat)
@@ -76,20 +79,20 @@ enum TransactionLogNotifier {
         guard granted else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "Couldn't log transaction"
+        content.title = String(localized: "Couldn't log transaction")
         content.body = composeBody(message: message, payee: payee, amountCents: amountCents,
                                    currencyCode: currencyCode, narrowSymbol: narrowSymbol,
                                    numberFormat: numberFormat)
         content.sound = .default
         if let prefill {
-            content.body += " Tap to add it manually."
+            content.body += " " + String(localized: "Tap to add it manually.")
             content.userInfo = prefill.userInfo
         }
 
         let request = UNNotificationRequest(
             identifier: "com.mfazz.Actuali.logTransactionFailure.\(UUID().uuidString)",
             content: content,
-            trigger: nil   // deliver immediately
+            trigger: nil // deliver immediately
         )
 
         do {
@@ -113,10 +116,12 @@ enum TransactionLogNotifier {
             parts.append(amountString)
         }
         if let payee, !payee.isEmpty {
-            parts.append("at \(payee)")
+            parts.append(String(format: String(localized: "at %@", locale: locale), payee))
         }
         let prefix = parts.joined(separator: " ")
-        return prefix.isEmpty ? message : "\(prefix). \(message)"
+        return prefix.isEmpty
+            ? message
+            : String(format: String(localized: "%@. %@", locale: locale), prefix, message)
     }
 
     static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
@@ -128,9 +133,15 @@ enum TransactionLogNotifier {
                                                        narrowSymbol: narrowSymbol,
                                                        numberFormat: numberFormat,
                                                        locale: locale)
-        let prefix = payee.isEmpty ? amountString : "\(amountString) at \(payee)"
+        let prefix = payee.isEmpty
+            ? amountString
+            : String(format: String(localized: "%@ at %@", locale: locale), amountString, payee)
         guard synced else {
-            return "\(prefix). Couldn't reach your server — it will sync when you open Actuali."
+            return String(
+                format: String(localized: "%@. %@", locale: locale),
+                prefix,
+                String(localized: "Couldn't reach your server — it will sync when you open Actuali.", locale: locale)
+            )
         }
         return prefix
     }

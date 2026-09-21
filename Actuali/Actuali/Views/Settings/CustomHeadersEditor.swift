@@ -40,7 +40,9 @@ struct CustomHeadersEditor: View {
         .contentMargins(.horizontal, 6, for: .scrollContent)
         .toolbar { EditButton() }
         .onAppear {
-            if draft.isEmpty { draft = headers }
+            if draft.isEmpty {
+                draft = headers
+            }
         }
         .onDisappear {
             let cleaned = draft.filter {

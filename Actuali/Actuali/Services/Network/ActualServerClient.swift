@@ -17,23 +17,24 @@ enum ActualServerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "Invalid server URL"
+            return String(localized: "Invalid server URL")
         case .invalidFallbackURL:
-            return "Invalid fallback server URL"
+            return String(localized: "Invalid fallback server URL")
         case .invalidResponse:
-            return "Invalid response from server"
+            return String(localized: "Invalid response from server")
         case .authProxyBlocked:
-            return "The server responded with a login page instead of data — it looks like it's behind an authentication proxy (e.g. Cloudflare Access). Add the proxy's credentials under Custom HTTP headers, then try again."
+            return String(localized: "The server responded with a login page instead of data — it looks like it's behind an authentication proxy (e.g. Cloudflare Access). Add the proxy's credentials under Custom HTTP headers, then try again.")
         case .httpError(let code, let message):
-            return "HTTP error \(code): \(message ?? "Unknown error")"
+            let fallbackMessage = message ?? String(localized: "Unknown error")
+            return String(format: String(localized: "HTTP error %lld: %@"), Int64(code), fallbackMessage)
         case .unauthorized:
-            return "Unauthorized - please log in again"
+            return String(localized: "Unauthorized - please log in again")
         case .networkError(let error):
             return Self.connectionFailureMessage(for: error)
         case .decodingError(let error):
-            return "Failed to decode response: \(error.localizedDescription)"
+            return String(localized: "Failed to decode response: \(error.localizedDescription)")
         case .fileNotFound:
-            return "Budget file not found"
+            return String(localized: "Budget file not found")
         }
     }
 
@@ -41,7 +42,9 @@ enum ActualServerError: LocalizedError {
     /// with something unusable. Callers that fall back to a degraded mode on
     /// failure use this to tell "old server" apart from "no server".
     var isConnectionFailure: Bool {
-        if case .networkError = self { return true }
+        if case .networkError = self {
+            return true
+        }
         return false
     }
 
@@ -54,48 +57,26 @@ enum ActualServerError: LocalizedError {
     /// which tell the user nothing about what to change.
     static func connectionFailureMessage(for error: any Error) -> String {
         guard let urlError = error as? URLError else {
-            return "Couldn't connect to your server: \(error.localizedDescription) See \(helpLink) for help."
+            return String(localized: "Couldn't connect to your server: \(error.localizedDescription) See \(helpLink) for help.")
         }
 
         switch urlError.code {
         case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasUnknownRoot:
-            return """
-                Couldn't make a secure connection to your server — iOS doesn't trust its security \
-                certificate. This usually means the server is using its own self-signed certificate. \
-                See \(helpLink) for how to fix it.
-                """
+            return String(format: String(localized: "Couldn't make a secure connection to your server — iOS doesn't trust its security certificate. This usually means the server is using its own self-signed certificate. See %@ for how to fix it."), helpLink)
         case .serverCertificateHasBadDate, .serverCertificateNotYetValid:
-            return """
-                Your server's security certificate has expired, so iOS blocked the connection. \
-                Renewing the certificate on the server will fix this. See \(helpLink) for help.
-                """
+            return String(format: String(localized: "Your server's security certificate has expired, so iOS blocked the connection. Renewing the certificate on the server will fix this. See %@ for help."), helpLink)
         case .appTransportSecurityRequiresSecureConnection:
-            return """
-                Actuali can only connect over a secure address. Check that your server URL starts \
-                with https:// — see \(helpLink) for help.
-                """
+            return String(format: String(localized: "Actuali can only connect over a secure address. Check that your server URL starts with https:// — see %@ for help."), helpLink)
         case .cannotFindHost, .dnsLookupFailed:
-            return """
-                Couldn't find a server at that address. Check the server URL for typos. \
-                See \(helpLink) for help.
-                """
+            return String(format: String(localized: "Couldn't find a server at that address. Check the server URL for typos. See %@ for help."), helpLink)
         case .cannotConnectToHost:
-            return """
-                Couldn't reach your server. If it's only available on your home network, connect to \
-                that network and try again. See \(helpLink) for help.
-                """
+            return String(format: String(localized: "Couldn't reach your server. If it's only available on your home network, connect to that network and try again. See %@ for help."), helpLink)
         case .notConnectedToInternet:
-            return "Your device isn't connected to the internet."
+            return String(localized: "Your device isn't connected to the internet.")
         case .timedOut:
-            return """
-                Your server took too long to respond. It may be offline, or blocked on this network. \
-                See \(helpLink) for help.
-                """
+            return String(format: String(localized: "Your server took too long to respond. It may be offline, or blocked on this network. See %@ for help."), helpLink)
         default:
-            return """
-                Couldn't connect to your server: \(urlError.localizedDescription) \
-                See \(helpLink) for help.
-                """
+            return String(format: String(localized: "Couldn't connect to your server: %@ See %@ for help."), urlError.localizedDescription, helpLink)
         }
     }
 }
@@ -117,7 +98,9 @@ struct LoginMethod: Codable, Sendable, Equatable {
     /// SQLite stores this as 0/1; decode tolerantly as an integer.
     let active: Int?
 
-    var isActive: Bool { (active ?? 0) != 0 }
+    var isActive: Bool {
+        (active ?? 0) != 0
+    }
 }
 
 struct LoginMethodsResponse: Codable, Sendable {
@@ -195,12 +178,12 @@ struct ServerBankSyncError: Decodable, Sendable, Equatable {
     /// this device failed to sync reads the same in the web UI.
     var bankSyncStatus: String {
         switch errorCode {
-        case "ITEM_LOGIN_REQUIRED", "INVALID_ACCESS_TOKEN": return "reauth-required"
-        case "ACCOUNT_NEEDS_ATTENTION": return "attention-required"
-        case "RATE_LIMIT_EXCEEDED": return "rate-limit-exceeded"
-        case "TIMED_OUT": return "timed-out"
-        case "ACCOUNT_MISSING": return "account-missing"
-        default: return "failed"
+        case "ITEM_LOGIN_REQUIRED", "INVALID_ACCESS_TOKEN": "reauth-required"
+        case "ACCOUNT_NEEDS_ATTENTION": "attention-required"
+        case "RATE_LIMIT_EXCEEDED": "rate-limit-exceeded"
+        case "TIMED_OUT": "timed-out"
+        case "ACCOUNT_MISSING": "account-missing"
+        default: "failed"
         }
     }
 
@@ -276,12 +259,19 @@ struct ServerBankSyncDownloads: Decodable, Sendable {
 
     private struct DynamicKey: CodingKey {
         var stringValue: String
-        var intValue: Int? { nil }
-        init?(stringValue: String) { self.stringValue = stringValue }
-        init?(intValue: Int) { nil }
+        var intValue: Int? {
+            nil
+        }
+
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+        }
+
+        init?(intValue: Int) {
+            nil
+        }
     }
 }
-
 
 /// Version gate for features that depend on the server's Actual release.
 enum ServerVersion {
@@ -459,12 +449,11 @@ actor ActualServerClient {
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let requestPath = requestURL.path(percentEncoded: true)
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let endpointPath: Substring
-        if !primaryPath.isEmpty,
-           requestPath == primaryPath || requestPath.hasPrefix(primaryPath + "/") {
-            endpointPath = requestPath.dropFirst(primaryPath.count)
+        let endpointPath: Substring = if !primaryPath.isEmpty,
+                                         requestPath == primaryPath || requestPath.hasPrefix(primaryPath + "/") {
+            requestPath.dropFirst(primaryPath.count)
         } else {
-            endpointPath = requestPath[...]
+            requestPath[...]
         }
 
         var components = URLComponents(
@@ -621,6 +610,7 @@ actor ActualServerClient {
         struct Build: Decodable {
             let version: String?
         }
+
         let build: Build?
     }
 
@@ -667,7 +657,7 @@ actor ActualServerClient {
 
         var body: [String: String] = [
             "loginMethod": "openid",
-            "returnUrl": returnURL
+            "returnUrl": returnURL,
         ]
         if let firstTimePassword, !firstTimePassword.isEmpty {
             body["password"] = firstTimePassword
@@ -899,7 +889,9 @@ actor ActualServerClient {
         if looksLikeAuthProxy(httpResponse, data: data) {
             throw ActualServerError.authProxyBlocked
         }
-        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
         if httpResponse.statusCode == 400, data == Data("file-not-found".utf8) {
             throw ActualServerError.fileNotFound
         }
@@ -925,7 +917,9 @@ actor ActualServerClient {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
         }
-        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
         guard httpResponse.statusCode == 200 else {
             throw ActualServerError.httpError(statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8))
         }
@@ -1029,9 +1023,9 @@ actor ActualServerClient {
 
     /// Shared plumbing for the `/simplefin` routes. Returns nil when the route
     /// isn't there; throws for everything else.
-    private func postBankSync<Body: Encodable, Response: Decodable>(
+    private func postBankSync<Response: Decodable>(
         path: String,
-        body: Body
+        body: some Encodable
     ) async throws -> Response? {
         guard let serverURL else { throw ActualServerError.invalidURL }
         guard let token else { throw ActualServerError.unauthorized }
@@ -1046,10 +1040,14 @@ actor ActualServerClient {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
         }
-        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
         // The route genuinely isn't served here — not a failure, just an older
         // server. 501 covers proxies that answer unimplemented paths that way.
-        if [404, 405, 501].contains(httpResponse.statusCode) { return nil }
+        if [404, 405, 501].contains(httpResponse.statusCode) {
+            return nil
+        }
         guard httpResponse.statusCode == 200 else {
             throw ActualServerError.httpError(
                 statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8)
@@ -1061,7 +1059,6 @@ actor ActualServerClient {
             throw ActualServerError.decodingError(error)
         }
     }
-
 
     // MARK: - Sync
 

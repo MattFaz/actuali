@@ -9,28 +9,27 @@ import Testing
 /// and properly clear/null the preference on deletion.
 @MainActor
 struct SyncClientCreditCardTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE preferences (
-                    id TEXT PRIMARY KEY,
-                    value TEXT
-                );
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-                """)
+            CREATE TABLE preferences (
+                id TEXT PRIMARY KEY,
+                value TEXT
+            );
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            );
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
@@ -55,7 +54,7 @@ struct SyncClientCreditCardTests {
         defer { cleanup(path) }
 
         let client = try await makeSyncClient(database: database)
-        let config = CreditCardConfig(statementDay: 18, dueOffsetDays: 25, limit: 500000)
+        let config = CreditCardConfig(statementDay: 18, dueOffsetDays: 25, limit: 500_000)
 
         try await client.setCreditCardConfig(accountId: "acct_chase", config: config)
 
@@ -64,7 +63,7 @@ struct SyncClientCreditCardTests {
         let stored = try #require(configs["acct_chase"])
         #expect(stored.statementDay == 18)
         #expect(stored.dueOffsetDays == 25)
-        #expect(stored.limit == 500000)
+        #expect(stored.limit == 500_000)
 
         // Verify CRDT message in messages_crdt
         let messages = try messageRows(path: path)
@@ -114,5 +113,32 @@ struct SyncClientCreditCardTests {
         #expect(messages.count == 1)
         #expect(messages[0]["row"] == "actuali:custom:flag")
         #expect(messages[0]["value"] == "S:active")
+    }
+
+    @Test func genericSetPreferenceRollsBackWhenMessageInsertAborts() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            CREATE TRIGGER fail_preference_message_insert
+            BEFORE INSERT ON messages_crdt
+            WHEN NEW.dataset = 'preferences' AND NEW.row = 'actuali:atomicity'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced message insert failure');
+            END;
+            """)
+        }
+
+        let client = try await makeSyncClient(database: database)
+        await #expect(throws: (any Error).self) {
+            try await client.setPreference(key: "actuali:atomicity", value: "active")
+        }
+
+        let storedValue = try await database.dbQueueForTesting.read { db in
+            try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = ?", arguments: ["actuali:atomicity"])
+        }
+        #expect(storedValue == nil)
+        #expect(try messageRows(path: path).isEmpty)
     }
 }

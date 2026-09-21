@@ -3,7 +3,6 @@ import XCTest
 /// The preference is exposed directly below Hide Balances and updates money
 /// labels throughout the live app without changing the underlying cent values.
 final class HideDecimalPlacesUITests: XCTestCase {
-
     /// SwiftUI toggle rows may expose a nested switch whose control must be
     /// tapped directly on some iOS versions.
     @MainActor
@@ -13,9 +12,11 @@ final class HideDecimalPlacesUITests: XCTestCase {
     }
 
     @MainActor
-    func testPreferenceRemovesFractionalDigitsFromBudgetAmounts() throws {
+    func testPreferenceRemovesFractionalDigitsFromBudgetAmounts() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        // Pin the style: the budget check below looks for a Clean row label.
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean",
+                               "-initialTab", "4"]
         app.launch()
 
         let privacy = app.buttons["Privacy"]
@@ -42,18 +43,23 @@ final class HideDecimalPlacesUITests: XCTestCase {
             }
         }
 
-        if !decimalPlacesWasHidden { tapSwitch(toggle) }
+        if !decimalPlacesWasHidden {
+            tapSwitch(toggle)
+        }
         let enabled = NSPredicate(format: "value == '1'")
         expectation(for: enabled, evaluatedWith: toggle)
         waitForExpectations(timeout: 3)
 
-        if balancesWereHidden { tapSwitch(hideBalances) }
+        if balancesWereHidden {
+            tapSwitch(hideBalances)
+        }
 
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(app.buttons["Details for Groceries"].waitForExistence(timeout: 10))
 
         let decimalAmount = app.staticTexts.matching(
-            NSPredicate(format: "label MATCHES '.*[0-9][.][0-9]{2}.*'"))
+            NSPredicate(format: "label MATCHES '.*[0-9][.][0-9]{2}.*'")
+        )
         XCTAssertEqual(decimalAmount.count, 0,
                        "Budget still exposed a two-digit fractional amount")
     }

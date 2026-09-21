@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 import Testing
-
 @testable import Actuali
 
 /// Switching budgets must land on the new budget's currency, not carry the
@@ -10,7 +9,6 @@ import Testing
 /// that predates the CRDT preference messages carrying the setting.
 @MainActor
 struct BudgetStoreCurrencyRefreshTests {
-
     /// Store rooted in a unique temp directory. The currency cache lives in
     /// UserDefaults keyed by budget id, and suites run in parallel, so both
     /// the files and the ids have to be unique per test.
@@ -51,7 +49,8 @@ struct BudgetStoreCurrencyRefreshTests {
             if let code {
                 try db.execute(
                     sql: "INSERT OR REPLACE INTO preferences (id, value) VALUES ('defaultCurrencyCode', ?)",
-                    arguments: [code])
+                    arguments: [code]
+                )
             } else {
                 try db.execute(sql: "DELETE FROM preferences WHERE id = 'defaultCurrencyCode'")
             }
@@ -65,7 +64,7 @@ struct BudgetStoreCurrencyRefreshTests {
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: "CAD", in: manager)
 
-        store.currencyCode = "CHF"   // the budget we are switching away from
+        store.currencyCode = "CHF" // the budget we are switching away from
         await store.loadLocalBudget(id)
 
         #expect(store.currencyCode == "CAD")
@@ -106,7 +105,7 @@ struct BudgetStoreCurrencyRefreshTests {
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: "USD", in: manager)
 
-        await store.loadLocalBudget(id)   // caches USD
+        await store.loadLocalBudget(id) // caches USD
         #expect(store.currencyCode == "USD")
 
         try setCurrency("GBP", id: id, in: manager)
@@ -123,11 +122,11 @@ struct BudgetStoreCurrencyRefreshTests {
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: "GBP", in: manager)
 
-        await store.loadLocalBudget(id)   // caches GBP
+        await store.loadLocalBudget(id) // caches GBP
         #expect(store.currencyCode == "GBP")
 
         try setCurrency(nil, id: id, in: manager)
-        store.currencyCode = "CHF"        // the budget we are switching away from
+        store.currencyCode = "CHF" // the budget we are switching away from
         await store.loadLocalBudget(id)
 
         #expect(store.currencyCode == "GBP")
@@ -146,10 +145,10 @@ struct BudgetStoreCurrencyRefreshTests {
         store.currencyCode = "CHF"
         store.currentBudgetId = id
         await store.loadLocalBudget(id)
-        #expect(store.currencyCode == "CHF")   // nothing in the snapshot yet
+        #expect(store.currencyCode == "CHF") // nothing in the snapshot yet
 
-        try setCurrency("CAD", id: id, in: manager)   // as the first sync would
-        await store.resetSyncState()                  // no sync client: refresh only
+        try setCurrency("CAD", id: id, in: manager) // as the first sync would
+        await store.resetSyncState() // no sync client: refresh only
 
         #expect(store.currencyCode == "CAD")
     }
@@ -179,7 +178,7 @@ struct BudgetStoreCurrencyRefreshTests {
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: "GBP", in: manager)
 
-        await store.loadLocalBudget(id)   // caches GBP
+        await store.loadLocalBudget(id) // caches GBP
         #expect(store.currencyCode == "GBP")
 
         store.logout()

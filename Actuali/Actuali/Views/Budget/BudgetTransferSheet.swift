@@ -1,34 +1,54 @@
 import SwiftUI
 
-/// Everything the move-money sheet needs, captured at tap time: the category
-/// whose balance was tapped and the month it lives in (for the picker's
-/// category list and To Budget figure). Identifiable so it can drive
+/// Everything the move-money sheet needs, captured at tap time: the selected
+/// category, if any, and the month it lives in. Identifiable so it can drive
 /// `.sheet(item:)`.
 struct BudgetTransferContext: Identifiable {
-    let category: CategoryBudget
+    let category: CategoryBudget?
     let budget: BudgetMonth
-    var id: String { category.id }
+
+    init(category: CategoryBudget, budget: BudgetMonth) {
+        self.category = category
+        self.budget = budget
+    }
+
+    init(toBudgetIn budget: BudgetMonth) {
+        category = nil
+        self.budget = budget
+    }
+
+    var id: String {
+        category?.id ?? "\(budget.id)-to-budget"
+    }
+
+    var amount: Int {
+        category?.available ?? budget.toBudget ?? 0
+    }
 
     /// Covering ranks sources that can fully solve the problem first, then
     /// prefers the same group and the smallest sufficient balance. Partial
     /// sources follow largest-first. Moving a surplus keeps table order.
     var rankedCategories: [CategoryBudget] {
         let candidates = budget.categoryBudgets
-            .filter { $0.categoryId != category.categoryId }
-            .filter { category.available < 0 ? $0.available > 0 : true }
-        guard category.available < 0 else {
+            .filter { $0.categoryId != category?.categoryId }
+            .filter { amount < 0 ? $0.available > 0 : true }
+        guard amount < 0 else {
             return candidates.sorted {
                 ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder)
             }
         }
-        let needed = abs(category.available)
+        let needed = abs(amount)
         return candidates.sorted { lhs, rhs in
             let lhsCovers = lhs.available >= needed
             let rhsCovers = rhs.available >= needed
-            if lhsCovers != rhsCovers { return lhsCovers }
-            let lhsSameGroup = lhs.groupId == category.groupId
-            let rhsSameGroup = rhs.groupId == category.groupId
-            if lhsSameGroup != rhsSameGroup { return lhsSameGroup }
+            if lhsCovers != rhsCovers {
+                return lhsCovers
+            }
+            let lhsSameGroup = lhs.groupId == category?.groupId
+            let rhsSameGroup = rhs.groupId == category?.groupId
+            if lhsSameGroup != rhsSameGroup {
+                return lhsSameGroup
+            }
             if lhs.available != rhs.available {
                 return lhsCovers ? lhs.available < rhs.available : lhs.available > rhs.available
             }
@@ -38,8 +58,31 @@ struct BudgetTransferContext: Identifiable {
     }
 
     var canUseToBudget: Bool {
-        guard let toBudget = budget.toBudget else { return false }
+        guard let category, let toBudget = budget.toBudget else { return false }
         return category.available < 0 ? toBudget > 0 : true
+    }
+}
+
+enum BudgetTransferLocalization {
+    nonisolated static func candidateLabel(
+        categoryName: String,
+        amount: String,
+        isRecommended: Bool,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        if isRecommended {
+            return String(localized: LocalizedStringResource(
+                "Recommended: \(categoryName) (\(amount))",
+                locale: locale,
+                bundle: bundle
+            ))
+        }
+        return String(localized: LocalizedStringResource(
+            "\(categoryName) (\(amount))",
+            locale: locale,
+            bundle: bundle
+        ))
     }
 }
 
@@ -53,18 +96,20 @@ struct BudgetTransferContext: Identifiable {
 struct BudgetTransferSheet: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     let context: BudgetTransferContext
 
     /// The other side of the move: the month's unallocated pool, or a
-    /// category. (The tapped category is always this side's counterpart.)
+    /// category. A selected category is the counterpart; otherwise To Budget
+    /// is the counterpart.
     enum Endpoint: Hashable {
         case toBudget
         case category(String)
 
         var categoryId: String? {
             switch self {
-            case .toBudget: return nil
-            case .category(let id): return id
+            case .toBudget: nil
+            case .category(let id): id
             }
         }
     }
@@ -84,11 +129,11 @@ struct BudgetTransferSheet: View {
         _endpoint = State(initialValue: hasToBudget ? .toBudget : (firstCategory ?? .toBudget))
         // Prefill with the full amount in play: the overspending to cover,
         // or the surplus available to move.
-        _amountText = State(initialValue: String(format: "%.2f", Double(abs(context.category.available)) / 100.0))
+        _amountText = State(initialValue: String(format: "%.2f", Double(abs(context.amount)) / 100.0))
     }
 
     private var isCovering: Bool {
-        context.category.available < 0
+        context.amount < 0
     }
 
     private var eligibleCategories: [CategoryBudget] {
@@ -103,38 +148,40 @@ struct BudgetTransferSheet: View {
     /// offset part of the rolled-over overspending, and the breakdown must
     /// never show more than the "Amount to cover" total above it.
     private var rolledOverAmount: Int {
-        min(abs(context.category.rolledOverOverspending), abs(context.category.available))
+        guard let category = context.category else { return 0 }
+        return min(abs(category.rolledOverOverspending), abs(category.available))
     }
 
     private var currentMonthShortfall: Int {
-        max(0, abs(context.category.available) - rolledOverAmount)
+        max(0, abs(context.amount) - rolledOverAmount)
     }
 
-    private var selectedSourceAvailable: Int? {
-        switch endpoint {
-        case .toBudget:
-            return context.budget.toBudget
-        case .category(let id):
+    private var sourceAvailable: Int? {
+        if !isCovering {
+            return context.amount
+        }
+        if case .category(let id) = endpoint {
             return eligibleCategories.first(where: { $0.categoryId == id })?.available
         }
+        return context.budget.toBudget
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                if isCovering {
+                if isCovering, let category = context.category {
                     Section {
-                        LabeledContent("Amount to cover") {
-                            Text(budgetStore.displayBalance(abs(context.category.available)))
+                        LabeledContent(String(localized: "Amount to cover")) {
+                            Text(budgetStore.displayBalance(abs(category.available)))
                                 .foregroundStyle(.red)
                         }
                         if currentMonthShortfall > 0 {
-                            LabeledContent("This month") {
+                            LabeledContent(String(localized: "This month")) {
                                 Text(budgetStore.displayBalance(currentMonthShortfall))
                             }
                         }
                         if rolledOverAmount > 0 {
-                            LabeledContent("From earlier months") {
+                            LabeledContent(String(localized: "From earlier months")) {
                                 Text(budgetStore.displayBalance(rolledOverAmount))
                             }
                         }
@@ -147,12 +194,17 @@ struct BudgetTransferSheet: View {
                     if hasOptions {
                         Picker(isCovering ? "From" : "To", selection: $endpoint) {
                             if context.canUseToBudget, let toBudget = context.budget.toBudget {
-                                Text("To Budget (\(budgetStore.displayBalance(toBudget)))")
+                                Text(String(format: String(localized: "To Budget (%@)"), budgetStore.displayBalance(toBudget)))
                                     .tag(Endpoint.toBudget)
                             }
                             ForEach(Array(eligibleCategories.enumerated()), id: \.element.id) { index, candidate in
-                                Text("\(index == 0 && isCovering ? "Recommended: " : "")\(candidate.categoryName) (\(budgetStore.displayBalance(candidate.available)))")
-                                    .tag(Endpoint.category(candidate.categoryId))
+                                Text(BudgetTransferLocalization.candidateLabel(
+                                    categoryName: candidate.categoryName,
+                                    amount: budgetStore.displayBalance(candidate.available),
+                                    isRecommended: index == 0 && isCovering,
+                                    locale: locale
+                                ))
+                                .tag(Endpoint.category(candidate.categoryId))
                             }
                         }
                     } else {
@@ -162,11 +214,13 @@ struct BudgetTransferSheet: View {
                             .foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text(isCovering ? "Cover from" : "Move to")
+                    Text(isCovering ? String(localized: "Cover from") : String(localized: "Move to"))
                 } footer: {
-                    Text(isCovering
-                         ? "\(context.category.categoryName) is overspent by \(budgetStore.displayBalance(abs(context.category.available))) in \(MonthPicker.title(for: context.category.month))."
-                         : "\(context.category.categoryName) has \(budgetStore.displayBalance(context.category.available)) available in \(MonthPicker.title(for: context.category.month)).")
+                    if let category = context.category {
+                        Text(isCovering
+                            ? "\(category.categoryName) is overspent by \(budgetStore.displayBalance(abs(category.available))) in \(MonthPicker.title(for: category.month))."
+                            : "\(category.categoryName) has \(budgetStore.displayBalance(category.available)) available in \(MonthPicker.title(for: category.month)).")
+                    }
                 }
 
                 Section {
@@ -183,7 +237,7 @@ struct BudgetTransferSheet: View {
                     }
                 }
             }
-            .navigationTitle(isCovering ? "Cover Overspending" : "Move Money")
+            .navigationTitle(isCovering ? String(localized: "Cover Overspending") : String(localized: "Move Money"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -205,15 +259,16 @@ struct BudgetTransferSheet: View {
         Task {
             do {
                 let cents = try BudgetStore.budgetAmountCents(from: amountText)
-                if isCovering, let selectedSourceAvailable, cents > selectedSourceAvailable {
+                if let sourceAvailable, cents > sourceAvailable {
                     throw BudgetStoreError.transferAmountExceedsSource
                 }
                 // Covering pulls money into the tapped category; moving a
                 // surplus pushes money out of it.
-                let from = isCovering ? endpoint.categoryId : context.category.categoryId
-                let to = isCovering ? context.category.categoryId : endpoint.categoryId
+                let categoryId = context.category?.categoryId
+                let from = isCovering ? endpoint.categoryId : categoryId
+                let to = isCovering ? categoryId : endpoint.categoryId
                 try await budgetStore.transferBudget(
-                    month: context.category.month,
+                    month: context.budget.month,
                     fromCategoryId: from,
                     toCategoryId: to,
                     amountCents: cents

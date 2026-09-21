@@ -1,17 +1,19 @@
 import SwiftUI
 
 /// Create or edit a schedule (GH #221). Mirrors the web's schedule edit form:
-/// name, payee, account, amount with an operator, a one-off or recurring date,
-/// and the auto-post flag.
+/// name, payee or transfer destination, account, amount with an operator, a
+/// one-off or recurring date, and the auto-post flag.
 struct ScheduleEditView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
 
     private let editing: ScheduleSummary?
 
     @State private var name: String
     @State private var payeeName: String
     @State private var accountId: String?
+    @State private var transferToAccountId: String?
     @State private var txType: TransactionType
     @State private var amountOp: ScheduleAmountOp
     @State private var amountText: String
@@ -25,7 +27,7 @@ struct ScheduleEditView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var confirmingDelete = false
-    
+
     @State private var linkedTransactions: [Transaction] = []
 
     /// "Use the budget default" is modelled as an empty string rather than nil
@@ -35,13 +37,17 @@ struct ScheduleEditView: View {
     init(editing: ScheduleSummary? = nil, budgetStore: BudgetStore) {
         self.editing = editing
 
-        let payee = editing?.payeeId.flatMap { id in
+        let selectedPayee = editing?.payeeId.flatMap { id in
             budgetStore.payees.first { $0.id == id }?.name
         }
+        let transferAccountId = editing?.payeeId.flatMap { id in
+            budgetStore.payees.first { $0.id == id }?.transferAccountId
+        }
         _name = State(initialValue: editing?.name ?? "")
-        _payeeName = State(initialValue: payee ?? "")
+        _payeeName = State(initialValue: selectedPayee ?? "")
         _accountId = State(initialValue: editing?.accountId
             ?? budgetStore.accounts.first { !$0.closed }?.id)
+        _transferToAccountId = State(initialValue: transferAccountId)
         _postsTransaction = State(initialValue: editing?.postsTransaction ?? false)
         _upcomingLength = State(initialValue: editing?.customUpcomingLength
             ?? Self.defaultUpcomingLength)
@@ -51,7 +57,8 @@ struct ScheduleEditView: View {
         // direction, the same way the transaction form does.
         let amount = editing?.amount
         let isIncome = (editing?.postAmount ?? -1) > 0
-        _txType = State(initialValue: isIncome ? .income : .expense)
+        _txType = State(initialValue: transferAccountId == nil
+            ? (isIncome ? .income : .expense) : .transfer)
         switch amount {
         case .range(let low, let high):
             _amountText = State(initialValue: Self.dollars(min(abs(low), abs(high))))
@@ -80,7 +87,9 @@ struct ScheduleEditView: View {
         }
     }
 
-    private var isEditing: Bool { editing != nil }
+    private var isEditing: Bool {
+        editing != nil
+    }
 
     /// The rule carries a date condition we couldn't parse — `dateOp` is set
     /// but `RecurConfig` rejected the value (a legacy string interval, an
@@ -99,7 +108,7 @@ struct ScheduleEditView: View {
             if hasUnreadableDate {
                 Section {
                     Label {
-                        Text("This schedule repeats on a pattern Actuali can't read, so it can't be edited here — saving would replace the pattern. Edit it in Actual instead.")
+                        Text(String(localized: "This schedule repeats on a pattern Actuali can't read, so it can't be edited here — saving would replace the pattern. Edit it in Actual instead."))
                     } icon: {
                         Image(systemName: "exclamationmark.triangle")
                     }
@@ -108,7 +117,7 @@ struct ScheduleEditView: View {
             } else if editing?.isCustom == true {
                 Section {
                     Label {
-                        Text("This schedule has extra rule conditions set up in Actual. They're preserved when you save, but can't be edited here.")
+                        Text(String(localized: "This schedule has extra rule conditions set up in Actual. They're preserved when you save, but can't be edited here."))
                     } icon: {
                         Image(systemName: "info.circle")
                     }
@@ -116,47 +125,63 @@ struct ScheduleEditView: View {
                 }
             }
             Section {
-                TextField("Name", text: $name)
-                TextField("Payee", text: $payeeName)
-                    .textInputAutocapitalization(.words)
+                TextField(String(localized: "Name"), text: $name)
+                if txType == .transfer {
+                    Picker(String(localized: "Transfer to"), selection: $transferToAccountId) {
+                        Text(String(localized: "Select an account")).tag(String?.none)
+                        ForEach(transferEligibleAccounts) { account in
+                            Text(account.name).tag(String?.some(account.id))
+                        }
+                    }
+                } else {
+                    TextField(String(localized: "Payee"), text: $payeeName)
+                        .textInputAutocapitalization(.words)
+                }
 
-                Picker("Account", selection: $accountId) {
-                    Text("Select an account").tag(String?.none)
+                Picker(String(localized: "Account"), selection: $accountId) {
+                    Text(String(localized: "Select an account")).tag(String?.none)
                     ForEach(openAccounts) { account in
                         Text(account.name).tag(String?.some(account.id))
                     }
                 }
+                .onChange(of: accountId) { _, newValue in
+                    if transferToAccountId == newValue {
+                        transferToAccountId = nil
+                    }
+                }
             } footer: {
-                Text("A schedule needs an account. Leaving the payee blank matches only transactions that have no payee.")
+                if txType != .transfer {
+                    Text(String(localized: "A schedule needs an account. Leaving the payee blank matches only transactions that have no payee."))
+                }
             }
 
             amountSection
             dateSection
 
             Section {
-                Toggle("Automatically Add Transaction", isOn: $postsTransaction)
+                Toggle(String(localized: "Automatically Add Transaction"), isOn: $postsTransaction)
 
-                Picker("Upcoming Window", selection: $upcomingLength) {
-                    Text("Budget Default").tag(Self.defaultUpcomingLength)
-                    Text("1 Day").tag("1")
-                    Text("1 Week").tag("7")
-                    Text("2 Weeks").tag("14")
-                    Text("1 Month").tag("oneMonth")
-                    Text("Rest of Month").tag("currentMonth")
+                Picker(String(localized: "Upcoming Window"), selection: $upcomingLength) {
+                    Text(String(localized: "Budget Default")).tag(Self.defaultUpcomingLength)
+                    Text(String(localized: "1 Day")).tag("1")
+                    Text(String(localized: "1 Week")).tag("7")
+                    Text(String(localized: "2 Weeks")).tag("14")
+                    Text(String(localized: "1 Month")).tag("oneMonth")
+                    Text(String(localized: "Rest of Month")).tag("currentMonth")
                 }
             } footer: {
-                Text("Automatically added transactions are created on your server when the app opens.")
+                Text(String(localized: "Automatically added transactions are created on your server when the app opens."))
             }
             if let editing {
-                Section("Linked Transactions") {
+                Section(String(localized: "Linked Transactions")) {
                     if linkedTransactions.isEmpty {
-                        Text("No transactions linked yet.")
+                        Text(String(localized: "No transactions linked yet."))
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(linkedTransactions) { transaction in
                             HStack {
                                 VStack(alignment: .leading) {
-                                    Text(transaction.payeeName ?? "No payee")
+                                    Text(transaction.payeeName ?? String(localized: "No payee"))
                                     Text(transaction.dateFormatted)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -166,7 +191,7 @@ struct ScheduleEditView: View {
                                     .monospacedDigit()
                             }
                             .swipeActions {
-                                Button("Unlink") {
+                                Button(String(localized: "Unlink")) {
                                     Task {
                                         try? await budgetStore.linkTransactions([transaction], to: nil)
                                         await loadLinkedTransactions(editing.id)
@@ -180,59 +205,65 @@ struct ScheduleEditView: View {
             }
             if isEditing {
                 Section {
-                    Button("Delete Schedule", role: .destructive) { confirmingDelete = true }
+                    Button(String(localized: "Delete Schedule"), role: .destructive) { confirmingDelete = true }
                 }
             }
         }
-        .navigationTitle(isEditing ? "Edit Schedule" : "New Schedule")
+        .navigationTitle(isEditing ? String(localized: "Edit Schedule") : String(localized: "New Schedule"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { Task { await save() } }
+                Button(String(localized: "Save")) { Task { await save() } }
                     .disabled(isSaving || accountId == nil || hasUnreadableDate)
             }
         }
         .overlay {
-            if isSaving { ProgressView().controlSize(.large) }
+            if isSaving {
+                ProgressView().controlSize(.large)
+            }
         }
-        .alert("Couldn't Save Schedule", isPresented: Binding(
+        .alert(String(localized: "Couldn't Save Schedule"), isPresented: Binding(
             get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
+            set: {
+                if !$0 {
+                    errorMessage = nil
+                }
+            }
         )) {
-            Button("OK") {}
+            Button(String(localized: "OK")) {}
         } message: {
             Text(errorMessage ?? "")
         }
         .confirmationDialog(
-            "Delete this schedule?",
+            String(localized: "Delete this schedule?"),
             isPresented: $confirmingDelete,
             titleVisibility: .visible
         ) {
-            Button("Delete Schedule", role: .destructive) { Task { await delete() } }
+            Button(String(localized: "Delete Schedule"), role: .destructive) { Task { await delete() } }
         } message: {
-            Text("Transactions this schedule already created are kept.")
+            Text(String(localized: "Transactions this schedule already created are kept."))
         }
     }
 
     // MARK: - Sections
 
-    @ViewBuilder
     private var amountSection: some View {
-        Section("Amount") {
-            Picker("Type", selection: $txType) {
-                Text("Expense").tag(TransactionType.expense)
-                Text("Income").tag(TransactionType.income)
+        Section(String(localized: "Amount")) {
+            Picker(String(localized: "Type"), selection: $txType) {
+                Text(String(localized: "Expense")).tag(TransactionType.expense)
+                Text(String(localized: "Income")).tag(TransactionType.income)
+                Text(String(localized: "Transfer")).tag(TransactionType.transfer)
             }
             .pickerStyle(.segmented)
 
-            Picker("Matches", selection: $amountOp) {
+            Picker(String(localized: "Matches"), selection: $amountOp) {
                 ForEach(ScheduleAmountOp.allCases, id: \.self) { op in
-                    Text(op.label).tag(op)
+                    Text(op.label(locale: locale)).tag(op)
                 }
             }
 
             HStack {
-                Text(amountOp == .isBetween ? "From" : "Amount")
+                Text(amountOp == .isBetween ? String(localized: "From") : String(localized: "Amount"))
                 Spacer()
                 AmountInputField(text: $amountText, alignment: .right)
                     .frame(maxWidth: 140)
@@ -240,7 +271,7 @@ struct ScheduleEditView: View {
 
             if amountOp == .isBetween {
                 HStack {
-                    Text("To")
+                    Text(String(localized: "To"))
                     Spacer()
                     AmountInputField(text: $amountHighText, alignment: .right)
                         .frame(maxWidth: 140)
@@ -249,19 +280,18 @@ struct ScheduleEditView: View {
         }
     }
 
-    @ViewBuilder
     private var dateSection: some View {
         Section {
-            Toggle("Repeats", isOn: $repeats)
+            Toggle(String(localized: "Repeats"), isOn: $repeats)
 
             if repeats {
                 NavigationLink {
                     RecurrenceEditorView(draft: $recurrence)
                 } label: {
                     HStack {
-                        Text("Repeat")
+                        Text(String(localized: "Repeat"))
                         Spacer()
-                        Text(ScheduleDescription.recurring(recurrence.config))
+                        Text(ScheduleDescription.recurring(recurrence.config, locale: locale, bundle: .main))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.trailing)
                     }
@@ -275,7 +305,7 @@ struct ScheduleEditView: View {
             if repeats {
                 Text("Next: " + ScheduleRecurrence
                     .upcomingDates(for: recurrence.config, count: 1)
-                    .map(ScheduleDescription.mediumDate)
+                    .map { ScheduleDescription.mediumDate($0, locale: locale) }
                     .joined())
             }
         }
@@ -285,6 +315,10 @@ struct ScheduleEditView: View {
 
     private var openAccounts: [Account] {
         budgetStore.accounts.filter { !$0.closed }
+    }
+
+    private var transferEligibleAccounts: [Account] {
+        openAccounts.filter { $0.id != accountId }
     }
 
     private static func dollars(_ cents: Int) -> String {
@@ -297,7 +331,8 @@ struct ScheduleEditView: View {
     }
 
     /// Assemble the form into the shape the write path takes, resolving (or
-    /// creating) the payee on the way — same as the transaction form.
+    /// creating) the payee on the way — same as the transaction form. A
+    /// transfer uses the destination account's existing transfer payee.
     private func buildFields() async throws -> ScheduleFormFields {
         let sign = txType == .income ? 1 : -1
 
@@ -319,8 +354,33 @@ struct ScheduleEditView: View {
             : .fixed(DayDate(yyyymmdd: Transaction.yyyymmdd(from: oneOffDate))
                 ?? DayDate.today())
 
-        let trimmedPayee = payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let payeeId = try await budgetStore.resolvePayeeId(name: trimmedPayee, editing: nil)
+        let payeeId: String?
+        if txType == .transfer {
+            guard let accountId, let transferToAccountId,
+                  accountId != transferToAccountId else {
+                throw BudgetStoreError.missingTransferDestination
+            }
+            guard let transferPayee = budgetStore.payees.first(where: {
+                $0.transferAccountId == transferToAccountId && !$0.tombstone
+            }) else {
+                throw BudgetStoreError.transferPayeeMissing
+            }
+            let existingRawPayeeId = ScheduleConditions.parse(editing?.conditionsJSON)
+                .first { condition in
+                    ["payee", "description"].contains(condition["field"] as? String)
+                        && condition["op"] as? String == "is"
+                }?["value"] as? String
+            // Schedule conditions store the payee_mapping id, while the
+            // loaded summary exposes its target payee. Keep the raw mapping
+            // when the destination is unchanged so imported mappings survive
+            // an otherwise unrelated edit.
+            payeeId = editing?.payeeId == transferPayee.id
+                ? (existingRawPayeeId ?? transferPayee.id)
+                : transferPayee.id
+        } else {
+            let trimmedPayee = payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
+            payeeId = try await budgetStore.resolvePayeeId(name: trimmedPayee, editing: nil)
+        }
 
         return ScheduleFormFields(
             name: name,
@@ -330,7 +390,8 @@ struct ScheduleEditView: View {
             amountOp: amountOp,
             date: date,
             postsTransaction: postsTransaction,
-            customUpcomingLength: upcomingLength.isEmpty ? nil : upcomingLength)
+            customUpcomingLength: upcomingLength.isEmpty ? nil : upcomingLength
+        )
     }
 
     private func save() async {
@@ -360,7 +421,7 @@ struct ScheduleEditView: View {
             errorMessage = error.localizedDescription
         }
     }
-    
+
     private func loadLinkedTransactions(_ scheduleId: String) async {
         linkedTransactions = await budgetStore.fetchScheduleTransactions(scheduleId)
     }

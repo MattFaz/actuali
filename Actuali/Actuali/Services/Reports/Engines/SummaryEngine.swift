@@ -2,15 +2,17 @@ import Foundation
 
 struct SummaryData: Equatable {
     enum Kind: Equatable {
-        case currency    // value is cents
-        case percentage  // value is a percent (e.g. 42.45)
+        case currency // value is cents
+        case percentage // value is a percent (e.g. 42.45)
     }
 
     let value: Double
     let kind: Kind
 
     /// Rounded cents for currency values; kept for display convenience.
-    var totalCents: Int { Int(value.rounded()) }
+    var totalCents: Int {
+        Int(value.rounded())
+    }
 
     static let zero = SummaryData(value: 0, kind: .currency)
 }
@@ -19,7 +21,6 @@ struct SummaryData: Equatable {
 /// selects how the filtered total is reduced: raw sum, average per
 /// month/year/transaction, or a percentage of a second filtered total.
 enum SummaryEngine {
-
     private static var calendar: Calendar {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
@@ -94,7 +95,7 @@ enum SummaryEngine {
             guard divisor != 0 else { return SummaryData(value: 0, kind: .percentage) }
             return SummaryData(value: (total / divisor * 10000).rounded() / 100, kind: .percentage)
 
-        default:  // "sum" and anything unrecognized
+        default: // "sum" and anything unrecognized
             return SummaryData(value: total, kind: .currency)
         }
     }

@@ -6,7 +6,6 @@ import Testing
 /// persist like the other display settings.
 @MainActor
 struct BudgetStoreHideClearedTransactionsTests {
-
     @Test func defaultsToFalse() {
         UserDefaults.standard.removeObject(forKey: "hideClearedTransactions")
         let store = BudgetStore.previewInstance()

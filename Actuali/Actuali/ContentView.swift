@@ -25,7 +25,11 @@ struct ContentView: View {
     private var errorAlertBinding: Binding<Bool> {
         Binding(
             get: { budgetStore.error != nil },
-            set: { if !$0 { budgetStore.error = nil } }
+            set: {
+                if !$0 {
+                    budgetStore.error = nil
+                }
+            }
         )
     }
 
@@ -58,7 +62,7 @@ struct ContentView: View {
                 } else {
                     ContentUnavailableView(
                         "No Accounts",
-                        systemImage: "banknote",
+                        systemImage: "building.columns",
                         description: Text("Add an account to create transactions")
                     )
                 }
@@ -81,8 +85,12 @@ struct ContentView: View {
     /// account, else any open account (mirrors `AddTransactionTabView`).
     private func resolvedAccountId(for prefill: TransactionPrefill) -> String? {
         let openAccounts = budgetStore.accounts.filter { !$0.closed }
-        if let id = prefill.accountId, openAccounts.contains(where: { $0.id == id }) { return id }
-        if let id = budgetStore.defaultAccountId, openAccounts.contains(where: { $0.id == id }) { return id }
+        if let id = prefill.accountId, openAccounts.contains(where: { $0.id == id }) {
+            return id
+        }
+        if let id = budgetStore.defaultAccountId, openAccounts.contains(where: { $0.id == id }) {
+            return id
+        }
         return openAccounts.first?.id
     }
 }
@@ -126,9 +134,13 @@ final class ShakeResponderView: UIView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { nil }
+    required init?(coder: NSCoder) {
+        nil
+    }
 
-    override var canBecomeFirstResponder: Bool { isEnabled }
+    override var canBecomeFirstResponder: Bool {
+        isEnabled
+    }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()

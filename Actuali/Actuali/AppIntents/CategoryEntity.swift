@@ -4,7 +4,9 @@ struct CategoryEntity: AppEntity, Identifiable {
     let id: String
     let name: String
 
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Category"
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(
+        name: LocalizedStringResource("Category")
+    )
 
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(title: "\(name)")
@@ -14,7 +16,6 @@ struct CategoryEntity: AppEntity, Identifiable {
 }
 
 struct CategoryEntityQuery: EntityQuery {
-
     @MainActor
     func entities(for identifiers: [CategoryEntity.ID]) async throws -> [CategoryEntity] {
         let categories = await BudgetStore.shared.categoriesForIntent()

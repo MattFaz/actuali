@@ -2,7 +2,7 @@ import XCTest
 
 final class CategoryFundingAutomationUITests: XCTestCase {
     @MainActor
-    func testCategoryFundingSettingsCanBeConfigured() throws {
+    func testCategoryFundingSettingsCanBeConfigured() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
@@ -12,6 +12,7 @@ final class CategoryFundingAutomationUITests: XCTestCase {
         automationSettings.tap()
 
         let automation = app.buttons["Category Funding Settings"]
+        app.swipeUp()
         XCTAssertTrue(automation.waitForExistence(timeout: 5), "Category Funding Settings row not found")
         automation.tap()
 

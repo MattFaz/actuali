@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins the row set of `fetchUncategorizedTransactions()` /
@@ -13,7 +13,6 @@ import GRDB
 ///   tombstoned split parents never appear (GH #26).
 @MainActor
 struct BudgetDatabaseUncategorizedTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")

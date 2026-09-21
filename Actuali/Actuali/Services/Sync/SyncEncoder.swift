@@ -1,7 +1,7 @@
 // Actuali/Actuali/Services/Sync/SyncEncoder.swift
 
-import Foundation
 import CryptoKit
+import Foundation
 
 enum SyncEncoderError: Error {
     case encodingFailed

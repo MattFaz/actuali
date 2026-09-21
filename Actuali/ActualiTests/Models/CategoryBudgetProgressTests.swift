@@ -3,6 +3,9 @@ import Testing
 @testable import Actuali
 
 struct CategoryBudgetProgressTests {
+    private var actualiBundle: Bundle {
+        Bundle(identifier: "com.mfazz.ActualiOS")!
+    }
 
     private func makeCategory(
         id: String = "cat1",
@@ -83,12 +86,32 @@ struct CategoryBudgetProgressTests {
         #expect(makeCategory(budgeted: 10000, spent: -12000, available: -2000).progressState == .overspent)
     }
 
+    @Test func progressStatusesStayLocalizedAcrossSupportedLocales() {
+        let expected: [String: [String]] = [
+            "en_US": ["Overspent", "Fully spent", "Partially spent", "Funded", "No money assigned"],
+            "fr_FR": ["Dépassement", "Entièrement dépensé", "Partiellement dépensé", "Financé", "Aucun argent attribué"],
+            "es_ES": ["Excedido", "Totalmente gastado", "Parcialmente gastado", "Financiado", "Sin dinero asignado"],
+            "pt_BR": ["Excedido", "Totalmente gasto", "Parcialmente gasto", "Financiado", "Nenhum dinheiro atribuído"],
+            "de_DE": ["Überzogen", "Vollständig ausgegeben", "Teilweise ausgegeben", "Finanziert", "Kein Geld zugewiesen"],
+            "it_IT": ["In eccesso", "Speso interamente", "Speso parzialmente", "Finanziato", "Nessun importo assegnato"],
+            "nl_NL": ["Overschreden", "Volledig uitgegeven", "Gedeeltelijk uitgegeven", "Gefinancierd", "Geen geld toegewezen"],
+        ]
+        let states: [CategoryProgressState] = [.overspent, .spent, .spending, .funded, .unassigned]
+
+        for (identifier, values) in expected {
+            let locale = Locale(identifier: identifier)
+            for (state, value) in zip(states, values) {
+                #expect(state.statusText(locale: locale, bundle: actualiBundle) == value)
+            }
+        }
+    }
+
     @Test func quickAssignUsesActualHistoryAndProducesFinalAmounts() {
         let current = makeCategory(budgeted: 10000, spent: -4000, available: 6000)
         let history = [
             makeCategory(budgeted: 9000, spent: -8000, available: 1000),
             makeCategory(budgeted: 6000, spent: -4000, available: 2000),
-            makeCategory(budgeted: 3000, spent: 1000, available: 4000)
+            makeCategory(budgeted: 3000, spent: 1000, available: 4000),
         ]
         let byKind = Dictionary(uniqueKeysWithValues:
             current.quickAssignSuggestions(history: history).map { ($0.kind, $0.amount) })
@@ -105,8 +128,8 @@ struct CategoryBudgetProgressTests {
         #expect(current.quickAssignSuggestions(history: []).isEmpty)
     }
 
-    // With one history month the average equals Spent Last Month; offering
-    // both would just duplicate the suggestion.
+    /// With one history month the average equals Spent Last Month; offering
+    /// both would just duplicate the suggestion.
     @Test func quickAssignOmitsAverageForASingleHistoryMonth() {
         let current = makeCategory(budgeted: 10000, spent: -4000, available: 6000)
         let history = [makeCategory(budgeted: 9000, spent: -8000, available: 1000)]
@@ -125,9 +148,6 @@ struct CategoryBudgetProgressTests {
         #expect(BudgetCategoryFilter.overspent.includes(overspent))
         #expect(!BudgetCategoryFilter.overspent.includes(unassigned))
         #expect(BudgetCategoryFilter.unassigned.includes(unassigned))
-        #expect(BudgetCategoryFilter.needsAttention.includes(overspent))
-        #expect(BudgetCategoryFilter.needsAttention.includes(unassigned))
-        #expect(!BudgetCategoryFilter.needsAttention.includes(funded))
         #expect(BudgetCategoryFilter.onTrack.includes(funded))
         #expect(!BudgetCategoryFilter.onTrack.includes(unassigned))
         #expect(BudgetCategoryFilter.approachingLimit.includes(approaching))
@@ -135,9 +155,66 @@ struct CategoryBudgetProgressTests {
         #expect(!BudgetCategoryFilter.approachingLimit.includes(overspent))
     }
 
-    // The toolbar stepper abbreviates the month so its `.principal` item keeps
-    // a width UIKit will still centre; everything that reads a month aloud or
-    // in prose keeps the full name.
+    @Test(arguments: ["fr_FR", "pt_BR", "it_IT"])
+    func filterTitlesSelectTheCorrectPluralBranchForZeroOneAndTwo(identifier: String) {
+        let expected = [
+            "fr_FR": ["Non financée (0)", "Non financée (1)", "Non financées (2)"],
+            "pt_BR": ["Não financiada (0)", "Não financiada (1)", "Não financiadas (2)"],
+            "it_IT": ["Non finanziate (0)", "Non finanziata (1)", "Non finanziate (2)"],
+        ][identifier]!
+
+        let titles = (0...2).map { count in
+            BudgetCategoryFilter.unassigned.title(
+                count: count,
+                isTrackingBudget: false,
+                locale: Locale(identifier: identifier),
+                bundle: actualiBundle
+            )
+        }
+
+        #expect(titles == expected)
+    }
+
+    @Test(arguments: ["fr_FR", "es_ES", "pt_BR", "de_DE", "it_IT", "nl_NL"])
+    func everyFilterUsesLocalizedLabelsAndAccessibilityWrapper(identifier: String) {
+        let locale = Locale(identifier: identifier)
+        let wrapper = ReportStrings.text("Show %@ categories", locale: locale, bundle: actualiBundle)
+        let englishWrapper = ReportStrings.text("Show %@ categories", locale: Locale(identifier: "en_US"), bundle: actualiBundle)
+
+        #expect(wrapper != englishWrapper)
+        for filter in BudgetCategoryFilter.allCases {
+            for isTrackingBudget in [false, true] {
+                for count in 0...2 {
+                    let title = filter.title(
+                        count: count,
+                        isTrackingBudget: isTrackingBudget,
+                        locale: locale,
+                        bundle: actualiBundle
+                    )
+                    #expect(title.contains("\(count)"))
+                    #expect(!title.contains("budget.filter."))
+                    #expect(title != filter.title(
+                        count: count,
+                        isTrackingBudget: isTrackingBudget,
+                        locale: Locale(identifier: "en_US"),
+                        bundle: actualiBundle
+                    ))
+
+                    let accessibilityLabel = ReportStrings.format(
+                        "Show %@ categories",
+                        title,
+                        locale: locale,
+                        bundle: actualiBundle
+                    )
+                    #expect(accessibilityLabel == wrapper.replacingOccurrences(of: "%@", with: title))
+                }
+            }
+        }
+    }
+
+    /// The toolbar stepper abbreviates the month so its `.principal` item keeps
+    /// a width UIKit will still centre; everything that reads a month aloud or
+    /// in prose keeps the full name.
     @Test func toolbarMonthTitleAbbreviatesButKeepsTheYear() {
         let short = MonthPicker.shortTitle(for: "2026-09")
         #expect(short.contains("2026"))
@@ -169,6 +246,21 @@ struct CategoryBudgetProgressTests {
 
         #expect(context.rankedCategories.map(\.categoryId)
             == ["small", "large", "partial"])
+        #expect(!context.canUseToBudget)
+    }
+
+    @Test func toBudgetTransferUsesCategoriesAsTheOtherEndpoint() {
+        let partial = makeCategory(id: "partial", groupId: "home", budgeted: 3000, spent: 0, available: 3000)
+        let large = makeCategory(id: "large", groupId: "other", budgeted: 12000, spent: 0, available: 12000)
+        let small = makeCategory(id: "small", groupId: "home", budgeted: 6000, spent: 0, available: 6000)
+        let context = BudgetTransferContext(toBudgetIn: BudgetMonth(
+            month: "2026-07",
+            categoryBudgets: [partial, large, small],
+            toBudget: -5000
+        ))
+
+        #expect(context.amount == -5000)
+        #expect(context.rankedCategories.map(\.categoryId) == ["small", "large", "partial"])
         #expect(!context.canUseToBudget)
     }
 }

@@ -7,7 +7,6 @@ import Testing
 /// collapsing it into the same positive amount as real spending (GH #102).
 @MainActor
 struct BudgetStoreSpentCaptionTests {
-
     private func makeStore() -> BudgetStore {
         let store = BudgetStore.previewInstance()
         store.hideBalances = false

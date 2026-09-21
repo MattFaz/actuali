@@ -15,7 +15,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Log a transaction in \(.applicationName)",
             ],
             shortTitle: "Log Transaction",
-            systemImageName: "plus.circle.fill"
+            systemImageName: "plus"
         )
 
         AppShortcut(
@@ -25,7 +25,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Enter transaction in \(.applicationName)",
                 "Review a transaction in \(.applicationName)",
             ],
-            shortTitle: "Add with Review",
+            shortTitle: LocalizedStringResource("Add with Review"),
             systemImageName: "square.and.pencil"
         )
 
@@ -38,7 +38,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Get account balance in \(.applicationName)",
                 "Check \(.applicationName) account balance",
             ],
-            shortTitle: "Account Balance",
+            shortTitle: LocalizedStringResource("Account Balance"),
             systemImageName: "building.columns.fill"
         )
 
@@ -50,7 +50,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Get \(\.$category) balance in \(.applicationName)",
                 "Check category balance in \(.applicationName)",
             ],
-            shortTitle: "Category Balance",
+            shortTitle: LocalizedStringResource("Category Balance"),
             systemImageName: "chart.pie.fill"
         )
 
@@ -60,7 +60,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Get categories in \(.applicationName)",
                 "List categories in \(.applicationName)",
             ],
-            shortTitle: "List Categories",
+            shortTitle: LocalizedStringResource("List Categories"),
             systemImageName: "folder.fill"
         )
 
@@ -70,7 +70,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Get payees in \(.applicationName)",
                 "List payees in \(.applicationName)",
             ],
-            shortTitle: "List Payees",
+            shortTitle: LocalizedStringResource("List Payees"),
             systemImageName: "person.2.fill"
         )
 
@@ -80,7 +80,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Get accounts in \(.applicationName)",
                 "List accounts in \(.applicationName)",
             ],
-            shortTitle: "List Accounts",
+            shortTitle: LocalizedStringResource("List Accounts"),
             systemImageName: "creditcard.fill"
         )
 
@@ -91,7 +91,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Parse transaction in \(.applicationName)",
                 "Queue transaction in \(.applicationName)",
             ],
-            shortTitle: "Import from Text",
+            shortTitle: LocalizedStringResource("Import from Text"),
             systemImageName: "tray.and.arrow.down"
         )
     }

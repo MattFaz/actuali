@@ -10,7 +10,6 @@ import Testing
 /// imported payee, `acct` for account), so a test that passes is evidence the
 /// engine reads what the web app writes.
 struct RulesEngineTests {
-
     // MARK: - Helpers
 
     private func makeTransaction(
@@ -22,7 +21,7 @@ struct RulesEngineTests {
         Transaction(
             id: "tx-1",
             accountId: "acct-1",
-            date: 20260503,
+            date: 20_260_503,
             amount: amount,
             payeeId: payeeId,
             payeeName: nil,
@@ -227,7 +226,8 @@ struct RulesEngineTests {
     @Test func approxAmountUsesRoundedThreshold() {
         let rule = parseRule(
             conditions: #"[{"op":"isapprox","field":"amount","value":-1000}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-approx"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-approx"}]"#
+        )
 
         #expect(applied(makeTransaction(amount: -1075), rules: [rule]).0.categoryId == "cat-approx")
         #expect(applied(makeTransaction(amount: -1076), rules: [rule]).0.categoryId == nil)
@@ -285,7 +285,8 @@ struct RulesEngineTests {
     @Test func matchesLowercasesThePatternLikeUpstream() {
         let rule = parseRule(
             conditions: #"[{"op":"matches","field":"notes","value":"\\D+"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-digits"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-digits"}]"#
+        )
         // "1234" contains no non-digits, but \D lowercases to \d and matches.
         let tx = makeTransaction(notes: "1234")
         let (updated, _) = applied(tx, rules: [rule])
@@ -295,7 +296,8 @@ struct RulesEngineTests {
     @Test func invalidRegexNeverMatches() {
         let rule = parseRule(
             conditions: #"[{"op":"matches","field":"notes","value":"["}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-bad"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-bad"}]"#
+        )
         let (updated, _) = applied(makeTransaction(notes: "anything"), rules: [rule])
         #expect(updated.categoryId == nil)
     }
@@ -323,7 +325,8 @@ struct RulesEngineTests {
     @Test func emptyNotesMatchesIsEmptyString() {
         let rule = parseRule(
             conditions: #"[{"op":"is","field":"notes","value":"","type":"string"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-empty"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-empty"}]"#
+        )
         let (updated, _) = applied(makeTransaction(notes: nil), rules: [rule])
         #expect(updated.categoryId == "cat-empty")
     }
@@ -333,7 +336,8 @@ struct RulesEngineTests {
     @Test func exactDateConditionMatches() {
         let rule = parseRule(
             conditions: #"[{"op":"is","field":"date","value":"2026-05-03","type":"date"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-day"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-day"}]"#
+        )
         let (updated, _) = applied(makeTransaction(), rules: [rule])
         #expect(updated.categoryId == "cat-day")
     }
@@ -341,7 +345,8 @@ struct RulesEngineTests {
     @Test func monthDateConditionMatches() {
         let rule = parseRule(
             conditions: #"[{"op":"is","field":"date","value":"2026-05","type":"date"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-month"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-month"}]"#
+        )
         let (updated, _) = applied(makeTransaction(), rules: [rule])
         #expect(updated.categoryId == "cat-month")
     }
@@ -349,7 +354,8 @@ struct RulesEngineTests {
     @Test func yearDateConditionMatches() {
         let rule = parseRule(
             conditions: #"[{"op":"is","field":"date","value":"2026","type":"date"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-year"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-year"}]"#
+        )
         let (updated, _) = applied(makeTransaction(), rules: [rule])
         #expect(updated.categoryId == "cat-year")
     }
@@ -358,7 +364,8 @@ struct RulesEngineTests {
     @Test func approxDateMatchesWithinTwoDays() {
         let rule = parseRule(
             conditions: #"[{"op":"isapprox","field":"date","value":"2026-05-05","type":"date"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-near"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-near"}]"#
+        )
         // The transaction is dated 20260503 — two days out, inclusive.
         let (updated, _) = applied(makeTransaction(), rules: [rule])
         #expect(updated.categoryId == "cat-near")
@@ -367,7 +374,8 @@ struct RulesEngineTests {
     @Test func approxDateMissesOutsideTwoDays() {
         let rule = parseRule(
             conditions: #"[{"op":"isapprox","field":"date","value":"2026-05-07","type":"date"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-far"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-far"}]"#
+        )
         let (updated, _) = applied(makeTransaction(), rules: [rule])
         #expect(updated.categoryId == nil)
     }
@@ -376,7 +384,8 @@ struct RulesEngineTests {
         func category(forOp op: String, value: String) -> String? {
             let rule = parseRule(
                 conditions: #"[{"op":"\#(op)","field":"date","value":"\#(value)","type":"date"}]"#,
-                actions: #"[{"op":"set","field":"category","value":"cat-hit"}]"#)
+                actions: #"[{"op":"set","field":"category","value":"cat-hit"}]"#
+            )
             return applied(makeTransaction(), rules: [rule]).0.categoryId
         }
 
@@ -394,7 +403,8 @@ struct RulesEngineTests {
     @Test func dateComparisonRejectsMonthPrecision() {
         let rule = parseRule(
             conditions: #"[{"op":"gt","field":"date","value":"2026-04","type":"date"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-month"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-month"}]"#
+        )
         let (updated, _) = applied(makeTransaction(), rules: [rule])
         #expect(updated.categoryId == nil)
     }
@@ -407,7 +417,8 @@ struct RulesEngineTests {
     @Test func categoryGroupConditionUsesContext() {
         let rule = parseRule(
             conditions: #"[{"op":"is","field":"category_group","value":"grp-daily","type":"id"}]"#,
-            actions: #"[{"op":"set","field":"notes","value":"daily"}]"#)
+            actions: #"[{"op":"set","field":"notes","value":"daily"}]"#
+        )
         var tx = makeTransaction()
         tx.categoryId = "cat-food"
 
@@ -420,7 +431,8 @@ struct RulesEngineTests {
     @Test func payeeNameConditionUsesContext() {
         let rule = parseRule(
             conditions: #"[{"op":"contains","field":"payee_name","value":"wool","type":"string"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-groceries"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-groceries"}]"#
+        )
         let tx = makeTransaction(payeeId: "payee-1")
 
         let context = RuleContext(payeeNames: ["payee-1": "Woolworths"])
@@ -431,8 +443,9 @@ struct RulesEngineTests {
     @Test func offBudgetConditionMatchesOffBudgetAccount() {
         let rule = parseRule(
             conditions: #"[{"op":"offBudget","field":"acct","value":null,"type":"id"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-off"}]"#)
-        let tx = makeTransaction()   // account is "acct-1"
+            actions: #"[{"op":"set","field":"category","value":"cat-off"}]"#
+        )
+        let tx = makeTransaction() // account is "acct-1"
 
         #expect(applied(tx, rules: [rule],
                         context: RuleContext(offBudgetAccountIds: ["acct-1"])).0.categoryId == "cat-off")
@@ -443,7 +456,8 @@ struct RulesEngineTests {
     @Test func onBudgetConditionMatchesBudgetedAccount() {
         let rule = parseRule(
             conditions: #"[{"op":"onBudget","field":"acct","value":null,"type":"id"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-on"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-on"}]"#
+        )
         let tx = makeTransaction()
 
         #expect(applied(tx, rules: [rule],
@@ -459,12 +473,31 @@ struct RulesEngineTests {
     @Test func transferConditionsNeverMatchInTheEngine() {
         let rule = parseRule(
             conditions: #"[{"op":"is","field":"transfer","value":true,"type":"boolean"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-transfer"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-transfer"}]"#
+        )
         var tx = makeTransaction()
         tx.transferId = "tx-2"
 
         let (updated, _) = applied(tx, rules: [rule])
         #expect(updated.categoryId == nil)
+    }
+
+    @Test func dateRulesRequireCanonicalRealDates() {
+        let malformed = parseRule(
+            conditions: #"[{"op":"is","field":"date","value":"2026--05-03"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-bad"}]"#
+        )
+        let impossible = parseRule(
+            conditions: #"[{"op":"is","field":"date","value":"2026-02-31"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-bad"}]"#
+        )
+
+        #expect(applied(makeTransaction(), rules: [malformed]).0.categoryId == nil)
+        #expect(applied(makeTransaction(), rules: [impossible]).0.categoryId == nil)
+        #expect(applied(makeTransaction(), rules: [parseRule(
+            conditions: #"[{"op":"is","field":"date","value":"2026-05"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-month"}]"#
+        )]).0.categoryId == "cat-month")
     }
 
     // MARK: - Actions
@@ -517,7 +550,8 @@ struct RulesEngineTests {
     @Test func setPayeeNameReportsPendingPayee() {
         let rule = parseRule(
             conditions: #"[{"op":"contains","field":"imported_description","value":"woolies"}]"#,
-            actions: #"[{"op":"set","field":"payee_name","value":"Woolworths"}]"#)
+            actions: #"[{"op":"set","field":"payee_name","value":"Woolworths"}]"#
+        )
 
         let result = RulesEngine.apply(makeTransaction(importedPayee: "WOOLIES 123"), rules: [rule])
 
@@ -528,7 +562,8 @@ struct RulesEngineTests {
     @Test func linkScheduleActionSetsSchedule() {
         let rule = parseRule(
             conditions: #"[{"op":"contains","field":"imported_description","value":"rent"}]"#,
-            actions: #"[{"op":"link-schedule","value":"sched-1"}]"#)
+            actions: #"[{"op":"link-schedule","value":"sched-1"}]"#
+        )
 
         let (updated, changed) = applied(makeTransaction(importedPayee: "RENT JUNE"), rules: [rule])
 
@@ -539,7 +574,8 @@ struct RulesEngineTests {
     @Test func deleteTransactionActionMarksResultDeleted() {
         let rule = parseRule(
             conditions: #"[{"op":"contains","field":"imported_description","value":"spam"}]"#,
-            actions: #"[{"op":"delete-transaction","value":null}]"#)
+            actions: #"[{"op":"delete-transaction","value":null}]"#
+        )
 
         let result = RulesEngine.apply(makeTransaction(importedPayee: "SPAM CO"), rules: [rule])
 
@@ -550,7 +586,8 @@ struct RulesEngineTests {
     @Test func deleteTransactionLeavesNonMatchingTransactionsAlone() {
         let rule = parseRule(
             conditions: #"[{"op":"contains","field":"imported_description","value":"spam"}]"#,
-            actions: #"[{"op":"delete-transaction","value":null}]"#)
+            actions: #"[{"op":"delete-transaction","value":null}]"#
+        )
 
         let result = RulesEngine.apply(makeTransaction(importedPayee: "Coffee Co"), rules: [rule])
 
@@ -583,11 +620,11 @@ struct RulesEngineTests {
                 conditionsOp: .and,
                 conditions: [
                     Rule.Condition(op: "contains", field: "imported_payee",
-                                   value: .string("X"), options: nil)
+                                   value: .string("X"), options: nil),
                 ],
                 actions: [
                     Rule.Action(op: "set", field: "amount",
-                                value: .number(bad), options: nil)
+                                value: .number(bad), options: nil),
                 ]
             )
             let tx = makeTransaction(importedPayee: "X-Co", amount: -500)
@@ -636,12 +673,14 @@ struct RulesEngineTests {
         let normal = parseRule(
             id: "def-1",
             conditions: #"[{"op":"contains","field":"imported_description","value":"coffee"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-normal"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-normal"}]"#
+        )
         let post = parseRule(
             id: "post-1",
             stage: "post",
             conditions: #"[{"op":"contains","field":"imported_description","value":"coffee"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-post"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-post"}]"#
+        )
 
         let tx = makeTransaction(importedPayee: "Coffee Co")
         #expect(applied(tx, rules: [post, normal]).0.categoryId == "cat-post")
@@ -653,11 +692,13 @@ struct RulesEngineTests {
         let broad = parseRule(
             id: "r-b",
             conditions: #"[{"op":"contains","field":"imported_description","value":"coffee"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-broad"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-broad"}]"#
+        )
         let exact = parseRule(
             id: "r-a",
             conditions: #"[{"op":"is","field":"imported_description","value":"coffee co"}]"#,
-            actions: #"[{"op":"set","field":"category","value":"cat-exact"}]"#)
+            actions: #"[{"op":"set","field":"category","value":"cat-exact"}]"#
+        )
 
         let tx = makeTransaction(importedPayee: "Coffee Co")
 
@@ -679,7 +720,7 @@ struct RulesEngineTests {
             """
         )
         let (updated, changed) = applied(makeTransaction(importedPayee: "SHOP CO", amount: -2000),
-                                        rules: [rule])
+                                         rules: [rule])
 
         #expect(updated.amount == -2000)
         #expect(changed.isEmpty)
@@ -742,7 +783,7 @@ struct RulesEngineTests {
             conditionsOp: .and,
             conditions: [],
             actions: [
-                Rule.Action(op: "set", field: "category", value: .string("cat-x"), options: nil)
+                Rule.Action(op: "set", field: "category", value: .string("cat-x"), options: nil),
             ]
         )
         let tx = makeTransaction(importedPayee: "X")

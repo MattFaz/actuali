@@ -8,16 +8,21 @@ struct ReportDateRangeTests {
         c.timeZone = TimeZone(identifier: "UTC")!
         return c
     }
+
     private func date(_ y: Int, _ m: Int, _ d: Int) -> Date {
         cal.date(from: DateComponents(year: y, month: m, day: d))!
     }
-    private var today: Date { date(2026, 7, 11) }
+
+    private var today: Date {
+        date(2026, 7, 11)
+    }
 
     @Test func allTimeSpansTransactionHistory() {
         let (s, e) = ReportDateRange.resolve(
             dateRange: "All time", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: true, earliest: date(2025, 8, 30), latest: date(2026, 7, 3),
-            today: today, firstDayOfWeekIdx: 0)
+            today: today, firstDayOfWeekIdx: 0
+        )
         #expect(s == date(2025, 8, 30))
         #expect(e == date(2026, 7, 3))
     }
@@ -26,7 +31,8 @@ struct ReportDateRangeTests {
         let (s, e) = ReportDateRange.resolve(
             dateRange: "Year to date", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: true, earliest: date(2026, 3, 5), latest: date(2026, 7, 3),
-            today: today, firstDayOfWeekIdx: 0)
+            today: today, firstDayOfWeekIdx: 0
+        )
         #expect(s == date(2026, 3, 5))
         #expect(e == today)
     }
@@ -35,7 +41,8 @@ struct ReportDateRangeTests {
         let (s, e) = ReportDateRange.resolve(
             dateRange: "Last 3 months", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: true, earliest: date(2024, 1, 1), latest: date(2026, 7, 3),
-            today: today, firstDayOfWeekIdx: 0)
+            today: today, firstDayOfWeekIdx: 0
+        )
         #expect(s == date(2026, 4, 1))
         #expect(e == date(2026, 7, 31))
     }
@@ -44,7 +51,8 @@ struct ReportDateRangeTests {
         let (s, e) = ReportDateRange.resolve(
             dateRange: "Last 3 months", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: false, earliest: date(2024, 1, 1), latest: date(2026, 7, 3),
-            today: today, firstDayOfWeekIdx: 0)
+            today: today, firstDayOfWeekIdx: 0
+        )
         #expect(s == date(2026, 4, 1))
         #expect(e == date(2026, 6, 30))
     }
@@ -53,7 +61,8 @@ struct ReportDateRangeTests {
         let (s, e) = ReportDateRange.resolve(
             dateRange: nil, dateStatic: true, startDate: "2025-10-01", endDate: "2026-01-31",
             includeCurrent: true, earliest: date(2024, 1, 1), latest: date(2026, 7, 3),
-            today: today, firstDayOfWeekIdx: 0)
+            today: today, firstDayOfWeekIdx: 0
+        )
         #expect(s == date(2025, 10, 1))
         #expect(e == date(2026, 1, 31))
     }
@@ -62,9 +71,20 @@ struct ReportDateRangeTests {
         let (s, e) = ReportDateRange.resolve(
             dateRange: nil, dateStatic: true, startDate: "2025-10", endDate: "2026-01",
             includeCurrent: true, earliest: date(2024, 1, 1), latest: date(2026, 7, 3),
-            today: today, firstDayOfWeekIdx: 0)
+            today: today, firstDayOfWeekIdx: 0
+        )
         #expect(s == date(2025, 10, 1))
         #expect(e == date(2026, 1, 31))
+    }
+
+    @Test func staticRangeRejectsNonCanonicalDateParts() {
+        let (s, e) = ReportDateRange.resolve(
+            dateRange: nil, dateStatic: true, startDate: "2025-1", endDate: "2026-7-3",
+            includeCurrent: true, earliest: date(2024, 1, 2), latest: date(2026, 7, 3),
+            today: today, firstDayOfWeekIdx: 0
+        )
+        #expect(s == date(2024, 1, 2))
+        #expect(e == today)
     }
 
     @Test func lastThreeMonthsAcrossYearBoundary() {
@@ -72,14 +92,16 @@ struct ReportDateRangeTests {
         let (s1, e1) = ReportDateRange.resolve(
             dateRange: "Last 3 months", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: true, earliest: date(2024, 1, 1), latest: date(2026, 7, 3),
-            today: janToday, firstDayOfWeekIdx: 0)
+            today: janToday, firstDayOfWeekIdx: 0
+        )
         #expect(s1 == date(2025, 10, 1))
         #expect(e1 == date(2026, 1, 31))
 
         let (s2, e2) = ReportDateRange.resolve(
             dateRange: "Last 3 months", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: false, earliest: date(2024, 1, 1), latest: date(2026, 7, 3),
-            today: janToday, firstDayOfWeekIdx: 0)
+            today: janToday, firstDayOfWeekIdx: 0
+        )
         #expect(s2 == date(2025, 10, 1))
         #expect(e2 == date(2025, 12, 31))
     }
@@ -88,14 +110,16 @@ struct ReportDateRangeTests {
         let (s1, e1) = ReportDateRange.resolve(
             dateRange: "Last month", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: true, earliest: date(2024, 1, 1), latest: date(2026, 7, 3),
-            today: today, firstDayOfWeekIdx: 0)
+            today: today, firstDayOfWeekIdx: 0
+        )
         #expect(s1 == date(2026, 6, 1))
         #expect(e1 == date(2026, 7, 31))
 
         let (s2, e2) = ReportDateRange.resolve(
             dateRange: "Last month", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: false, earliest: date(2024, 1, 1), latest: date(2026, 7, 3),
-            today: today, firstDayOfWeekIdx: 0)
+            today: today, firstDayOfWeekIdx: 0
+        )
         #expect(s2 == date(2026, 6, 1))
         #expect(e2 == date(2026, 6, 30))
     }
@@ -104,7 +128,8 @@ struct ReportDateRangeTests {
         let (s, e) = ReportDateRange.resolve(
             dateRange: "Last 30 days", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: true, earliest: date(2024, 1, 1), latest: date(2026, 7, 3),
-            today: today, firstDayOfWeekIdx: 0)
+            today: today, firstDayOfWeekIdx: 0
+        )
         #expect(s == date(2026, 6, 12))
         #expect(e == today)
     }
@@ -116,14 +141,16 @@ struct ReportDateRangeTests {
         let (s1, e1) = ReportDateRange.resolve(
             dateRange: "Last week", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: false, earliest: date(2024, 1, 1), latest: date(2026, 7, 3),
-            today: wedToday, firstDayOfWeekIdx: 0)
+            today: wedToday, firstDayOfWeekIdx: 0
+        )
         #expect(s1 == date(2026, 6, 21))
         #expect(e1 == date(2026, 6, 27))
 
         let (s2, e2) = ReportDateRange.resolve(
             dateRange: "Last week", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: true, earliest: date(2024, 1, 1), latest: date(2026, 7, 3),
-            today: wedToday, firstDayOfWeekIdx: 0)
+            today: wedToday, firstDayOfWeekIdx: 0
+        )
         #expect(s2 == date(2026, 6, 21))
         #expect(e2 == date(2026, 7, 4))
     }
@@ -132,7 +159,8 @@ struct ReportDateRangeTests {
         let (s, e) = ReportDateRange.resolve(
             dateRange: "Bizarro range", dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: true, earliest: date(2025, 1, 2), latest: date(2026, 7, 3),
-            today: today, firstDayOfWeekIdx: 0)
+            today: today, firstDayOfWeekIdx: 0
+        )
         #expect(s == date(2025, 1, 2))
         #expect(e == date(2026, 7, 3))
     }

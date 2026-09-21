@@ -5,7 +5,6 @@ import Foundation
 /// reports). Dynamic ranges are computed relative to `today`; "All time"
 /// spans the actual transaction history.
 enum ReportDateRange {
-
     private static var cal: Calendar {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
@@ -36,7 +35,8 @@ enum ReportDateRange {
             return allTime
         case "Year to date":
             let jan1 = cal.date(from: DateComponents(
-                year: cal.component(.year, from: today), month: 1, day: 1))!
+                year: cal.component(.year, from: today), month: 1, day: 1
+            ))!
             return (max(allTime.0, jan1), today)
         case "Prior year to date":
             let year = cal.component(.year, from: today) - 1
@@ -95,44 +95,25 @@ enum ReportDateRange {
 
     /// First day of the week containing `date`, with 0 = Sunday … 6 = Saturday.
     static func weekStart(of date: Date, firstDayOfWeekIdx: Int) -> Date {
-        let weekday = cal.component(.weekday, from: date) - 1  // 0-based Sunday
+        let weekday = cal.component(.weekday, from: date) - 1 // 0-based Sunday
         let idx = (0...6).contains(firstDayOfWeekIdx) ? firstDayOfWeekIdx : 0
         let delta = (weekday - idx + 7) % 7
         return cal.date(byAdding: .day, value: -delta, to: cal.startOfDay(for: date))!
     }
 
-    private static let isoFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        return f
-    }()
-
-    private static let isoMonthFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM"
-        f.timeZone = TimeZone(identifier: "UTC")
-        return f
-    }()
-
     /// Parse a range start. YYYY-MM snaps to first-of-month, YYYY-MM-DD is used as-is.
     private static func parseRangeStart(_ s: String?) -> Date? {
         guard let s else { return nil }
-        if let d = isoFormatter.date(from: s) { return d }
-        if let d = isoMonthFormatter.date(from: s) { return d }  // already first-of-month
-        return nil
+        return CanonicalDateParser.parseMonthOrDay(s)
     }
 
     /// Parse a range end. YYYY-MM expands to end-of-month so the range is
     /// inclusive of the entire month, matching upstream behavior. YYYY-MM-DD
     /// is used as-is.
     private static func parseRangeEnd(_ s: String?) -> Date? {
-        guard let s else { return nil }
-        if let d = isoFormatter.date(from: s) { return d }
-        if let d = isoMonthFormatter.date(from: s) {
-            let nextMonth = cal.date(byAdding: .month, value: 1, to: d)!
-            return cal.date(byAdding: .day, value: -1, to: nextMonth)!
-        }
-        return nil
+        guard let s, let d = CanonicalDateParser.parseMonthOrDay(s) else { return nil }
+        guard s.count == 7 else { return d }
+        let nextMonth = cal.date(byAdding: .month, value: 1, to: d)!
+        return cal.date(byAdding: .day, value: -1, to: nextMonth)!
     }
 }
