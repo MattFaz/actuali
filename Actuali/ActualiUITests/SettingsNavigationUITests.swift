@@ -70,7 +70,7 @@ final class SettingsNavigationUITests: XCTestCase {
             "About",
             "Support"
         ] {
-            let row = app.buttons[destination]
+            let row = rowOnHub(destination, in: app)
             XCTAssertTrue(row.waitForExistence(timeout: 5), "\(destination) row not found")
             row.tap()
 
@@ -84,6 +84,20 @@ final class SettingsNavigationUITests: XCTestCase {
             assertExpectedContent(for: destination, in: app)
             navigationBar.buttons.element(boundBy: 0).tap()
         }
+    }
+
+    /// The Shortcuts section (GH #528) pushes the bottom rows below the
+    /// fold, and a SwiftUI Form doesn't materialize off-screen rows — swipe
+    /// until the row exists before asserting on it.
+    @MainActor
+    private func rowOnHub(_ title: String, in app: XCUIApplication) -> XCUIElement {
+        let row = app.buttons[title]
+        var swipes = 0
+        while !row.exists && swipes < 8 {
+            app.swipeUp()
+            swipes += 1
+        }
+        return row
     }
 
     @MainActor
