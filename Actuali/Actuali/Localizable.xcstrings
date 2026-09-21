@@ -12161,6 +12161,53 @@
         }
       }
     },
+    "Before using a shortcut, set up Card & Account Mappings in More → Transactions & Automation so purchases route to the right account." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richten Sie vor der Verwendung eines Shortcuts die Karten- und Kontozuordnungen unter Mehr → Transaktionen und Automatisierung ein, damit Käufe dem richtigen Konto zugeordnet werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before using a shortcut, set up Card & Account Mappings in More → Transactions & Automation so purchases route to the right account."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antes de usar un atajo, configure las Correspondencias de tarjetas y cuentas en Más → Transacciones y automatización para que los gastos se asignen a la cuenta correcta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avant d'utiliser un raccourci, configurez les Correspondances cartes et comptes dans Plus → Transactions et automatisation pour que les achats soient affectés au bon compte."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prima di usare una scorciatoia, configura le Mappature di carte e conti in Altro → Transazioni e automazione, così gli acquisti vanno al conto giusto."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stel voordat u een snelkoppeling gebruikt kaart- en accounttoewijzingen in via Meer → Transacties en automatisering, zodat aankopen op het juiste account terechtkomen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antes de usar um atalho, configure as Correspondências de cartões e contas em Mais → Transações e automação para que as compras sejam registradas na conta certa."
+          }
+        }
+      }
+    },
     "Billing Cycle" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -40180,6 +40227,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Rendimentos de investimentos"
+          }
+        }
+      }
+    },
+    "iOS Shortcuts" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS-Shortcuts"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS Shortcuts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atajos de iOS"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Raccourcis iOS"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scorciatoie iOS"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS-snelkoppelingen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atalhos do iOS"
           }
         }
       }
