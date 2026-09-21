@@ -486,6 +486,22 @@ struct TransactionRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let notes = transaction.notes, !notes.isEmpty {
+                        let extractedTags = TagFilter.extractHashtags(from: notes)
+                        if !extractedTags.isEmpty {
+                            ForEach(extractedTags.prefix(2), id: \.self) { rawTag in
+                                let clean = Tag.normalizeTagName(rawTag)
+                                let match = budgetStore.tags.first { $0.tag.lowercased() == clean.lowercased() }
+                                let tagColor = match?.swiftUIColor ?? .secondary
+                                Text(rawTag)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(tagColor.opacity(0.15), in: Capsule())
+                                    .foregroundStyle(tagColor)
+                            }
+                        }
                         Text("・")
                             .font(.caption)
                             .foregroundStyle(.secondary)

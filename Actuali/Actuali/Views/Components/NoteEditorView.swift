@@ -36,6 +36,7 @@ struct NoteEditorView: View {
                         .frame(minHeight: 160)
                         .focused($editorFocused)
                         .accessibilityIdentifier("noteEditor")
+                    TagSuggestionBar(text: $text, availableTags: budgetStore.tags)
                     // Links stay openable mid-edit (GH #190); the editor text
                     // itself has to remain plain to stay editable.
                     NoteLinkRows(text: text)

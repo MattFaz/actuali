@@ -31,6 +31,7 @@ struct SettingsView: View {
             SettingsItem(title: String(localized: "Bank Sync (SimpleFIN & Wallet)"), systemImage: "building.columns", destination: { AnyView(BankSyncSetupView()) }),
             SettingsItem(title: String(localized: "Bills & Calendar"), systemImage: "calendar", destination: { AnyView(BillsCalendarView()) }),
             SettingsItem(title: String(localized: "Scheduled Transactions"), systemImage: "calendar.badge.clock", destination: { AnyView(SchedulesListView()) }),
+            SettingsItem(title: String(localized: "Tags"), systemImage: "number", destination: { AnyView(TagsListView()) }),
         ]
         if includeRules {
             items.append(SettingsItem(title: String(localized: "Rules"), systemImage: "list.bullet.rectangle", destination: { AnyView(RulesListView()) }))

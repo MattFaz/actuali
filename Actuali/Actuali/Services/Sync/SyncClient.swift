@@ -2393,6 +2393,123 @@ actor SyncClient {
         )
         try database.saveClock(clockRecord)
     }
+
+    // MARK: - Tags
+
+    func createTag(
+        name: String,
+        color: String? = nil,
+        description: String? = nil
+    ) async throws -> Tag {
+        guard let database else { throw SyncError.notConfigured }
+        let normalized = Tag.normalizeTagName(name)
+        let tag = Tag(
+            tag: normalized,
+            color: color,
+            description: description
+        )
+
+        try database.insertTag(tag)
+
+        let messages = try await messageGenerator.messagesForInsert(tag)
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+        return tag
+    }
+
+    func updateTag(_ tag: Tag) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        try database.updateTag(tag)
+
+        let messages = try await messageGenerator.messagesForUpdate(
+            tag,
+            changedFields: ["tag", "color", "description", "hidden"]
+        )
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
+    func deleteTag(id: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        try database.deleteTag(id: id)
+
+        let tag = Tag(id: id, tag: "", tombstone: true)
+        let message = try await messageGenerator.messageForDelete(tag)
+        for msg in try database.insertMessages([message]) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
+    func renameTag(id: String, oldName: String, newName: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let normalizedNew = Tag.normalizeTagName(newName)
+
+        let updatedTxs = try database.renameTag(id: id, oldName: oldName, newName: normalizedNew)
+
+        var messages = try await messageGenerator.messages(
+            dataset: Tag.datasetName,
+            row: id,
+            fields: [("tag", normalizedNew)]
+        )
+
+        for (txId, newNotes) in updatedTxs {
+            messages += try await messageGenerator.messages(
+                dataset: Transaction.datasetName,
+                row: txId,
+                fields: [("notes", newNotes)]
+            )
+        }
+
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
+    func importDiscoveredTags() async throws -> [Tag] {
+        guard let database else { throw SyncError.notConfigured }
+        let discovered = try await database.discoverTags()
+        guard !discovered.isEmpty else { return [] }
+
+        var created: [Tag] = []
+        var allMessages: [CRDTMessage] = []
+
+        for name in discovered {
+            let tag = Tag(tag: name)
+            try database.insertTag(tag)
+            let msgs = try await messageGenerator.messagesForInsert(tag)
+            allMessages.append(contentsOf: msgs)
+            created.append(tag)
+        }
+
+        for msg in try database.insertMessages(allMessages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+        return created
+    }
 }
 
 // MARK: - SchedulePostingActions

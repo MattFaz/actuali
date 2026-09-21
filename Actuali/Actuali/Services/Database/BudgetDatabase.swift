@@ -418,6 +418,16 @@ final class BudgetDatabase: Sendable {
                 tombstone INTEGER DEFAULT 0
             )
         """),
+        (1_770_000_000_004, """
+            CREATE TABLE IF NOT EXISTS tags (
+                id TEXT PRIMARY KEY,
+                tag TEXT,
+                color TEXT,
+                description TEXT,
+                hidden BOOLEAN DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            )
+        """),
     ]
 
     /// Migration ids Actuali mints itself, no upstream migration file has
@@ -441,6 +451,7 @@ final class BudgetDatabase: Sendable {
         1_780_606_215_003, // locally minted accounts.account_sync_source backfill
         1_780_606_215_004, // locally minted accounts.last_sync backfill
         1_770_000_000_003, // defensive CREATE banks
+        1_770_000_000_004, // defensive CREATE tags
         1_780_606_215_005, // device-local FinanceKit link identities
         1_780_606_215_006, // envelope buffer rows
     ]
@@ -5183,5 +5194,209 @@ final class BudgetDatabase: Sendable {
             }
             .prefix(10)
             .map(\.self)
+    }
+
+    // MARK: - Tags
+
+    func fetchTags(includeHidden: Bool = true) async throws -> [Tag] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("tags") else { return [] }
+            let hasHidden = try db.columns(in: "tags").contains { $0.name == "hidden" }
+            var sql = """
+            SELECT id, tag, color, description, \(hasHidden ? "hidden" : "0 AS hidden"), tombstone
+            FROM tags
+            WHERE (tombstone = 0 OR tombstone IS NULL)
+            """
+            if !includeHidden, hasHidden {
+                sql += " AND (hidden = 0 OR hidden IS NULL)"
+            }
+            sql += " ORDER BY tag COLLATE NOCASE ASC"
+            return try Row.fetchAll(db, sql: sql).map { row in
+                Tag(
+                    id: row["id"],
+                    tag: row["tag"] ?? "",
+                    color: row["color"],
+                    description: row["description"],
+                    hidden: (row["hidden"] as Int? ?? 0) != 0,
+                    tombstone: (row["tombstone"] as Int? ?? 0) != 0
+                )
+            }
+        }
+    }
+
+    func insertTag(_ tag: Tag) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+            INSERT INTO tags (id, tag, color, description, hidden, tombstone)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, arguments: [
+                tag.id,
+                tag.tag,
+                tag.color,
+                tag.description,
+                tag.hidden ? 1 : 0,
+                tag.tombstone ? 1 : 0,
+            ])
+        }
+    }
+
+    func updateTag(_ tag: Tag) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+            UPDATE tags
+            SET tag = ?, color = ?, description = ?, hidden = ?, tombstone = ?
+            WHERE id = ?
+            """, arguments: [
+                tag.tag,
+                tag.color,
+                tag.description,
+                tag.hidden ? 1 : 0,
+                tag.tombstone ? 1 : 0,
+                tag.id,
+            ])
+        }
+    }
+
+    func deleteTag(id: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE tags SET tombstone = 1 WHERE id = ?",
+                arguments: [id]
+            )
+        }
+    }
+
+    /// Upstream parity: renaming a tag updates the `tags` row AND rewrites
+    /// all occurrences of `#oldName` to `#newName` in transaction notes.
+    /// Returns the affected transaction IDs and their new notes so callers
+    /// can generate CRDT messages for both the tag and the modified transactions.
+    func renameTag(id: String, oldName: String, newName: String) throws -> [(transactionId: String, newNotes: String)] {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE tags SET tag = ? WHERE id = ?",
+                arguments: [newName, id]
+            )
+
+            // Upstream regex: (?<!#)#oldName([\s#]|$)
+            let escapedOld = NSRegularExpression.escapedPattern(for: oldName)
+            let regex = try NSRegularExpression(pattern: "(?<!#)#\(escapedOld)([\\s#]|$)")
+
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT id, notes FROM transactions
+            WHERE notes LIKE ? AND (tombstone = 0 OR tombstone IS NULL)
+            """, arguments: ["%#\(oldName)%"])
+
+            var updated: [(transactionId: String, newNotes: String)] = []
+            for row in rows {
+                guard let txId: String = row["id"], let notes: String = row["notes"] else { continue }
+                let range = NSRange(notes.startIndex..., in: notes)
+                let replaced = regex.stringByReplacingMatches(
+                    in: notes,
+                    range: range,
+                    withTemplate: "#\(newName)$1"
+                )
+                if replaced != notes {
+                    try db.execute(
+                        sql: "UPDATE transactions SET notes = ? WHERE id = ?",
+                        arguments: [replaced, txId]
+                    )
+                    updated.append((txId, replaced))
+                }
+            }
+            return updated
+        }
+    }
+
+    /// Discovers all unique tag names from transaction notes that aren't yet
+    /// present in the `tags` table (active or tombstoned).
+    func discoverTags() async throws -> [String] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("tags") else { return [] }
+            let existingTags: Set<String> = try Set(
+                String.fetchAll(db, sql: "SELECT LOWER(tag) FROM tags")
+            )
+            let noteRows = try String.fetchAll(db, sql: """
+            SELECT notes FROM transactions
+            WHERE notes LIKE '%#%' AND (tombstone = 0 OR tombstone IS NULL)
+            """)
+            var discovered = Set<String>()
+            var order: [String] = []
+            for note in noteRows {
+                for rawTag in TagFilter.extractHashtags(from: note) {
+                    let normalized = Tag.normalizeTagName(rawTag)
+                    guard Tag.isValidTagName(normalized) else { continue }
+                    let lower = normalized.lowercased()
+                    if !existingTags.contains(lower), !discovered.contains(lower) {
+                        discovered.insert(lower)
+                        order.append(normalized)
+                    }
+                }
+            }
+            return order
+        }
+    }
+
+    /// Aggregates transaction count and total spend for all tags.
+    func fetchTagSummaries() async throws -> [TagSummary] {
+        let allTags = try await fetchTags(includeHidden: true)
+        guard !allTags.isEmpty else { return [] }
+
+        return try await dbQueue.read { db in
+            // ponytail: Scan transactions with notes once in memory to compute all tag aggregations
+            // in O(tags * txs_with_notes), which is sub-millisecond for typical personal budgets.
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT id, amount, notes, date
+            FROM transactions
+            WHERE notes IS NOT NULL AND notes != ''
+              AND (tombstone = 0 OR tombstone IS NULL)
+              AND (isChild = 0 OR isChild IS NULL)
+            """)
+
+            struct TxInfo {
+                let amount: Int
+                let notes: String
+                let date: DayDate?
+            }
+
+            let transactionsWithNotes: [TxInfo] = rows.compactMap { row in
+                guard let notes: String = row["notes"], !notes.isEmpty else { return nil }
+                let amount: Int = row["amount"] ?? 0
+                let dateInt: Int? = row["date"]
+                let date = dateInt.flatMap { DayDate(yyyymmdd: $0) }
+                return TxInfo(amount: amount, notes: notes, date: date)
+            }
+
+            return allTags.map { tag in
+                let needle = "#\(tag.tag)"
+                var count = 0
+                var spent = 0
+                var net = 0
+                var minDate: DayDate?
+                var maxDate: DayDate?
+
+                for tx in transactionsWithNotes {
+                    if TagFilter.notesContainTag(tx.notes, tag: needle, caseSensitive: false) {
+                        count += 1
+                        net += tx.amount
+                        if tx.amount < 0 {
+                            spent += -tx.amount
+                        }
+                        if let d = tx.date {
+                            if minDate == nil || d < minDate! { minDate = d }
+                            if maxDate == nil || d > maxDate! { maxDate = d }
+                        }
+                    }
+                }
+
+                return TagSummary(
+                    tag: tag,
+                    transactionCount: count,
+                    totalSpent: spent,
+                    netAmount: net,
+                    earliestDate: minDate,
+                    latestDate: maxDate
+                )
+            }
+        }
     }
 }

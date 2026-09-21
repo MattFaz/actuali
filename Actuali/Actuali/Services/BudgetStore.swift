@@ -41,6 +41,10 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case ruleOwnedBySchedule
     case ruleNotSerializable
     case bankSyncNotConfigured
+    case invalidTagName
+    case tagAlreadyExists
+    case tagCreationFailed(String)
+    case tagUpdateFailed(String)
 
     var errorDescription: String? {
         message(locale: .autoupdatingCurrent)
@@ -143,6 +147,18 @@ enum BudgetStoreError: LocalizedError, Equatable {
             ReportStrings.text("error.ruleNotSerializable", locale: locale, bundle: bundle)
         case .bankSyncNotConfigured:
             ReportStrings.text("error.bankSyncNotConfigured", locale: locale, bundle: bundle)
+        case .invalidTagName:
+            ReportStrings.text("error.invalidTagName", locale: locale, bundle: bundle)
+        case .tagAlreadyExists:
+            ReportStrings.text("error.tagAlreadyExists", locale: locale, bundle: bundle)
+        case .tagCreationFailed(let message):
+            ReportStrings.format(
+                "error.tagCreationFailed %@", message, locale: locale, bundle: bundle
+            )
+        case .tagUpdateFailed(let message):
+            ReportStrings.format(
+                "error.tagUpdateFailed %@", message, locale: locale, bundle: bundle
+            )
         }
     }
 }
@@ -259,6 +275,8 @@ final class BudgetStore: ObservableObject {
     @Published var uncategorizedCount: Int = 0
     @Published var categoryGroups: [CategoryGroup] = []
     @Published var payees: [Payee] = []
+    @Published var tags: [Tag] = []
+    @Published var tagSummaries: [TagSummary] = []
     @Published var schedules: [ScheduleSummary] = []
     @Published var upcomingScheduledTransactionLength: String?
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
@@ -1972,6 +1990,8 @@ final class BudgetStore: ObservableObject {
         uncategorizedCount = 0
         categoryGroups = []
         payees = []
+        tags = []
+        tagSummaries = []
         lastSyncTime = nil
         syncState = .idle
         // No budget left to catch up — an in-flight initial sync's banner must
@@ -2334,6 +2354,7 @@ final class BudgetStore: ObservableObject {
             let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
+            let fetchedTags = (try? await openedDb.fetchTags(includeHidden: true)) ?? []
             let currentMonth = currentMonthString()
             let displayedMonth = budgetMonthRequestGeneration == monthRequestGenerationBeforeLoad
                 ? lastViewedBudgetMonth ?? currentMonth
@@ -2423,9 +2444,13 @@ final class BudgetStore: ObservableObject {
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             goalTemplatesEnabled = fetchedGoalTemplatesFlag
             goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
+            tags = fetchedTags
             dataVersion += 1
             publishWidgetSnapshot()
             published = true
+            Task { [weak self] in
+                await self?.refreshTagSummaries()
+            }
 
             // Linked feeds drive the sync buttons in the accounts UI. Without
             // this, a fresh launch hides them until something else happens to
@@ -2538,6 +2563,8 @@ final class BudgetStore: ObservableObject {
                 uncategorizedCount = 0
                 categoryGroups = []
                 payees = []
+                tags = []
+                tagSummaries = []
                 dataVersion += 1
                 clearWidgetSnapshot()
             }
@@ -2620,6 +2647,8 @@ final class BudgetStore: ObservableObject {
             let fetchedUncategorizedCount = try await database.fetchUncategorizedCount()
             let fetchedGroups = try await database.fetchCategoryGroups()
             let fetchedPayees = try await database.fetchPayees()
+            let fetchedTags = (try? await database.fetchTags(includeHidden: true)) ?? []
+            let fetchedTagSummaries = (try? await database.fetchTagSummaries()) ?? []
             let currentMonth = currentMonthString()
             // `currentBudgetMonth` follows the month BudgetView is browsing.
             // Foreground sync must not silently replace a historical month
@@ -2668,6 +2697,8 @@ final class BudgetStore: ObservableObject {
             uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
+            tags = fetchedTags
+            tagSummaries = fetchedTagSummaries
             // A month selected while these reads were in flight owns the
             // Budget tab now. Its fetch publishes separately, while the rest
             // of this valid refresh snapshot must still reach the app.
@@ -2819,6 +2850,104 @@ final class BudgetStore: ObservableObject {
         payees.append(newPayee)
 
         return newPayee
+    }
+
+    // MARK: - Tags
+
+    /// Creates a new managed tag. Validates name, checks uniqueness, saves to DB,
+    /// emits CRDT messages, and triggers background sync.
+    @discardableResult
+    func createTag(
+        name: String,
+        color: String? = nil,
+        description: String? = nil
+    ) async throws -> Tag {
+        let normalized = Tag.normalizeTagName(name)
+        guard Tag.isValidTagName(normalized) else {
+            throw BudgetStoreError.invalidTagName
+        }
+        if tags.contains(where: { $0.tag.lowercased() == normalized.lowercased() }) {
+            throw BudgetStoreError.tagAlreadyExists
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        do {
+            let tag = try await syncClient.createTag(
+                name: normalized,
+                color: color,
+                description: description
+            )
+            await refreshDataOnly()
+            return tag
+        } catch {
+            throw BudgetStoreError.tagCreationFailed(error.localizedDescription)
+        }
+    }
+
+    /// Updates metadata (color, description, hidden status) for an existing tag.
+    func updateTag(_ tag: Tag) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        do {
+            try await syncClient.updateTag(tag)
+            await refreshDataOnly()
+        } catch {
+            throw BudgetStoreError.tagUpdateFailed(error.localizedDescription)
+        }
+    }
+
+    /// Soft-deletes a tag from the managed list without altering existing transaction notes.
+    func deleteTag(id: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        do {
+            try await syncClient.deleteTag(id: id)
+            await refreshDataOnly()
+        } catch {
+            throw BudgetStoreError.tagUpdateFailed(error.localizedDescription)
+        }
+    }
+
+    /// Renames a tag and rewrites all occurrences of `#oldName` to `#newName` in transaction notes.
+    func renameTag(id: String, oldName: String, newName: String) async throws {
+        let normalizedNew = Tag.normalizeTagName(newName)
+        guard Tag.isValidTagName(normalizedNew) else {
+            throw BudgetStoreError.invalidTagName
+        }
+        if tags.contains(where: { $0.id != id && $0.tag.lowercased() == normalizedNew.lowercased() }) {
+            throw BudgetStoreError.tagAlreadyExists
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        do {
+            try await syncClient.renameTag(id: id, oldName: oldName, newName: normalizedNew)
+            await refreshDataOnly()
+        } catch {
+            throw BudgetStoreError.tagUpdateFailed(error.localizedDescription)
+        }
+    }
+
+    /// Discovers any `#tag` patterns used in transaction notes that aren't yet in the managed tags table.
+    @discardableResult
+    func discoverTags() async throws -> [Tag] {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        let created = try await syncClient.importDiscoveredTags()
+        if !created.isEmpty {
+            await refreshDataOnly()
+        }
+        return created
+    }
+
+    /// Refresh tag summaries without a full budget reload.
+    func refreshTagSummaries() async {
+        guard let database else { return }
+        tagSummaries = (try? await database.fetchTagSummaries()) ?? []
     }
 
     // MARK: - Accounts
