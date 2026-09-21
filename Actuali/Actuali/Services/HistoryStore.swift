@@ -128,6 +128,18 @@ final class HistoryStore: ObservableObject {
         errorTitle = String(localized: "Couldn't Undo")
     }
 
+    /// Drop a budget's persisted actions. Actions live in UserDefaults keyed
+    /// by budget id, so they survive the budget's files being recreated from
+    /// scratch (demo reseed); clear them or the fresh budget opens with
+    /// history recorded against the previous copy.
+    func clearPersistedActions(budgetID: String) {
+        defaults.removeObject(forKey: key(budgetID))
+        guard loadedBudgetID == budgetID else { return }
+        actions = []
+        errorMessage = nil
+        errorTitle = String(localized: "Couldn't Undo")
+    }
+
     func recordSnapshots(
         budgetID: String,
         kind: HistoryActionKind,
