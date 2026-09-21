@@ -8,12 +8,11 @@ import Testing
 /// pages, and ignores stale in-flight loads after a reset.
 @MainActor
 struct TransactionPagerTests {
-
     private func makeTxn(_ id: String) -> Transaction {
         Transaction(
             id: id,
             accountId: "acct-1",
-            date: 20260601,
+            date: 20_260_601,
             amount: -1000,
             payeeId: nil,
             payeeName: nil,

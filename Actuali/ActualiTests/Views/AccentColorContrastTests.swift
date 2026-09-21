@@ -1,6 +1,5 @@
 import Testing
 import UIKit
-
 @testable import Actuali
 
 /// The accent color is the app's global tint, so it lands on top of every

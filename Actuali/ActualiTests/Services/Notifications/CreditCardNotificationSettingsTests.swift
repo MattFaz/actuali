@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct CreditCardNotificationSettingsTests {
-
     private func makeDefaults() -> UserDefaults {
         let name = "CreditCardNotificationSettingsTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!

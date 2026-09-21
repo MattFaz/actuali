@@ -1,10 +1,9 @@
+import CryptoKit
 import Foundation
 import Testing
-import CryptoKit
 @testable import Actuali
 
 struct EncryptionKeyManagerTests {
-
     private struct Fixture: Codable {
         let password: String
         let wrongPassword: String
@@ -18,13 +17,14 @@ struct EncryptionKeyManagerTests {
         let url = Bundle(for: BundleToken.self).url(forResource: "encryption-key-fixture", withExtension: "json")!
         return try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
     }
+
     private final class BundleToken {}
 
     @Test func derivesKeyMatchingActualConvention() throws {
         let fx = try loadFixture()
         let key = SyncEncryption.deriveKey(password: fx.password, salt: Data(fx.salt.utf8))
         let derived = key.withUnsafeBytes { Data($0).base64EncodedString() }
-        #expect(derived == fx.derivedKeyBase64)  // locks in the UTF-8-salt convention vs Actual
+        #expect(derived == fx.derivedKeyBase64) // locks in the UTF-8-salt convention vs Actual
     }
 
     @Test func validatesCorrectPassword() throws {

@@ -10,14 +10,19 @@ private final class BridgeTransport: URLProtocol {
 
     static func makeSession(body: String) -> URLSession {
         Self.body = body
-        Self.requestedURLs = []
+        requestedURLs = []
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BridgeTransport.self]
         return URLSession(configuration: configuration)
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         Self.requestedURLs.append(request.url!)
@@ -39,14 +44,19 @@ private final class ServerTransport: URLProtocol {
 
     static func makeSession(_ bodies: [String: String]) -> URLSession {
         Self.bodies = bodies
-        Self.requestedPaths = []
+        requestedPaths = []
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ServerTransport.self]
         return URLSession(configuration: configuration)
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         let path = request.url?.path ?? ""
@@ -69,7 +79,6 @@ private final class ServerTransport: URLProtocol {
 @MainActor
 @Suite(.serialized)
 struct BudgetStoreBankSyncTests {
-
     private static let accountId = "acct-1"
     private static let externalAccountId = "sf-acct-1"
     private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
@@ -93,7 +102,7 @@ struct BudgetStoreBankSyncTests {
     /// Timestamps relative to now, so the download always lands inside the
     /// 90-day sync window however long this test lives.
     private static func daysAgo(_ days: Int) -> Int {
-        Int(Date().timeIntervalSince1970) - days * 86_400
+        Int(Date().timeIntervalSince1970) - days * 86400
     }
 
     private static func expectedDay(_ days: Int) -> Int {
@@ -137,7 +146,7 @@ struct BudgetStoreBankSyncTests {
                     amount: Decimal(string: "12.00")!, isCredit: false,
                     merchantName: "Corner Store", description: "CORNER STORE",
                     status: .booked, date: Self.dateDaysAgo(3)
-                )
+                ),
             ]]
         )
     }
@@ -168,87 +177,87 @@ struct BudgetStoreBankSyncTests {
                 )
             """)
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    schedule TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT
-                )
-                """)
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY,
+                starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
+                acct TEXT,
+                category TEXT,
+                amount INTEGER,
+                description TEXT,
+                notes TEXT,
+                date INTEGER,
+                imported_description TEXT,
+                financial_id TEXT,
+                transferred_id TEXT,
+                schedule TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                parent_id TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE payees (
+                id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)")
             try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
             try db.execute(sql: """
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                )
-                """)
+            CREATE TABLE category_mapping (
+                id TEXT PRIMARY KEY,
+                transferId TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    cat_group TEXT,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE categories (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                cat_group TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE rules (
-                    id TEXT PRIMARY KEY,
-                    stage TEXT,
-                    conditions TEXT,
-                    actions TEXT,
-                    tombstone INTEGER DEFAULT 0,
-                    conditions_op TEXT DEFAULT 'and'
-                )
-                """)
+            CREATE TABLE rules (
+                id TEXT PRIMARY KEY,
+                stage TEXT,
+                conditions TEXT,
+                actions TEXT,
+                tombstone INTEGER DEFAULT 0,
+                conditions_op TEXT DEFAULT 'and'
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE banks (
-                    id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE banks (
+                id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
             try db.execute(sql: """
-                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order,
-                                      account_id, account_sync_source)
-                VALUES (?, 'Checking', 'checking', 0, 0, 0, 1, ?, 'simpleFin')
-                """, arguments: [accountId, Self.externalAccountId])
+            INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order,
+                                  account_id, account_sync_source)
+            VALUES (?, 'Checking', 'checking', 0, 0, 0, 1, ?, 'simpleFin')
+            """, arguments: [accountId, Self.externalAccountId])
             if seedTransactions {
                 try db.execute(sql: """
-                    INSERT INTO transactions (id, acct, date, amount, cleared, tombstone, sort_order)
-                    VALUES ('tx-manual', ?, ?, -3345, 0, 0, 1)
-                    """, arguments: [accountId, Self.expectedDay(6)])
+                INSERT INTO transactions (id, acct, date, amount, cleared, tombstone, sort_order)
+                VALUES ('tx-manual', ?, ?, -3345, 0, 0, 1)
+                """, arguments: [accountId, Self.expectedDay(6)])
             }
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func seedDeletedTransaction(
@@ -262,11 +271,11 @@ struct BudgetStoreBankSyncTests {
         let date = Self.expectedDay(daysAgo)
         try await queue.write { db in
             try db.execute(sql: """
-                INSERT INTO transactions
-                    (id, acct, date, amount, imported_description, financial_id,
-                     tombstone, cleared, sort_order)
-                VALUES ('tx-deleted', ?, ?, -3345, 'Deleted Merchant', ?, 1, 1, 1)
-                """, arguments: [accountId, date, importedId])
+            INSERT INTO transactions
+                (id, acct, date, amount, imported_description, financial_id,
+                 tombstone, cleared, sort_order)
+            VALUES ('tx-deleted', ?, ?, -3345, 'Deleted Merchant', ?, 1, 1, 1)
+            """, arguments: [accountId, date, importedId])
             if disableReimport {
                 try db.execute(
                     sql: "INSERT INTO preferences (id, value) VALUES (?, 'false')",
@@ -292,8 +301,8 @@ struct BudgetStoreBankSyncTests {
         store.setSimpleFINClientForTesting(
             SimpleFINClient(session: BridgeTransport.makeSession(body: responseBody))
         )
-        store.setSimpleFINAccessKeyForTesting(hasAccessKey
-            ? try SimpleFINAccessKey.parse("https://demo:demo@bridge.example.com/simplefin")
+        try store.setSimpleFINAccessKeyForTesting(hasAccessKey
+            ? SimpleFINAccessKey.parse("https://demo:demo@bridge.example.com/simplefin")
             : nil)
         if let walletStore {
             store.setAppleWalletStoreForTesting(walletStore)
@@ -317,9 +326,9 @@ struct BudgetStoreBankSyncTests {
         let accountId = Self.walletAccountId
         try queue.write { db in
             try db.execute(sql: """
-                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
-                VALUES (?, 'Apple Card', 'credit', 0, 0, 0, 2)
-                """, arguments: [accountId])
+            INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+            VALUES (?, 'Apple Card', 'credit', 0, 0, 0, 2)
+            """, arguments: [accountId])
         }
     }
 
@@ -453,11 +462,11 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45",
-             "payee": "Blue Bottle", "description": "BLUE BOTTLE COFFEE"},
-            {"id": "sf-2", "posted": 0, "pending": true, "transacted_at": \(Self.daysAgo(1)),
-             "amount": "-12.00", "description": "Corner Store"}
-            """))
+        {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45",
+         "payee": "Blue Bottle", "description": "BLUE BOTTLE COFFEE"},
+        {"id": "sf-2", "posted": 0, "pending": true, "transacted_at": \(Self.daysAgo(1)),
+         "amount": "-12.00", "description": "Corner Store"}
+        """))
 
         let result = try await store.syncBankAccounts()
 
@@ -503,8 +512,8 @@ struct BudgetStoreBankSyncTests {
 
         store.setSimpleFINClientForTesting(
             SimpleFINClient(session: BridgeTransport.makeSession(body: accountSet(transactions: """
-                {"id": "sf-hook-leak", "posted": \(Self.daysAgo(1)), "amount": "-10.00", "payee": "Hook Leak"}
-                """)))
+            {"id": "sf-hook-leak", "posted": \(Self.daysAgo(1)), "amount": "-10.00", "payee": "Hook Leak"}
+            """)))
         )
         _ = try await store.syncBankAccounts()
         #expect(hookCalls == 0)
@@ -515,13 +524,13 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
-                VALUES ('import-rule', '[{"op":"contains","field":"imported_description","value":"Rule Retry Merchant"}]', '[{"op":"set","field":"category","value":"cat-old"}]', 0, 'and')
-                """)
+            INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+            VALUES ('import-rule', '[{"op":"contains","field":"imported_description","value":"Rule Retry Merchant"}]', '[{"op":"set","field":"category","value":"cat-old"}]', 0, 'and')
+            """)
         }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-rule-retry", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Rule Retry Merchant"}
-            """))
+        {"id": "sf-rule-retry", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Rule Retry Merchant"}
+        """))
         store.bankSyncBeforeMaterializationHook = {
             try! database.dbQueueForTesting.write { db in
                 try db.execute(
@@ -553,9 +562,9 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let body = accountSet(transactions: """
-            {"id": "sf-shared-payee-1", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "New Merchant"},
-            {"id": "sf-shared-payee-2", "posted": \(Self.daysAgo(4)), "amount": "-12.00", "payee": "NEW MERCHANT"}
-            """)
+        {"id": "sf-shared-payee-1", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "New Merchant"},
+        {"id": "sf-shared-payee-2", "posted": \(Self.daysAgo(4)), "amount": "-12.00", "payee": "NEW MERCHANT"}
+        """)
         let store = try await makeStore(database: database, responseBody: body)
 
         let first = try await store.syncBankAccounts()
@@ -592,7 +601,7 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
-        let importStart = 20240115
+        let importStart = 20_240_115
         store.setBankSyncImportStartDay(importStart)
 
         let first = try await store.syncBankAccounts()
@@ -600,7 +609,7 @@ struct BudgetStoreBankSyncTests {
         #expect(first.added == 1)
         let opening = try rows(path: url, where: "starting_balance_flag = 1")
         #expect(opening.count == 1)
-        #expect(opening[0]["amount"] == 10_000)
+        #expect(opening[0]["amount"] == 10000)
         #expect(opening[0]["date"] == importStart)
         #expect(try row(path: url, sql: "SELECT bank_sync_status FROM accounts WHERE id = ?", arguments: [Self.accountId])?["bank_sync_status"] as String? == "ok")
 
@@ -614,7 +623,7 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(balance: "0.00", transactions: ""))
-        store.setBankSyncImportStartDay(20240115)
+        store.setBankSyncImportStartDay(20_240_115)
 
         let result = try await store.syncBankAccounts()
 
@@ -626,20 +635,20 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let body = accountSet(transactions: """
-            {"id": "sf-atomic-first", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Deferred Merchant"}
-            """)
+        {"id": "sf-atomic-first", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Deferred Merchant"}
+        """)
         let store = try await makeStore(database: database, responseBody: body)
         store.setBankSyncImportStartDay(Self.expectedDay(30))
         let queue = database.dbQueueForTesting
         try await queue.write { db in
             try db.execute(sql: """
-                CREATE TRIGGER reject_bank_opening_insert
-                BEFORE INSERT ON transactions
-                WHEN NEW.starting_balance_flag = 1
-                BEGIN
-                    SELECT RAISE(ABORT, 'blocked opening balance');
-                END
-                """)
+            CREATE TRIGGER reject_bank_opening_insert
+            BEFORE INSERT ON transactions
+            WHEN NEW.starting_balance_flag = 1
+            BEGIN
+                SELECT RAISE(ABORT, 'blocked opening balance');
+            END
+            """)
         }
 
         let failed = try await store.syncBankAccounts()
@@ -682,8 +691,8 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let firstBody = accountSet(balance: "100.00", transactions: """
-            {"id": "sf-atomic-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
-            """)
+        {"id": "sf-atomic-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+        """)
         let store = try await makeStore(database: database, responseBody: firstBody)
         store.setBankSyncImportStartDay(Self.expectedDay(30))
         _ = try await store.syncBankAccounts()
@@ -698,20 +707,20 @@ struct BudgetStoreBankSyncTests {
 
         store.setSimpleFINClientForTesting(
             SimpleFINClient(session: BridgeTransport.makeSession(body: accountSet(balance: "100.00", transactions: """
-                {"id": "sf-atomic-old", "posted": \(Self.daysAgo(10)), "amount": "-7.00", "payee": "Older Merchant"},
-                {"id": "sf-atomic-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
-                """)))
+            {"id": "sf-atomic-old", "posted": \(Self.daysAgo(10)), "amount": "-7.00", "payee": "Older Merchant"},
+            {"id": "sf-atomic-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+            """)))
         )
         let queue = database.dbQueueForTesting
         try await queue.write { db in
             try db.execute(sql: """
-                CREATE TRIGGER reject_bank_opening_update
-                BEFORE UPDATE OF amount ON transactions
-                WHEN OLD.starting_balance_flag = 1
-                BEGIN
-                    SELECT RAISE(ABORT, 'blocked opening adjustment');
-                END
-                """)
+            CREATE TRIGGER reject_bank_opening_update
+            BEFORE UPDATE OF amount ON transactions
+            WHEN OLD.starting_balance_flag = 1
+            BEGIN
+                SELECT RAISE(ABORT, 'blocked opening adjustment');
+            END
+            """)
         }
 
         let failed = try await store.syncBankAccounts()
@@ -754,9 +763,9 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let body = accountSet(transactions: """
-            {"id": "sf-identical", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
-            {"id": "sf-identical", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
-            """)
+        {"id": "sf-identical", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
+        {"id": "sf-identical", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+        """)
         let store = try await makeStore(database: database, responseBody: body)
 
         let first = try await store.syncBankAccounts()
@@ -767,7 +776,7 @@ struct BudgetStoreBankSyncTests {
         #expect(try row(
             path: url,
             sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
-        )?["amount"] as Int? == 16_690)
+        )?["amount"] as Int? == 16690)
 
         let second = try await store.syncBankAccounts()
 
@@ -780,9 +789,9 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-conflict", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
-            {"id": "sf-conflict", "posted": \(Self.daysAgo(5)), "amount": "-34.45", "payee": "Blue Bottle"}
-            """))
+        {"id": "sf-conflict", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
+        {"id": "sf-conflict", "posted": \(Self.daysAgo(5)), "amount": "-34.45", "payee": "Blue Bottle"}
+        """))
 
         let result = try await store.syncBankAccounts()
 
@@ -815,14 +824,14 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let body = accountSet(transactions: """
-            {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
-            """)
+        {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+        """)
         let store = try await makeStore(database: database, responseBody: body)
 
         let first = try await store.syncBankAccounts()
         let second = try await store.syncBankAccounts()
 
-        #expect(first.added == 2)  // the download and the opening balance
+        #expect(first.added == 2) // the download and the opening balance
         #expect(second.added == 0)
         #expect(second.updated == 0)
         #expect(try rows(path: url, where: "financial_id = 'sf-1'").count == 1)
@@ -833,9 +842,9 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url)
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-deleted", "posted": \(Self.daysAgo(5)),
-             "amount": "-33.45", "payee": "Deleted Merchant"}
-            """))
+        {"id": "sf-deleted", "posted": \(Self.daysAgo(5)),
+         "amount": "-33.45", "payee": "Deleted Merchant"}
+        """))
 
         let result = try await store.syncBankAccounts()
 
@@ -852,7 +861,7 @@ struct BudgetStoreBankSyncTests {
         #expect(try row(
             path: url,
             sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
-        )?["amount"] as Int? == 10_000)
+        )?["amount"] as Int? == 10000)
     }
 
     @Test func disabledReimportKeepsRepeatedSimpleFINRecordsAbsentAcrossSyncs() async throws {
@@ -860,11 +869,11 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url, importedId: "sf-duplicate")
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-duplicate", "posted": \(Self.daysAgo(5)),
-             "amount": "-33.45", "payee": "Deleted Merchant"},
-            {"id": "sf-duplicate", "posted": \(Self.daysAgo(5)),
-             "amount": "-33.45", "payee": "Deleted Merchant"}
-            """))
+        {"id": "sf-duplicate", "posted": \(Self.daysAgo(5)),
+         "amount": "-33.45", "payee": "Deleted Merchant"},
+        {"id": "sf-duplicate", "posted": \(Self.daysAgo(5)),
+         "amount": "-33.45", "payee": "Deleted Merchant"}
+        """))
 
         let first = try await store.syncBankAccounts()
 
@@ -886,9 +895,9 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url, disableReimport: false)
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-deleted", "posted": \(Self.daysAgo(5)),
-             "amount": "-33.45", "payee": "Deleted Merchant"}
-            """))
+        {"id": "sf-deleted", "posted": \(Self.daysAgo(5)),
+         "amount": "-33.45", "payee": "Deleted Merchant"}
+        """))
 
         let result = try await store.syncBankAccounts()
 
@@ -904,9 +913,9 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url, importedId: "sf-old-id")
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-new-id", "posted": \(Self.daysAgo(5)),
-             "amount": "-33.45", "payee": "Deleted Merchant"}
-            """))
+        {"id": "sf-new-id", "posted": \(Self.daysAgo(5)),
+         "amount": "-33.45", "payee": "Deleted Merchant"}
+        """))
 
         let result = try await store.syncBankAccounts()
 
@@ -924,9 +933,9 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url)
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-new-charge", "posted": \(Self.daysAgo(8)),
-             "amount": "-33.45", "payee": "New Merchant"}
-            """))
+        {"id": "sf-new-charge", "posted": \(Self.daysAgo(8)),
+         "amount": "-33.45", "payee": "New Merchant"}
+        """))
 
         let result = try await store.syncBankAccounts()
 
@@ -941,9 +950,9 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url, daysAgo: 13)
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-deleted", "posted": \(Self.daysAgo(5)),
-             "amount": "-33.45", "payee": "Deleted Merchant"}
-            """))
+        {"id": "sf-deleted", "posted": \(Self.daysAgo(5)),
+         "amount": "-33.45", "payee": "Deleted Merchant"}
+        """))
 
         let result = try await store.syncBankAccounts()
 
@@ -958,8 +967,8 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase(seedTransactions: true)
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
-            """))
+        {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+        """))
 
         let result = try await store.syncBankAccounts()
 
@@ -991,14 +1000,14 @@ struct BudgetStoreBankSyncTests {
             // The decoy sits on the candidate's own date; only the payee pass
             // reaches past it to the row two days away.
             try db.execute(sql: """
-                INSERT INTO transactions (id, acct, date, amount, description, cleared, sort_order)
-                VALUES ('tx-payee', ?, ?, -3345, 'payee-blue', 0, 1),
-                       ('tx-decoy', ?, ?, -3345, NULL, 0, 2)
-                """, arguments: [accountId, payeeDay, accountId, decoyDay])
+            INSERT INTO transactions (id, acct, date, amount, description, cleared, sort_order)
+            VALUES ('tx-payee', ?, ?, -3345, 'payee-blue', 0, 1),
+                   ('tx-decoy', ?, ?, -3345, NULL, 0, 2)
+            """, arguments: [accountId, payeeDay, accountId, decoyDay])
         }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "BLUE BOTTLE"}
-            """))
+        {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "BLUE BOTTLE"}
+        """))
 
         let result = try await store.syncBankAccounts()
 
@@ -1013,17 +1022,17 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
-            """))
+        {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+        """))
 
         _ = try await store.syncBankAccounts()
 
         let queue = try DatabaseQueue(path: url.path)
         let financialIdMessages = try await queue.read { db in
             try Int.fetchOne(db, sql: """
-                SELECT COUNT(*) FROM messages_crdt
-                WHERE dataset = 'transactions' AND column = 'financial_id'
-                """) ?? 0
+            SELECT COUNT(*) FROM messages_crdt
+            WHERE dataset = 'transactions' AND column = 'financial_id'
+            """) ?? 0
         }
         #expect(financialIdMessages == 1)
     }
@@ -1033,16 +1042,16 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
-                VALUES ('suppress-coffee',
-                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
-                    '[{"op":"delete-transaction","value":null}]', 0, 'and')
-                """)
+            INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+            VALUES ('suppress-coffee',
+                '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                '[{"op":"delete-transaction","value":null}]', 0, 'and')
+            """)
         }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-suppressed", "posted": \(Self.daysAgo(5)),
-             "amount": "-33.45", "payee": "Coffee"}
-            """))
+        {"id": "sf-suppressed", "posted": \(Self.daysAgo(5)),
+         "amount": "-33.45", "payee": "Coffee"}
+        """))
 
         let result = try await store.syncBankAccounts()
 
@@ -1052,10 +1061,10 @@ struct BudgetStoreBankSyncTests {
         #expect(try rows(path: url, where: "financial_id = 'sf-suppressed'").isEmpty)
         #expect(try row(path: url, sql: "SELECT id FROM payees WHERE name = 'Coffee'") == nil)
         #expect(try row(path: url, sql: """
-            SELECT COALESCE(SUM(amount), 0) AS balance
-            FROM transactions
-            WHERE acct = ? AND (tombstone = 0 OR tombstone IS NULL)
-            """, arguments: [Self.accountId])?["balance"] as Int? == 10_000)
+        SELECT COALESCE(SUM(amount), 0) AS balance
+        FROM transactions
+        WHERE acct = ? AND (tombstone = 0 OR tombstone IS NULL)
+        """, arguments: [Self.accountId])?["balance"] as Int? == 10000)
     }
 
     @Test func automaticBankSyncReturnsPersistedRuleMutatedTransaction() async throws {
@@ -1063,30 +1072,30 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
-                VALUES ('set-rule-note',
-                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
-                    '[{"op":"set","field":"notes","value":"Rule note"},{"op":"set","field":"amount","value":5000}]', 0, 'and')
-                """)
+            INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+            VALUES ('set-rule-note',
+                '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                '[{"op":"set","field":"notes","value":"Rule note"},{"op":"set","field":"amount","value":5000}]', 0, 'and')
+            """)
         }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-rule-mutated", "posted": \(Self.daysAgo(5)),
-             "amount": "-33.45", "payee": "Coffee"}
-            """))
+        {"id": "sf-rule-mutated", "posted": \(Self.daysAgo(5)),
+         "amount": "-33.45", "payee": "Coffee"}
+        """))
 
         let result = try await store.syncBankAccounts()
 
         let imported = try #require(result.importedTransactions.first)
         #expect(imported.notes == "Rule note")
-        #expect(imported.amount == 5_000)
+        #expect(imported.amount == 5000)
         let persistedRow = try #require(try rows(path: url, where: "financial_id = 'sf-rule-mutated'").first)
         #expect(persistedRow["notes"] as String? == imported.notes)
-        #expect(persistedRow["amount"] as Int? == 5_000)
-        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == 5_000)
+        #expect(persistedRow["amount"] as Int? == 5000)
+        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == 5000)
         #expect(try row(path: url, sql: """
-            SELECT value FROM messages_crdt
-            WHERE dataset = 'transactions' AND row = ? AND column = 'notes'
-            """, arguments: [imported.id])?["value"] as String? == "S:Rule note")
+        SELECT value FROM messages_crdt
+        WHERE dataset = 'transactions' AND row = ? AND column = 'notes'
+        """, arguments: [imported.id])?["value"] as String? == "S:Rule note")
     }
 
     @Test func ruleMovingImportedTransactionDoesNotAffectSourceOpeningBalance() async throws {
@@ -1095,20 +1104,20 @@ struct BudgetStoreBankSyncTests {
         let movedAccountId = "acct-2"
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
-                VALUES (?, 'Savings', 'checking', 0, 0, 0, 2)
-                """, arguments: [movedAccountId])
+            INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+            VALUES (?, 'Savings', 'checking', 0, 0, 0, 2)
+            """, arguments: [movedAccountId])
             try db.execute(sql: """
-                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
-                VALUES ('move-imported-transaction',
-                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
-                    '[{"op":"set","field":"acct","value":"acct-2"}]', 0, 'and')
-                """)
+            INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+            VALUES ('move-imported-transaction',
+                '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                '[{"op":"set","field":"acct","value":"acct-2"}]', 0, 'and')
+            """)
         }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-moved", "posted": \(Self.daysAgo(5)),
-             "amount": "-33.45", "payee": "Coffee"}
-            """))
+        {"id": "sf-moved", "posted": \(Self.daysAgo(5)),
+         "amount": "-33.45", "payee": "Coffee"}
+        """))
 
         let first = try await store.syncBankAccounts()
 
@@ -1116,12 +1125,12 @@ struct BudgetStoreBankSyncTests {
         #expect(first.added == 2)
         #expect(imported.accountId == movedAccountId)
         #expect(try row(path: url, sql: """
-            SELECT acct FROM transactions WHERE financial_id = 'sf-moved'
-            """)?["acct"] as String? == movedAccountId)
+        SELECT acct FROM transactions WHERE financial_id = 'sf-moved'
+        """)?["acct"] as String? == movedAccountId)
         #expect(try row(path: url, sql: """
-            SELECT amount FROM transactions
-            WHERE acct = ? AND starting_balance_flag = 1
-            """, arguments: [Self.accountId])?["amount"] as Int? == 10_000)
+        SELECT amount FROM transactions
+        WHERE acct = ? AND starting_balance_flag = 1
+        """, arguments: [Self.accountId])?["amount"] as Int? == 10000)
 
         let second = try await store.syncBankAccounts()
 
@@ -1259,9 +1268,9 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
         let remote = try JSONDecoder().decode(SimpleFINAccount.self, from: Data("""
-            {"org": {"domain": "mybank.com", "name": "My Bank"}, "id": "sf-acct-9",
-             "name": "Savings", "balance": "0.00"}
-            """.utf8))
+        {"org": {"domain": "mybank.com", "name": "My Bank"}, "id": "sf-acct-9",
+         "name": "Savings", "balance": "0.00"}
+        """.utf8))
 
         try await store.linkBankAccount(accountId: Self.accountId, to: remote.remoteAccount)
 
@@ -1317,14 +1326,14 @@ struct BudgetStoreBankSyncTests {
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                UPDATE accounts SET account_id = ?, account_sync_source = ? WHERE id = ?
-                """, arguments: [newer.externalAccountId, newer.source, accountId])
+            UPDATE accounts SET account_id = ?, account_sync_source = ? WHERE id = ?
+            """, arguments: [newer.externalAccountId, newer.source, accountId])
         }
         await #expect(throws: BankSyncDatabaseError.bankSyncMaterializationStale) {
             try await store.unlinkBankAccount(accountId: Self.accountId)
         }
         #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
-                == newer.externalAccountId)
+            == newer.externalAccountId)
         #expect(try row(path: url, sql: "SELECT account_id FROM accounts WHERE id = ?", arguments: [Self.accountId])?["account_id"] as String? == newer.externalAccountId)
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
     }
@@ -1335,9 +1344,9 @@ struct BudgetStoreBankSyncTests {
         let store = try await makeStore(
             database: database,
             responseBody: accountSet(transactions: """
-                {"id": "sf-tombstoned", "posted": \(Self.daysAgo(1)),
-                 "amount": "-10.00", "payee": "Tombstoned Merchant"}
-                """)
+            {"id": "sf-tombstoned", "posted": \(Self.daysAgo(1)),
+             "amount": "-10.00", "payee": "Tombstoned Merchant"}
+            """)
         )
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
@@ -1358,9 +1367,9 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
         let remote = try JSONDecoder().decode(SimpleFINAccount.self, from: Data("""
-            {"org": {"domain": "otherbank.com", "name": "Other Bank"},
-             "id": "sf-acct-new", "name": "Savings", "balance": "0.00"}
-            """.utf8))
+        {"org": {"domain": "otherbank.com", "name": "Other Bank"},
+         "id": "sf-acct-new", "name": "Savings", "balance": "0.00"}
+        """.utf8))
         let accountId = Self.accountId
         let existingExternalAccountId = Self.externalAccountId
         try await database.dbQueueForTesting.write { db in
@@ -1381,8 +1390,8 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
-            {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
-            """))
+        {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+        """))
 
         _ = try await store.syncBankAccounts()
 
@@ -1440,12 +1449,12 @@ struct BudgetStoreBankSyncTests {
                  "payeeName": "Blue Bottle", "notes": "BLUE BOTTLE COFFEE", "booked": true,
                  "transactionAmount": {"amount": "-33.45", "currency": "USD"}}
               ]}}}}
-            """
+            """,
         ])
 
         let result = try await store.syncBankAccounts()
 
-        #expect(result.added == 2)  // the download and the opening balance
+        #expect(result.added == 2) // the download and the opening balance
         #expect(result.accountsSynced == 1)
         #expect(result.problems.isEmpty)
         #expect(store.serverProvidesBankSync)
@@ -1482,7 +1491,7 @@ struct BudgetStoreBankSyncTests {
                 {"error_type":"TIMED_OUT","error_code":"TIMED_OUT",
                  "reason":"Some data may be delayed."}
               ]}}}
-            """
+            """,
         ])
 
         let result = try await store.syncBankAccounts()
@@ -1508,7 +1517,7 @@ struct BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeServerStore(database: database, bodies: [
-            "/simplefin/status": #"{"status":"ok","data":{"configured":false}}"#
+            "/simplefin/status": #"{"status":"ok","data":{"configured":false}}"#,
         ])
 
         await #expect(throws: BudgetStoreError.bankSyncNotConfigured) {
@@ -1546,7 +1555,7 @@ struct BudgetStoreBankSyncTests {
               {"error_type":"ACCOUNT_NEEDS_ATTENTION","error_code":"ACCOUNT_NEEDS_ATTENTION",
                "reason":"The account needs your attention at SimpleFIN."}
             ]}}}
-            """
+            """,
         ])
 
         let result = try await store.syncBankAccounts()
@@ -1576,7 +1585,7 @@ struct BudgetStoreBankSyncTests {
             {"status":"ok","data":{"error_type":"INVALID_ACCESS_TOKEN",
              "error_code":"INVALID_ACCESS_TOKEN","status":"rejected",
              "reason":"Invalid SimpleFIN access token."}}
-            """
+            """,
         ])
 
         let result = try await store.syncBankAccounts()
@@ -1595,7 +1604,7 @@ struct BudgetStoreBankSyncTests {
               {"org":{"domain":"mybank.com","name":"My Bank"},"id":"sf-acct-1",
                "name":"Checking","balance":"100.00"}
             ]}}
-            """
+            """,
         ])
 
         let accounts = try await store.fetchBankAccounts()
@@ -1615,8 +1624,8 @@ struct BudgetStoreBankSyncTests {
         let store = try await makeStore(
             database: database,
             responseBody: accountSet(transactions: """
-                {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
-                """),
+            {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+            """),
             walletStore: appleCardStub()
         )
 
@@ -1680,8 +1689,8 @@ struct BudgetStoreBankSyncTests {
         let store = try await makeStore(
             database: database,
             responseBody: accountSet(transactions: """
-                {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
-                """),
+            {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+            """),
             walletStore: wallet
         )
 
@@ -1731,13 +1740,13 @@ struct BudgetStoreBankSyncTests {
         var messages = [
             CRDTMessage(timestamp: HLCTimestamp(millis: seed, counter: 0, node: "0000000000000001"), dataset: "accounts", row: accountId, column: "account_id", value: CRDTValue.serialize(externalAccountId)),
             CRDTMessage(timestamp: HLCTimestamp(millis: seed + 1, counter: 0, node: "0000000000000001"), dataset: "accounts", row: accountId, column: "account_sync_source", value: CRDTValue.serialize("simpleFin")),
-            CRDTMessage(timestamp: HLCTimestamp(millis: seed + 2, counter: 0, node: "0000000000000001"), dataset: "accounts", row: accountId, column: "bank", value: CRDTValue.serialize(proposal.bank.id))
+            CRDTMessage(timestamp: HLCTimestamp(millis: seed + 2, counter: 0, node: "0000000000000001"), dataset: "accounts", row: accountId, column: "bank", value: CRDTValue.serialize(proposal.bank.id)),
         ]
         if proposal.created || proposal.revived {
             messages += [
                 CRDTMessage(timestamp: HLCTimestamp(millis: seed + 3, counter: 0, node: "0000000000000001"), dataset: "banks", row: proposal.bank.id, column: "bank_id", value: CRDTValue.serialize(proposal.bank.bankId)),
                 CRDTMessage(timestamp: HLCTimestamp(millis: seed + 4, counter: 0, node: "0000000000000001"), dataset: "banks", row: proposal.bank.id, column: "name", value: CRDTValue.serialize(proposal.bank.name)),
-                CRDTMessage(timestamp: HLCTimestamp(millis: seed + 5, counter: 0, node: "0000000000000001"), dataset: "banks", row: proposal.bank.id, column: "tombstone", value: CRDTValue.serialize(0))
+                CRDTMessage(timestamp: HLCTimestamp(millis: seed + 5, counter: 0, node: "0000000000000001"), dataset: "banks", row: proposal.bank.id, column: "tombstone", value: CRDTValue.serialize(0)),
             ]
         }
         return messages
@@ -1775,12 +1784,14 @@ struct BudgetStoreBankSyncTests {
                 }
             }
             var results: [Bool] = []
-            for try await result in group { results.append(result) }
+            for try await result in group {
+                results.append(result)
+            }
             return results
         }
 
         #expect(results.count == 2)
-        #expect(results.filter { $0 }.count == 1)
+        #expect(results.filter(\.self).count == 1)
         let account = try #require(try row(
             path: url,
             sql: "SELECT bank FROM accounts WHERE id = ?",
@@ -1880,9 +1891,9 @@ struct BudgetStoreBankSyncTests {
         let queue = try DatabaseQueue(path: url.path)
         try queue.write { db in
             try db.execute(sql: """
-                INSERT INTO banks (id, bank_id, name, tombstone)
-                VALUES ('existing-bank', 'same-bank', 'Same Bank', 0)
-                """)
+            INSERT INTO banks (id, bank_id, name, tombstone)
+            VALUES ('existing-bank', 'same-bank', 'Same Bank', 0)
+            """)
         }
 
         let proposal = try database.proposeBankSyncLink(
@@ -1923,9 +1934,9 @@ struct BudgetStoreBankSyncTests {
         let queue = try DatabaseQueue(path: url.path)
         try queue.write { db in
             try db.execute(sql: """
-                INSERT INTO banks (id, bank_id, name, tombstone)
-                VALUES ('deleted-bank', 'same-bank', 'Old Name', 1)
-                """)
+            INSERT INTO banks (id, bank_id, name, tombstone)
+            VALUES ('deleted-bank', 'same-bank', 'Old Name', 1)
+            """)
         }
 
         let proposal = try database.proposeBankSyncLink(
@@ -1976,13 +1987,13 @@ struct BudgetStoreBankSyncTests {
         let queue = try DatabaseQueue(path: url.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TRIGGER reject_bank_link_messages
-                BEFORE INSERT ON messages_crdt
-                WHEN NEW.dataset = 'banks'
-                BEGIN
-                    SELECT RAISE(ABORT, 'blocked bank message');
-                END
-                """)
+            CREATE TRIGGER reject_bank_link_messages
+            BEFORE INSERT ON messages_crdt
+            WHEN NEW.dataset = 'banks'
+            BEGIN
+                SELECT RAISE(ABORT, 'blocked bank message');
+            END
+            """)
         }
 
         let proposal = try database.proposeBankSyncLink(
@@ -2059,13 +2070,13 @@ struct BudgetStoreBankSyncTests {
         let queue = try DatabaseQueue(path: url.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TRIGGER reject_provider_replacement_messages
-                BEFORE INSERT ON messages_crdt
-                WHEN NEW.dataset = 'accounts'
-                BEGIN
-                    SELECT RAISE(ABORT, 'blocked provider replacement');
-                END
-                """)
+            CREATE TRIGGER reject_provider_replacement_messages
+            BEFORE INSERT ON messages_crdt
+            WHEN NEW.dataset = 'accounts'
+            BEGIN
+                SELECT RAISE(ABORT, 'blocked provider replacement');
+            END
+            """)
         }
         let old = ExpectedBankSyncLink(
             accountId: Self.accountId,
@@ -2112,16 +2123,16 @@ extension BudgetStoreBankSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let firstBody = accountSet(balance: "100.00", transactions: """
-            {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
-            """)
+        {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+        """)
         let store = try await makeStore(database: database, responseBody: firstBody)
         store.setBankSyncImportStartDay(Self.expectedDay(30))
         _ = try await store.syncBankAccounts()
         store.setSimpleFINClientForTesting(
             SimpleFINClient(session: BridgeTransport.makeSession(body: accountSet(balance: "100.00", transactions: """
-                {"id": "sf-review-old", "posted": \(Self.daysAgo(10)), "amount": "-7.00", "payee": "Older Merchant"},
-                {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
-                """)))
+            {"id": "sf-review-old", "posted": \(Self.daysAgo(10)), "amount": "-7.00", "payee": "Older Merchant"},
+            {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+            """)))
         )
         store.bankSyncBeforeMaterializationHook = {
             try! database.dbQueueForTesting.write { db in

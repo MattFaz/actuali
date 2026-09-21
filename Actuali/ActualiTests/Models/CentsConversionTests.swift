@@ -1,5 +1,5 @@
 //
-//  ActualiTests.swift
+//  CentsConversionTests.swift
 //  ActualiTests
 //
 //  Created by Matt Farrell on 29/4/2026.
@@ -9,7 +9,6 @@ import Testing
 @testable import Actuali
 
 struct CentsConversionTests {
-
     @Test func roundsValuesThatTruncationWouldDrop() {
         // Double("8.20")! * 100 == 819.9999..., truncation gave 819
         #expect(Transaction.cents(fromDollars: Double("8.20")!) == 820)

@@ -9,9 +9,8 @@ import XCTest
 /// sheet-presented add flow (account detail "+", notification prefill) also
 /// had no Cancel button — only the edit flow did.
 final class AddTransactionKeyboardUITests: XCTestCase {
-
     @MainActor
-    func testAmountFieldShowsDoneBarAndDismissesKeyboard() throws {
+    func testAmountFieldShowsDoneBarAndDismissesKeyboard() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
@@ -43,7 +42,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     /// enters — so the keyboard must come up without a tap and keypad input
     /// must land in that field.
     @MainActor
-    func testAddTabAutofocusesAmountField() throws {
+    func testAddTabAutofocusesAmountField() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
@@ -151,7 +150,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     }
 
     @MainActor
-    func testSheetPresentedAddFlowShowsCancel() throws {
+    func testSheetPresentedAddFlowShowsCancel() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "0"]
         app.launch()
@@ -179,7 +178,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         XCTAssertTrue(cancel.waitForExistence(timeout: 5),
                       "no Cancel button on the sheet-presented add flow")
         var scrollsLeft = 5
-        while !cancel.isHittable && scrollsLeft > 0 {
+        while !cancel.isHittable, scrollsLeft > 0 {
             app.swipeUp()
             scrollsLeft -= 1
         }

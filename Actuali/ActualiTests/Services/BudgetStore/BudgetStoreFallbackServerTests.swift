@@ -6,8 +6,13 @@ private final class ConnectionEditTransport: URLProtocol {
     nonisolated(unsafe) static var unreachableHosts: Set<String> = []
     nonisolated(unsafe) static var requestedHosts: [String] = []
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         let host = request.url?.host ?? ""
@@ -72,7 +77,7 @@ struct BudgetStoreFallbackServerTests {
 
     @Test func connectedURLsCanBeReplacedWithoutDisconnectingOrRemovingTheBudget() async {
         let store = BudgetStore.previewInstance()
-        store.setServerClientForTesting(await makeClient(configuredFor: "https://old.example.com"))
+        await store.setServerClientForTesting(makeClient(configuredFor: "https://old.example.com"))
         store.serverURL = "https://old.example.com"
         store.isConnected = true
         store.currentBudgetId = "local-budget"

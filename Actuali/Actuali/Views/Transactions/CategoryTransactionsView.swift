@@ -158,7 +158,6 @@ struct CategoryTransactionsView: View {
         )
     }
 
-    @ViewBuilder
     private func transactionRow(_ transaction: Transaction, showDate: Bool) -> some View {
         Group {
             // Split children only display at full opacity, without
@@ -217,7 +216,7 @@ struct CategoryTransactionsView: View {
             // The scope total is the point of this screen, so it keeps a
             // header of its own above the date sections.
             Section {
-                if !transactions.isEmpty && filteredTransactions.isEmpty {
+                if !transactions.isEmpty, filteredTransactions.isEmpty {
                     Text("No matching transactions")
                         .foregroundStyle(.secondary)
                 }
@@ -233,7 +232,7 @@ struct CategoryTransactionsView: View {
             }
         } else {
             Section {
-                if !transactions.isEmpty && filteredTransactions.isEmpty {
+                if !transactions.isEmpty, filteredTransactions.isEmpty {
                     Text("No matching transactions")
                         .foregroundStyle(.secondary)
                 }
@@ -248,10 +247,10 @@ struct CategoryTransactionsView: View {
 
     var body: some View {
         List {
-            if note.supported && searchText.isEmpty {
+            if note.supported, searchText.isEmpty {
                 noteSection
             }
-            if transactions.isEmpty && loaded {
+            if transactions.isEmpty, loaded {
                 emptyTransactionsRow
             } else {
                 transactionsSection

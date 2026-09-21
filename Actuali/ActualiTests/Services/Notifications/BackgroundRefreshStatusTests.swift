@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct BackgroundRefreshStatusTests {
-
     private func makeDefaults() -> UserDefaults {
         let name = "BackgroundRefreshStatusTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!

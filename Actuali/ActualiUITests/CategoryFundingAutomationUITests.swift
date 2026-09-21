@@ -2,7 +2,7 @@ import XCTest
 
 final class CategoryFundingAutomationUITests: XCTestCase {
     @MainActor
-    func testCategoryFundingSettingsCanBeConfigured() throws {
+    func testCategoryFundingSettingsCanBeConfigured() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()

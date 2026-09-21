@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct AddTransactionWithReviewIntentTests {
-
     @Test func buildsPrefillWithParsedAmount() {
         let date = Date(timeIntervalSince1970: 1_750_000_000)
         let prefill = AddTransactionWithReviewIntent.prefill(

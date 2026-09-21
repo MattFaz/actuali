@@ -15,7 +15,9 @@ enum AutomationError: Equatable, Sendable {
     case spendFromAfterTarget
     case adjustmentOutOfRange
 
-    var title: String { title(locale: .autoupdatingCurrent, bundle: .main) }
+    var title: String {
+        title(locale: .autoupdatingCurrent, bundle: .main)
+    }
 
     func title(locale: Locale, bundle: Bundle) -> String {
         switch self {
@@ -33,7 +35,9 @@ enum AutomationError: Equatable, Sendable {
         }
     }
 
-    var shortMessage: String { shortMessage(locale: .autoupdatingCurrent, bundle: .main) }
+    var shortMessage: String {
+        shortMessage(locale: .autoupdatingCurrent, bundle: .main)
+    }
 
     func shortMessage(locale: Locale, bundle: Bundle) -> String {
         switch self {
@@ -41,8 +45,8 @@ enum AutomationError: Equatable, Sendable {
             name.isEmpty
                 ? String(localized: "Pick a schedule", bundle: bundle, locale: locale)
                 : String(format: String(localized: "No schedule named “%@”", bundle: bundle, locale: locale), name)
-            case .refillNoCap: String(localized: "Add a balance cap", bundle: bundle, locale: locale)
-            case .limitNoContributor: String(localized: "Add an automation that contributes funds", bundle: bundle, locale: locale)
+        case .refillNoCap: String(localized: "Add a balance cap", bundle: bundle, locale: locale)
+        case .limitNoContributor: String(localized: "Add an automation that contributes funds", bundle: bundle, locale: locale)
         case .percentageOutOfRange(let percent):
             String(format: String(localized: "%@ must be between 0 and 100", bundle: bundle, locale: locale), "\(AutomationSentences.trimTrailingZeros(percent))%")
         case .percentageNoSource: String(localized: "Pick a source category", bundle: bundle, locale: locale)
@@ -56,7 +60,9 @@ enum AutomationError: Equatable, Sendable {
         }
     }
 
-    var detail: String { detail(locale: .autoupdatingCurrent, bundle: .main) }
+    var detail: String {
+        detail(locale: .autoupdatingCurrent, bundle: .main)
+    }
 
     func detail(locale: Locale, bundle: Bundle) -> String {
         switch self {
@@ -90,7 +96,9 @@ enum AutomationConflict: Equatable, Sendable {
     case percentOver100(total: Double)
     case schedulePriorityMismatch
 
-    var message: String { message(locale: .autoupdatingCurrent, bundle: .main) }
+    var message: String {
+        message(locale: .autoupdatingCurrent, bundle: .main)
+    }
 
     func message(locale: Locale, bundle: Bundle) -> String {
         switch self {
@@ -103,7 +111,6 @@ enum AutomationConflict: Equatable, Sendable {
 }
 
 enum AutomationValidation {
-
     private static func adjustmentOutOfRange(_ template: GoalTemplate) -> Bool {
         guard template.type == .schedule || template.type == .average,
               let adjustment = template.adjustment,
@@ -134,7 +141,9 @@ enum AutomationValidation {
             if match == nil || match?.completed == true {
                 return .scheduleNotFound(name: template.name ?? "")
             }
-            if adjustmentOutOfRange(template) { return .adjustmentOutOfRange }
+            if adjustmentOutOfRange(template) {
+                return .adjustmentOutOfRange
+            }
             return nil
 
         case .historical:

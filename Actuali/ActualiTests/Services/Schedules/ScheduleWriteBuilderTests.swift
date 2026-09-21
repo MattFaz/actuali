@@ -6,9 +6,8 @@ import Testing
 /// have to match loot-core: a missing column here is a schedule the web app
 /// renders blank or refuses to advance.
 struct ScheduleWriteBuilderTests {
-
     private static let now: Int64 = 1_760_000_000_000
-    private static let today = DayDate(yyyymmdd: 20260813)!
+    private static let today = DayDate(yyyymmdd: 20_260_813)!
 
     private var fields: ScheduleFormFields {
         ScheduleFormFields(
@@ -17,8 +16,9 @@ struct ScheduleWriteBuilderTests {
             accountId: "acct-1",
             amount: .fixed(-125_000),
             amountOp: .isApprox,
-            date: .fixed(DayDate(yyyymmdd: 20260901)!),
-            postsTransaction: true)
+            date: .fixed(DayDate(yyyymmdd: 20_260_901)!),
+            postsTransaction: true
+        )
     }
 
     private func write(_ plan: ScheduleWritePlan, _ dataset: String) -> ScheduleWritePlan.RowWrite? {
@@ -34,7 +34,8 @@ struct ScheduleWriteBuilderTests {
     @Test func createWritesRuleNextDateAndSchedule() throws {
         let plan = try ScheduleWriteBuilder.createPlan(
             fields: fields, scheduleId: "s1", ruleId: "r1", nextDateRowId: "nd1",
-            now: Self.now, today: Self.today)
+            now: Self.now, today: Self.today
+        )
 
         #expect(plan.scheduleId == "s1")
         #expect(plan.writes.map(\.dataset)
@@ -44,7 +45,8 @@ struct ScheduleWriteBuilderTests {
     @Test func createLinksTheRuleBackToTheSchedule() throws {
         let plan = try ScheduleWriteBuilder.createPlan(
             fields: fields, scheduleId: "s1", ruleId: "r1", nextDateRowId: "nd1",
-            now: Self.now, today: Self.today)
+            now: Self.now, today: Self.today
+        )
 
         let actionsJSON = try #require(value(write(plan, "rules"), "actions") as? String)
         #expect(actionsJSON.contains("link-schedule"))
@@ -58,12 +60,13 @@ struct ScheduleWriteBuilderTests {
     @Test func createSetsBothHalvesOfTheNextDatePair() throws {
         let plan = try ScheduleWriteBuilder.createPlan(
             fields: fields, scheduleId: "s1", ruleId: "r1", nextDateRowId: "nd1",
-            now: Self.now, today: Self.today)
+            now: Self.now, today: Self.today
+        )
 
         let nd = write(plan, "schedules_next_date")
         #expect(value(nd, "schedule_id") as? String == "s1")
-        #expect(value(nd, "local_next_date") as? Int == 20260901)
-        #expect(value(nd, "base_next_date") as? Int == 20260901)
+        #expect(value(nd, "local_next_date") as? Int == 20_260_901)
+        #expect(value(nd, "base_next_date") as? Int == 20_260_901)
         #expect(value(nd, "local_next_date_ts") as? Int64 == Self.now)
         #expect(value(nd, "base_next_date_ts") as? Int64 == Self.now)
     }
@@ -71,57 +74,61 @@ struct ScheduleWriteBuilderTests {
     @Test func createNormalizesTheName() throws {
         let plan = try ScheduleWriteBuilder.createPlan(
             fields: fields, scheduleId: "s1", ruleId: "r1", nextDateRowId: "nd1",
-            now: Self.now, today: Self.today)
+            now: Self.now, today: Self.today
+        )
         #expect(value(write(plan, "schedules"), "name") as? String == "Rent")
     }
 
     @Test func createUsesTheNextOccurrenceForARecurrence() throws {
         var recurring = fields
-        recurring.date = .recurring(try #require(RecurConfig(json: [
+        recurring.date = try .recurring(#require(RecurConfig(json: [
             "frequency": "monthly", "start": "2026-01-15", "interval": 1,
         ])))
         let plan = try ScheduleWriteBuilder.createPlan(
             fields: recurring, scheduleId: "s1", ruleId: "r1", nextDateRowId: "nd1",
-            now: Self.now, today: Self.today)
-        #expect(value(write(plan, "schedules_next_date"), "base_next_date") as? Int == 20260815)
+            now: Self.now, today: Self.today
+        )
+        #expect(value(write(plan, "schedules_next_date"), "base_next_date") as? Int == 20_260_815)
     }
 
     // MARK: - update
 
     private func existingSchedule(
         conditions: String = """
-            [{"op":"is","field":"account","value":"acct-1"},
-             {"op":"isapprox","field":"date","value":"2026-08-13"},
-             {"op":"isapprox","field":"amount","value":-125000}]
-            """,
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"isapprox","field":"date","value":"2026-08-13"},
+         {"op":"isapprox","field":"amount","value":-125000}]
+        """,
         actions: String = #"[{"op":"link-schedule","value":"s1"}]"#
     ) -> ScheduleSummary {
         ScheduleSummary(
             id: "s1", name: "Rent", ruleId: "r1",
-            nextDate: DayDate(yyyymmdd: 20260813), nextDateRowId: "nd1",
+            nextDate: DayDate(yyyymmdd: 20_260_813), nextDateRowId: "nd1",
             baseNextDateTs: 100, accountId: "acct-1", payeeId: nil,
             amount: .fixed(-125_000), amountOp: .isApprox, dateOp: "isapprox",
-            dateCondition: .fixed(DayDate(yyyymmdd: 20260813)!),
+            dateCondition: .fixed(DayDate(yyyymmdd: 20_260_813)!),
             postsTransaction: true, completed: false,
             customUpcomingLength: nil, sortOrder: nil, isCustom: false,
-            conditionsJSON: conditions, actionsJSON: actions)
+            conditionsJSON: conditions, actionsJSON: actions
+        )
     }
 
     /// Nothing about the account or the date moved, so the next date is left
     /// exactly where it is.
     @Test func updateWithoutAccountOrDateChangeDoesNotTouchTheNextDate() throws {
         var unchanged = fields
-        unchanged.date = .fixed(DayDate(yyyymmdd: 20260813)!)
-        unchanged.amount = .fixed(-99_000)
+        unchanged.date = .fixed(DayDate(yyyymmdd: 20_260_813)!)
+        unchanged.amount = .fixed(-99000)
 
         let plan = try ScheduleWriteBuilder.updatePlan(
             schedule: existingSchedule(), fields: unchanged,
-            now: Self.now, today: Self.today)
+            now: Self.now, today: Self.today
+        )
 
         #expect(write(plan, "schedules_next_date") == nil)
         #expect(plan.writes.map(\.dataset) == ["rules", "schedules"])
     }
-    
+
     /// A recurrence written by the web omits the optional keys that
     /// `RecurConfig.jsonObject` always emits. Re-encoding it is not an edit, so
     /// saving an otherwise-untouched schedule must NOT reset the next date —
@@ -129,11 +136,11 @@ struct ScheduleWriteBuilderTests {
     @Test func reEncodingAWebWrittenRecurrenceIsNotADateChange() throws {
         // Exactly what Actual stores: no interval, no endMode, no weekend keys.
         let webRecurrence = """
-            [{"op":"is","field":"account","value":"acct-1"},
-             {"op":"isapprox","field":"date","value":
-               {"frequency":"monthly","start":"2026-01-15"}},
-             {"op":"isapprox","field":"amount","value":-125000}]
-            """
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"isapprox","field":"date","value":
+           {"frequency":"monthly","start":"2026-01-15"}},
+         {"op":"isapprox","field":"amount","value":-125000}]
+        """
         let schedule = existingSchedule(conditions: webRecurrence)
 
         // The form hands back the same recurrence, parsed and re-serialised.
@@ -144,7 +151,8 @@ struct ScheduleWriteBuilderTests {
         unchanged.date = .recurring(parsed)
 
         let plan = try ScheduleWriteBuilder.updatePlan(
-            schedule: schedule, fields: unchanged, now: Self.now, today: Self.today)
+            schedule: schedule, fields: unchanged, now: Self.now, today: Self.today
+        )
 
         #expect(write(plan, "schedules_next_date") == nil)
         #expect(plan.writes.map(\.dataset) == ["rules", "schedules"])
@@ -154,11 +162,11 @@ struct ScheduleWriteBuilderTests {
     /// resetting the next date.
     @Test func changingTheRecurrenceStillResetsTheNextDate() throws {
         let schedule = existingSchedule(conditions: """
-            [{"op":"is","field":"account","value":"acct-1"},
-             {"op":"isapprox","field":"date","value":
-               {"frequency":"monthly","start":"2026-01-15"}},
-             {"op":"isapprox","field":"amount","value":-125000}]
-            """)
+        [{"op":"is","field":"account","value":"acct-1"},
+         {"op":"isapprox","field":"date","value":
+           {"frequency":"monthly","start":"2026-01-15"}},
+         {"op":"isapprox","field":"amount","value":-125000}]
+        """)
 
         // Same start, different interval — a genuine change.
         let edited = try #require(RecurConfig(json: [
@@ -168,21 +176,23 @@ struct ScheduleWriteBuilderTests {
         moved.date = .recurring(edited)
 
         let plan = try ScheduleWriteBuilder.updatePlan(
-            schedule: schedule, fields: moved, now: Self.now, today: Self.today)
+            schedule: schedule, fields: moved, now: Self.now, today: Self.today
+        )
 
         #expect(write(plan, "schedules_next_date") != nil)
     }
 
     @Test func changingTheDateResetsTheBaseNextDate() throws {
         var moved = fields
-        moved.date = .fixed(DayDate(yyyymmdd: 20261001)!)
+        moved.date = .fixed(DayDate(yyyymmdd: 20_261_001)!)
 
         let plan = try ScheduleWriteBuilder.updatePlan(
             schedule: existingSchedule(), fields: moved,
-            now: Self.now, today: Self.today)
+            now: Self.now, today: Self.today
+        )
 
         let nd = write(plan, "schedules_next_date")
-        #expect(value(nd, "base_next_date") as? Int == 20261001)
+        #expect(value(nd, "base_next_date") as? Int == 20_261_001)
         #expect(value(nd, "base_next_date_ts") as? Int64 == Self.now)
         // The reset branch never writes the local half.
         #expect(value(nd, "local_next_date") == nil)
@@ -191,21 +201,23 @@ struct ScheduleWriteBuilderTests {
     @Test func changingTheAccountResetsTheNextDate() throws {
         var moved = fields
         moved.accountId = "acct-2"
-        moved.date = .fixed(DayDate(yyyymmdd: 20260813)!)
+        moved.date = .fixed(DayDate(yyyymmdd: 20_260_813)!)
 
         let plan = try ScheduleWriteBuilder.updatePlan(
             schedule: existingSchedule(), fields: moved,
-            now: Self.now, today: Self.today)
+            now: Self.now, today: Self.today
+        )
         #expect(write(plan, "schedules_next_date") != nil)
     }
 
     @Test func resetCanBeForced() throws {
         var unchanged = fields
-        unchanged.date = .fixed(DayDate(yyyymmdd: 20260813)!)
+        unchanged.date = .fixed(DayDate(yyyymmdd: 20_260_813)!)
 
         let plan = try ScheduleWriteBuilder.updatePlan(
             schedule: existingSchedule(), fields: unchanged,
-            now: Self.now, today: Self.today, resetRequested: true)
+            now: Self.now, today: Self.today, resetRequested: true
+        )
         #expect(write(plan, "schedules_next_date") != nil)
     }
 
@@ -214,23 +226,27 @@ struct ScheduleWriteBuilderTests {
     @Test func updateNeverRewritesTheRuleLink() throws {
         let plan = try ScheduleWriteBuilder.updatePlan(
             schedule: existingSchedule(), fields: fields,
-            now: Self.now, today: Self.today)
+            now: Self.now, today: Self.today
+        )
         #expect(value(write(plan, "schedules"), "rule") == nil)
     }
 
     @Test func updateWritesActionsOnlyWhenTheAmountActionDrifted() throws {
         let plain = try ScheduleWriteBuilder.updatePlan(
             schedule: existingSchedule(), fields: fields,
-            now: Self.now, today: Self.today)
+            now: Self.now, today: Self.today
+        )
         #expect(value(write(plain, "rules"), "actions") == nil)
 
         let withAction = existingSchedule(
             actions: """
-                [{"op":"link-schedule","value":"s1"},
-                 {"op":"set","field":"amount","value":-1}]
-                """)
+            [{"op":"link-schedule","value":"s1"},
+             {"op":"set","field":"amount","value":-1}]
+            """
+        )
         let synced = try ScheduleWriteBuilder.updatePlan(
-            schedule: withAction, fields: fields, now: Self.now, today: Self.today)
+            schedule: withAction, fields: fields, now: Self.now, today: Self.today
+        )
         let actionsJSON = try #require(value(write(synced, "rules"), "actions") as? String)
         #expect(actionsJSON.contains("-125000"))
     }
@@ -241,14 +257,15 @@ struct ScheduleWriteBuilderTests {
 
         let plan = try ScheduleWriteBuilder.updatePlan(
             schedule: broken, fields: fields, now: Self.now, today: Self.today,
-            resetRequested: true, newNextDateRowId: "nd-new")
+            resetRequested: true, newNextDateRowId: "nd-new"
+        )
 
         let nd = write(plan, "schedules_next_date")
         #expect(nd?.row == "nd-new")
         // A fresh row needs its owner and both halves, not just the base.
         #expect(value(nd, "schedule_id") as? String == "s1")
-        #expect(value(nd, "local_next_date") as? Int == 20260901)
-        #expect(value(nd, "base_next_date") as? Int == 20260901)
+        #expect(value(nd, "local_next_date") as? Int == 20_260_901)
+        #expect(value(nd, "base_next_date") as? Int == 20_260_901)
     }
 
     // MARK: - delete
@@ -274,16 +291,18 @@ struct ScheduleWriteBuilderTests {
 
     @Test func resetMovesTheBaseAndNonResetMovesTheLocalOverride() throws {
         let schedule = existingSchedule()
-        let target = DayDate(yyyymmdd: 20261101)!
+        let target = DayDate(yyyymmdd: 20_261_101)!
 
         let reset = try #require(ScheduleWriteBuilder.nextDatePlan(
-            schedule: schedule, newNextDate: target, reset: true, now: Self.now))
-        #expect(value(write(reset, "schedules_next_date"), "base_next_date") as? Int == 20261101)
+            schedule: schedule, newNextDate: target, reset: true, now: Self.now
+        ))
+        #expect(value(write(reset, "schedules_next_date"), "base_next_date") as? Int == 20_261_101)
         #expect(value(write(reset, "schedules_next_date"), "base_next_date_ts") as? Int64 == Self.now)
 
         let local = try #require(ScheduleWriteBuilder.nextDatePlan(
-            schedule: schedule, newNextDate: target, reset: false, now: Self.now))
-        #expect(value(write(local, "schedules_next_date"), "local_next_date") as? Int == 20261101)
+            schedule: schedule, newNextDate: target, reset: false, now: Self.now
+        ))
+        #expect(value(write(local, "schedules_next_date"), "local_next_date") as? Int == 20_261_101)
         // Pinned to the CURRENT base timestamp, not to now — that is what keeps
         // the override effective under the v_schedules rule.
         #expect(value(write(local, "schedules_next_date"), "local_next_date_ts") as? Int64 == 100)

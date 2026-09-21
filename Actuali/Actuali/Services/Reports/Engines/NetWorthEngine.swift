@@ -10,7 +10,6 @@ struct NetWorthData: Equatable {
 }
 
 enum NetWorthEngine {
-
     static func compute(
         meta: NetWorthMeta?,
         transactions: [Transaction],
@@ -96,7 +95,7 @@ enum NetWorthEngine {
             while cursor <= end {
                 // Move to Saturday (end of week with Sunday-first calendar).
                 let weekday = cal.component(.weekday, from: cursor)
-                let daysToSaturday = (7 - weekday) % 7  // Sun=1 → 6 days to Sat; Sat=7 → 0
+                let daysToSaturday = (7 - weekday) % 7 // Sun=1 → 6 days to Sat; Sat=7 → 0
                 guard let weekEnd = cal.date(byAdding: .day, value: daysToSaturday, to: cursor) else { break }
                 let pointDate = min(weekEnd, end)
                 result.append(pointDate)

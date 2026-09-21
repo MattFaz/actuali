@@ -16,14 +16,20 @@ struct CardAccountMappingsView: View {
     }
 
     struct CardMappingSuggestion: Identifiable, Equatable {
-        var id: String { keyword }
+        var id: String {
+            keyword
+        }
+
         let keyword: String
         let count: Int
         let samplePayee: String?
     }
 
     struct MappedAccount: Identifiable, Equatable {
-        var id: String { accountId }
+        var id: String {
+            accountId
+        }
+
         let accountId: String
         let accountName: String
         let keywords: [String]
@@ -52,7 +58,7 @@ struct CardAccountMappingsView: View {
     }
 
     private var suggestedMappings: [CardMappingSuggestion] {
-        return Self.computeSuggestions(
+        Self.computeSuggestions(
             pendingImports: pendingImportStore.imports,
             activeBudgetId: budgetStore.currentBudgetId,
             accounts: budgetStore.accounts,
@@ -74,7 +80,8 @@ struct CardAccountMappingsView: View {
                   let hint = item.cardHint?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !hint.isEmpty,
                   BudgetStore.resolveAccountId(
-                      hint: hint, accounts: accounts, cardMappings: cardMappings) == nil else {
+                      hint: hint, accounts: accounts, cardMappings: cardMappings
+                  ) == nil else {
                 continue
             }
             let key = hint.lowercased()
@@ -101,7 +108,9 @@ struct CardAccountMappingsView: View {
     }
 
     private var effectiveAccountId: String {
-        if !selectedAccountId.isEmpty { return selectedAccountId }
+        if !selectedAccountId.isEmpty {
+            return selectedAccountId
+        }
         return PendingImportApprover.seedAccountId(
             cardHint: nil,
             accounts: budgetStore.accounts,
@@ -231,8 +240,8 @@ struct CardAccountMappingsView: View {
                                         set: { keywordTexts[entryID] = $0 }
                                     )
                                 )
-                                    .accessibilityIdentifier(index == 0 ? "cardMappings.keywordField" : "cardMappings.keywordField.\(index)")
-                                    .autocorrectionDisabled()
+                                .accessibilityIdentifier(index == 0 ? "cardMappings.keywordField" : "cardMappings.keywordField.\(index)")
+                                .autocorrectionDisabled()
 
                                 if keywords.count > 1 {
                                     Button(role: .destructive) {
@@ -347,7 +356,7 @@ private struct FlowLayout: Layout {
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if currentX + size.width > maxWidth && currentX > 0 {
+            if currentX + size.width > maxWidth, currentX > 0 {
                 currentX = 0
                 currentY += maxHeightInRow + spacing
                 maxHeightInRow = 0
@@ -366,7 +375,7 @@ private struct FlowLayout: Layout {
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if currentX + size.width > bounds.maxX && currentX > bounds.minX {
+            if currentX + size.width > bounds.maxX, currentX > bounds.minX {
                 currentX = bounds.minX
                 currentY += maxHeightInRow + spacing
                 maxHeightInRow = 0

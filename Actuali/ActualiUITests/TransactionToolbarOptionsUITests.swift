@@ -1,9 +1,8 @@
 import XCTest
 
 final class TransactionToolbarOptionsUITests: XCTestCase {
-
     @MainActor
-    func testOptionsExposeAndUpdateTheirSelectedState() throws {
+    func testOptionsExposeAndUpdateTheirSelectedState() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",

@@ -15,7 +15,7 @@ enum BackupDestinationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .accessDenied:
-            return String(localized: "Permission was denied to access the selected folder.")
+            String(localized: "Permission was denied to access the selected folder.")
         }
     }
 }

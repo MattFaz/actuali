@@ -12,8 +12,13 @@ private final class ProbeTransport: URLProtocol {
 
     nonisolated(unsafe) static var outcome = Outcome.failure(URLError(.secureConnectionFailed))
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         switch Self.outcome {
@@ -42,7 +47,6 @@ private final class ProbeTransport: URLProtocol {
 @Suite(.serialized)
 @MainActor
 struct BudgetStoreLoginProbeTests {
-
     private func makeStore(_ outcome: ProbeTransport.Outcome) async -> BudgetStore {
         ProbeTransport.outcome = outcome
         let config = URLSessionConfiguration.ephemeral

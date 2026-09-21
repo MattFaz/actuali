@@ -17,12 +17,11 @@ enum CompactBudgetColumn: String, Equatable {
 
 enum CompactBudgetAccessibility {
     static func balanceStatus(_ tone: CompactBalanceTone, locale: Locale, bundle: Bundle = .main) -> String {
-        let key: String
-        switch tone {
-        case .negative: key = "budget.balanceStatus.negative"
-        case .zero: key = "budget.balanceStatus.zero"
-        case .positive: key = "budget.balanceStatus.positive"
-        case .masked: key = "budget.balanceStatus.hidden"
+        let key = switch tone {
+        case .negative: "budget.balanceStatus.negative"
+        case .zero: "budget.balanceStatus.zero"
+        case .positive: "budget.balanceStatus.positive"
+        case .masked: "budget.balanceStatus.hidden"
         }
         return ReportStrings.text(key, locale: locale, bundle: bundle)
     }

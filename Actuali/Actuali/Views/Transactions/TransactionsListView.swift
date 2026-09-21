@@ -36,7 +36,9 @@ struct TransactionsListView: View {
     /// fetch closure needs the environment store, which isn't available
     /// until body/task time.
     private func currentPager() -> TransactionPager {
-        if let pager { return pager }
+        if let pager {
+            return pager
+        }
         let store = budgetStore
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
@@ -183,7 +185,9 @@ struct TransactionsListView: View {
             // Debounce keystrokes; the initial (empty) load runs immediately.
             if searchQuery != nil {
                 try? await Task.sleep(for: .milliseconds(250))
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
             }
             await reload()
         }
@@ -238,7 +242,7 @@ struct TransactionListRow: View {
     @Binding var isSelectionMode: Bool
     var isSelected: Bool = false
     @Binding var editing: Transaction?
-    var onToggleSelect: (() -> Void)? = nil
+    var onToggleSelect: (() -> Void)?
 
     /// A counter, not a Bool: `.sensoryFeedback` needs a value that changes
     /// on every long press, and the toolbar Select button must not fire it.
@@ -370,7 +374,7 @@ struct TransactionRow: View {
     /// Tap action for the cleared-status dot. Nil leaves the dot inert
     /// (split-child rows, contexts without a reload path). Reconciled rows
     /// confirm before invoking, since the store unlocks them instead.
-    var onToggleCleared: (() -> Void)? = nil
+    var onToggleCleared: (() -> Void)?
 
     @State private var confirmingUnlock = false
 
@@ -465,10 +469,10 @@ struct TransactionRow: View {
                 // label them "Split" like the desktop app, not "Unknown".
                 // Off-budget rows say "No payee": they're commonly payee-less
                 // (balance adjustments) and "Unknown" read as a bug (GH #123).
-                    Text(transaction.payeeName
-                     ?? (transaction.isParent
-                         ? String(localized: TransactionsListLocalization.split, locale: locale)
-                         : (isInOffBudgetAccount
+                Text(transaction.payeeName
+                    ?? (transaction.isParent
+                        ? String(localized: TransactionsListLocalization.split, locale: locale)
+                        : (isInOffBudgetAccount
                             ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
                             : String(localized: TransactionsListLocalization.unknown, locale: locale))))
                     .font(.body)
@@ -521,7 +525,9 @@ struct TransactionRow: View {
             // mode removes the button and its confirmationDialog, so a
             // pending confirmingUnlock would otherwise surface later with no
             // toggle behind it.
-            if active { confirmingUnlock = false }
+            if active {
+                confirmingUnlock = false
+            }
         }
     }
 }

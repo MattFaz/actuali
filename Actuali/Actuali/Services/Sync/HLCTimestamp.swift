@@ -6,9 +6,9 @@ import Foundation
 /// Format: 2025-12-09T14:30:45.123Z-0000-9f66d38cba0ef956
 ///         |ISO 8601 timestamp    |cntr|node ID (16 hex)
 struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
-    let millis: Int64      // Wall clock time in milliseconds
-    let counter: UInt16    // Logical counter for same-millisecond events
-    let node: String       // 16-char hex device ID
+    let millis: Int64 // Wall clock time in milliseconds
+    let counter: UInt16 // Logical counter for same-millisecond events
+    let node: String // 16-char hex device ID
 
     // MARK: - Formatting
 
@@ -55,7 +55,7 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
         let millis = Int64(date.timeIntervalSince1970 * 1000)
 
         // Validate millis range (1970 to 9999)
-        guard millis >= 0 && millis < 253402300800000 else { return nil }
+        guard millis >= 0, millis < 253_402_300_800_000 else { return nil }
 
         // Parse counter (hex)
         guard let counter = UInt16(parts[3], radix: 16) else { return nil }
@@ -76,14 +76,16 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
     /// timestamp. Returns nil if the prefix isn't well formed.
     static func minutesSinceEpoch(of string: String) -> Int64? {
         var iterator = string.utf8.makeIterator()
-        // Fixed-width fields, each followed by one separator ("-", "-", "T", ":").
+        /// Fixed-width fields, each followed by one separator ("-", "-", "T", ":").
         func field(digits: Int, separator: Bool) -> Int? {
             var value = 0
             for _ in 0..<digits {
                 guard let byte = iterator.next(), byte >= 48, byte <= 57 else { return nil }
                 value = value * 10 + Int(byte - 48)
             }
-            if separator, iterator.next() == nil { return nil }
+            if separator, iterator.next() == nil {
+                return nil
+            }
             return value
         }
         guard let year = field(digits: 4, separator: true),
@@ -105,7 +107,7 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
     private static func daysSinceEpoch(year: Int, month: Int, day: Int) -> Int64 {
         let shiftedYear = year - (month <= 2 ? 1 : 0)
         let era = (shiftedYear >= 0 ? shiftedYear : shiftedYear - 399) / 400
-        let yearOfEra = shiftedYear - era * 400                                  // [0, 399]
+        let yearOfEra = shiftedYear - era * 400 // [0, 399]
         let dayOfYear = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1 // [0, 365]
         let dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
         return Int64(era) * 146_097 + Int64(dayOfEra) - 719_468
@@ -128,7 +130,7 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
     // MARK: - Constants
 
     static let zero = HLCTimestamp(millis: 0, counter: 0, node: "0000000000000000")
-    static let max = HLCTimestamp(millis: 253402300799999, counter: 0xFFFF, node: "FFFFFFFFFFFFFFFF")
+    static let max = HLCTimestamp(millis: 253_402_300_799_999, counter: 0xffff, node: "FFFFFFFFFFFFFFFF")
 
     /// Create a "since" timestamp for a given ISO date string
     static func since(_ isoString: String) -> String {

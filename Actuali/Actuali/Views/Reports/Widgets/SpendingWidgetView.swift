@@ -7,11 +7,17 @@ struct SpendingWidgetView: View {
     let data: SpendingData
     let comparisonLabel: String
 
-    private var delta: Int { data.currentSpentCents - data.comparisonCents }
+    private var delta: Int {
+        data.currentSpentCents - data.comparisonCents
+    }
 
     private var deltaColor: Color {
-        if delta > 0 { return .red }    // spent more — bad
-        if delta < 0 { return .green }  // spent less — good
+        if delta > 0 {
+            return .red
+        } // spent more — bad
+        if delta < 0 {
+            return .green
+        } // spent less — good
         return .secondary
     }
 

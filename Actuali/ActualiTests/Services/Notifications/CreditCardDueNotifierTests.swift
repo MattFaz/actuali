@@ -4,7 +4,6 @@ import UserNotifications
 @testable import Actuali
 
 struct CreditCardDueNotifierTests {
-
     private func makeDefaults(enabled: Bool) -> CreditCardNotificationSettings {
         let name = "CreditCardDueNotifierTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
@@ -210,7 +209,8 @@ struct CreditCardDueNotifierTests {
         #expect(!center.added.isEmpty)
         let body = center.added.first?.content.body ?? ""
         let expectedAmount = CurrencyAmountFormat.string(
-            cents: 50000, currencyCode: "USD", narrowSymbol: true)
+            cents: 50000, currencyCode: "USD", narrowSymbol: true
+        )
         #expect(body.contains(expectedAmount))
     }
 
@@ -230,7 +230,7 @@ struct CreditCardDueNotifierTests {
                 paymentsSince: 0,
                 remainingDue: 30000,
                 dueDate: DayDate(year: 2026, month: 4, day: 1)
-            )
+            ),
         ]
         let cal = fixedCalendar()
         let now = cal.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 8))!
@@ -249,7 +249,8 @@ struct CreditCardDueNotifierTests {
 
         #expect(center.added.count == 4)
         let expectedAmount = CurrencyAmountFormat.string(
-            cents: 30000, currencyCode: "USD", narrowSymbol: true)
+            cents: 30000, currencyCode: "USD", narrowSymbol: true
+        )
         #expect(center.added.first?.content.body.contains(expectedAmount) == true)
         let firstTrigger = center.added.first?.trigger as? UNCalendarNotificationTrigger
         #expect(firstTrigger?.dateComponents.month == 3)

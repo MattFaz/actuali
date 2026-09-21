@@ -8,7 +8,6 @@ import XCTest
 /// Both must now end the same way: the form closes and the user lands on the
 /// saved transaction's account list.
 final class AddTransactionPostSaveUITests: XCTestCase {
-
     /// Types an amount on the decimal pad and taps the save button.
     @MainActor
     private func enterAmountAndSave(in app: XCUIApplication) {
@@ -35,7 +34,7 @@ final class AddTransactionPostSaveUITests: XCTestCase {
     }
 
     @MainActor
-    func testSheetPresentedAddFlowDismissesToAccountListAfterSave() throws {
+    func testSheetPresentedAddFlowDismissesToAccountListAfterSave() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "0"]
         app.launch()
@@ -64,7 +63,7 @@ final class AddTransactionPostSaveUITests: XCTestCase {
     }
 
     @MainActor
-    func testTabHostedAddFlowNavigatesToAccountListAfterSave() throws {
+    func testTabHostedAddFlowNavigatesToAccountListAfterSave() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()

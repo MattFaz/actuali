@@ -43,10 +43,13 @@ struct RecurrenceDraft: Equatable {
             weekendSolveMode: weekendSolveMode,
             endMode: endMode,
             endOccurrences: endMode == "after_n_occurrences" ? max(1, endOccurrences) : nil,
-            endDate: endMode == "on_date" ? endDate : nil)
+            endDate: endMode == "on_date" ? endDate : nil
+        )
     }
 
-    var supportsPatterns: Bool { frequency == .monthly }
+    var supportsPatterns: Bool {
+        frequency == .monthly
+    }
 
     mutating func addPattern() {
         patterns.append(RecurConfig.Pattern(type: "day", value: start.day))
@@ -92,7 +95,9 @@ struct RecurrenceEditorView: View {
                 .onChange(of: draft.frequency) { _, frequency in
                     // Patterns are monthly-only; leaving them on another
                     // frequency would silently change the recurrence.
-                    if frequency != .monthly { draft.patterns = [] }
+                    if frequency != .monthly {
+                        draft.patterns = []
+                    }
                 }
 
                 Stepper(value: $draft.interval, in: 1...365) {
@@ -154,7 +159,6 @@ struct RecurrenceEditorView: View {
 
     // MARK: - Monthly patterns
 
-    @ViewBuilder
     private var patternSection: some View {
         Section {
             ForEach(draft.patterns.indices, id: \.self) { index in
@@ -205,35 +209,39 @@ struct RecurrenceEditorView: View {
 
     private var intervalLabel: String {
         switch draft.frequency {
-        case .daily: return ReportStrings.localized("\(draft.interval) days", locale: locale, bundle: .main)
-        case .weekly: return ReportStrings.localized("\(draft.interval) weeks", locale: locale, bundle: .main)
-        case .monthly: return ReportStrings.localized("\(draft.interval) months", locale: locale, bundle: .main)
-        case .yearly: return ReportStrings.localized("\(draft.interval) years", locale: locale, bundle: .main)
+        case .daily: ReportStrings.localized("\(draft.interval) days", locale: locale, bundle: .main)
+        case .weekly: ReportStrings.localized("\(draft.interval) weeks", locale: locale, bundle: .main)
+        case .monthly: ReportStrings.localized("\(draft.interval) months", locale: locale, bundle: .main)
+        case .yearly: ReportStrings.localized("\(draft.interval) years", locale: locale, bundle: .main)
         }
     }
 
     private var startBinding: Binding<Date> {
         Binding(
             get: { Transaction.date(fromYYYYMMDD: draft.start.yyyymmdd) },
-            set: { draft.start = DayDate(yyyymmdd: Transaction.yyyymmdd(from: $0)) ?? draft.start })
+            set: { draft.start = DayDate(yyyymmdd: Transaction.yyyymmdd(from: $0)) ?? draft.start }
+        )
     }
 
     private var endDateBinding: Binding<Date> {
         Binding(
             get: { Transaction.date(fromYYYYMMDD: draft.endDate.yyyymmdd) },
-            set: { draft.endDate = DayDate(yyyymmdd: Transaction.yyyymmdd(from: $0)) ?? draft.endDate })
+            set: { draft.endDate = DayDate(yyyymmdd: Transaction.yyyymmdd(from: $0)) ?? draft.endDate }
+        )
     }
 
     private func patternValueBinding(_ index: Int) -> Binding<Int> {
         Binding(
             get: { draft.patterns.indices.contains(index) ? draft.patterns[index].value : 1 },
-            set: { draft.setPatternValue(at: index, to: $0) })
+            set: { draft.setPatternValue(at: index, to: $0) }
+        )
     }
 
     private func patternTypeBinding(_ index: Int) -> Binding<String> {
         Binding(
             get: { draft.patterns.indices.contains(index) ? draft.patterns[index].type : "day" },
-            set: { draft.setPatternType(at: index, to: $0) })
+            set: { draft.setPatternType(at: index, to: $0) }
+        )
     }
 }
 

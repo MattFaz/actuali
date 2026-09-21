@@ -88,9 +88,9 @@ struct PayeePickerView: View {
 
         guard !searchText.isEmpty else {
             let sorted = usablePayees.sorted {
-                    name($0).localizedCaseInsensitiveCompare(name($1))
-                        == .orderedAscending
-                }
+                name($0).localizedCaseInsensitiveCompare(name($1))
+                    == .orderedAscending
+            }
             guard transferFromAccountId != nil else {
                 return Array(sorted.prefix(20))
             }
@@ -116,7 +116,7 @@ struct PayeePickerView: View {
                     == .orderedAscending
             }
             .prefix(20)
-            .map { $0 }
+            .map(\.self)
     }
 
     nonisolated static func displayName(
@@ -298,18 +298,18 @@ struct PayeePickerView: View {
                 }
             }
             .task {
-                suggestedPayees = Self.allowedPayees(
-                    await budgetStore.fetchCommonPayees()
+                suggestedPayees = await Self.allowedPayees(
+                    budgetStore.fetchCommonPayees()
                 )
             }
         }
     }
 }
 
-// The picker's search field. `TextField(_:text:selection:)` (iOS 16+) is the
-// whole fix for GH #486: writing a select-all `TextSelection` while the field
-// is focused makes the first keystroke replace the pre-filled name — the
-// `.searchable` drawer field ignores `.searchSelection` writes entirely.
+/// The picker's search field. `TextField(_:text:selection:)` (iOS 16+) is the
+/// whole fix for GH #486: writing a select-all `TextSelection` while the field
+/// is focused makes the first keystroke replace the pre-filled name — the
+/// `.searchable` drawer field ignores `.searchSelection` writes entirely.
 private extension PayeePickerView {
     var searchBar: some View {
         PickerSearchBar(text: $searchText, clearButtonIdentifier: "payeePicker.clearSearch") {

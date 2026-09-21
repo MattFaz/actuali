@@ -1,8 +1,8 @@
 // Actuali/Actuali/Services/Sync/SyncEncryption.swift
 
-import Foundation
-import CryptoKit
 import CommonCrypto
+import CryptoKit
+import Foundation
 
 enum SyncEncryptionError: Error {
     case encryptionFailed
@@ -13,7 +13,6 @@ enum SyncEncryptionError: Error {
 
 /// Encryption/decryption for sync messages (AES-256-GCM)
 enum SyncEncryption {
-
     /// Encrypt data for sync
     static func encrypt(_ plaintext: Data, using key: SymmetricKey) throws -> EncryptedData {
         do {
@@ -62,7 +61,7 @@ enum SyncEncryption {
                     saltBytes.baseAddress?.assumingMemoryBound(to: UInt8.self),
                     salt.count,
                     CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA512),
-                    10_000,  // iterations - matches Actual
+                    10000, // iterations - matches Actual
                     &derivedKey,
                     32
                 )

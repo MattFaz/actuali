@@ -3,9 +3,8 @@ import XCTest
 /// PWA-style budget table (actios-yif1): group rows collapse and re-expand
 /// their categories, and the collapsed state survives leaving the tab.
 final class BudgetGroupCollapseUITests: XCTestCase {
-
     @MainActor
-    func testGroupRowCollapsesAndExpandsCategories() throws {
+    func testGroupRowCollapsesAndExpandsCategories() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
         app.launch()
@@ -32,7 +31,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
-    func testToolbarMenuCollapsesAndExpandsAllGroups() throws {
+    func testToolbarMenuCollapsesAndExpandsAllGroups() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
         app.launch()
@@ -76,7 +75,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompactGroupContextMenuHidesAndShowsExpenseGroup() throws {
+    func testCompactGroupContextMenuHidesAndShowsExpenseGroup() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", "compact",
@@ -130,7 +129,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompactGroupHeaderStaysPinnedWhileCategoriesScroll() throws {
+    func testCompactGroupHeaderStaysPinnedWhileCategoriesScroll() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", "compact",
@@ -282,7 +281,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompactIncomeGroupHasNoHideAction() throws {
+    func testCompactIncomeGroupHasNoHideAction() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", "compact", "-initialTab", "1",
@@ -339,7 +338,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         let salary = app.buttons["All transactions for Salary"]
 
         var scrollsLeft = 20
-        while !anyHeader.waitForExistence(timeout: 2) && scrollsLeft > 0 {
+        while !anyHeader.waitForExistence(timeout: 2), scrollsLeft > 0 {
             app.swipeUp(velocity: .slow)
             scrollsLeft -= 1
         }

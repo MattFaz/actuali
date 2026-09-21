@@ -5,7 +5,6 @@ import XCTest
 /// collapsed, and the collapsed state survives an app relaunch — the same
 /// contract the budget tab's group collapse honors.
 final class AccountSectionCollapseUITests: XCTestCase {
-
     @MainActor
     private func launchOnAccountsTab() -> XCUIApplication {
         let app = XCUIApplication()
@@ -17,7 +16,7 @@ final class AccountSectionCollapseUITests: XCTestCase {
     }
 
     @MainActor
-    func testSectionsCollapseAndExpandIndependently() throws {
+    func testSectionsCollapseAndExpandIndependently() {
         let app = launchOnAccountsTab()
 
         // Demo data seeds Chase Checking on budget and Vanguard Brokerage off.
@@ -52,7 +51,7 @@ final class AccountSectionCollapseUITests: XCTestCase {
     }
 
     @MainActor
-    func testCollapsedSectionSurvivesRelaunch() throws {
+    func testCollapsedSectionSurvivesRelaunch() {
         var app = launchOnAccountsTab()
 
         let chase = app.staticTexts["Chase Checking"].firstMatch

@@ -49,13 +49,13 @@ extension WidgetSnapshot {
             categories: budgets
                 .sorted { ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder) }
                 .map {
-                WidgetCategoryBalance(
-                    id: $0.categoryId,
-                    name: $0.categoryName,
-                    available: $0.available,
-                    formattedAvailable: format($0.available)
-                )
-            }
+                    WidgetCategoryBalance(
+                        id: $0.categoryId,
+                        name: $0.categoryName,
+                        available: $0.available,
+                        formattedAvailable: format($0.available)
+                    )
+                }
         )
     }
 }

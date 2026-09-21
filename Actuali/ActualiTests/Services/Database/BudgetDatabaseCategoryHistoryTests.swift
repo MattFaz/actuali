@@ -1,11 +1,10 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 @MainActor
 struct BudgetDatabaseCategoryHistoryTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")

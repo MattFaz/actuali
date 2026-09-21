@@ -43,6 +43,7 @@ What the compiler can't guard is anything the OS resolves at runtime, so CI runs
 - **Reuse the existing simulator; don't `simctl create`/`delete` per run.** Resolve the UDID once from `xcrun simctl list devices available` and reuse it. Booting a fresh device costs more than the test run.
 - **Narrow the test run.** `-only-testing:ActualiTests/SomeTests` for a single suite; `-skip-testing:ActualiUITests` is the CI-equivalent full run. Don't run UI tests to validate a unit-level change.
 - **Pipe to a filter, don't read raw output.** `xcodebuild ... 2>&1 | grep -E 'error:|warning:|\*\* (TEST|BUILD) (SUCCEEDED|FAILED) \*\*'` — full xcodebuild output is tens of thousands of lines.
+- **Format before committing.** SwiftFormat (`brew install swiftformat`, config in `.swiftformat`) is enforced by a required CI check. Run `swiftformat Actuali` on your changes before committing — or install the pre-commit hook once (`ln -s "$(pwd)/dev/scripts/pre-commit" "$(git rev-parse --git-path hooks)/pre-commit"`) and it happens automatically. `Actuali/Actuali/Generated/` is excluded: never reformat it.
 - CI is GitHub Actions. `gh pr checks` exits **8** when checks are still pending — that is a state, not a failure, so don't retry on it. To wait, use `gh pr checks <pr> --watch` rather than polling in a loop.
 
 ### Concurrency (Swift 6)

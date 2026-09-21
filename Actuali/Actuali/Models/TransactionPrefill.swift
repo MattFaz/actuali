@@ -16,7 +16,9 @@ struct TransactionPrefill: Identifiable, Equatable {
     let isIncome: Bool
     let cleared: Bool
 
-    var id: Date { date }
+    var id: Date {
+        date
+    }
 
     init(
         accountId: String?,
@@ -61,10 +63,18 @@ struct TransactionPrefill: Identifiable, Equatable {
             "isIncome": isIncome,
             "cleared": cleared,
         ]
-        if let accountId { info["accountId"] = accountId }
-        if let amountCents { info["amountCents"] = amountCents }
-        if !notes.isEmpty { info["notes"] = notes }
-        if let categoryId { info["categoryId"] = categoryId }
+        if let accountId {
+            info["accountId"] = accountId
+        }
+        if let amountCents {
+            info["amountCents"] = amountCents
+        }
+        if !notes.isEmpty {
+            info["notes"] = notes
+        }
+        if let categoryId {
+            info["categoryId"] = categoryId
+        }
         return info
     }
 }

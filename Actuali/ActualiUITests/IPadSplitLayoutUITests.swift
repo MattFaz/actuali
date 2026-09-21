@@ -4,7 +4,6 @@ import XCTest
 /// Coverage for the iPad-only layouts. Skipped on iPhone, which keeps the
 /// compact tab-bar-and-push layout these assertions would contradict.
 final class IPadSplitLayoutUITests: XCTestCase {
-
     /// Matches `ContentView.wideLayoutThreshold`: below it the iPad falls back
     /// to the phone's push navigation, so an 11-inch portrait simulator skips
     /// the split-view tests. Run them on a 13-inch, or in landscape.

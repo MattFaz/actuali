@@ -42,15 +42,15 @@ enum AmountParser {
 
         let normalized: String
         switch (token.lastIndex(of: "."), token.lastIndex(of: ",")) {
-        case let (dot?, comma?):
+        case (let dot?, let comma?):
             // Both present: the rightmost is the decimal separator.
             let (decimal, grouping): (Character, Character) = dot > comma ? (".", ",") : (",", ".")
             normalized = token
                 .replacingOccurrences(of: String(grouping), with: "")
                 .replacingOccurrences(of: String(decimal), with: ".")
-        case let (dot?, nil):
+        case (let dot?, nil):
             normalized = resolveSingleSeparator(token, separator: ".", lastIndex: dot)
-        case let (nil, comma?):
+        case (nil, let comma?):
             normalized = resolveSingleSeparator(token, separator: ",", lastIndex: comma)
         case (nil, nil):
             normalized = token
@@ -65,17 +65,15 @@ enum AmountParser {
     /// `dot-comma`, while `1.234` remains 1,234 in that same format.
     private static func normalize(_ token: String, using numberFormat: ActualNumberFormat) -> String? {
         let decimalSeparator = Character(numberFormat.decimalSeparator)
-        let groupingSeparators: Set<Character>
-
-        switch numberFormat {
+        let groupingSeparators: Set<Character> = switch numberFormat {
         case .commaDot, .commaDotIn:
-            groupingSeparators = [","]
+            [","]
         case .dotComma:
-            groupingSeparators = ["."]
+            ["."]
         case .spaceComma:
-            groupingSeparators = ["\u{202F}", "\u{00A0}"]
+            ["\u{202F}", "\u{00A0}"]
         case .apostropheDot:
-            groupingSeparators = ["'", "\u{2019}"]
+            ["'", "\u{2019}"]
         }
 
         let integerPart = token.prefix { $0 != decimalSeparator }

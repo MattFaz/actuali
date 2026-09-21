@@ -17,7 +17,9 @@ struct EntityNote: Equatable {
 
     static let unsupported = EntityNote(supported: false, text: "")
 
-    var isEmpty: Bool { text.isEmpty }
+    var isEmpty: Bool {
+        text.isEmpty
+    }
 
     /// What to persist for text the user typed. Whitespace-only input clears
     /// the note instead of storing blanks that would render as an empty-looking

@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct BudgetMonthOverspentCountTests {
-
     private func makeCategory(id: String, available: Int, carryover: Int = 0) -> CategoryBudget {
         CategoryBudget(
             month: "2026-07",
@@ -59,8 +58,8 @@ struct BudgetMonthOverspentCountTests {
         #expect(!category.isApproachingLimit)
     }
 
-    // Overspent, fully spent and untouched categories each have their own
-    // chip, so none of them may also match "Almost Spent".
+    /// Overspent, fully spent and untouched categories each have their own
+    /// chip, so none of them may also match "Almost Spent".
     @Test func overspentAndFullySpentAndIdleAreNotApproachingTheLimit() {
         var overspent = makeCategory(id: "overspent", available: -500)
         overspent.budgeted = 10000

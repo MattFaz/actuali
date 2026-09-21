@@ -22,7 +22,7 @@ struct SettingsView: View {
             SettingsItem(title: String(localized: "Budget View"), systemImage: "wallet.bifold", destination: { AnyView(BudgetViewSettingsView()) }),
             SettingsItem(title: String(localized: "Display"), systemImage: "iphone", destination: { AnyView(DisplaySettingsView()) }),
             SettingsItem(title: String(localized: "Privacy"), systemImage: "hand.raised", destination: { AnyView(PrivacySettingsView()) }),
-            SettingsItem(title: String(localized: "Transactions & Automation"), systemImage: "arrow.left.arrow.right", destination: { AnyView(TransactionAutomationSettingsView()) })
+            SettingsItem(title: String(localized: "Transactions & Automation"), systemImage: "arrow.left.arrow.right", destination: { AnyView(TransactionAutomationSettingsView()) }),
         ].sorted { Self.titlePrecedes($0.title, $1.title) }
     }
 
@@ -30,7 +30,7 @@ struct SettingsView: View {
         var items = [
             SettingsItem(title: String(localized: "Bank Sync (SimpleFIN & Wallet)"), systemImage: "building.columns", destination: { AnyView(BankSyncSetupView()) }),
             SettingsItem(title: String(localized: "Bills & Calendar"), systemImage: "calendar", destination: { AnyView(BillsCalendarView()) }),
-            SettingsItem(title: String(localized: "Scheduled Transactions"), systemImage: "calendar.badge.clock", destination: { AnyView(SchedulesListView()) })
+            SettingsItem(title: String(localized: "Scheduled Transactions"), systemImage: "calendar.badge.clock", destination: { AnyView(SchedulesListView()) }),
         ]
         if includeRules {
             items.append(SettingsItem(title: String(localized: "Rules"), systemImage: "list.bullet.rectangle", destination: { AnyView(RulesListView()) }))
@@ -60,7 +60,7 @@ struct SettingsView: View {
                 title: String(localized: "Support"),
                 systemImage: "questionmark.circle",
                 destination: { AnyView(SupportView()) }
-            )
+            ),
         ].sorted { Self.titlePrecedes($0.title, $1.title) }
     }
 

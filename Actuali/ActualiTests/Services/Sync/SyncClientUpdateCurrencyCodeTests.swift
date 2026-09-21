@@ -9,7 +9,6 @@ import Testing
 /// choice survives a relaunch and reaches other clients (GH #59). Mirrors
 /// upstream `saveSyncedPrefs` (loot-core/src/server/preferences/app.ts).
 struct SyncClientUpdateCurrencyCodeTests {
-
     /// The preferences table and messages_crdt normally come from the
     /// downloaded budget file, so create them with the upstream schema.
     private func makeDatabase(withPreferencesTable: Bool = true) throws -> (BudgetDatabase, URL) {
@@ -19,24 +18,24 @@ struct SyncClientUpdateCurrencyCodeTests {
         try queue.write { db in
             if withPreferencesTable {
                 try db.execute(sql: """
-                    CREATE TABLE preferences (
-                        id TEXT PRIMARY KEY,
-                        value TEXT
-                    )
-                    """)
-            }
-            try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
+                CREATE TABLE preferences (
+                    id TEXT PRIMARY KEY,
+                    value TEXT
                 )
                 """)
+            }
+            try db.execute(sql: """
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     /// Sync client wired to a real database. The server client is

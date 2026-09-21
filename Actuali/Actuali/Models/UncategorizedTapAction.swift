@@ -8,15 +8,17 @@ enum UncategorizedTapAction: String, CaseIterable, Identifiable {
     case categoryPicker
     case transactionEditor
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
-        case .categoryPicker: return ReportStrings.text("Category Picker", locale: locale, bundle: bundle)
-        case .transactionEditor: return ReportStrings.text("Transaction Editor", locale: locale, bundle: bundle)
+        case .categoryPicker: ReportStrings.text("Category Picker", locale: locale, bundle: bundle)
+        case .transactionEditor: ReportStrings.text("Transaction Editor", locale: locale, bundle: bundle)
         }
     }
-    
+
     /// Whether tapping `transaction` in the Uncategorized list should open
     /// the full editor. Split children never do, whatever the setting says:
     /// the edit form has no split support, which is why they carry no Edit

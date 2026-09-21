@@ -1,11 +1,10 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 @MainActor
 struct DashboardSchemaMigrationTests {
-
     private func makeDatabasePath() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -62,7 +61,7 @@ struct DashboardSchemaMigrationTests {
                 row: "widget-1",
                 column: "meta",
                 value: "S:{\"name\":\"My Net Worth\"}"
-            )
+            ),
         ]
 
         _ = try database.insertMessages(messages)
@@ -88,16 +87,16 @@ struct DashboardSchemaMigrationTests {
         let queue = try DatabaseQueue(path: path.path)
         try queue.read { db in
             #expect(try db.tableExists("dashboard_pages"))
-            let columns = Set(try db.columns(in: "dashboard_pages").map(\.name))
+            let columns = try Set(db.columns(in: "dashboard_pages").map(\.name))
             #expect(columns.isSuperset(of: ["id", "name", "tombstone"]))
         }
     }
 
-    // A budget file from a pre-multiple-dashboards server ships a dashboard
-    // table without dashboard_page_id. CREATE IF NOT EXISTS won't touch it,
-    // so the column must arrive via the upstream ALTER migration — otherwise
-    // page-assignment CRDT messages are skipped and the local dashboard
-    // diverges from the server.
+    /// A budget file from a pre-multiple-dashboards server ships a dashboard
+    /// table without dashboard_page_id. CREATE IF NOT EXISTS won't touch it,
+    /// so the column must arrive via the upstream ALTER migration — otherwise
+    /// page-assignment CRDT messages are skipped and the local dashboard
+    /// diverges from the server.
     @Test func addsDashboardPageIdToLegacyDashboardTable() throws {
         let path = makeDatabasePath()
         let fixtureQueue = try DatabaseQueue(path: path.path)
@@ -119,7 +118,7 @@ struct DashboardSchemaMigrationTests {
 
         let queue = try DatabaseQueue(path: path.path)
         try queue.read { db in
-            let columns = Set(try db.columns(in: "dashboard").map(\.name))
+            let columns = try Set(db.columns(in: "dashboard").map(\.name))
             #expect(columns.contains("dashboard_page_id"))
         }
     }

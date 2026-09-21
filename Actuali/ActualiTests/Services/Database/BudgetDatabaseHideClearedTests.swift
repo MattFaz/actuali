@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins the `unclearedOnly` filter in `fetchTransactions` (GH #133): with the
@@ -9,7 +9,6 @@ import GRDB
 /// composes with the account scope, search, and paging.
 @MainActor
 struct BudgetDatabaseHideClearedTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -187,7 +186,7 @@ struct BudgetDatabaseHideClearedTests {
         // into the filtered set, not the raw table, so page two picks up
         // exactly where page one ended.
         let values = (0..<6).map { i in
-            "('t-\(i)', 'acct-1', 'payee-market', -1000, \(20260601 + i), \(i), \(i % 2))"
+            "('t-\(i)', 'acct-1', 'payee-market', -1000, \(20_260_601 + i), \(i), \(i % 2))"
         }.joined(separator: ",\n")
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """

@@ -8,7 +8,6 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct BudgetStoreCategoryStatusDotsTests {
-
     @Test func categoryStatusDotsShowByDefault() {
         #expect(BudgetStore.previewInstance().showCategoryStatusDots)
     }

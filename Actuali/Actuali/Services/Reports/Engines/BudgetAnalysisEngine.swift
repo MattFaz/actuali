@@ -8,8 +8,8 @@ struct BudgetAnalysisMeta: Codable, Equatable {
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
     let timeFrame: WidgetTimeFrame?
-    let interval: String?   // "Daily" | "Weekly" | "Monthly" | "Yearly"
-    let graphType: String?  // "Line" | "Bar"
+    let interval: String? // "Daily" | "Weekly" | "Monthly" | "Yearly"
+    let graphType: String? // "Line" | "Bar"
     let showBalance: Bool?
     let balanceOnly: Bool?
     let showHiddenCategories: Bool?
@@ -22,17 +22,17 @@ struct BudgetAnalysisMeta: Codable, Equatable {
 /// does ('tracking' / legacy 'report' → reflect_budgets, else zero_budgets).
 /// `month` is YYYYMM and `amount` integer cents, both stored as such.
 struct BudgetAnalysisBudgetEntry: Equatable {
-    let month: Int  // YYYYMM
+    let month: Int // YYYYMM
     let categoryId: String
     let amountCents: Int
 }
 
 struct BudgetAnalysisIntervalPoint: Equatable {
-    let month: Int                        // YYYYMM
+    let month: Int // YYYYMM
     let budgetedCents: Int
-    let spentCents: Int                   // negative for spending, as upstream
+    let spentCents: Int // negative for spending, as upstream
     let balanceCents: Int
-    let overspendingAdjustmentCents: Int  // positive
+    let overspendingAdjustmentCents: Int // positive
 }
 
 struct BudgetAnalysisData: Equatable {
@@ -54,7 +54,6 @@ struct BudgetAnalysisData: Equatable {
 /// forward, negative ones zero out and surface as the next month's
 /// overspending adjustment.
 enum BudgetAnalysisEngine {
-
     private static var calendar: Calendar {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
@@ -133,7 +132,7 @@ enum BudgetAnalysisEngine {
             startMonth
         )
 
-        var carried: [String: Int] = [:]  // category id → balance carried into the current month
+        var carried: [String: Int] = [:] // category id → balance carried into the current month
         var overspendingFromPrevMonth = 0
         var intervalData: [BudgetAnalysisIntervalPoint] = []
         var totalBudgeted = 0
@@ -143,7 +142,9 @@ enum BudgetAnalysisEngine {
         while month <= endMonth {
             // Upstream starts the display loop with a zero adjustment
             // regardless of pre-range overspending.
-            if month == startMonth { overspendingFromPrevMonth = 0 }
+            if month == startMonth {
+                overspendingFromPrevMonth = 0
+            }
 
             var budgeted = 0
             var spent = 0
@@ -230,11 +231,11 @@ enum BudgetAnalysisEngine {
     static func isSupportedCategoryCondition(_ cond: WidgetRuleCondition) -> Bool {
         switch cond.op {
         case "is", "isNot", "contains", "doesNotContain", "matches":
-            return decodeString(cond.value) != nil
+            decodeString(cond.value) != nil
         case "oneOf", "notOneOf":
-            return decodeStringArray(cond.value) != nil
+            decodeStringArray(cond.value) != nil
         default:
-            return false
+            false
         }
     }
 

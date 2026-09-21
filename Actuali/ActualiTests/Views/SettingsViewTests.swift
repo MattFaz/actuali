@@ -3,16 +3,15 @@ import Testing
 @testable import Actuali
 
 struct SettingsViewTests {
-
     @Test @MainActor func sectionsAreSortedAndRulesAreConditional() {
         #expect(SettingsView.preferencesItems.map(\.title) == [
-            "Budget View", "Display", "Privacy", "Transactions & Automation"
+            "Budget View", "Display", "Privacy", "Transactions & Automation",
         ])
         #expect(SettingsView.manageItems(includeRules: false).map(\.title) == [
-            "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "Scheduled Transactions"
+            "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "Scheduled Transactions",
         ])
         #expect(SettingsView.manageItems(includeRules: true).map(\.title) == [
-            "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "Rules", "Scheduled Transactions"
+            "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "Rules", "Scheduled Transactions",
         ])
         #expect(SettingsView.informationItems.map(\.title) == ["About", "Support"])
     }

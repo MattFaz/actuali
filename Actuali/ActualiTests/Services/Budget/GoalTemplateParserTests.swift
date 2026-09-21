@@ -5,7 +5,6 @@ import Testing
 /// Parser cases mirror loot-core's goal-template.pegjs grammar and the
 /// examples in Actual's goal templates documentation.
 struct GoalTemplateParserTests {
-
     private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     private func parse(_ line: String) throws -> GoalTemplate {
@@ -56,7 +55,8 @@ struct GoalTemplateParserTests {
 
         let weekly = try parse("#template up to 100 per week starting 2024-01-01 hold")
         #expect(weekly.limit == .init(
-            amount: 100, hold: true, period: .weekly, start: "2024-01-01"))
+            amount: 100, hold: true, period: .weekly, start: "2024-01-01"
+        ))
     }
 
     // MARK: - Percentage
@@ -132,7 +132,8 @@ struct GoalTemplateParserTests {
 
     @Test func parsesPeriodicWithLimit() throws {
         let template = try parse(
-            "#template 10 repeat every 2 weeks starting 2024-01-04 up to 60")
+            "#template 10 repeat every 2 weeks starting 2024-01-04 up to 60"
+        )
         #expect(template.period == .init(period: .week, amount: 2))
         #expect(template.limit?.amount == 60)
     }
@@ -248,13 +249,14 @@ struct GoalTemplateParserTests {
             ("#goal", "Syntaxe #goal invalide"),
             ("#template-", "Priorité invalide"),
             ("#template nonsense", "Syntaxe de modèle invalide"),
-            ("not a template", "Ligne non conforme à un modèle")
+            ("not a template", "Ligne non conforme à un modèle"),
         ]
 
         for (line, expected) in cases {
             do {
                 _ = try GoalTemplateParser.parse(
-                    line, locale: Locale(identifier: "fr_FR"), bundle: appBundle)
+                    line, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+                )
                 Issue.record("Expected parsing to fail for \(line)")
             } catch let error as GoalTemplateParser.ParseError {
                 #expect(error.message == expected)
@@ -269,13 +271,14 @@ struct GoalTemplateParserTests {
             ("#goal", "Invalid #goal syntax"),
             ("#template-", "Invalid priority"),
             ("#template nonsense", "Invalid template syntax"),
-            ("not a template", "Line is not a template")
+            ("not a template", "Line is not a template"),
         ]
 
         for (line, expected) in cases {
             do {
                 _ = try GoalTemplateParser.parse(
-                    line, locale: Locale(identifier: "en_US"), bundle: appBundle)
+                    line, locale: Locale(identifier: "en_US"), bundle: appBundle
+                )
                 Issue.record("Expected parsing to fail for \(line)")
             } catch let error as GoalTemplateParser.ParseError {
                 #expect(error.message == expected)
@@ -305,7 +308,8 @@ struct GoalTemplateParserTests {
 
     @Test func extractsTemplatesFromCRLFNote() {
         let templates = GoalTemplateNotes.parseTemplates(
-            fromNote: "Saving\r\n#template 50\r\n#goal 1000\r\n")
+            fromNote: "Saving\r\n#template 50\r\n#goal 1000\r\n"
+        )
         #expect(templates.count == 2)
         #expect(templates[0].description == "Saving")
         #expect(templates[1].type == .goal)
@@ -329,7 +333,8 @@ struct GoalTemplateParserTests {
 
     @Test func adjustmentOutOfBoundsBecomesError() {
         let templates = GoalTemplateNotes.parseTemplates(
-            fromNote: "#template schedule Rent [increase 1001%]")
+            fromNote: "#template schedule Rent [increase 1001%]"
+        )
         #expect(templates.count == 1)
         #expect(templates[0].type == .error)
         #expect(templates[0].error?.contains("adjustment") == true)
@@ -376,14 +381,14 @@ struct GoalTemplateParserTests {
 
     @Test func unknownTypeDecodesAsError() throws {
         let decoded = try #require(GoalTemplate.decodeArray(
-            fromJSON: #"[{"type":"quantum","directive":"template","priority":0}]"#))
+            fromJSON: #"[{"type":"quantum","directive":"template","priority":0}]"#
+        ))
         #expect(decoded.count == 1)
         #expect(decoded[0].type == .error)
     }
 }
 
 struct BudgetMonthMathTests {
-
     @Test func monthArithmetic() {
         #expect(BudgetMonthMath.addMonths("2024-11", 3) == "2025-02")
         #expect(BudgetMonthMath.subMonths("2024-01", 2) == "2023-11")

@@ -1,13 +1,13 @@
 // Actuali/Actuali/Services/Sync/EncryptionKeyManager.swift
 
-import Foundation
 import CryptoKit
+import Foundation
 
 /// Server response from POST /user-get-key.
 struct ServerKeyInfo: Codable, Sendable {
     let id: String
     let salt: String
-    let test: String?   // JSON string {value, meta:{keyId,algorithm,iv,authTag}}, or nil for legacy keys
+    let test: String? // JSON string {value, meta:{keyId,algorithm,iv,authTag}}, or nil for legacy keys
 }
 
 /// A validated, in-memory encryption key for a budget.
@@ -23,9 +23,9 @@ enum EncryptionKeyError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidPassword:      return String(localized: "Incorrect encryption password.")
-        case .unsupportedLegacyKey: return String(localized: "This budget uses an old encryption format that isn't supported.")
-        case .malformedTestMessage: return String(localized: "The server returned an unreadable encryption key test.")
+        case .invalidPassword: String(localized: "Incorrect encryption password.")
+        case .unsupportedLegacyKey: String(localized: "This budget uses an old encryption format that isn't supported.")
+        case .malformedTestMessage: String(localized: "The server returned an unreadable encryption key test.")
         }
     }
 }
@@ -33,7 +33,6 @@ enum EncryptionKeyError: LocalizedError {
 /// Derives, validates, persists, and retrieves a budget's E2EE key.
 /// Persists the derived key (never the password) in the Keychain, keyed by fileId.
 enum EncryptionKeyManager {
-
     private struct StoredKey: Codable { let keyId: String; let base64Key: String }
     private struct TestMessage: Codable {
         let value: String
@@ -41,7 +40,9 @@ enum EncryptionKeyManager {
         struct Meta: Codable { let keyId: String; let algorithm: String; let iv: String; let authTag: String }
     }
 
-    private static func keychainKey(fileId: String) -> String { "encryptKey.\(fileId)" }
+    private static func keychainKey(fileId: String) -> String {
+        "encryptKey.\(fileId)"
+    }
 
     /// Derive the key from the password + server salt and validate it against the test message.
     static func deriveAndValidate(password: String, keyInfo: ServerKeyInfo) throws -> LoadedKey {
@@ -70,7 +71,7 @@ enum EncryptionKeyManager {
 
     static func store(_ loaded: LoadedKey, fileId: String) throws {
         let stored = StoredKey(keyId: loaded.keyId, base64Key: loaded.key.withUnsafeBytes { Data($0).base64EncodedString() })
-        let json = String(data: try JSONEncoder().encode(stored), encoding: .utf8)!
+        let json = try String(data: JSONEncoder().encode(stored), encoding: .utf8)!
         try Keychain.set(json, for: keychainKey(fileId: fileId))
     }
 

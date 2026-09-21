@@ -4,7 +4,6 @@ import XCTest
 /// Budget tab's presentation preferences. These checks exercise that surface
 /// end to end instead of relying on the Budget options menu's coverage.
 final class BudgetViewSettingsUITests: XCTestCase {
-
     @MainActor
     private func launchSettings(
         budgetDisplayStyle: String = "clean",
@@ -58,7 +57,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
     }
 
     @MainActor
-    func testViewStyleControlsGroupTotalsAvailabilityAndPresentation() throws {
+    func testViewStyleControlsGroupTotalsAvailabilityAndPresentation() {
         let app = launchSettings()
         openBudgetViewSettings(in: app)
 
@@ -102,7 +101,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
     }
 
     @MainActor
-    func testStatusFiltersToggleControlsTheBudgetCheckInStrip() throws {
+    func testStatusFiltersToggleControlsTheBudgetCheckInStrip() {
         let app = launchSettings(showBudgetCheckInStrip: true)
         openBudgetViewSettings(in: app)
 
@@ -127,7 +126,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
     }
 
     @MainActor
-    func testHideSpentCategoriesToggleControlsBudgetRows() throws {
+    func testHideSpentCategoriesToggleControlsBudgetRows() {
         let app = launchSettings(hideZeroBudgetCategories: false)
         openBudgetViewSettings(in: app)
 
@@ -159,7 +158,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
     }
 
     @MainActor
-    func testBudgetProgressBarsToggleControlsBudgetRows() throws {
+    func testBudgetProgressBarsToggleControlsBudgetRows() {
         let app = launchSettings(showBudgetProgressBars: true)
         openBudgetViewSettings(in: app)
 
@@ -191,7 +190,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
     }
 
     @MainActor
-    func testCategoryStatusDotsToggleControlsBudgetRows() throws {
+    func testCategoryStatusDotsToggleControlsBudgetRows() {
         let app = launchSettings(showCategoryStatusDots: true)
         openBudgetViewSettings(in: app)
 

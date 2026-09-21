@@ -8,20 +8,19 @@ import UIKit
 /// like the other display settings.
 @MainActor
 struct BudgetStoreBalanceVisibilityTests {
-
     @Test func balancesShowByDefault() {
         let store = BudgetStore.previewInstance()
         #expect(!store.hideBalances)
-        #expect(store.displayBalance(123456) == store.formatCurrency(123456))
-        #expect(store.displayBalanceWholeUnits(123456) == store.formatCurrencyWholeUnits(123456))
+        #expect(store.displayBalance(123_456) == store.formatCurrency(123_456))
+        #expect(store.displayBalanceWholeUnits(123_456) == store.formatCurrencyWholeUnits(123_456))
     }
 
     @Test func displayBalanceMasksWhenHidden() {
         let store = BudgetStore.previewInstance()
         store.hideBalances = true
-        #expect(store.displayBalance(123456) == BudgetStore.hiddenBalanceText)
-        #expect(store.displayBalanceWholeUnits(123456) == BudgetStore.hiddenBalanceText)
-        #expect(store.displayBudgetCell(123456) == BudgetStore.hiddenBalanceText)
+        #expect(store.displayBalance(123_456) == BudgetStore.hiddenBalanceText)
+        #expect(store.displayBalanceWholeUnits(123_456) == BudgetStore.hiddenBalanceText)
+        #expect(store.displayBudgetCell(123_456) == BudgetStore.hiddenBalanceText)
     }
 
     @Test func budgetCellsUseCurrencyNativePrecision() {
@@ -62,7 +61,7 @@ struct BudgetStoreBalanceVisibilityTests {
     @Test func maskIsAmountIndependent() {
         let store = BudgetStore.previewInstance()
         store.hideBalances = true
-        for cents in [0, -1, 1, Int.max, Int.min + 1, -987654321] {
+        for cents in [0, -1, 1, Int.max, Int.min + 1, -987_654_321] {
             #expect(store.displayBalance(cents) == BudgetStore.hiddenBalanceText)
         }
     }
@@ -90,7 +89,8 @@ struct BudgetStoreBalanceVisibilityTests {
         store.hideDecimalPlaces = false
         let standard = CurrencyAmountFormat.string(
             cents: 123_456, currencyCode: store.currencyCode,
-            narrowSymbol: store.useNarrowCurrencySymbol)
+            narrowSymbol: store.useNarrowCurrencySymbol
+        )
         #expect(store.displayBalance(123_456) == standard)
     }
 

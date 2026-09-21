@@ -2,7 +2,7 @@ import XCTest
 
 final class CompactBudgetParityUITests: XCTestCase {
     @MainActor
-    func testExpenseCellsReachExistingActionFlows() throws {
+    func testExpenseCellsReachExistingActionFlows() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -84,7 +84,7 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testKeepsSharedMonthSwipeNavigation() throws {
+    func testKeepsSharedMonthSwipeNavigation() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -105,7 +105,7 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testCategoryFilterUsesSharedEmptyAndRecoveryFlow() throws {
+    func testCategoryFilterUsesSharedEmptyAndRecoveryFlow() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -128,7 +128,7 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testEmptyCategoryStatusDotAndProgressBarRespectIndependentSettings() throws {
+    func testEmptyCategoryStatusDotAndProgressBarRespectIndependentSettings() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -187,7 +187,7 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testIncomeNameAndReceivedReachTheirTransactionScopes() throws {
+    func testIncomeNameAndReceivedReachTheirTransactionScopes() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -218,7 +218,7 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testIncomeContextMenuHidesAndShowsCategory() throws {
+    func testIncomeContextMenuHidesAndShowsCategory() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", "compact",

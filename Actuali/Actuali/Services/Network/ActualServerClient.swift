@@ -42,7 +42,9 @@ enum ActualServerError: LocalizedError {
     /// with something unusable. Callers that fall back to a degraded mode on
     /// failure use this to tell "old server" apart from "no server".
     var isConnectionFailure: Bool {
-        if case .networkError = self { return true }
+        if case .networkError = self {
+            return true
+        }
         return false
     }
 
@@ -96,7 +98,9 @@ struct LoginMethod: Codable, Sendable, Equatable {
     /// SQLite stores this as 0/1; decode tolerantly as an integer.
     let active: Int?
 
-    var isActive: Bool { (active ?? 0) != 0 }
+    var isActive: Bool {
+        (active ?? 0) != 0
+    }
 }
 
 struct LoginMethodsResponse: Codable, Sendable {
@@ -174,12 +178,12 @@ struct ServerBankSyncError: Decodable, Sendable, Equatable {
     /// this device failed to sync reads the same in the web UI.
     var bankSyncStatus: String {
         switch errorCode {
-        case "ITEM_LOGIN_REQUIRED", "INVALID_ACCESS_TOKEN": return "reauth-required"
-        case "ACCOUNT_NEEDS_ATTENTION": return "attention-required"
-        case "RATE_LIMIT_EXCEEDED": return "rate-limit-exceeded"
-        case "TIMED_OUT": return "timed-out"
-        case "ACCOUNT_MISSING": return "account-missing"
-        default: return "failed"
+        case "ITEM_LOGIN_REQUIRED", "INVALID_ACCESS_TOKEN": "reauth-required"
+        case "ACCOUNT_NEEDS_ATTENTION": "attention-required"
+        case "RATE_LIMIT_EXCEEDED": "rate-limit-exceeded"
+        case "TIMED_OUT": "timed-out"
+        case "ACCOUNT_MISSING": "account-missing"
+        default: "failed"
         }
     }
 
@@ -255,12 +259,19 @@ struct ServerBankSyncDownloads: Decodable, Sendable {
 
     private struct DynamicKey: CodingKey {
         var stringValue: String
-        var intValue: Int? { nil }
-        init?(stringValue: String) { self.stringValue = stringValue }
-        init?(intValue: Int) { nil }
+        var intValue: Int? {
+            nil
+        }
+
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+        }
+
+        init?(intValue: Int) {
+            nil
+        }
     }
 }
-
 
 /// Version gate for features that depend on the server's Actual release.
 enum ServerVersion {
@@ -438,12 +449,11 @@ actor ActualServerClient {
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let requestPath = requestURL.path(percentEncoded: true)
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let endpointPath: Substring
-        if !primaryPath.isEmpty,
-           requestPath == primaryPath || requestPath.hasPrefix(primaryPath + "/") {
-            endpointPath = requestPath.dropFirst(primaryPath.count)
+        let endpointPath: Substring = if !primaryPath.isEmpty,
+                                         requestPath == primaryPath || requestPath.hasPrefix(primaryPath + "/") {
+            requestPath.dropFirst(primaryPath.count)
         } else {
-            endpointPath = requestPath[...]
+            requestPath[...]
         }
 
         var components = URLComponents(
@@ -600,6 +610,7 @@ actor ActualServerClient {
         struct Build: Decodable {
             let version: String?
         }
+
         let build: Build?
     }
 
@@ -646,7 +657,7 @@ actor ActualServerClient {
 
         var body: [String: String] = [
             "loginMethod": "openid",
-            "returnUrl": returnURL
+            "returnUrl": returnURL,
         ]
         if let firstTimePassword, !firstTimePassword.isEmpty {
             body["password"] = firstTimePassword
@@ -878,7 +889,9 @@ actor ActualServerClient {
         if looksLikeAuthProxy(httpResponse, data: data) {
             throw ActualServerError.authProxyBlocked
         }
-        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
         if httpResponse.statusCode == 400, data == Data("file-not-found".utf8) {
             throw ActualServerError.fileNotFound
         }
@@ -904,7 +917,9 @@ actor ActualServerClient {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
         }
-        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
         guard httpResponse.statusCode == 200 else {
             throw ActualServerError.httpError(statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8))
         }
@@ -1008,9 +1023,9 @@ actor ActualServerClient {
 
     /// Shared plumbing for the `/simplefin` routes. Returns nil when the route
     /// isn't there; throws for everything else.
-    private func postBankSync<Body: Encodable, Response: Decodable>(
+    private func postBankSync<Response: Decodable>(
         path: String,
-        body: Body
+        body: some Encodable
     ) async throws -> Response? {
         guard let serverURL else { throw ActualServerError.invalidURL }
         guard let token else { throw ActualServerError.unauthorized }
@@ -1025,10 +1040,14 @@ actor ActualServerClient {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
         }
-        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
         // The route genuinely isn't served here — not a failure, just an older
         // server. 501 covers proxies that answer unimplemented paths that way.
-        if [404, 405, 501].contains(httpResponse.statusCode) { return nil }
+        if [404, 405, 501].contains(httpResponse.statusCode) {
+            return nil
+        }
         guard httpResponse.statusCode == 200 else {
             throw ActualServerError.httpError(
                 statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8)
@@ -1040,7 +1059,6 @@ actor ActualServerClient {
             throw ActualServerError.decodingError(error)
         }
     }
-
 
     // MARK: - Sync
 

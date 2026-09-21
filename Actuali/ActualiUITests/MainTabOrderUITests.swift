@@ -4,9 +4,8 @@ import XCTest
 /// Other tests select tabs by label, so they pass regardless of position —
 /// this is the only coverage that would catch the order being swapped back.
 final class MainTabOrderUITests: XCTestCase {
-
     @MainActor
-    func testBudgetTabPrecedesAccountsTab() throws {
+    func testBudgetTabPrecedesAccountsTab() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData"]
         app.launch()

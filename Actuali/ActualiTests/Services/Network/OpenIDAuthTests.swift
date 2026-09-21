@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct OpenIDAuthTests {
-
     private var actualiBundle: Bundle {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
@@ -89,7 +88,7 @@ struct OpenIDAuthTests {
         let decoded = try JSONDecoder().decode(LoginMethodsResponse.self, from: json)
         #expect(decoded.methods?.count == 2)
         #expect(decoded.methods?.first?.method == "password")
-        #expect(decoded.methods?.allSatisfy { $0.isActive } == true)
+        #expect(decoded.methods?.allSatisfy(\.isActive) == true)
     }
 
     @Test func inactiveLoginMethodReportsNotActive() throws {

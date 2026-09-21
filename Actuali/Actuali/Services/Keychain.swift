@@ -1,6 +1,6 @@
 import Foundation
-import Security
 import os
+import Security
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "Keychain")
 
@@ -26,10 +26,10 @@ enum Keychain {
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key
+            kSecAttrAccount as String: key,
         ]
         let deleteStatus = SecItemDelete(deleteQuery as CFDictionary)
-        if deleteStatus != errSecSuccess && deleteStatus != errSecItemNotFound {
+        if deleteStatus != errSecSuccess, deleteStatus != errSecItemNotFound {
             throw KeychainError.unhandled(deleteStatus)
         }
 
@@ -38,7 +38,7 @@ enum Keychain {
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-            kSecValueData as String: data
+            kSecValueData as String: data,
         ]
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
         guard addStatus == errSecSuccess else {
@@ -54,7 +54,7 @@ enum Keychain {
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
             kSecReturnData as String: kCFBooleanTrue as Any,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecMatchLimit as String: kSecMatchLimitOne,
         ]
 
         var result: AnyObject?
@@ -80,10 +80,10 @@ enum Keychain {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key
+            kSecAttrAccount as String: key,
         ]
         let status = SecItemDelete(query as CFDictionary)
-        if status != errSecSuccess && status != errSecItemNotFound {
+        if status != errSecSuccess, status != errSecItemNotFound {
             throw KeychainError.unhandled(status)
         }
     }

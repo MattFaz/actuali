@@ -6,7 +6,6 @@ import Testing
 /// loot-core `tracking.ts`: `real-saved` (actual income + actual spent) and
 /// `total-saved` (budgeted income - budgeted expenses).
 struct BudgetMonthTrackingSummaryTests {
-
     @Test func budgetTypeFollowsPresenceOfToBudget() {
         let tracking = BudgetMonth(month: "2026-07", categoryBudgets: [], toBudget: nil)
         let envelope = BudgetMonth(month: "2026-07", categoryBudgets: [], toBudget: 0)
@@ -64,7 +63,7 @@ struct BudgetMonthTrackingSummaryTests {
             categoryBudgets: [],
             incomeCategories: [
                 income(id: "a", budgeted: 300_000, received: 0),
-                income(id: "b", budgeted: 150_000, received: 0)
+                income(id: "b", budgeted: 150_000, received: 0),
             ]
         )
         #expect(month.totalBudgetedIncome == 450_000)
@@ -77,7 +76,7 @@ struct BudgetMonthTrackingSummaryTests {
             incomeCategories: [income(id: "i", budgeted: 200_000, received: 200_000)]
         )
         // 200,000 received + (-250,000) spent = -50,000
-        #expect(month.savedActual == -50_000)
+        #expect(month.savedActual == -50000)
     }
 
     @Test func projectedSavingsIsNegativeWhenBudgetedExpensesExceedIncome() {

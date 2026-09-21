@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins the `transactions.schedule` column mapping: posted scheduled
@@ -8,7 +8,6 @@ import GRDB
 /// (`WHERE schedule = ? AND date >= ?`) can find them.
 @MainActor
 struct ScheduleFieldTests {
-
     /// Builds the fetch-path tables. `includeScheduleColumn: false` mimics an
     /// old snapshot whose `transactions` table predates the schedule column,
     /// so opening `BudgetDatabase` must backfill it via migration.
@@ -110,7 +109,7 @@ struct ScheduleFieldTests {
         Transaction(
             id: id,
             accountId: "acct-1",
-            date: 20260115,
+            date: 20_260_115,
             amount: -1500,
             payeeId: nil,
             payeeName: nil,

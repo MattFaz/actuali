@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import Actuali
 
 @Suite("Card account mappings suggestions")
@@ -44,7 +43,7 @@ struct CardAccountMappingsViewTests {
         let imports = [
             makeImport(cardHint: nil, payee: "Coffee Shop"),
             makeImport(cardHint: "", payee: "Grocery Store"),
-            makeImport(cardHint: "   ", payee: "Bookstore")
+            makeImport(cardHint: "   ", payee: "Bookstore"),
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
@@ -58,11 +57,11 @@ struct CardAccountMappingsViewTests {
     @Test func ignoresCardHintsAlreadyMapped() {
         let accounts = [
             account("acct_chase", name: "Chase"),
-            account("acct_hsbc", name: "HSBC")
+            account("acct_hsbc", name: "HSBC"),
         ]
         let imports = [
             makeImport(cardHint: "1234", payee: "Amazon"),
-            makeImport(cardHint: "HSBC", payee: "Gas Station")
+            makeImport(cardHint: "HSBC", payee: "Gas Station"),
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
@@ -70,7 +69,7 @@ struct CardAccountMappingsViewTests {
             accounts: accounts,
             cardMappings: [
                 "1234": "acct_chase",
-                "hsbc": "acct_hsbc"
+                "hsbc": "acct_hsbc",
             ]
         )
         #expect(suggestions.isEmpty)
@@ -79,7 +78,7 @@ struct CardAccountMappingsViewTests {
     @Test func ignoresHintsThatMatchExistingMappingCaseInsensitively() {
         let accounts = [account("acct_hsbc", name: "HSBC Account")]
         let imports = [
-            makeImport(cardHint: "hsbc", payee: "Dinner")
+            makeImport(cardHint: "hsbc", payee: "Dinner"),
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
@@ -93,7 +92,7 @@ struct CardAccountMappingsViewTests {
     @Test func ignoresHintsThatMatchAccountNameDirectly() {
         let accounts = [account("acct_checking", name: "HSBC Checking")]
         let imports = [
-            makeImport(cardHint: "HSBC Checking", payee: "Coffee")
+            makeImport(cardHint: "HSBC Checking", payee: "Coffee"),
         ]
         // Even with no card mappings, hint matches open account name so it routes already
         let suggestions = CardAccountMappingsView.computeSuggestions(
@@ -108,10 +107,10 @@ struct CardAccountMappingsViewTests {
     @Test func suggestsCardMappedToClosedAccount() {
         let accounts = [
             account("acct_closed", name: "Old Chase", closed: true),
-            account("acct_active", name: "Active Checking", closed: false)
+            account("acct_active", name: "Active Checking", closed: false),
         ]
         let imports = [
-            makeImport(cardHint: "1234", payee: "Groceries")
+            makeImport(cardHint: "1234", payee: "Groceries"),
         ]
         // 1234 maps to a closed account, so routing fails and falls through -> should be suggested to repair
         let suggestions = CardAccountMappingsView.computeSuggestions(
@@ -128,7 +127,7 @@ struct CardAccountMappingsViewTests {
         let accounts = [account("acct_chase", name: "Chase")]
         let imports = [
             makeImport(cardHint: "9876", payee: "Starbucks"),
-            makeImport(cardHint: "1234", payee: "Amazon")
+            makeImport(cardHint: "1234", payee: "Amazon"),
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
@@ -147,7 +146,7 @@ struct CardAccountMappingsViewTests {
         let imports = [
             makeImport(cardHint: "9876", payee: "Starbucks"),
             makeImport(cardHint: "9876", payee: "Target"),
-            makeImport(cardHint: "5555", payee: "Uber")
+            makeImport(cardHint: "5555", payee: "Uber"),
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
@@ -171,7 +170,7 @@ struct CardAccountMappingsViewTests {
             makeImport(cardHint: "ZZZZ", payee: "A"),
             makeImport(cardHint: "AAAA", payee: "B"),
             makeImport(cardHint: "MMMM", payee: "C"),
-            makeImport(cardHint: "MMMM", payee: "D")
+            makeImport(cardHint: "MMMM", payee: "D"),
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
@@ -218,14 +217,14 @@ struct CardAccountMappingsViewTests {
     @Test func groupByAccountGroupsAndSortsAccountsAndKeywords() {
         let accounts = [
             account("acct_chase", name: "Chase Sapphire"),
-            account("acct_citi", name: "Citi Double Cash")
+            account("acct_citi", name: "Citi Double Cash"),
         ]
         let mappings = [
             "CSR": "acct_chase",
             "1234": "acct_chase",
             "5678": "acct_chase",
             "CitiDC": "acct_citi",
-            "9012": "acct_citi"
+            "9012": "acct_citi",
         ]
         let grouped = CardAccountMappingsView.groupByAccount(cardMappings: mappings, accounts: accounts)
 
@@ -242,12 +241,12 @@ struct CardAccountMappingsViewTests {
     @Test func groupByAccountHandlesUnknownAndDuplicateAccountNames() {
         let accounts = [
             account("acct_1", name: "Savings"),
-            account("acct_2", name: "Savings")
+            account("acct_2", name: "Savings"),
         ]
         let mappings = [
             "1111": "acct_1",
             "2222": "acct_2",
-            "3333": "acct_missing"
+            "3333": "acct_missing",
         ]
         let grouped = CardAccountMappingsView.groupByAccount(cardMappings: mappings, accounts: accounts)
 
@@ -261,7 +260,7 @@ struct CardAccountMappingsViewTests {
         let imports = [
             makeImport(cardHint: "1111"),
             makeImport(cardHint: "2222", originBudgetId: "budget-2"),
-            makeImport(cardHint: "3333", originBudgetId: nil)
+            makeImport(cardHint: "3333", originBudgetId: nil),
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,

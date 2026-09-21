@@ -5,7 +5,6 @@ import Testing
 
 @MainActor
 struct BudgetStoreAccountMappingTests {
-
     /// Runs `body` with a store whose budget is `test-budget`, then restores
     /// the UserDefaults state the store's `currentBudgetId.didSet` persists.
     private func withMappingStore(_ body: @MainActor (BudgetStore) async -> Void) async {
@@ -201,7 +200,7 @@ struct BudgetStoreAccountMappingTests {
         #expect(store.cardAccountMappings == [
             "1234": "acct_chase",
             "5678": "acct_chase",
-            "CSR": "acct_chase"
+            "CSR": "acct_chase",
         ])
 
         // Edit: remove 5678, add 9999, retain 1234 and CSR
@@ -213,14 +212,14 @@ struct BudgetStoreAccountMappingTests {
         #expect(store.cardAccountMappings == [
             "1234": "acct_chase",
             "CSR": "acct_chase",
-            "9999": "acct_chase"
+            "9999": "acct_chase",
         ])
 
         let fetched = try await database.fetchCardAccountMappings()
         #expect(fetched == [
             "1234": "acct_chase",
             "CSR": "acct_chase",
-            "9999": "acct_chase"
+            "9999": "acct_chase",
         ])
     }
 
@@ -348,7 +347,8 @@ struct BudgetStoreAccountMappingTests {
         let resolved = BudgetStore.resolveAccountId(
             hint: "1234",
             accounts: [account("acct1", "HSBC", closed: true), account("acct2", "Cash")],
-            cardMappings: ["1234": "acct1"])
+            cardMappings: ["1234": "acct1"]
+        )
         #expect(resolved == nil)
     }
 
@@ -356,7 +356,8 @@ struct BudgetStoreAccountMappingTests {
         let resolved = BudgetStore.resolveAccountId(
             hint: "  ",
             accounts: [account("acct1", "Cash")],
-            cardMappings: [:])
+            cardMappings: [:]
+        )
         #expect(resolved == nil)
     }
 }

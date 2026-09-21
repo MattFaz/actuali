@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct CategoryBudgetProgressTests {
-
     private var actualiBundle: Bundle {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
@@ -95,7 +94,7 @@ struct CategoryBudgetProgressTests {
             "pt_BR": ["Excedido", "Totalmente gasto", "Parcialmente gasto", "Financiado", "Nenhum dinheiro atribuído"],
             "de_DE": ["Überzogen", "Vollständig ausgegeben", "Teilweise ausgegeben", "Finanziert", "Kein Geld zugewiesen"],
             "it_IT": ["In eccesso", "Speso interamente", "Speso parzialmente", "Finanziato", "Nessun importo assegnato"],
-            "nl_NL": ["Overschreden", "Volledig uitgegeven", "Gedeeltelijk uitgegeven", "Gefinancierd", "Geen geld toegewezen"]
+            "nl_NL": ["Overschreden", "Volledig uitgegeven", "Gedeeltelijk uitgegeven", "Gefinancierd", "Geen geld toegewezen"],
         ]
         let states: [CategoryProgressState] = [.overspent, .spent, .spending, .funded, .unassigned]
 
@@ -112,7 +111,7 @@ struct CategoryBudgetProgressTests {
         let history = [
             makeCategory(budgeted: 9000, spent: -8000, available: 1000),
             makeCategory(budgeted: 6000, spent: -4000, available: 2000),
-            makeCategory(budgeted: 3000, spent: 1000, available: 4000)
+            makeCategory(budgeted: 3000, spent: 1000, available: 4000),
         ]
         let byKind = Dictionary(uniqueKeysWithValues:
             current.quickAssignSuggestions(history: history).map { ($0.kind, $0.amount) })
@@ -129,8 +128,8 @@ struct CategoryBudgetProgressTests {
         #expect(current.quickAssignSuggestions(history: []).isEmpty)
     }
 
-    // With one history month the average equals Spent Last Month; offering
-    // both would just duplicate the suggestion.
+    /// With one history month the average equals Spent Last Month; offering
+    /// both would just duplicate the suggestion.
     @Test func quickAssignOmitsAverageForASingleHistoryMonth() {
         let current = makeCategory(budgeted: 10000, spent: -4000, available: 6000)
         let history = [makeCategory(budgeted: 9000, spent: -8000, available: 1000)]
@@ -176,7 +175,6 @@ struct CategoryBudgetProgressTests {
         #expect(titles == expected)
     }
 
-
     @Test(arguments: ["fr_FR", "es_ES", "pt_BR", "de_DE", "it_IT", "nl_NL"])
     func everyFilterUsesLocalizedLabelsAndAccessibilityWrapper(identifier: String) {
         let locale = Locale(identifier: identifier)
@@ -214,9 +212,9 @@ struct CategoryBudgetProgressTests {
         }
     }
 
-    // The toolbar stepper abbreviates the month so its `.principal` item keeps
-    // a width UIKit will still centre; everything that reads a month aloud or
-    // in prose keeps the full name.
+    /// The toolbar stepper abbreviates the month so its `.principal` item keeps
+    /// a width UIKit will still centre; everything that reads a month aloud or
+    /// in prose keeps the full name.
     @Test func toolbarMonthTitleAbbreviatesButKeepsTheYear() {
         let short = MonthPicker.shortTitle(for: "2026-09")
         #expect(short.contains("2026"))

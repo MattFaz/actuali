@@ -7,7 +7,6 @@ import Foundation
 /// wake (last run) separates "we never asked" from "we asked and iOS never
 /// woke us" — the two look identical from a bare last-run timestamp.
 struct BackgroundRefreshStatus {
-
     static let lastRunKey = "backgroundRefreshLastRun"
     static let lastScheduleAttemptKey = "backgroundRefreshLastScheduleAttempt"
     static let lastScheduleErrorKey = "backgroundRefreshLastScheduleError"

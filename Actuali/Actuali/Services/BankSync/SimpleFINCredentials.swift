@@ -27,7 +27,9 @@ enum SimpleFINCredentials {
         }
     }
 
-    static var isConfigured: Bool { Keychain.get(for: accessKeyItem) != nil }
+    static var isConfigured: Bool {
+        Keychain.get(for: accessKeyItem) != nil
+    }
 
     static func save(_ accessKey: SimpleFINAccessKey) throws {
         try Keychain.set(accessKey.raw, for: accessKeyItem)

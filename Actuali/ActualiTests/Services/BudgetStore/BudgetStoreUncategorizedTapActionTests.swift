@@ -10,7 +10,6 @@ import Testing
 /// system work no unit test should trigger. `resolved(from:)` stands in for it.
 @MainActor
 struct BudgetStoreUncategorizedTapActionTests {
-
     @Test func tapOpensCategoryPickerByDefault() {
         #expect(BudgetStore.previewInstance().uncategorizedTapAction == .categoryPicker)
     }
@@ -41,10 +40,10 @@ struct BudgetStoreUncategorizedTapActionTests {
         #expect(UncategorizedTapAction.resolved(from: "somethingElse") == .categoryPicker)
         #expect(UncategorizedTapAction.resolved(from: "transactionEditor") == .transactionEditor)
     }
-    
+
     @Test func routingCoversDefaultEditorAndSplitChild() {
         func transaction(parentId: String?) -> Transaction {
-            Transaction(id: "t1", accountId: "acct", date: 20260101, amount: -1000,
+            Transaction(id: "t1", accountId: "acct", date: 20_260_101, amount: -1000,
                         cleared: false, reconciled: false, isParent: false,
                         parentId: parentId, tombstone: false)
         }

@@ -53,118 +53,118 @@ enum DemoDataSeeder {
 
     private static func createSchema(_ db: Database, tracking: Bool) throws {
         try db.execute(sql: """
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                type TEXT,
-                offbudget INTEGER DEFAULT 0,
-                closed INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0,
-                sort_order REAL,
-                account_id TEXT,
-                balance_current INTEGER,
-                balance_available INTEGER,
-                balance_limit INTEGER,
-                mask TEXT,
-                official_name TEXT,
-                subtype TEXT,
-                bank TEXT
-            )
-            """)
+        CREATE TABLE accounts (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            type TEXT,
+            offbudget INTEGER DEFAULT 0,
+            closed INTEGER DEFAULT 0,
+            tombstone INTEGER DEFAULT 0,
+            sort_order REAL,
+            account_id TEXT,
+            balance_current INTEGER,
+            balance_available INTEGER,
+            balance_limit INTEGER,
+            mask TEXT,
+            official_name TEXT,
+            subtype TEXT,
+            bank TEXT
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                acct TEXT,
-                category TEXT,
-                amount INTEGER,
-                description TEXT,
-                notes TEXT,
-                date INTEGER,
-                financial_id TEXT,
-                type TEXT,
-                location TEXT,
-                error TEXT,
-                imported_description TEXT,
-                starting_balance_flag INTEGER DEFAULT 0,
-                transferred_id TEXT,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0,
-                parent_id TEXT,
-                schedule TEXT
-            )
-            """)
+        CREATE TABLE transactions (
+            id TEXT PRIMARY KEY,
+            isParent INTEGER DEFAULT 0,
+            isChild INTEGER DEFAULT 0,
+            acct TEXT,
+            category TEXT,
+            amount INTEGER,
+            description TEXT,
+            notes TEXT,
+            date INTEGER,
+            financial_id TEXT,
+            type TEXT,
+            location TEXT,
+            error TEXT,
+            imported_description TEXT,
+            starting_balance_flag INTEGER DEFAULT 0,
+            transferred_id TEXT,
+            sort_order REAL,
+            tombstone INTEGER DEFAULT 0,
+            cleared INTEGER DEFAULT 0,
+            reconciled INTEGER DEFAULT 0,
+            parent_id TEXT,
+            schedule TEXT
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE categories (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                is_income INTEGER DEFAULT 0,
-                cat_group TEXT,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                hidden BOOLEAN NOT NULL DEFAULT 0
-            )
-            """)
+        CREATE TABLE categories (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            is_income INTEGER DEFAULT 0,
+            cat_group TEXT,
+            sort_order REAL,
+            tombstone INTEGER DEFAULT 0,
+            hidden BOOLEAN NOT NULL DEFAULT 0
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE category_groups (
-                id TEXT PRIMARY KEY,
-                name TEXT UNIQUE,
-                is_income INTEGER DEFAULT 0,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                hidden BOOLEAN NOT NULL DEFAULT 0
-            )
-            """)
+        CREATE TABLE category_groups (
+            id TEXT PRIMARY KEY,
+            name TEXT UNIQUE,
+            is_income INTEGER DEFAULT 0,
+            sort_order REAL,
+            tombstone INTEGER DEFAULT 0,
+            hidden BOOLEAN NOT NULL DEFAULT 0
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE payees (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                category TEXT,
-                tombstone INTEGER DEFAULT 0,
-                transfer_acct TEXT
-            )
-            """)
+        CREATE TABLE payees (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            category TEXT,
+            tombstone INTEGER DEFAULT 0,
+            transfer_acct TEXT
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE payee_mapping (
-                id TEXT PRIMARY KEY,
-                targetId TEXT
-            )
-            """)
+        CREATE TABLE payee_mapping (
+            id TEXT PRIMARY KEY,
+            targetId TEXT
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE category_mapping (
-                id TEXT PRIMARY KEY,
-                transferId TEXT
-            )
-            """)
+        CREATE TABLE category_mapping (
+            id TEXT PRIMARY KEY,
+            transferId TEXT
+        )
+        """)
 
         // Envelope budgets live in zero_budgets, tracking budgets in
         // reflect_budgets. The columns are identical; only one table exists so
         // BudgetDatabase.budgetTable picks it without needing the preference.
         try db.execute(sql: """
-            CREATE TABLE \(tracking ? "reflect_budgets" : "zero_budgets") (
-                id TEXT PRIMARY KEY,
-                month INTEGER,
-                category TEXT,
-                amount INTEGER DEFAULT 0,
-                carryover INTEGER DEFAULT 0
-            )
-            """)
+        CREATE TABLE \(tracking ? "reflect_budgets" : "zero_budgets") (
+            id TEXT PRIMARY KEY,
+            month INTEGER,
+            category TEXT,
+            amount INTEGER DEFAULT 0,
+            carryover INTEGER DEFAULT 0
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE preferences (
-                id TEXT PRIMARY KEY,
-                value TEXT
-            )
-            """)
+        CREATE TABLE preferences (
+            id TEXT PRIMARY KEY,
+            value TEXT
+        )
+        """)
 
         // Real Actual files key notes by the annotated row's own id (GH #131).
         // The demo budget needs the table for the category note UI to appear at
@@ -206,65 +206,65 @@ enum DemoDataSeeder {
             )
             """)
         try db.execute(sql: """
-            CREATE TABLE notes (
-                id TEXT PRIMARY KEY,
-                note TEXT
-            )
-            """)
+        CREATE TABLE notes (
+            id TEXT PRIMARY KEY,
+            note TEXT
+        )
+        """)
 
         // Mirrors the dashboard tables created by BudgetDatabase's migrations, so
         // the demo budget can ship pre-built Reports dashboards.
         try db.execute(sql: """
-            CREATE TABLE dashboard (
-                id TEXT PRIMARY KEY,
-                type TEXT,
-                dashboard_page_id TEXT,
-                x INTEGER DEFAULT 0,
-                y INTEGER DEFAULT 0,
-                width INTEGER DEFAULT 4,
-                height INTEGER DEFAULT 2,
-                meta TEXT,
-                tombstone INTEGER NOT NULL DEFAULT 0
-            )
-            """)
+        CREATE TABLE dashboard (
+            id TEXT PRIMARY KEY,
+            type TEXT,
+            dashboard_page_id TEXT,
+            x INTEGER DEFAULT 0,
+            y INTEGER DEFAULT 0,
+            width INTEGER DEFAULT 4,
+            height INTEGER DEFAULT 2,
+            meta TEXT,
+            tombstone INTEGER NOT NULL DEFAULT 0
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE dashboard_pages (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
+        CREATE TABLE dashboard_pages (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            tombstone INTEGER DEFAULT 0
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
+        CREATE TABLE messages_crdt (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL UNIQUE,
+            dataset TEXT NOT NULL,
+            row TEXT NOT NULL,
+            column TEXT NOT NULL,
+            value BLOB NOT NULL
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE messages_clock (
-                id INTEGER PRIMARY KEY,
-                clock TEXT
-            )
-            """)
+        CREATE TABLE messages_clock (
+            id INTEGER PRIMARY KEY,
+            clock TEXT
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE db_version (
-                version TEXT PRIMARY KEY
-            )
-            """)
+        CREATE TABLE db_version (
+            version TEXT PRIMARY KEY
+        )
+        """)
 
         try db.execute(sql: """
-            CREATE TABLE __migrations__ (
-                id INT PRIMARY KEY NOT NULL
-            )
-            """)
+        CREATE TABLE __migrations__ (
+            id INT PRIMARY KEY NOT NULL
+        )
+        """)
     }
 
     // MARK: - Seed Data
@@ -348,22 +348,22 @@ enum DemoDataSeeder {
         // view (GH #131) is visible in the demo budget rather than only after
         // the user writes one.
         try insertNote(db, id: groceriesId, note: """
-            Target $650/mo. Household supplies count here; \
-            takeaway goes to Dining Out.
-            """)
+        Target $650/mo. Household supplies count here; \
+        takeaway goes to Dining Out.
+        """)
         // A second note carries a markdown link so tappable note links
         // (GH #190) are demonstrable — and UI-testable — in the demo budget.
         try insertNote(db, id: diningId, note: """
-            Cap $250/mo.
-            [Rewards portal](https://example.com/rewards)
-            """)
+        Cap $250/mo.
+        [Rewards portal](https://example.com/rewards)
+        """)
         // One account arrives annotated so the account note (GH #198) shows in
         // the demo budget, same reasoning. Note the "account-" prefix: that's
         // the key Actual itself uses for account notes.
         try insertNote(db, id: EntityNote.accountNoteId(chaseId), note: """
-            Direct deposit lands here on the 15th; \
-            keep a $500 buffer for the card autopay.
-            """)
+        Direct deposit lands here on the 15th; \
+        keep a $500 buffer for the card autopay.
+        """)
 
         // --- Payees ---
         let wholeFoodsId = UUID().uuidString
@@ -415,8 +415,8 @@ enum DemoDataSeeder {
         // the Reports (net worth, cash flow, spending vs. average) have real trends.
         let historyMonths = 6
 
-        // YYYYMMDD for `day` of the month `monthsAgo` before the current month.
-        // `day` is clamped to a safe 1...28 so it never rolls into the next month.
+        /// YYYYMMDD for `day` of the month `monthsAgo` before the current month.
+        /// `day` is clamped to a safe 1...28 so it never rolls into the next month.
         func ymd(monthsAgo: Int, day: Int) -> Int {
             let safeDay = min(max(day, 1), 28)
             let base = cal.date(byAdding: .month, value: -monthsAgo, to: now) ?? now
@@ -445,33 +445,33 @@ enum DemoDataSeeder {
             (paycheckId, salaryId, chaseId, 15, 320_000),
             // Essentials
             (landlordId, rentId, chaseId, 1, -185_000),
-            (pgeId, utilitiesId, chaseId, 7, -8_500),
-            (comcastId, internetId, chaseId, 6, -7_000),
-            (wholeFoodsId, groceriesId, chaseId, 3, -8_750),
-            (traderJoesId, groceriesId, chaseId, 11, -5_200),
-            (wholeFoodsId, groceriesId, chaseId, 19, -9_600),
-            (traderJoesId, groceriesId, chaseId, 26, -6_300),
+            (pgeId, utilitiesId, chaseId, 7, -8500),
+            (comcastId, internetId, chaseId, 6, -7000),
+            (wholeFoodsId, groceriesId, chaseId, 3, -8750),
+            (traderJoesId, groceriesId, chaseId, 11, -5200),
+            (wholeFoodsId, groceriesId, chaseId, 19, -9600),
+            (traderJoesId, groceriesId, chaseId, 26, -6300),
             // Transport
-            (shellId, fuelId, chaseId, 9, -5_500),
-            (shellId, fuelId, chaseId, 23, -6_000),
-            (bartId, transitId, chaseId, 4, -2_500),
-            (bartId, transitId, chaseId, 18, -2_500),
+            (shellId, fuelId, chaseId, 9, -5500),
+            (shellId, fuelId, chaseId, 23, -6000),
+            (bartId, transitId, chaseId, 4, -2500),
+            (bartId, transitId, chaseId, 18, -2500),
             // Lifestyle (mostly Apple Card)
-            (chipotleId, diningId, appleCardId, 5, -1_450),
-            (chipotleId, diningId, appleCardId, 16, -2_500),
-            (chipotleId, diningId, appleCardId, 24, -1_725),
+            (chipotleId, diningId, appleCardId, 5, -1450),
+            (chipotleId, diningId, appleCardId, 16, -2500),
+            (chipotleId, diningId, appleCardId, 24, -1725),
             (blueBottleId, coffeeId, appleCardId, 2, -575),
             (blueBottleId, coffeeId, appleCardId, 8, -650),
             (blueBottleId, coffeeId, appleCardId, 14, -700),
             (blueBottleId, coffeeId, appleCardId, 21, -550),
-            (netflixId, entertainmentId, appleCardId, 11, -2_299),
-            (amazonId, shoppingId, appleCardId, 6, -4_599),
-            (amazonId, shoppingId, appleCardId, 20, -3_199),
+            (netflixId, entertainmentId, appleCardId, 11, -2299),
+            (amazonId, shoppingId, appleCardId, 6, -4599),
+            (amazonId, shoppingId, appleCardId, 20, -3199),
             // Health & wellness
-            (fitnessId, gymId, chaseId, 10, -3_500),
-            (cvsId, pharmacyId, chaseId, 13, -1_850),
+            (fitnessId, gymId, chaseId, 10, -3500),
+            (cvsId, pharmacyId, chaseId, 13, -1850),
             // Off-budget: monthly brokerage contribution
-            (vanguardPayeeId, nil, vanguardId, 2, 50_000),
+            (vanguardPayeeId, nil, vanguardId, 2, 50000),
         ]
         let pendingDayByAccount = Dictionary(grouping: monthly.filter { $0.day <= today }, by: \.account)
             .mapValues { $0.map(\.day).max() ?? 1 }
@@ -481,7 +481,9 @@ enum DemoDataSeeder {
             let wiggle = [0, 7, -4, 11, -8, 5, 3][min(monthsAgo, 6)]
             for item in monthly {
                 // Current month: only include entries up to today (month-to-date).
-                if monthsAgo == 0 && item.day > today { continue }
+                if monthsAgo == 0 && item.day > today {
+                    continue
+                }
                 let varied: Int
                 if item.amount < 0 {
                     // Vary discretionary spend by a few percent; keep fixed bills exact.
@@ -500,7 +502,7 @@ enum DemoDataSeeder {
 
             // Quarterly market gains on the brokerage account, so net worth trends up.
             if monthsAgo % 3 == 0 {
-                transactions.append((marketId, nil, 95_000 + 5_000 * (historyMonths - monthsAgo),
+                transactions.append((marketId, nil, 95000 + 5000 * (historyMonths - monthsAgo),
                                      ymd(monthsAgo: monthsAgo, day: 28), vanguardId, true, false))
             }
         }
@@ -637,19 +639,19 @@ enum DemoDataSeeder {
 
         // --- Budgets (current month) ---
         var budgets: [(String, Int)] = [
-            (groceriesId, 60_000),
+            (groceriesId, 60000),
             (rentId, 185_000),
-            (utilitiesId, 10_000),
-            (internetId, 7_000),
-            (fuelId, 15_000),
-            (transitId, 8_000),
-            (parkingId, 2_000),
-            (diningId, 20_000),
-            (coffeeId, 4_000),
-            (entertainmentId, 5_000),
-            (shoppingId, 15_000),
-            (gymId, 3_500),
-            (pharmacyId, 3_000)
+            (utilitiesId, 10000),
+            (internetId, 7000),
+            (fuelId, 15000),
+            (transitId, 8000),
+            (parkingId, 2000),
+            (diningId, 20000),
+            (coffeeId, 4000),
+            (entertainmentId, 5000),
+            (shoppingId, 15000),
+            (gymId, 3500),
+            (pharmacyId, 3000),
         ]
         // Tracking budgets also budget income (unlike envelope), so the Saved /
         // Projected savings summary has a budgeted-income figure to work with.
@@ -660,21 +662,21 @@ enum DemoDataSeeder {
         let budgetsTable = tracking ? "reflect_budgets" : "zero_budgets"
         for (catId, amount) in budgets {
             try db.execute(sql: """
-                INSERT INTO \(budgetsTable) (id, month, category, amount, carryover)
-                VALUES (?, ?, ?, ?, 0)
-                """, arguments: [UUID().uuidString, yyyymm, catId, amount])
+            INSERT INTO \(budgetsTable) (id, month, category, amount, carryover)
+            VALUES (?, ?, ?, ?, 0)
+            """, arguments: [UUID().uuidString, yyyymm, catId, amount])
         }
 
         // --- Preferences ---
         try db.execute(sql: """
-            INSERT INTO preferences (id, value) VALUES ('defaultCurrencyCode', 'USD')
-            """)
+        INSERT INTO preferences (id, value) VALUES ('defaultCurrencyCode', 'USD')
+        """)
         // Mirror a real tracking file: budgetType drives which budget table is
         // live when both exist (harmless here where only one does).
         if tracking {
             try db.execute(sql: """
-                INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking')
-                """)
+            INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking')
+            """)
         }
 
         // --- Reports dashboards ---
@@ -683,46 +685,46 @@ enum DemoDataSeeder {
         let mainPageId = UUID().uuidString
         let trendsPageId = UUID().uuidString
         try db.execute(sql: """
-            INSERT INTO dashboard_pages (id, name, tombstone)
-            VALUES (?, 'Main', 0), (?, 'Trends', 0)
-            """, arguments: [mainPageId, trendsPageId])
+        INSERT INTO dashboard_pages (id, name, tombstone)
+        VALUES (?, 'Main', 0), (?, 'Trends', 0)
+        """, arguments: [mainPageId, trendsPageId])
 
         // A curated set of widgets so the Reports tab is populated in the demo.
         // Sliding-window time frames slide their stored range forward to end at
         // the current month, so the net-worth/cash-flow trends always cover the
         // seeded data regardless of when the demo is loaded. Ordered by `y`.
         try insertWidget(db, pageId: mainPageId, type: "markdown-card", y: 0, width: 12, height: 2, meta: """
-            {"content":"**Welcome to the demo** 👋\\n\\nThis is sample data stored only on this device \u{2014} nothing you do here can touch a server or a real budget. When you\u{2019}re ready, connect your own Actual Budget server in **More → Connection & Data**."}
-            """)
+        {"content":"**Welcome to the demo** 👋\\n\\nThis is sample data stored only on this device \u{2014} nothing you do here can touch a server or a real budget. When you\u{2019}re ready, connect your own Actual Budget server in **More → Connection & Data**."}
+        """)
         try insertWidget(db, pageId: mainPageId, type: "net-worth-card", y: 1, width: 12, height: 2, meta: """
-            {"name":"Net Worth","timeFrame":{"start":"2024-01","end":"2024-06","mode":"sliding-window"},"interval":"Monthly"}
-            """)
+        {"name":"Net Worth","timeFrame":{"start":"2024-01","end":"2024-06","mode":"sliding-window"},"interval":"Monthly"}
+        """)
         try insertWidget(db, pageId: mainPageId, type: "cash-flow-card", y: 2, width: 12, height: 2, meta: """
-            {"name":"Cash Flow","timeFrame":{"start":"2024-01","end":"2024-06","mode":"sliding-window"},"showBalance":false}
-            """)
+        {"name":"Cash Flow","timeFrame":{"start":"2024-01","end":"2024-06","mode":"sliding-window"},"showBalance":false}
+        """)
         try insertWidget(db, pageId: mainPageId, type: "summary-card", y: 3, width: 12, height: 2, meta: """
-            {"name":"Spent This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"lt","value":0}],"conditionsOp":"and"}
-            """)
+        {"name":"Spent This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"lt","value":0}],"conditionsOp":"and"}
+        """)
         try insertWidget(db, pageId: mainPageId, type: "spending-card", y: 4, width: 12, height: 2, meta: """
-            {"name":"This Month","mode":"single-month"}
-            """)
+        {"name":"This Month","mode":"single-month"}
+        """)
         try insertWidget(db, pageId: mainPageId, type: "spending-card", y: 5, width: 12, height: 2, meta: """
-            {"name":"Budget Overview","mode":"budget"}
-            """)
+        {"name":"Budget Overview","mode":"budget"}
+        """)
         try insertWidget(db, pageId: mainPageId, type: "spending-card", y: 6, width: 12, height: 2, meta: """
-            {"name":"3-Month Average","mode":"average"}
-            """)
+        {"name":"3-Month Average","mode":"average"}
+        """)
 
         // The second dashboard: a small page that shows off switching.
         try insertWidget(db, pageId: trendsPageId, type: "markdown-card", y: 0, width: 12, height: 2, meta: """
-            {"content":"**A second dashboard** 📊\\n\\nBudgets can have several report dashboards \u{2014} switch between them with the menu in the top corner. Create and arrange dashboards in the Actual Budget webapp."}
-            """)
+        {"content":"**A second dashboard** 📊\\n\\nBudgets can have several report dashboards \u{2014} switch between them with the menu in the top corner. Create and arrange dashboards in the Actual Budget webapp."}
+        """)
         try insertWidget(db, pageId: trendsPageId, type: "age-of-money-card", y: 1, width: 12, height: 2, meta: """
-            {"name":"Age of Money"}
-            """)
+        {"name":"Age of Money"}
+        """)
         try insertWidget(db, pageId: trendsPageId, type: "summary-card", y: 2, width: 12, height: 2, meta: """
-            {"name":"Income This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"gt","value":0}],"conditionsOp":"and"}
-            """)
+        {"name":"Income This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"gt","value":0}],"conditionsOp":"and"}
+        """)
 
         logger.info("Inserted \(transactions.count) demo transactions for month \(yyyymm)")
     }
@@ -737,9 +739,9 @@ enum DemoDataSeeder {
         meta: String
     ) throws {
         try db.execute(sql: """
-            INSERT INTO dashboard (id, type, dashboard_page_id, x, y, width, height, meta, tombstone)
-            VALUES (?, ?, ?, 0, ?, ?, ?, ?, 0)
-            """, arguments: [UUID().uuidString, type, pageId, y, width, height, meta])
+        INSERT INTO dashboard (id, type, dashboard_page_id, x, y, width, height, meta, tombstone)
+        VALUES (?, ?, ?, 0, ?, ?, ?, ?, 0)
+        """, arguments: [UUID().uuidString, type, pageId, y, width, height, meta])
     }
 
     // MARK: - Insert helpers
@@ -753,9 +755,9 @@ enum DemoDataSeeder {
         offBudget: Bool = false
     ) throws {
         try db.execute(sql: """
-            INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
-            VALUES (?, ?, ?, ?, 0, 0, ?)
-            """, arguments: [id, name, type, offBudget ? 1 : 0, sortOrder])
+        INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+        VALUES (?, ?, ?, ?, 0, 0, ?)
+        """, arguments: [id, name, type, offBudget ? 1 : 0, sortOrder])
     }
 
     private static func insertCategoryGroup(
@@ -766,9 +768,9 @@ enum DemoDataSeeder {
         sortOrder: Double
     ) throws {
         try db.execute(sql: """
-            INSERT INTO category_groups (id, name, is_income, sort_order, tombstone, hidden)
-            VALUES (?, ?, ?, ?, 0, 0)
-            """, arguments: [id, name, isIncome ? 1 : 0, sortOrder])
+        INSERT INTO category_groups (id, name, is_income, sort_order, tombstone, hidden)
+        VALUES (?, ?, ?, ?, 0, 0)
+        """, arguments: [id, name, isIncome ? 1 : 0, sortOrder])
     }
 
     private static func insertCategory(
@@ -780,9 +782,9 @@ enum DemoDataSeeder {
         sortOrder: Double
     ) throws {
         try db.execute(sql: """
-            INSERT INTO categories (id, name, is_income, cat_group, sort_order, tombstone, hidden)
-            VALUES (?, ?, ?, ?, ?, 0, 0)
-            """, arguments: [id, name, isIncome ? 1 : 0, groupId, sortOrder])
+        INSERT INTO categories (id, name, is_income, cat_group, sort_order, tombstone, hidden)
+        VALUES (?, ?, ?, ?, ?, 0, 0)
+        """, arguments: [id, name, isIncome ? 1 : 0, groupId, sortOrder])
     }
 
     private static func insertNote(
@@ -791,8 +793,8 @@ enum DemoDataSeeder {
         note: String
     ) throws {
         try db.execute(sql: """
-            INSERT INTO notes (id, note) VALUES (?, ?)
-            """, arguments: [id, note])
+        INSERT INTO notes (id, note) VALUES (?, ?)
+        """, arguments: [id, note])
     }
 
     private static func insertPayee(
@@ -802,12 +804,12 @@ enum DemoDataSeeder {
         transferAccountId: String? = nil
     ) throws {
         try db.execute(sql: """
-            INSERT INTO payees (id, name, transfer_acct, tombstone) VALUES (?, ?, ?, 0)
-            """, arguments: [id, name, transferAccountId])
+        INSERT INTO payees (id, name, transfer_acct, tombstone) VALUES (?, ?, ?, 0)
+        """, arguments: [id, name, transferAccountId])
         // Required for the transactions JOIN to resolve payee name
         try db.execute(sql: """
-            INSERT INTO payee_mapping (id, targetId) VALUES (?, ?)
-            """, arguments: [id, id])
+        INSERT INTO payee_mapping (id, targetId) VALUES (?, ?)
+        """, arguments: [id, id])
     }
 
     private static func insertTransaction(
@@ -823,21 +825,21 @@ enum DemoDataSeeder {
         sortOrder: Double
     ) throws {
         try db.execute(sql: """
-            INSERT INTO transactions (
-                id, isParent, isChild, acct, category, amount, description, notes, date,
-                starting_balance_flag, sort_order, tombstone, cleared, reconciled
-            )
-            VALUES (?, 0, 0, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0)
-            """, arguments: [
-                id,
-                accountId,
-                categoryId,
-                amount,
-                payeeId,
-                date,
-                startingBalance ? 1 : 0,
-                sortOrder,
-                cleared ? 1 : 0
-            ])
+        INSERT INTO transactions (
+            id, isParent, isChild, acct, category, amount, description, notes, date,
+            starting_balance_flag, sort_order, tombstone, cleared, reconciled
+        )
+        VALUES (?, 0, 0, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0)
+        """, arguments: [
+            id,
+            accountId,
+            categoryId,
+            amount,
+            payeeId,
+            date,
+            startingBalance ? 1 : 0,
+            sortOrder,
+            cleared ? 1 : 0,
+        ])
     }
 }

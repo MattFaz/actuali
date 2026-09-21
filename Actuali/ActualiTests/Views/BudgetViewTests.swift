@@ -3,8 +3,10 @@ import Testing
 @testable import Actuali
 
 struct BudgetViewTests {
+    private var appBundle: Bundle {
+        .main
+    }
 
-    private var appBundle: Bundle { .main }
     private var actualiBundle: Bundle {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
@@ -115,7 +117,7 @@ struct BudgetViewTests {
             ("en_US", "Groceries", "$25.00", "Recommended: Groceries ($25.00)", "Groceries ($25.00)"),
             ("fr_FR", "Courses", "25,00 €", "Recommandé : Courses (25,00 €)", "Courses (25,00 €)"),
             ("de_DE", "Lebensmittel", "25,00 €", "Empfohlen: Lebensmittel (25,00 €)", "Lebensmittel (25,00 €)"),
-            ("pt_BR", "Mercado", "R$ 25,00", "Recomendado: Mercado (R$ 25,00)", "Mercado (R$ 25,00)")
+            ("pt_BR", "Mercado", "R$ 25,00", "Recomendado: Mercado (R$ 25,00)", "Mercado (R$ 25,00)"),
         ]
 
         for (identifier, categoryName, amount, recommended, ordinary) in cases {

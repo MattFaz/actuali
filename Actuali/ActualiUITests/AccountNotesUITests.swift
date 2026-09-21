@@ -7,7 +7,6 @@ import XCTest
 /// — and an edit typed into the app must come back on the row after saving,
 /// proving the read, the write and the refresh are wired together.
 final class AccountNotesUITests: XCTestCase {
-
     @MainActor
     private func openAccount(_ name: String) -> XCUIApplication {
         let app = XCUIApplication()
@@ -22,7 +21,7 @@ final class AccountNotesUITests: XCTestCase {
     }
 
     @MainActor
-    func testViewsAndEditsAccountNote() throws {
+    func testViewsAndEditsAccountNote() {
         let app = openAccount("Chase Checking")
 
         // The note shows on the detail view, above the transactions.
@@ -62,7 +61,7 @@ final class AccountNotesUITests: XCTestCase {
     /// row — and rather than hiding, which is reserved for files whose schema
     /// can't store notes at all.
     @MainActor
-    func testUnannotatedAccountOffersAddNote() throws {
+    func testUnannotatedAccountOffersAddNote() {
         let app = openAccount("Ally Savings")
 
         let noteRow = app.buttons["accountNoteRow"]
@@ -84,7 +83,7 @@ final class AccountNotesUITests: XCTestCase {
     }
 
     @MainActor
-    func testNoteVisibilityCanBeHiddenShownAndPersistsAcrossRelaunch() throws {
+    func testNoteVisibilityCanBeHiddenShownAndPersistsAcrossRelaunch() {
         let app = openAccount("Chase Checking")
         let noteRow = app.buttons["accountNoteRow"]
         let toolbarOverflow = app.buttons["OverflowBarButtonItem"]
