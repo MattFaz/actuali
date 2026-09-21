@@ -1673,23 +1673,10 @@ struct CategoryPickerView: View {
         .navigationTitle("Category")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top, spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+            PickerSearchBar(text: $searchText, clearButtonIdentifier: "categoryPicker.clearSearch") {
                 CategorySearchField(text: $searchText, isFocused: $searchFocused)
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .accessibilityIdentifier("categoryPicker.clearSearch")
-                    .accessibilityLabel("Clear text")
-                }
+                    .frame(height: 36)
             }
-            .padding(8)
-            .background(.bar)
         }
         // The navigation transition must settle before UIKit can claim the
         // first responder for this destination.

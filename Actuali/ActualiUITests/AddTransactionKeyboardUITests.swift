@@ -111,6 +111,8 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         let searchField = app.textFields["categoryPicker.search"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 5),
                       "category search field not found")
+        XCTAssertLessThan(searchField.frame.height, 60,
+                          "category search field should remain a compact top bar")
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
                       "category search field did not autofocus")
     }
