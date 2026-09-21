@@ -92,7 +92,7 @@ struct MainTabView: View {
             }
 
             Tab(value: 2) {
-                AddTransactionTabView()
+                AddTransactionTabView(isSelected: selectedTab == 2)
             } label: {
                 Label("Add", systemImage: "plus")
             }
@@ -115,6 +115,7 @@ struct MainTabView: View {
 struct AddTransactionTabView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var showingDefaultAccountAlert = false
+    var isSelected = false
 
     private func handleManualTransactionSaved(_ savedTransactionId: String?) {
         CategoryFundingAutomation.processIfNeeded(savedTransactionId, using: budgetStore)
@@ -130,6 +131,7 @@ struct AddTransactionTabView: View {
         if let account = validDefaultAccount ?? fallbackAccount {
             AddTransactionView(
                 accountId: account.id,
+                autofocusAmount: isSelected,
                 onSaved: handleManualTransactionSaved
             )
                 .onAppear {
