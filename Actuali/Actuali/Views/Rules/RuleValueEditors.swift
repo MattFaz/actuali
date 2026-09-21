@@ -10,25 +10,25 @@ import SwiftUI
 private func ruleChoices(for field: String, in store: BudgetStore) -> [(id: String, name: String)] {
     switch field {
     case "payee":
-        return store.payees
+        store.payees
             .filter { !$0.tombstone && $0.transferAccountId == nil }
             .map { ($0.id, $0.name) }
     case "category":
-        return store.categoryGroups
+        store.categoryGroups
             .filter { !$0.hidden }
             .flatMap(\.categories)
             .filter { !$0.hidden }
             .map { ($0.id, $0.name) }
     case "category_group":
-        return store.categoryGroups
+        store.categoryGroups
             .filter { !$0.hidden }
             .map { ($0.id, $0.name) }
     case "account":
-        return store.accounts
+        store.accounts
             .filter { !$0.closed }
             .map { ($0.id, $0.name) }
     default:
-        return []
+        []
     }
 }
 
@@ -36,6 +36,7 @@ private func ruleChoices(for field: String, in store: BudgetStore) -> [(id: Stri
 /// type. Field/op lists come from `RuleSchema`, which is the same metadata the
 /// engine validates against.
 struct RuleConditionEditor: View {
+    @Environment(\.locale) private var locale
     @Binding var condition: Rule.Condition
 
     var body: some View {
@@ -43,18 +44,23 @@ struct RuleConditionEditor: View {
             HStack {
                 Picker("Field", selection: fieldBinding) {
                     ForEach(RuleSchema.conditionFields, id: \.self) { field in
-                        Text(RuleSchema.label(field: field).capitalized).tag(field)
+                        Text(RuleValueEditorLocalization.fieldLabel(
+                            field, locale: locale
+                        )).tag(field)
                     }
                 }
                 .labelsHidden()
 
                 Picker("Operator", selection: opBinding) {
                     ForEach(RuleSchema.validOps(for: condition.field), id: \.self) { op in
-                        Text(RuleSchema.label(op: op, type: RuleSchema.fieldType(condition.field))).tag(op)
+                        Text(RuleValueEditorLocalization.operatorLabel(
+                            op, field: condition.field, locale: locale
+                        )).tag(op)
                     }
                 }
                 .labelsHidden()
             }
+            .pickerStyle(.menu)
 
             // onBudget/offBudget read the account, not a value; upstream hides
             // the value input for them.
@@ -113,13 +119,16 @@ struct RuleConditionEditor: View {
 
 /// One action row: `set <field> to <value>`, plus the note ops.
 struct RuleActionEditor: View {
+    @Environment(\.locale) private var locale
     @Binding var action: Rule.Action
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Picker("Action", selection: opBinding) {
                 ForEach(["set", "prepend-notes", "append-notes", "delete-transaction"], id: \.self) { op in
-                    Text(RuleSchema.label(op: op).capitalized).tag(op)
+                    Text(RuleValueEditorLocalization.operatorLabel(
+                        op, locale: locale
+                    )).tag(op)
                 }
             }
             .labelsHidden()
@@ -127,7 +136,9 @@ struct RuleActionEditor: View {
             if action.op == "set" {
                 Picker("Field", selection: fieldBinding) {
                     ForEach(RuleSchema.actionFields, id: \.self) { field in
-                        Text(RuleSchema.label(field: field).capitalized).tag(field)
+                        Text(RuleValueEditorLocalization.fieldLabel(
+                            field, locale: locale
+                        )).tag(field)
                     }
                 }
                 .labelsHidden()
@@ -184,6 +195,7 @@ struct RuleActionEditor: View {
 /// The value half of a condition or action, shaped by the field's type.
 struct RuleValueEditor: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @Binding var value: RuleValue
     let field: String
     let op: String
@@ -194,8 +206,12 @@ struct RuleValueEditor: View {
 
     /// The empty value for a freshly chosen field/op pair.
     static func defaultValue(field: String, op: String) -> RuleValue {
-        if ["oneOf", "notOneOf"].contains(op) { return .list([]) }
-        if op == "isbetween" { return .object(["num1": .number(0), "num2": .number(0)]) }
+        if ["oneOf", "notOneOf"].contains(op) {
+            return .list([])
+        }
+        if op == "isbetween" {
+            return .object(["num1": .number(0), "num2": .number(0)])
+        }
         switch RuleSchema.fieldType(field) {
         case .number: return .number(0)
         case .boolean: return .bool(true)
@@ -222,20 +238,25 @@ struct RuleValueEditor: View {
         }
     }
 
-    private var isMultiValue: Bool { ["oneOf", "notOneOf"].contains(op) }
+    private var isMultiValue: Bool {
+        ["oneOf", "notOneOf"].contains(op)
+    }
 
     private var choices: [(id: String, name: String)] {
         ruleChoices(for: field, in: budgetStore)
     }
 
     private var placeholder: String {
-        if op == "matches" { return "Regular expression" }
-        return isMultiValue ? "Comma-separated values" : "Value"
+        if op == "matches" {
+            return String(localized: RuleValueEditorLocalization.regularExpression, locale: locale)
+        }
+        return isMultiValue
+            ? String(localized: RuleValueEditorLocalization.commaSeparatedValues, locale: locale)
+            : String(localized: RuleValueEditorLocalization.value, locale: locale)
     }
 
     // MARK: - Text
 
-    @ViewBuilder
     private var textEditor: some View {
         VStack(alignment: .leading, spacing: 4) {
             if isMultiValue {
@@ -288,7 +309,13 @@ struct RuleValueEditor: View {
             NavigationLink {
                 RuleIdMultiPicker(field: field, value: $value)
             } label: {
-                LabeledContent("Values", value: "\(value.listValue?.count ?? 0) selected")
+                LabeledContent(
+                    String(localized: RuleValueEditorLocalization.values, locale: locale),
+                    value: RuleValueEditorLocalization.selectedCount(
+                        value.listValue?.count ?? 0,
+                        locale: locale
+                    )
+                )
             }
         } else {
             Picker("Value", selection: Binding(
@@ -311,10 +338,19 @@ struct RuleValueEditor: View {
             // A between value is a `{num1, num2}` object; feeding it to the
             // single-amount field would clobber it with a scalar the engine
             // can't evaluate and the web client refuses to load.
-            RuleAmountField(label: "From", value: betweenBinding("num1"))
-            RuleAmountField(label: "To", value: betweenBinding("num2"))
+            RuleAmountField(
+                label: String(localized: RuleValueEditorLocalization.from, locale: locale),
+                value: betweenBinding("num1")
+            )
+            RuleAmountField(
+                label: String(localized: RuleValueEditorLocalization.to, locale: locale),
+                value: betweenBinding("num2")
+            )
         } else {
-            RuleAmountField(value: $value)
+            RuleAmountField(
+                label: RuleValueEditorLocalization.amountLabel(locale: locale),
+                value: $value
+            )
         }
 
         if showsDirection {
@@ -340,10 +376,16 @@ struct RuleValueEditor: View {
             },
             set: { newValue in
                 var dict: [String: RuleValue] = [:]
-                if case .object(let existing) = value { dict = existing }
+                if case .object(let existing) = value {
+                    dict = existing
+                }
                 dict[key] = newValue
-                if dict["num1"] == nil { dict["num1"] = .number(0) }
-                if dict["num2"] == nil { dict["num2"] = .number(0) }
+                if dict["num1"] == nil {
+                    dict["num1"] = .number(0)
+                }
+                if dict["num2"] == nil {
+                    dict["num2"] = .number(0)
+                }
                 value = .object(dict)
             }
         )
@@ -352,8 +394,12 @@ struct RuleValueEditor: View {
     private var directionBinding: Binding<String> {
         Binding(
             get: {
-                if options?["inflow"]?.boolValue == true { return "inflow" }
-                if options?["outflow"]?.boolValue == true { return "outflow" }
+                if options?["inflow"]?.boolValue == true {
+                    return "inflow"
+                }
+                if options?["outflow"]?.boolValue == true {
+                    return "outflow"
+                }
                 return "any"
             },
             set: { direction in
@@ -384,12 +430,62 @@ struct RuleValueEditor: View {
     }
 }
 
+enum RuleValueEditorLocalization {
+    static let commaSeparatedValues: String.LocalizationValue = "Comma-separated values"
+    static let from: String.LocalizationValue = "From"
+    static let regularExpression: String.LocalizationValue = "Regular expression"
+    static let to: String.LocalizationValue = "To"
+    static let value: String.LocalizationValue = "Value"
+    static let values: String.LocalizationValue = "Values"
+
+    static func amountLabel(
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        ReportStrings.text("Amount", locale: locale, bundle: bundle)
+    }
+
+    static func fieldLabel(
+        _ field: String,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        RuleSchema.sentenceCased(
+            RuleSchema.label(field: field, locale: locale, bundle: bundle),
+            locale: locale
+        )
+    }
+
+    static func operatorLabel(
+        _ op: String,
+        field: String? = nil,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        let label = RuleSchema.label(
+            op: op, type: field.flatMap(RuleSchema.fieldType),
+            locale: locale, bundle: bundle
+        )
+        return field == nil ? RuleSchema.sentenceCased(label, locale: locale) : label
+    }
+
+    static func selectedCount(
+        _ count: Int,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+        String(localized: "\(count) selected",
+               bundle: ReportStrings.localizedBundle(for: locale, in: bundle),
+               locale: locale)
+    }
+}
+
 /// Cents entry for a rule amount. Holds its own text the way the rest of the app
 /// does (`AddTransactionView`) and commits through `AmountParser`, so partial
 /// input ("10.", "1,50") isn't destroyed mid-keystroke — a binding that reparsed
 /// on every character would zero the value as the user typed.
 private struct RuleAmountField: View {
-    var label = "Amount"
+    let label: String
     @Binding var value: RuleValue
     @State private var text = ""
 
@@ -417,6 +513,7 @@ private struct RuleAmountField: View {
 /// Multi-select for `oneOf` / `notOneOf` id conditions.
 struct RuleIdMultiPicker: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let field: String
     @Binding var value: RuleValue
 
@@ -443,7 +540,9 @@ struct RuleIdMultiPicker: View {
             }
             .buttonStyle(.plain)
         }
-        .navigationTitle(RuleSchema.label(field: field).capitalized)
+        .navigationTitle(RuleValueEditorLocalization.fieldLabel(
+            field, locale: locale
+        ))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -458,10 +557,30 @@ struct RuleIdMultiPicker: View {
     /// unrelated item must not silently drop.
     nonisolated static func toggling(_ id: String, in value: RuleValue, visibleIds: [String]) -> RuleValue {
         var ids = Set((value.listValue ?? []).compactMap(\.stringValue))
-        if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
+        if ids.contains(id) {
+            ids.remove(id)
+        } else {
+            ids.insert(id)
+        }
         let visible = visibleIds.filter(ids.contains)
         let hidden = (value.listValue ?? []).compactMap(\.stringValue)
             .filter { ids.contains($0) && !visibleIds.contains($0) }
         return .list((visible + hidden).map(RuleValue.string))
     }
 }
+
+#if DEBUG
+struct RuleConditionUITestFixture: View {
+    @State private var condition = Rule.Condition(
+        op: "oneOf", field: "payee", value: .list([]), options: nil
+    )
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                RuleConditionEditor(condition: $condition)
+            }
+        }
+    }
+}
+#endif

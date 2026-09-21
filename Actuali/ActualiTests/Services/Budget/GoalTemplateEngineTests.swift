@@ -4,7 +4,6 @@ import Testing
 /// Engine cases ported from loot-core's category-template-context.test.ts and
 /// goal-template.test.ts — expected values match upstream's.
 struct GoalTemplateEngineTests {
-
     private let category = GoalTemplateCategory(id: "test", name: "Test Category", isIncome: false)
 
     private func makeContext(
@@ -18,7 +17,8 @@ struct GoalTemplateEngineTests {
         try GoalTemplateContext(
             templates: templates, category: category, month: month, budgeted: budgeted,
             sheet: sheet, schedules: schedules, allCategories: allCategories,
-            currentMonth: month)
+            currentMonth: month
+        )
     }
 
     private func parse(_ line: String) throws -> GoalTemplate {
@@ -28,33 +28,33 @@ struct GoalTemplateEngineTests {
     // MARK: - Periodic (January 2024 has 5 Mondays)
 
     @Test func periodicWeekly() throws {
-        let context = try makeContext([try parse("#template-1 100 repeat every week starting 2024-01-01")])
+        let context = try makeContext([parse("#template-1 100 repeat every week starting 2024-01-01")])
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 50000)
     }
 
     @Test func periodicEveryTwoWeeks() throws {
-        let context = try makeContext([try parse("#template-1 100 repeat every 2 weeks starting 2024-01-01")])
+        let context = try makeContext([parse("#template-1 100 repeat every 2 weeks starting 2024-01-01")])
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 30000)
     }
 
     @Test func periodicWeeksSpanningMonths() throws {
-        let context = try makeContext([try parse("#template-1 100 repeat every 7 weeks starting 2023-12-04")])
+        let context = try makeContext([parse("#template-1 100 repeat every 7 weeks starting 2023-12-04")])
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 10000)
     }
 
     @Test func periodicDays() throws {
         // 1st, 11th, 21st, 31st
-        let context = try makeContext([try parse("#template-1 100 repeat every 10 days starting 2024-01-01")])
+        let context = try makeContext([parse("#template-1 100 repeat every 10 days starting 2024-01-01")])
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 40000)
     }
 
     @Test func periodicYears() throws {
-        let context = try makeContext([try parse("#template-1 100 repeat every year starting 2023-01-01")])
+        let context = try makeContext([parse("#template-1 100 repeat every year starting 2023-01-01")])
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 10000)
     }
 
     @Test func periodicMonths() throws {
-        let context = try makeContext([try parse("#template-1 100 repeat every 2 months starting 2023-11-01")])
+        let context = try makeContext([parse("#template-1 100 repeat every 2 months starting 2023-11-01")])
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 10000)
     }
 
@@ -62,11 +62,12 @@ struct GoalTemplateEngineTests {
 
     @Test func spendCountsPriorMonths() throws {
         var sheet = GoalTemplateSheet()
-        sheet.spent[.init(202311, "test")] = -10000
-        sheet.leftover[.init(202311, "test")] = 20000
-        sheet.budgeted[.init(202312, "test")] = 10000
+        sheet.spent[.init(202_311, "test")] = -10000
+        sheet.leftover[.init(202_311, "test")] = 20000
+        sheet.budgeted[.init(202_312, "test")] = 10000
         let context = try makeContext(
-            [try parse("#template-1 1000 by 2024-01 spend from 2023-11")], sheet: sheet)
+            [parse("#template-1 1000 by 2024-01 spend from 2023-11")], sheet: sheet
+        )
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 60000)
     }
 
@@ -81,33 +82,33 @@ struct GoalTemplateEngineTests {
 
     @Test func byMultipleTargets() throws {
         let context = try makeContext([
-            try parse("#template-1 1000 by 2024-03"),
-            try parse("#template-1 2000 by 2024-06"),
+            parse("#template-1 1000 by 2024-03"),
+            parse("#template-1 2000 by 2024-06"),
         ])
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 66667)
     }
 
     @Test func byRepeatingTargets() throws {
         let context = try makeContext([
-            try parse("#template-1 1000 by 2023-03 repeat every 12 months"),
-            try parse("#template-1 2000 by 2023-06 repeat every 12 months"),
+            parse("#template-1 1000 by 2023-03 repeat every 12 months"),
+            parse("#template-1 2000 by 2023-06 repeat every 12 months"),
         ])
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 83333)
     }
 
     @Test func byWithExistingBalance() throws {
         var sheet = GoalTemplateSheet()
-        sheet.leftover[.init(202312, "test")] = 500
+        sheet.leftover[.init(202_312, "test")] = 500
         let context = try makeContext([
-            try parse("#template-1 1000 by 2024-03"),
-            try parse("#template-1 2000 by 2024-06"),
+            parse("#template-1 1000 by 2024-03"),
+            parse("#template-1 2000 by 2024-06"),
         ], sheet: sheet)
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 66500)
     }
 
     @Test func pastByWithoutRepeatErrors() throws {
         #expect(throws: (any Error).self) {
-            try makeContext([try parse("#template-1 1000 by 2023-12")])
+            try makeContext([parse("#template-1 1000 by 2023-12")])
         }
     }
 
@@ -124,22 +125,23 @@ struct GoalTemplateEngineTests {
         template.repeatCount = 0
         let context = try makeContext([template])
         #expect(try context.runTemplatesForPriority(
-            1, budgetAvail: 1_000_000, availStart: 1_000_000) == 8333)
+            1, budgetAvail: 1_000_000, availStart: 1_000_000
+        ) == 8333)
     }
 
     // MARK: - Priorities and funds
 
     @Test func clampsAtAvailableFunds() throws {
         let context = try makeContext([
-            try parse("#template-1 100"),
-            try parse("#template-1 200"),
+            parse("#template-1 100"),
+            parse("#template-1 200"),
         ])
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 150, availStart: 150) == 150)
     }
 
     @Test func priorityZeroMayOverbudget() throws {
         // Priority 0 has no overspend clamp, matching upstream.
-        let context = try makeContext([try parse("#template 100")])
+        let context = try makeContext([parse("#template 100")])
         #expect(try context.runTemplatesForPriority(0, budgetAvail: 50, availStart: 50) == 10000)
     }
 
@@ -147,30 +149,30 @@ struct GoalTemplateEngineTests {
 
     @Test func limitCapsBudget() throws {
         var sheet = GoalTemplateSheet()
-        sheet.leftover[.init(202312, "test")] = 9000
-        let context = try makeContext([try parse("#template-1 100 up to 150")], sheet: sheet)
+        sheet.leftover[.init(202_312, "test")] = 9000
+        let context = try makeContext([parse("#template-1 100 up to 150")], sheet: sheet)
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 10000, availStart: 10000) == 6000)
     }
 
     @Test func limitHoldKeepsExcess() throws {
         var sheet = GoalTemplateSheet()
-        sheet.leftover[.init(202312, "test")] = 30000
-        let context = try makeContext([try parse("#template-1 100 up to 200 hold")], sheet: sheet)
+        sheet.leftover[.init(202_312, "test")] = 30000
+        let context = try makeContext([parse("#template-1 100 up to 200 hold")], sheet: sheet)
         #expect(context.limitExcess == 0)
     }
 
     @Test func limitReleasesExcess() throws {
         var sheet = GoalTemplateSheet()
-        sheet.leftover[.init(202312, "test")] = 30000
-        let context = try makeContext([try parse("#template-1 100 up to 200")], sheet: sheet)
+        sheet.leftover[.init(202_312, "test")] = 30000
+        let context = try makeContext([parse("#template-1 100 up to 200")], sheet: sheet)
         #expect(context.limitExcess == 10000)
     }
 
     @Test func onlyOneLimitAllowed() throws {
         #expect(throws: (any Error).self) {
             try makeContext([
-                try parse("#template-1 100 up to 150"),
-                try parse("#template up to 200"),
+                parse("#template-1 100 up to 150"),
+                parse("#template up to 200"),
             ])
         }
     }
@@ -178,23 +180,23 @@ struct GoalTemplateEngineTests {
     // MARK: - Remainder
 
     @Test func remainderDistributesByWeight() throws {
-        let context = try makeContext([try parse("#template remainder 2")])
+        let context = try makeContext([parse("#template remainder 2")])
         #expect(context.runRemainder(budgetAvail: 100, perWeight: 50) == 100)
     }
 
     @Test func remainderTakesLastCent() throws {
-        let context = try makeContext([try parse("#template remainder")])
+        let context = try makeContext([parse("#template remainder")])
         #expect(context.runRemainder(budgetAvail: 101, perWeight: 100) == 101)
     }
 
     @Test func remainderWontOverbudget() throws {
-        let context = try makeContext([try parse("#template remainder")])
+        let context = try makeContext([parse("#template remainder")])
         #expect(context.runRemainder(budgetAvail: 99, perWeight: 100) == 99)
     }
 
     @Test func remainderLoopTerminatesOnZeroShares() throws {
         let contexts = try (0..<5).map { _ in
-            try makeContext([try parse("#template remainder")])
+            try makeContext([parse("#template remainder")])
         }
         #expect(GoalTemplateEngine.distributeRemainder(contexts: contexts, availBudget: 2) == 2)
     }
@@ -203,8 +205,8 @@ struct GoalTemplateEngineTests {
 
     @Test func goalDirectiveSetsLongGoal() throws {
         let context = try makeContext([
-            try parse("#template-1 100"),
-            try parse("#goal 1000"),
+            parse("#template-1 100"),
+            parse("#goal 1000"),
         ])
         _ = try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000)
         let values = context.getValues()
@@ -214,7 +216,7 @@ struct GoalTemplateEngineTests {
     }
 
     @Test func goalOnlyKeepsExistingBudget() throws {
-        let context = try makeContext([try parse("#goal 1000")], budgeted: 12345)
+        let context = try makeContext([parse("#goal 1000")], budgeted: 12345)
         let values = context.getValues()
         #expect(values.budgeted == 12345)
         #expect(values.goal == 100_000)
@@ -224,7 +226,7 @@ struct GoalTemplateEngineTests {
     @Test func templateGoalIsFullRequestedAmount() throws {
         // Underfunded template: goal records the full requested amount even
         // though the budget clamps to what's available.
-        let context = try makeContext([try parse("#template-1 300")])
+        let context = try makeContext([parse("#template-1 300")])
         let budgeted = try context.runTemplatesForPriority(1, budgetAvail: 150, availStart: 150)
         #expect(budgeted == 150)
         let values = context.getValues()
@@ -237,24 +239,25 @@ struct GoalTemplateEngineTests {
 
     @Test func percentageOfAllIncome() throws {
         var sheet = GoalTemplateSheet()
-        sheet.totalIncome[202401] = 300_000
-        let context = try makeContext([try parse("#template-1 10% of all income")], sheet: sheet)
+        sheet.totalIncome[202_401] = 300_000
+        let context = try makeContext([parse("#template-1 10% of all income")], sheet: sheet)
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 30000)
     }
 
     @Test func percentageOfNamedCategoryPreviousMonth() throws {
         var sheet = GoalTemplateSheet()
-        sheet.spent[.init(202312, "salary")] = 500_000
+        sheet.spent[.init(202_312, "salary")] = 500_000
         let salary = GoalTemplateCategory(id: "salary", name: "Salary", isIncome: true)
         let context = try makeContext(
-            [try parse("#template-1 10% of previous Salary")],
-            sheet: sheet, allCategories: [salary, category])
+            [parse("#template-1 10% of previous Salary")],
+            sheet: sheet, allCategories: [salary, category]
+        )
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 50000)
     }
 
     @Test func percentageOfUnknownCategoryErrors() throws {
         #expect(throws: (any Error).self) {
-            try makeContext([try parse("#template-1 10% of Nothing")])
+            try makeContext([parse("#template-1 10% of Nothing")])
         }
     }
 
@@ -262,26 +265,26 @@ struct GoalTemplateEngineTests {
 
     @Test func averageOfThreeMonths() throws {
         var sheet = GoalTemplateSheet()
-        sheet.spent[.init(202312, "test")] = -10000
-        sheet.spent[.init(202311, "test")] = -20000
-        sheet.spent[.init(202310, "test")] = -30000
-        sheet.firstActivityMonth["test"] = 202310
-        let context = try makeContext([try parse("#template-1 average 3 months")], sheet: sheet)
+        sheet.spent[.init(202_312, "test")] = -10000
+        sheet.spent[.init(202_311, "test")] = -20000
+        sheet.spent[.init(202_310, "test")] = -30000
+        sheet.firstActivityMonth["test"] = 202_310
+        let context = try makeContext([parse("#template-1 average 3 months")], sheet: sheet)
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 20000)
     }
 
     @Test func averageStopsAtFirstActivity() throws {
         var sheet = GoalTemplateSheet()
-        sheet.spent[.init(202312, "test")] = -30000
-        sheet.firstActivityMonth["test"] = 202312
-        let context = try makeContext([try parse("#template-1 average 6 months")], sheet: sheet)
+        sheet.spent[.init(202_312, "test")] = -30000
+        sheet.firstActivityMonth["test"] = 202_312
+        let context = try makeContext([parse("#template-1 average 6 months")], sheet: sheet)
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 30000)
     }
 
     @Test func copyFromMonthsAgo() throws {
         var sheet = GoalTemplateSheet()
-        sheet.budgeted[.init(202310, "test")] = 42000
-        let context = try makeContext([try parse("#template-1 copy from 3 months ago")], sheet: sheet)
+        sheet.budgeted[.init(202_310, "test")] = 42000
+        let context = try makeContext([parse("#template-1 copy from 3 months ago")], sheet: sheet)
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 42000)
     }
 
@@ -290,7 +293,7 @@ struct GoalTemplateEngineTests {
     @Test func hideFractionRoundsToWholeUnits() throws {
         var sheet = GoalTemplateSheet()
         sheet.hideFraction = true
-        let context = try makeContext([try parse("#template-1 100.5")], sheet: sheet)
+        let context = try makeContext([parse("#template-1 100.5")], sheet: sheet)
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 10100)
     }
 
@@ -304,12 +307,15 @@ struct GoalTemplateEngineTests {
             id: id, name: name, completed: false,
             amount: .fixed(amount),
             dateCondition: .recurring(RecurConfig(
-                frequency: .monthly, start: DayDate(iso: start)!)))
+                frequency: .monthly, start: DayDate(iso: start)!
+            ))
+        )
     }
 
     @Test func monthlyScheduleBudgetsThisMonthsTarget() throws {
         let context = try makeContext(
-            [try parse("#template-1 schedule Rent")], schedules: [monthlySchedule()])
+            [parse("#template-1 schedule Rent")], schedules: [monthlySchedule()]
+        )
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 50000)
     }
 
@@ -318,31 +324,35 @@ struct GoalTemplateEngineTests {
             id: "sched-ins", name: "Insurance", completed: false,
             amount: .fixed(-120_000),
             dateCondition: .recurring(RecurConfig(
-                frequency: .yearly, start: DayDate(iso: "2024-06-15")!)))
+                frequency: .yearly, start: DayDate(iso: "2024-06-15")!
+            ))
+        )
         let context = try makeContext(
-            [try parse("#template-1 schedule Insurance")], schedules: [insurance])
+            [parse("#template-1 schedule Insurance")], schedules: [insurance]
+        )
         // Due in 5 months: 120000 / 6 per month.
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 20000)
     }
 
     @Test func scheduleAdjustmentIncreasesTarget() throws {
         let context = try makeContext(
-            [try parse("#template-1 schedule Rent [increase 10%]")],
-            schedules: [monthlySchedule()])
+            [parse("#template-1 schedule Rent [increase 10%]")],
+            schedules: [monthlySchedule()]
+        )
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 55000)
     }
 
     @Test func missingScheduleErrors() throws {
         #expect(throws: (any Error).self) {
-            try makeContext([try parse("#template-1 schedule Ghost")])
+            try makeContext([parse("#template-1 schedule Ghost")])
         }
     }
 
     @Test func mixedSchedulePrioritiesError() throws {
         #expect(throws: (any Error).self) {
             try makeContext([
-                try parse("#template-1 schedule Rent"),
-                try parse("#template-2 500 by 2024-06"),
+                parse("#template-1 schedule Rent"),
+                parse("#template-2 500 by 2024-06"),
             ], schedules: [monthlySchedule()])
         }
     }
@@ -365,18 +375,21 @@ struct GoalTemplateEngineTests {
             allCategories: processCategories,
             schedules: schedules,
             sheet: sheet,
-            currentMonth: month)
+            currentMonth: month
+        )
     }
 
     @Test func appliesTemplatesAndWritesGoals() throws {
         var sheet = GoalTemplateSheet()
         sheet.availableStart = 100_000
-        let result = runEngine(
-            templates: ["test": [try parse("#template-1 100")]], sheet: sheet)
+        let result = try runEngine(
+            templates: ["test": [parse("#template-1 100")]], sheet: sheet
+        )
         #expect(result == .applied(
             count: 1,
             budgets: [.init(category: "test", amount: 10000)],
-            goals: [.init(category: "test", goal: 10000, longGoal: false)]))
+            goals: [.init(category: "test", goal: 10000, longGoal: false)]
+        ))
     }
 
     @Test func lowerPriorityClampsWhenFundsRunOut() throws {
@@ -384,13 +397,14 @@ struct GoalTemplateEngineTests {
         sheet.availableStart = 40000
         let first = GoalTemplateCategory(id: "a", name: "A", isIncome: false)
         let second = GoalTemplateCategory(id: "b", name: "B", isIncome: false)
-        let result = runEngine(
+        let result = try runEngine(
             templates: [
-                "a": [try parse("#template-1 300")],
-                "b": [try parse("#template-2 300")],
+                "a": [parse("#template-1 300")],
+                "b": [parse("#template-2 300")],
             ],
             categories: [first, second],
-            sheet: sheet)
+            sheet: sheet
+        )
         guard case .applied(let count, let budgets, _) = result else {
             Issue.record("expected applied, got \(result)")
             return
@@ -403,12 +417,13 @@ struct GoalTemplateEngineTests {
     @Test func skipsAlreadyBudgetedWithoutForce() throws {
         var sheet = GoalTemplateSheet()
         sheet.availableStart = 100_000
-        sheet.budgeted[.init(202401, "test")] = 5000
-        let result = runEngine(templates: ["test": [try parse("#template-1 100")]], sheet: sheet)
+        sheet.budgeted[.init(202_401, "test")] = 5000
+        let result = try runEngine(templates: ["test": [parse("#template-1 100")]], sheet: sheet)
         #expect(result == .upToDate(goalResets: []))
 
-        let forced = runEngine(
-            force: true, templates: ["test": [try parse("#template-1 100")]], sheet: sheet)
+        let forced = try runEngine(
+            force: true, templates: ["test": [parse("#template-1 100")]], sheet: sheet
+        )
         guard case .applied(let count, let budgets, _) = forced else {
             Issue.record("expected applied, got \(forced)")
             return
@@ -417,10 +432,10 @@ struct GoalTemplateEngineTests {
         #expect(budgets == [.init(category: "test", amount: 10000)])
     }
 
-    @Test func orphanedGoalsAreReset() throws {
+    @Test func orphanedGoalsAreReset() {
         var sheet = GoalTemplateSheet()
-        sheet.goalRows.insert(.init(202401, "test"))
-        sheet.goals[.init(202401, "test")] = 5000
+        sheet.goalRows.insert(.init(202_401, "test"))
+        sheet.goals[.init(202_401, "test")] = 5000
         let result = runEngine(templates: [:], sheet: sheet)
         #expect(result == .upToDate(goalResets: [
             .init(category: "test", goal: nil, longGoal: false),
@@ -428,7 +443,7 @@ struct GoalTemplateEngineTests {
     }
 
     @Test func templateErrorsSurfaceCategoryName() throws {
-        let result = runEngine(templates: ["test": [try parse("#template-1 1000 by 2023-06")]])
+        let result = try runEngine(templates: ["test": [parse("#template-1 1000 by 2023-06")]])
         guard case .errors(let errors) = result else {
             Issue.record("expected errors, got \(result)")
             return
@@ -440,7 +455,7 @@ struct GoalTemplateEngineTests {
 
     @Test func invalidTemplateBlocksValidTemplates() throws {
         let invalid = GoalTemplateNotes.parseTemplates(fromNote: "#template nonsense")[0]
-        let result = runEngine(templates: ["test": [try parse("#template 100"), invalid]])
+        let result = try runEngine(templates: ["test": [parse("#template 100"), invalid]])
         guard case .errors(let errors) = result else {
             Issue.record("expected errors, got \(result)")
             return
@@ -453,13 +468,14 @@ struct GoalTemplateEngineTests {
         sheet.availableStart = 90000
         let first = GoalTemplateCategory(id: "a", name: "A", isIncome: false)
         let second = GoalTemplateCategory(id: "b", name: "B", isIncome: false)
-        let result = runEngine(
+        let result = try runEngine(
             templates: [
-                "a": [try parse("#template remainder 2")],
-                "b": [try parse("#template remainder")],
+                "a": [parse("#template remainder 2")],
+                "b": [parse("#template remainder")],
             ],
             categories: [first, second],
-            sheet: sheet)
+            sheet: sheet
+        )
         guard case .applied(_, let budgets, let goals) = result else {
             Issue.record("expected applied, got \(result)")
             return
@@ -474,8 +490,9 @@ struct GoalTemplateEngineTests {
         var sheet = GoalTemplateSheet()
         sheet.isTracking = true
         sheet.availableStart = 25000
-        let result = runEngine(
-            templates: ["test": [try parse("#template-1 300")]], sheet: sheet)
+        let result = try runEngine(
+            templates: ["test": [parse("#template-1 300")]], sheet: sheet
+        )
         guard case .applied(_, let budgets, _) = result else {
             Issue.record("expected applied, got \(result)")
             return
@@ -489,16 +506,17 @@ struct GoalTemplateEngineTests {
         // the pool, where a remainder template can pick it up.
         var sheet = GoalTemplateSheet()
         sheet.availableStart = 0
-        sheet.leftover[.init(202312, "a")] = 30000
+        sheet.leftover[.init(202_312, "a")] = 30000
         let first = GoalTemplateCategory(id: "a", name: "A", isIncome: false)
         let second = GoalTemplateCategory(id: "b", name: "B", isIncome: false)
-        let result = runEngine(
+        let result = try runEngine(
             templates: [
-                "a": [try parse("#template-1 100 up to 200")],
-                "b": [try parse("#template remainder")],
+                "a": [parse("#template-1 100 up to 200")],
+                "b": [parse("#template remainder")],
             ],
             categories: [first, second],
-            sheet: sheet)
+            sheet: sheet
+        )
         guard case .applied(_, let budgets, _) = result else {
             Issue.record("expected applied, got \(result)")
             return
@@ -518,13 +536,13 @@ struct GoalTemplateEngineTests {
     }
 
     @Test func periodicInvalidStartDateBudgetsNothing() throws {
-        let context = try makeContext([try parse("#template-1 100 repeat every week starting 0000-00-00")])
+        let context = try makeContext([parse("#template-1 100 repeat every week starting 0000-00-00")])
         #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 0)
     }
 
     @Test func weeklyLimitInvalidStartDateIsAnError() throws {
         #expect(throws: GoalTemplateError.self) {
-            _ = try makeContext([try parse("#template 100 up to 150 per week starting 2023-13-01")])
+            _ = try makeContext([parse("#template 100 up to 150 per week starting 2023-13-01")])
         }
     }
 }

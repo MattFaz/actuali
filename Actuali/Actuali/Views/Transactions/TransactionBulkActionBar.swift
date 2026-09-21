@@ -1,15 +1,57 @@
 import SwiftUI
 
+enum TransactionBulkActionLocalization {
+    nonisolated static func duplicateLabel(
+        count: Int, locale: Locale, bundle: Bundle = .main
+    ) -> String {
+        String(localized: LocalizedStringResource(
+            String.LocalizationValue("Duplicate \(count) selected transactions"),
+            locale: locale, bundle: bundle
+        ))
+    }
+
+    nonisolated static func deleteLabel(
+        count: Int, locale: Locale, bundle: Bundle = .main
+    ) -> String {
+        String(localized: LocalizedStringResource(
+            String.LocalizationValue("Delete \(count) selected transactions"),
+            locale: locale, bundle: bundle
+        ))
+    }
+
+    nonisolated static func deleteConfirmationTitle(
+        count: Int, locale: Locale, bundle: Bundle = .main
+    ) -> String {
+        String(localized: LocalizedStringResource(
+            String.LocalizationValue("Delete \(count) transactions?"),
+            locale: locale, bundle: bundle
+        ))
+    }
+
+    nonisolated static func deleteConfirmationAction(
+        count: Int, locale: Locale, bundle: Bundle = .main
+    ) -> String {
+        deleteLabel(count: count, locale: locale, bundle: bundle)
+    }
+}
+
 struct TransactionBulkActionBar: View {
     let transactions: [Transaction]
     @Binding var selectedIds: Set<String>
     @Binding var isSelecting: Bool
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
 
     @State private var showingConfirmDelete = false
 
-    private var totalCount: Int { transactions.count }
-    private var selectedCount: Int { selectedIds.count }
+    private var totalCount: Int {
+        transactions.count
+    }
+
+    private var selectedCount: Int {
+        selectedIds.count
+    }
+
     private var allSelected: Bool {
         totalCount > 0 && selectedCount == totalCount
     }
@@ -20,7 +62,7 @@ struct TransactionBulkActionBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Button(allSelected ? "Deselect All" : "Select All") {
+            Button(ReportStrings.text(allSelected ? "Deselect All" : "Select All", locale: locale)) {
                 if allSelected {
                     selectedIds.removeAll()
                 } else {
@@ -38,7 +80,7 @@ struct TransactionBulkActionBar: View {
                         await budgetStore.setClearedStatus(transactions: selected, cleared: true)
                     }
                 } label: {
-                    Label("Mark Cleared", systemImage: "checkmark.circle")
+                    Label(ReportStrings.text("Mark Cleared", locale: locale), systemImage: "checkmark.circle")
                 }
                 Button {
                     let selected = selectedTransactions
@@ -46,14 +88,14 @@ struct TransactionBulkActionBar: View {
                         await budgetStore.setClearedStatus(transactions: selected, cleared: false)
                     }
                 } label: {
-                    Label("Mark Uncleared", systemImage: "circle")
+                    Label(ReportStrings.text("Mark Uncleared", locale: locale), systemImage: "circle")
                 }
             } label: {
                 Image(systemName: "checkmark.circle")
                     .font(.body.weight(.medium))
                     .frame(width: 32, height: 32)
             }
-            .accessibilityLabel("Set Cleared Status")
+            .accessibilityLabel(ReportStrings.text("Set Cleared Status", locale: locale))
             .disabled(selectedCount == 0)
 
             Button {
@@ -67,7 +109,9 @@ struct TransactionBulkActionBar: View {
                 Label(selectedCount > 0 ? "(\(selectedCount))" : "", systemImage: "plus.square.on.square")
                     .font(.subheadline.weight(.semibold))
             }
-            .accessibilityLabel("Duplicate \(selectedCount) Selected")
+            .accessibilityLabel(TransactionBulkActionLocalization.duplicateLabel(
+                count: selectedCount, locale: locale
+            ))
             .disabled(selectedCount == 0)
 
             Button(role: .destructive) {
@@ -76,7 +120,9 @@ struct TransactionBulkActionBar: View {
                 Label(selectedCount > 0 ? "(\(selectedCount))" : "", systemImage: "trash")
                     .font(.subheadline.weight(.semibold))
             }
-            .accessibilityLabel("Delete \(selectedCount) Selected")
+            .accessibilityLabel(TransactionBulkActionLocalization.deleteLabel(
+                count: selectedCount, locale: locale
+            ))
             .disabled(selectedCount == 0)
         }
         .padding(.horizontal, 16)
@@ -92,11 +138,15 @@ struct TransactionBulkActionBar: View {
             selectedIds.formIntersection(transactions.map(\.id))
         }
         .confirmationDialog(
-            "Delete \(selectedCount) transaction(s)?",
+            TransactionBulkActionLocalization.deleteConfirmationTitle(
+                count: selectedCount, locale: locale
+            ),
             isPresented: $showingConfirmDelete,
             titleVisibility: .visible
         ) {
-            Button("Delete \(selectedCount) Transaction\(selectedCount == 1 ? "" : "s")", role: .destructive) {
+            Button(TransactionBulkActionLocalization.deleteConfirmationAction(
+                count: selectedCount, locale: locale
+            ), role: .destructive) {
                 let selected = selectedTransactions
                 Task {
                     await budgetStore.deleteTransactions(selected)

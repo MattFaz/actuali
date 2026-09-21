@@ -1,14 +1,13 @@
-import Testing
 import Foundation
+import Testing
 @testable import Actuali
 
 struct CreditCardConfigTests {
-
     @Test func encodesAndDecodesJSON() throws {
         let config = CreditCardConfig(
             statementDay: 18,
             dueOffsetDays: 25,
-            limit: 500000
+            limit: 500_000
         )
 
         let data = try JSONEncoder().encode(config)
@@ -16,7 +15,7 @@ struct CreditCardConfigTests {
 
         #expect(decoded.statementDay == 18)
         #expect(decoded.dueOffsetDays == 25)
-        #expect(decoded.limit == 500000)
+        #expect(decoded.limit == 500_000)
     }
 
     @Test func decodesWithDefaultDueOffsetAndNoLimit() throws {
@@ -30,6 +29,25 @@ struct CreditCardConfigTests {
         let decoded = try JSONDecoder().decode(CreditCardConfig.self, from: data)
         #expect(decoded.statementDay == 15)
         #expect(decoded.dueOffsetDays == CreditCardCycle.defaultDueOffsetDays)
+        #expect(decoded.dueDay == nil)
+        #expect(decoded.paymentDue == .daysAfter(CreditCardCycle.defaultDueOffsetDays))
+        #expect(decoded.limit == nil)
+    }
+
+    @Test func encodesAndDecodesJSONWithDueDay() throws {
+        let config = CreditCardConfig(
+            statementDay: 15,
+            dueOffsetDays: CreditCardCycle.defaultDueOffsetDays,
+            dueDay: 1,
+            limit: nil
+        )
+
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(CreditCardConfig.self, from: data)
+
+        #expect(decoded.statementDay == 15)
+        #expect(decoded.dueDay == 1)
+        #expect(decoded.paymentDue == .dayOfMonth(1))
         #expect(decoded.limit == nil)
     }
 }

@@ -1,7 +1,14 @@
 import SwiftUI
 
+enum SummaryWidgetFormatting {
+    static func percentage(_ value: Double, locale: Locale) -> String {
+        (value / 100).formatted(.percent.locale(locale).precision(.fractionLength(0...2)))
+    }
+}
+
 struct SummaryWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let displayName: String
     let data: SummaryData
 
@@ -11,16 +18,19 @@ struct SummaryWidgetView: View {
             // Display absolute value; the color communicates direction. Matches
             // the webapp's Summary widget rendering (e.g., "$95,597.58" in red
             // for spending instead of "-$95,597.58").
-            return budgetStore.displayBalance(abs(data.totalCents))
+            budgetStore.displayBalance(abs(data.totalCents), locale: locale)
         case .percentage:
-            let number = abs(data.value).formatted(.number.precision(.fractionLength(0...2)))
-            return "\(number)%"
+            SummaryWidgetFormatting.percentage(abs(data.value), locale: locale)
         }
     }
 
     private var color: Color {
-        if data.value > 0 { return .green }
-        if data.value < 0 { return .red }
+        if data.value > 0 {
+            return .green
+        }
+        if data.value < 0 {
+            return .red
+        }
         return .primary
     }
 
@@ -45,8 +55,8 @@ struct SummaryWidgetView: View {
 
 #Preview {
     VStack {
-        SummaryWidgetView(displayName: "Spent This Month", data: SummaryData(value: -316310, kind: .currency))
-        SummaryWidgetView(displayName: "Saved This Month", data: SummaryData(value: 1188352, kind: .currency))
+        SummaryWidgetView(displayName: "Spent This Month", data: SummaryData(value: -316_310, kind: .currency))
+        SummaryWidgetView(displayName: "Saved This Month", data: SummaryData(value: 1_188_352, kind: .currency))
         SummaryWidgetView(displayName: "Savings Rate", data: SummaryData(value: 27.15, kind: .percentage))
     }
     .padding()

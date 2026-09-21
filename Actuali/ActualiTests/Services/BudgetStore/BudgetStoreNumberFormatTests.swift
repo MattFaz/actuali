@@ -133,6 +133,33 @@ struct BudgetStoreNumberFormatTests {
         #expect(store.numberFormat == .spaceComma)
     }
 
+    @Test func displayBalanceUsesExplicitLocaleForCurrencyPresentation() {
+        let store = BudgetStore.previewInstance()
+        store.currencyCode = "USD"
+        store.useNarrowCurrencySymbol = false
+        store.numberFormat = .commaDot
+
+        let french = Locale(identifier: "fr_FR")
+        let expected = CurrencyAmountFormat.string(
+            cents: 123_450,
+            currencyCode: "USD",
+            narrowSymbol: false,
+            numberFormat: .commaDot,
+            locale: french
+        )
+        let expectedWholeUnits = CurrencyAmountFormat.string(
+            cents: 123_450,
+            currencyCode: "USD",
+            narrowSymbol: false,
+            wholeUnits: true,
+            numberFormat: .commaDot,
+            locale: french
+        )
+
+        #expect(store.displayBalance(123_450, locale: french) == expected)
+        #expect(store.displayBalanceWholeUnits(123_450, locale: french) == expectedWholeUnits)
+    }
+
     @Test func refreshAppliesFetchedNumberFormatWhenSelectionDidNotChange() async throws {
         let (store, manager, id, root) = try makeStore()
         defer {

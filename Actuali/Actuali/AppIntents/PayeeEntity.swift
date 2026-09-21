@@ -4,7 +4,9 @@ struct PayeeEntity: AppEntity, Identifiable {
     let id: String
     let name: String
 
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Payee"
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(
+        name: LocalizedStringResource("Payee")
+    )
 
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(title: "\(name)")
@@ -14,7 +16,6 @@ struct PayeeEntity: AppEntity, Identifiable {
 }
 
 struct PayeeEntityQuery: EntityQuery {
-
     @MainActor
     func entities(for identifiers: [PayeeEntity.ID]) async throws -> [PayeeEntity] {
         let payees = await BudgetStore.shared.payeesForIntent()

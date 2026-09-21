@@ -5,21 +5,23 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     case light
     case dark
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var colorScheme: ColorScheme? {
         switch self {
-        case .system: return nil
-        case .light: return .light
-        case .dark: return .dark
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
         }
     }
 
-    var label: String {
+    func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
-        case .system: return "System"
-        case .light: return "Light"
-        case .dark: return "Dark"
+        case .system: ReportStrings.text("System", locale: locale, bundle: bundle)
+        case .light: ReportStrings.text("Light", locale: locale, bundle: bundle)
+        case .dark: ReportStrings.text("Dark", locale: locale, bundle: bundle)
         }
     }
 }

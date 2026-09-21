@@ -1,7 +1,10 @@
 import Foundation
 
 struct BudgetMonth: Identifiable, Hashable {
-    var id: String { month }
+    var id: String {
+        month
+    }
+
     let month: String // Format: "2025-01"
     var categoryBudgets: [CategoryBudget]
 
@@ -14,6 +17,9 @@ struct BudgetMonth: Identifiable, Hashable {
     /// what last month left over, minus everything budgeted. Only meaningful
     /// for envelope budgets — nil for tracking budgets.
     var toBudget: Int?
+
+    /// Manual `zero_budget_months.buffered` amount held for next month.
+    var buffered: Int = 0
 
     /// Hidden rows stay available to the Budget tab without changing the
     /// visible-row totals or leaking into widgets and intents.
@@ -78,7 +84,10 @@ struct BudgetMonth: Identifiable, Hashable {
 }
 
 struct IncomeCategory: Identifiable, Hashable {
-    var id: String { "\(month)-\(categoryId)" }
+    var id: String {
+        "\(month)-\(categoryId)"
+    }
+
     let month: String
     let categoryId: String
     var categoryName: String
@@ -89,11 +98,16 @@ struct IncomeCategory: Identifiable, Hashable {
     var hidden = false
     var groupHidden = false
 
-    var isEffectivelyHidden: Bool { hidden || groupHidden }
+    var isEffectivelyHidden: Bool {
+        hidden || groupHidden
+    }
 }
 
 struct CategoryBudget: Identifiable, Hashable {
-    var id: String { "\(month)-\(categoryId)" }
+    var id: String {
+        "\(month)-\(categoryId)"
+    }
+
     let month: String
     let categoryId: String
     var categoryName: String
@@ -122,7 +136,9 @@ struct CategoryBudget: Identifiable, Hashable {
     /// from `carryover`, which is the amount that actually rolled in.
     var carryoverEnabled = false
 
-    var isEffectivelyHidden: Bool { hidden || groupHidden }
+    var isEffectivelyHidden: Bool {
+        hidden || groupHidden
+    }
 
     /// The value a goal measures — balance for long-term goals, budgeted for
     /// template automations.
@@ -177,15 +193,23 @@ struct CategoryBudget: Identifiable, Hashable {
     /// A compact, mode-neutral description of where this category stands.
     /// Views translate it into envelope or tracking language as needed.
     var progressState: CategoryProgressState {
-        if available < 0 { return .overspent }
-        if available == 0, spent != 0 { return .spent }
-        if available == 0, budgeted == 0, carryover == 0 { return .unassigned }
-        if spent != 0 { return .spending }
+        if available < 0 {
+            return .overspent
+        }
+        if available == 0, spent != 0 {
+            return .spent
+        }
+        if available == 0, budgeted == 0, carryover == 0 {
+            return .unassigned
+        }
+        if spent != 0 {
+            return .spending
+        }
         return .funded
     }
 }
 
-enum CategoryProgressState: Equatable {
+enum CategoryProgressState: String, CaseIterable, Hashable {
     case unassigned
     case funded
     case spending
@@ -202,7 +226,10 @@ struct QuickAssignSuggestion: Identifiable, Equatable {
         case setToZero
     }
 
-    var id: Kind { kind }
+    var id: Kind {
+        kind
+    }
+
     let kind: Kind
     let amount: Int
 }

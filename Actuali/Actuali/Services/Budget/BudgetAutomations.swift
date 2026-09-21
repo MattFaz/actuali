@@ -7,7 +7,9 @@ import Foundation
 enum AutomationDisplayType: String, CaseIterable, Identifiable, Sendable {
     case fixed, schedule, by, percentage, historical, limit, refill, remainder, goal
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     /// Types managed in the Options section rather than as contributions.
     static let nonContribution: Set<AutomationDisplayType> = [.limit, .goal]
@@ -15,37 +17,37 @@ enum AutomationDisplayType: String, CaseIterable, Identifiable, Sendable {
     /// plus goal which the editor also adds through a dedicated button).
     static let singleton: Set<AutomationDisplayType> = [.limit, .refill, .remainder, .goal]
 
-    var label: String {
+    func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
-        case .fixed: "Fixed amount"
-        case .schedule: "Cover schedule"
-        case .by: "Save by date"
-        case .percentage: "% of income"
-        case .historical: "From history"
-        case .limit: "Balance cap"
-        case .refill: "Refill to cap"
-        case .remainder: "Whatever is left"
-        case .goal: "Long-term goal"
+        case .fixed: ReportStrings.text("Fixed amount", locale: locale, bundle: bundle)
+        case .schedule: ReportStrings.text("Cover schedule", locale: locale, bundle: bundle)
+        case .by: ReportStrings.text("Save by date", locale: locale, bundle: bundle)
+        case .percentage: ReportStrings.text("% of income", locale: locale, bundle: bundle)
+        case .historical: ReportStrings.text("From history", locale: locale, bundle: bundle)
+        case .limit: ReportStrings.text("Balance cap", locale: locale, bundle: bundle)
+        case .refill: ReportStrings.text("Refill to cap", locale: locale, bundle: bundle)
+        case .remainder: ReportStrings.text("Whatever is left", locale: locale, bundle: bundle)
+        case .goal: ReportStrings.text("Long-term goal", locale: locale, bundle: bundle)
         }
     }
 
-    var explanation: String {
+    func explanation(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
-        case .fixed: "Add a set amount every month, week, day, or year."
-        case .schedule: "Save up for a scheduled transaction."
-        case .by: "Spread a target amount across the months until a deadline."
-        case .percentage: "A share of this month's or last month's income."
-        case .historical: "Use past months: average, a specific month, or a copy."
-        case .limit: "Stop budgeting to this category once the balance reaches a cap."
-        case .refill: "Top the category back up to the balance cap each month."
-        case .remainder: "Split any remaining To Budget across these categories."
-        case .goal: "Set a long-term savings target. This changes the coloring of the balance on the budget page to be based on progress towards the target rather than the current month funding progress."
+        case .fixed: ReportStrings.text("Add a set amount every month, week, day, or year.", locale: locale, bundle: bundle)
+        case .schedule: ReportStrings.text("Save up for a scheduled transaction.", locale: locale, bundle: bundle)
+        case .by: ReportStrings.text("Spread a target amount across the months until a deadline.", locale: locale, bundle: bundle)
+        case .percentage: ReportStrings.text("A share of this month's or last month's income.", locale: locale, bundle: bundle)
+        case .historical: ReportStrings.text("Use past months: average, a specific month, or a copy.", locale: locale, bundle: bundle)
+        case .limit: ReportStrings.text("Stop budgeting to this category once the balance reaches a cap.", locale: locale, bundle: bundle)
+        case .refill: ReportStrings.text("Top the category back up to the balance cap each month.", locale: locale, bundle: bundle)
+        case .remainder: ReportStrings.text("Split any remaining To Budget across these categories.", locale: locale, bundle: bundle)
+        case .goal: ReportStrings.text("Set a long-term savings target. This changes the coloring of the balance on the budget page to be based on progress towards the target rather than the current month funding progress.", locale: locale, bundle: bundle)
         }
     }
 
     var systemImage: String {
         switch self {
-        case .fixed: "banknote"
+        case .fixed: "building.columns"
         case .schedule: "calendar"
         case .by: "target"
         case .percentage: "percent"
@@ -239,10 +241,12 @@ enum BudgetAutomations {
                     // A description on a limit-only simple template belongs
                     // to the limit; with a monthly amount it goes there.
                     entries.append(limitEntry(
-                        limit, description: hasMonthly ? nil : template.description))
+                        limit, description: hasMonthly ? nil : template.description
+                    ))
                     if monthly == nil {
                         let refill = GoalTemplate(
-                            type: .refill, directive: .template, priority: template.priority)
+                            type: .refill, directive: .template, priority: template.priority
+                        )
                         entries.append(AutomationEntry(template: refill, displayType: .refill))
                     }
                 }
@@ -250,11 +254,13 @@ enum BudgetAutomations {
                     ? monthly : (monthly == 0 && template.limit == nil ? 0 : nil)
                 if let contribution {
                     var periodic = GoalTemplate(
-                        type: .periodic, directive: .template, priority: template.priority)
+                        type: .periodic, directive: .template, priority: template.priority
+                    )
                     periodic.amount = contribution
                     periodic.period = .init(period: .month, amount: 1)
                     periodic.starting = BudgetMonthMath.firstDayOfMonth(
-                        BudgetMonthMath.currentMonth())
+                        BudgetMonthMath.currentMonth()
+                    )
                     periodic.description = template.description
                     entries.append(AutomationEntry(template: periodic, displayType: .fixed))
                 }

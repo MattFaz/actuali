@@ -5,7 +5,6 @@ import Foundation
 /// MurmurHash3 implementation matching the JS murmurhash package (v3, seed=0)
 /// Used for CRDT Merkle tree hashing
 enum MurmurHash3 {
-
     /// Hash a string using MurmurHash3 (32-bit, x86)
     /// - Parameters:
     ///   - key: The string to hash
@@ -69,7 +68,7 @@ enum MurmurHash3 {
     // MARK: - Private helpers
 
     private static func rotl32(_ x: UInt32, _ r: Int) -> UInt32 {
-        return (x << r) | (x >> (32 - r))
+        (x << r) | (x >> (32 - r))
     }
 
     private static func fmix32(_ h: UInt32) -> UInt32 {
@@ -84,9 +83,9 @@ enum MurmurHash3 {
 
     private static func getBlock(_ key: [UInt8], _ i: Int) -> UInt32 {
         // Little-endian read
-        return UInt32(key[i]) |
-               (UInt32(key[i + 1]) << 8) |
-               (UInt32(key[i + 2]) << 16) |
-               (UInt32(key[i + 3]) << 24)
+        UInt32(key[i]) |
+            (UInt32(key[i + 1]) << 8) |
+            (UInt32(key[i + 2]) << 16) |
+            (UInt32(key[i + 3]) << 24)
     }
 }

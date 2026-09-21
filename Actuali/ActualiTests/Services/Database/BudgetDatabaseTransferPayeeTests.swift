@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins payee-name resolution in `fetchTransactions()`: a transfer's payee row
@@ -10,7 +10,6 @@ import GRDB
 /// Regression for GH #7: transfers rendered with an empty payee.
 @MainActor
 struct BudgetDatabaseTransferPayeeTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")

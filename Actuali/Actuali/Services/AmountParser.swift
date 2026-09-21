@@ -17,7 +17,11 @@ enum AmountParser {
         let tokens = text.matches(of: /-?\d[\d.,'\u{2019}\u{202F}\u{00A0}]*/)
         guard tokens.count == 1 else { return nil }
 
-        var token = String(tokens[0].output)
+        let match = tokens[0]
+        let suffix = text[match.range.upperBound...]
+        guard suffix.first != "-" || suffix.dropFirst().first?.isLetter != true else { return nil }
+
+        var token = String(match.output)
         // A minus counts only if attached to the number or leading the whole
         // string — a hyphenated merchant name ("Coca-Cola") is not a sign.
         let negative = token.hasPrefix("-")
@@ -38,15 +42,15 @@ enum AmountParser {
 
         let normalized: String
         switch (token.lastIndex(of: "."), token.lastIndex(of: ",")) {
-        case let (dot?, comma?):
+        case (let dot?, let comma?):
             // Both present: the rightmost is the decimal separator.
             let (decimal, grouping): (Character, Character) = dot > comma ? (".", ",") : (",", ".")
             normalized = token
                 .replacingOccurrences(of: String(grouping), with: "")
                 .replacingOccurrences(of: String(decimal), with: ".")
-        case let (dot?, nil):
+        case (let dot?, nil):
             normalized = resolveSingleSeparator(token, separator: ".", lastIndex: dot)
-        case let (nil, comma?):
+        case (nil, let comma?):
             normalized = resolveSingleSeparator(token, separator: ",", lastIndex: comma)
         case (nil, nil):
             normalized = token
@@ -61,17 +65,15 @@ enum AmountParser {
     /// `dot-comma`, while `1.234` remains 1,234 in that same format.
     private static func normalize(_ token: String, using numberFormat: ActualNumberFormat) -> String? {
         let decimalSeparator = Character(numberFormat.decimalSeparator)
-        let groupingSeparators: Set<Character>
-
-        switch numberFormat {
+        let groupingSeparators: Set<Character> = switch numberFormat {
         case .commaDot, .commaDotIn:
-            groupingSeparators = [","]
+            [","]
         case .dotComma:
-            groupingSeparators = ["."]
+            ["."]
         case .spaceComma:
-            groupingSeparators = ["\u{202F}", "\u{00A0}"]
+            ["\u{202F}", "\u{00A0}"]
         case .apostropheDot:
-            groupingSeparators = ["'", "\u{2019}"]
+            ["'", "\u{2019}"]
         }
 
         let integerPart = token.prefix { $0 != decimalSeparator }

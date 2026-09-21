@@ -18,7 +18,33 @@ xcodebuild -project Actuali/Actuali.xcodeproj -scheme Actuali \
   -destination 'platform=iOS Simulator,name=<any installed simulator>' test
 ```
 
-The sync engine tests (`Actuali/ActualiTests/SyncEngineFixtureTests.swift` and friends) verify CRDT behavior against fixtures derived from upstream Actual Budget — please keep them passing.
+The sync engine tests (`Actuali/ActualiTests/Services/Sync/SyncEngineFixtureTests.swift` and friends) verify CRDT behavior against fixtures derived from upstream Actual Budget — please keep them passing.
+
+## Formatting
+
+Formatting is enforced by [SwiftFormat](https://github.com/nicklockwood/SwiftFormat); CI fails PRs whose Swift code isn't formatted (`.swiftformat` config at the repo root, `Generated/` excluded).
+
+```bash
+brew install swiftformat      # one-time
+swiftformat Actuali           # fix everything
+```
+
+Recommended: auto-format on every commit by installing the bundled hook (git doesn't clone hooks, so this is per clone):
+
+```bash
+bash dev/scripts/install-hooks.sh
+```
+
+## UI tests
+
+- New views must set `.accessibilityIdentifier()` on the elements UI tests attach to (buttons, text fields, rows, key containers), using a stable, feature-scoped name such as `categoryEditor.name` or `transactionRow.<id>`. UI tests target these identifiers instead of localized labels, which change with copy and locale.
+- Identifiers are not user-facing: keep them out of the String Catalogs.
+
+## Localization
+
+All user-facing text must use the appropriate String Catalog through `String(localized:)` or a localized SwiftUI initializer. Do not add hard-coded English text to views, accessibility labels, errors, notifications, AppIntents, or services. Main app strings go in `Actuali/Actuali/Localizable.xcstrings`, App Shortcut phrases in `Actuali/Actuali/AppShortcuts.xcstrings`, and widget strings in `Actuali/ActualiWidgets/Localizable.xcstrings`.
+
+When adding a catalog key, add all seven supported locale values, preserve every format placeholder, and run `python3 dev/scripts/validate-localization.py`. For a new language, update the Xcode project regions and the validator's supported locale list together.
 
 ## Issues
 

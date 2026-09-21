@@ -8,7 +8,6 @@ import Foundation
 /// not sync). A transaction counts as new when its first CRDT message landed
 /// after the watermark and was authored by another device.
 struct NewTransactionDetector {
-
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -47,7 +46,8 @@ struct NewTransactionDetector {
         guard maxId > watermark else { return [] }
 
         let created = try await database.fetchTransactionsCreated(
-            afterMessageId: watermark, excludingNode: localNode)
+            afterMessageId: watermark, excludingNode: localNode
+        )
         defaults.set(NSNumber(value: maxId), forKey: key)
         return created
     }

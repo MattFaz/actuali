@@ -4,8 +4,8 @@ import Foundation
 struct GetAccountsIntent: AppIntent {
     static let title: LocalizedStringResource = "Get Accounts"
     static let description = IntentDescription(
-        "List all open accounts in Actuali.",
-        categoryName: "Accounts"
+        LocalizedStringResource("List all open accounts in Actuali."),
+        categoryName: LocalizedStringResource("Accounts")
     )
     static let openAppWhenRun = false
 
@@ -17,8 +17,7 @@ struct GetAccountsIntent: AppIntent {
         let accounts = await store.accountsForIntent().filter { !$0.closed }
         let entities = accounts.map { AccountEntity(id: $0.id, name: $0.name) }
 
-        let count = entities.count
-        let dialogText = "Found \(count) open account\(count == 1 ? "" : "s") in Actuali."
+        let dialogText = String(localized: "Found \(entities.count) open accounts in Actuali.")
         return .result(value: entities, dialog: IntentDialog(stringLiteral: dialogText))
     }
 }

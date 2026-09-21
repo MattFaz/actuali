@@ -126,7 +126,8 @@ struct AppleWalletProvider: Sendable {
                 candidates: candidates,
                 currentBalanceCents: account.balanceCents.map {
                     account.balanceIncludesPending ? $0 : $0 + pending
-                }
+                },
+                accountDataReceived: true
             )
         }
         return set

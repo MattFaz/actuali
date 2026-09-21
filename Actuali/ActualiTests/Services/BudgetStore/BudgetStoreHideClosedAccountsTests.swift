@@ -7,12 +7,11 @@ import Testing
 /// stay visible whatever the toggle says.
 @MainActor
 struct BudgetStoreHideClosedAccountsTests {
-
     private func makeAccounts() -> [Account] {
         [
             Account(id: "a1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 5000),
             Account(id: "a2", name: "Old Savings", type: .savings, offBudget: false, closed: true, sortOrder: 1, balance: 0),
-            Account(id: "a3", name: "Old Card", type: .credit, offBudget: true, closed: true, sortOrder: 2, balance: -100)
+            Account(id: "a3", name: "Old Card", type: .credit, offBudget: true, closed: true, sortOrder: 2, balance: -100),
         ]
     }
 

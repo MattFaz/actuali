@@ -7,9 +7,8 @@ import XCTest
 /// leave the app for the URL, and a plain-text tap must still open the editor
 /// — proving links and the edit gesture coexist on one row.
 final class NoteLinksUITests: XCTestCase {
-
     @MainActor
-    func testCategoryNoteRendersTappableLink() throws {
+    func testCategoryNoteRendersTappableLink() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1"]
         app.launch()
@@ -23,7 +22,7 @@ final class NoteLinksUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH 'Transactions for Dining Out in'")
         ).firstMatch
         var scrollsLeft = 8
-        while !dining.isHittable && scrollsLeft > 0 {
+        while !dining.isHittable, scrollsLeft > 0 {
             app.swipeUp()
             scrollsLeft -= 1
         }

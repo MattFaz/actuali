@@ -5,7 +5,6 @@ import Testing
 /// decides which of two matching rules wins, so the score table is behaviour,
 /// not an implementation detail.
 struct RuleRankerTests {
-
     private func rule(id: String, stage: Rule.Stage = .default, ops: [String]) -> Rule {
         Rule(
             id: id,
@@ -38,7 +37,7 @@ struct RuleRankerTests {
             rule(id: "b-broad", ops: ["contains"]),
             rule(id: "a-broad", ops: ["contains"]),
             rule(id: "exact", ops: ["is"]),
-            rule(id: "pre", stage: .pre, ops: ["contains"])
+            rule(id: "pre", stage: .pre, ops: ["contains"]),
         ])
 
         // pre first; inside default, equal scores tie-break on id, then the

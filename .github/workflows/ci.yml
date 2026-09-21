@@ -27,6 +27,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Fails the PR if Swift code isn't formatted per .swiftformat. Kept as its
+  # own job (not folded into the test jobs) so branch protection can require
+  # "SwiftFormat" by name. ci-noop.yml reports the same check for PRs that
+  # don't touch app code.
+  # ponytail: brew installs the latest swiftformat, so a new release that
+  # changes output can redden CI until everyone upgrades — pin to a release
+  # artifact if that actually happens.
+  swiftformat:
+    name: SwiftFormat
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install swiftformat
+      - run: swiftformat --lint --strict Actuali
+
   test-ios26:
     name: Unit Tests (iOS 26)
     runs-on: macos-26
@@ -63,6 +79,8 @@ jobs:
             -project Actuali/Actuali.xcodeproj \
             -scheme Actuali \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
+            -testLanguage en \
+            -testRegion US \
             -skip-testing:ActualiUITests \
             | xcbeautify --quiet
 
@@ -111,5 +129,7 @@ jobs:
             -project Actuali/Actuali.xcodeproj \
             -scheme Actuali \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
+            -testLanguage en \
+            -testRegion US \
             -skip-testing:ActualiUITests \
             | xcbeautify --quiet

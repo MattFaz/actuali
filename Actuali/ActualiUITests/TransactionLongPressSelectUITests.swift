@@ -2,7 +2,7 @@ import XCTest
 
 final class TransactionLongPressSelectUITests: XCTestCase {
     @MainActor
-    func testLongPressOpensSelectionModeAndSelectsTheRow() throws {
+    func testLongPressOpensSelectionModeAndSelectsTheRow() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -28,7 +28,8 @@ final class TransactionLongPressSelectUITests: XCTestCase {
 
         XCTAssertTrue(selectionModeButton.waitForExistence(timeout: 2))
         XCTAssertEqual(selectionModeButton.label, "Done")
-        XCTAssertTrue(app.buttons["Delete 1 Selected"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Delete 1 Selected"].isEnabled)
+        let deleteButton = app.buttons["Delete 1 selected transaction"]
+        XCTAssertTrue(deleteButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(deleteButton.isEnabled)
     }
 }

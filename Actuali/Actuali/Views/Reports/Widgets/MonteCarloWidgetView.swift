@@ -1,11 +1,20 @@
-import SwiftUI
 import Charts
+import SwiftUI
+
+enum MonteCarloWidgetFormatting {
+    static func percentage(_ value: Double, locale: Locale) -> String {
+        (value / 100).formatted(
+            .percent.locale(locale).precision(.fractionLength(0...1))
+        )
+    }
+}
 
 /// Dashboard card for the Monte Carlo retirement simulation. Mirrors
 /// upstream MonteCarloCard.tsx: headline success rate to the target age,
 /// plus the compact fan chart (p10-p90 band, p25-p75 band, p50 line) from
 /// MonteCarloGraph.tsx with axes hidden.
 struct MonteCarloWidgetView: View {
+    @Environment(\.locale) private var locale
     let displayName: String
     let data: MonteCarloData
 
@@ -24,34 +33,38 @@ struct MonteCarloWidgetView: View {
                 Text(displayName).font(.headline)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(successPercent.formatted(.number.precision(.fractionLength(0...1))) + "%")
+                    Text(MonteCarloWidgetFormatting.percentage(successPercent, locale: locale))
                         .font(.subheadline.weight(.semibold))
                         .monospacedDigit()
-                    Text("Success rate to age \(endAge.formatted(.number.precision(.fractionLength(0...1))))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(ReportStrings.format(
+                        "Success rate to age %@",
+                        endAge.formatted(.number.locale(locale).precision(.fractionLength(0...1))),
+                        locale: locale
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
             }
 
             Chart(data.percentileBands, id: \.year) { band in
                 let age = data.currentAge + Double(band.year)
                 AreaMark(
-                    x: .value("Age", age),
+                    x: .value(ReportStrings.text("Age", locale: locale), age),
                     yStart: .value("p10", Double(band.p10) / 100.0),
                     yEnd: .value("p90", Double(band.p90) / 100.0)
                 )
                 .interpolationMethod(.monotone)
                 .foregroundStyle(.purple.opacity(0.15))
                 AreaMark(
-                    x: .value("Age", age),
+                    x: .value(ReportStrings.text("Age", locale: locale), age),
                     yStart: .value("p25", Double(band.p25) / 100.0),
                     yEnd: .value("p75", Double(band.p75) / 100.0)
                 )
                 .interpolationMethod(.monotone)
                 .foregroundStyle(.purple.opacity(0.3))
                 LineMark(
-                    x: .value("Age", age),
-                    y: .value("Median", Double(band.p50) / 100.0)
+                    x: .value(ReportStrings.text("Age", locale: locale), age),
+                    y: .value(ReportStrings.text("Median", locale: locale), Double(band.p50) / 100.0)
                 )
                 .interpolationMethod(.monotone)
                 .foregroundStyle(.purple)

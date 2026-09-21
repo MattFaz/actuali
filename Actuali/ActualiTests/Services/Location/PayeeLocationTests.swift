@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 @MainActor
@@ -15,9 +15,9 @@ struct PayeeLocationTests {
         let queue = try DatabaseQueue(path: path.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE payees (id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0);
-                CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)
-                """)
+            CREATE TABLE payees (id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0);
+            CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)
+            """)
         }
     }
 
@@ -29,16 +29,16 @@ struct PayeeLocationTests {
         let queue = try DatabaseQueue(path: path.path)
         try queue.read { db in
             #expect(try db.tableExists("payee_locations"))
-            let cols = Set(try db.columns(in: "payee_locations").map(\.name))
+            let cols = try Set(db.columns(in: "payee_locations").map(\.name))
             #expect(cols == ["id", "payee_id", "latitude", "longitude", "created_at", "tombstone"])
             let indexes = try String.fetchAll(db, sql: """
-                SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'payee_locations'
-                """)
+            SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'payee_locations'
+            """)
             #expect(indexes.contains("idx_payee_locations_payee_id"))
             #expect(indexes.contains("idx_payee_locations_tombstone_payee_created"))
             #expect(indexes.contains("idx_payee_locations_geo_tombstone"))
             let applied = try Int64.fetchAll(db, sql: "SELECT id FROM __migrations__")
-            #expect(applied.contains(1768872504000))
+            #expect(applied.contains(1_768_872_504_000))
         }
     }
 
@@ -48,19 +48,20 @@ struct PayeeLocationTests {
         let queue = try DatabaseQueue(path: path.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE payee_locations (id TEXT PRIMARY KEY, payee_id TEXT, latitude REAL, longitude REAL, created_at INTEGER, tombstone INTEGER DEFAULT 0);
-                CREATE TABLE __migrations__ (id INTEGER PRIMARY KEY);
-                INSERT INTO __migrations__ (id) VALUES (1768872504000)
-                """)
+            CREATE TABLE payee_locations (id TEXT PRIMARY KEY, payee_id TEXT, latitude REAL, longitude REAL, created_at INTEGER, tombstone INTEGER DEFAULT 0);
+            CREATE TABLE __migrations__ (id INTEGER PRIMARY KEY);
+            INSERT INTO __migrations__ (id) VALUES (1768872504000)
+            """)
         }
-        _ = try BudgetDatabase(path: path)  // must not throw
+        _ = try BudgetDatabase(path: path) // must not throw
     }
 
     @Test func haversineMatchesKnownDistances() {
         // Sydney Opera House -> Sydney Harbour Bridge (south-east pylon):
         // Haversine with R = 6371e3 gives 650.42 m for these coordinates.
         let d = LocationUtils.calculateDistanceMeters(
-            lat1: -33.8568, lon1: 151.2153, lat2: -33.8523, lon2: 151.2108)
+            lat1: -33.8568, lon1: 151.2153, lat2: -33.8523, lon2: 151.2108
+        )
         #expect(abs(d - 650.42) < 1)
         // One degree of latitude at the equator: R * pi / 180 = 111,194.93 m
         let degree = LocationUtils.calculateDistanceMeters(lat1: 0, lon1: 0, lat2: 1, lon2: 0)
@@ -80,13 +81,17 @@ struct PayeeLocationTests {
 
         // p-near has two locations; the closer one must win (dedupe per payee).
         try database.insertPayeeLocation(PayeeLocation(
-            id: "l1", payeeId: "p-near", latitude: 0.0010, longitude: 0, createdAt: 1))  // ~111 m
+            id: "l1", payeeId: "p-near", latitude: 0.0010, longitude: 0, createdAt: 1
+        )) // ~111 m
         try database.insertPayeeLocation(PayeeLocation(
-            id: "l2", payeeId: "p-near", latitude: 0.0030, longitude: 0, createdAt: 2))  // ~333 m
+            id: "l2", payeeId: "p-near", latitude: 0.0030, longitude: 0, createdAt: 2
+        )) // ~333 m
         try database.insertPayeeLocation(PayeeLocation(
-            id: "l3", payeeId: "p-far", latitude: 0.0400, longitude: 0, createdAt: 3))   // ~4.4 km, outside 500 m
+            id: "l3", payeeId: "p-far", latitude: 0.0400, longitude: 0, createdAt: 3
+        )) // ~4.4 km, outside 500 m
         try database.insertPayeeLocation(PayeeLocation(
-            id: "l4", payeeId: "p-dead", latitude: 0.0001, longitude: 0, createdAt: 4, tombstone: true))
+            id: "l4", payeeId: "p-dead", latitude: 0.0001, longitude: 0, createdAt: 4, tombstone: true
+        ))
 
         let nearby = try await database.fetchNearbyPayees(latitude: 0, longitude: 0, maxDistanceMeters: 500)
         #expect(nearby.count == 1)
@@ -106,7 +111,7 @@ struct PayeeLocationTests {
         try database.insertPayeeLocation(PayeeLocation(id: "c", payeeId: "p1", latitude: 3, longitude: 3, createdAt: 300, tombstone: true))
 
         let locations = try await database.fetchPayeeLocations(payeeId: "p1")
-        #expect(locations.map(\.id) == ["b", "a"])  // created_at DESC, tombstones excluded
+        #expect(locations.map(\.id) == ["b", "a"]) // created_at DESC, tombstones excluded
     }
 
     /// CRDT sync applies one message per column, so a payee_locations row can
@@ -123,7 +128,8 @@ struct PayeeLocationTests {
         try await queue.write { db in
             try db.execute(
                 sql: "INSERT INTO payee_locations (id, payee_id) VALUES (?, ?)",
-                arguments: ["partial", "p1"])
+                arguments: ["partial", "p1"]
+            )
         }
 
         let locations = try await database.fetchPayeeLocations(payeeId: "p1")
@@ -141,7 +147,8 @@ struct PayeeLocationTests {
         let generator = MessageGenerator(clock: HybridLogicalClock(node: "test-node"))
         let location = PayeeLocation(
             id: "loc-1", payeeId: "p1", latitude: -33.85, longitude: 151.21,
-            createdAt: 1_751_760_000_000)
+            createdAt: 1_751_760_000_000
+        )
         let messages = try await generator.messagesForInsert(location)
         #expect(messages.count == 5)
         #expect(Set(messages.map(\.dataset)) == ["payee_locations"])
@@ -173,8 +180,14 @@ struct PayeeLocationTests {
     private final class FakePositionSource: PositionSource, @unchecked Sendable {
         var callCount = 0
         var status: LocationAuthStatus = .granted
-        func requestPermission() async -> LocationAuthStatus { status }
-        func authorizationStatus() -> LocationAuthStatus { status }
+        func requestPermission() async -> LocationAuthStatus {
+            status
+        }
+
+        func authorizationStatus() -> LocationAuthStatus {
+            status
+        }
+
         func fetchPosition() async throws -> Coordinates {
             callCount += 1
             return Coordinates(latitude: 1, longitude: 2)
@@ -186,7 +199,7 @@ struct PayeeLocationTests {
         let provider = LocationProvider(source: fake)
         _ = try await provider.currentPosition()
         _ = try await provider.currentPosition()
-        #expect(fake.callCount == 1)  // second call served from cache
+        #expect(fake.callCount == 1) // second call served from cache
     }
 
     @Test func locationProviderReturnsNilPositionWhenDenied() async {
@@ -212,8 +225,8 @@ struct PayeeLocationTests {
 
     @Test func shouldRecordLocationDedupesWithin500m() {
         let here = Coordinates(latitude: 0, longitude: 0)
-        let nearLoc = PayeeLocation(id: "a", payeeId: "p", latitude: 0.001, longitude: 0, createdAt: 1)   // ~111 m
-        let farLoc = PayeeLocation(id: "b", payeeId: "p", latitude: 0.04, longitude: 0, createdAt: 2)     // ~4.4 km
+        let nearLoc = PayeeLocation(id: "a", payeeId: "p", latitude: 0.001, longitude: 0, createdAt: 1) // ~111 m
+        let farLoc = PayeeLocation(id: "b", payeeId: "p", latitude: 0.04, longitude: 0, createdAt: 2) // ~4.4 km
 
         #expect(BudgetStore.shouldRecordLocation(at: here, existing: []) == true)
         #expect(BudgetStore.shouldRecordLocation(at: here, existing: [farLoc]) == true)
@@ -226,9 +239,11 @@ struct PayeeLocationTests {
         let database = try BudgetDatabase(path: path)
         try database.insertPayee(Payee(id: "p1", name: "P1", transferAccountId: nil))
         try database.insertPayeeLocation(PayeeLocation(
-            id: "keep", payeeId: "p1", latitude: 0.001, longitude: 0, createdAt: 100))
+            id: "keep", payeeId: "p1", latitude: 0.001, longitude: 0, createdAt: 100
+        ))
         try database.insertPayeeLocation(PayeeLocation(
-            id: "gone", payeeId: "p1", latitude: 0.0005, longitude: 0, createdAt: 200))
+            id: "gone", payeeId: "p1", latitude: 0.0005, longitude: 0, createdAt: 200
+        ))
 
         try database.tombstonePayeeLocation(id: "gone")
 
@@ -244,7 +259,8 @@ struct PayeeLocationTests {
         let generator = MessageGenerator(clock: HybridLogicalClock(node: "test-node"))
         let location = PayeeLocation(
             id: "loc-1", payeeId: "p1", latitude: -33.85, longitude: 151.21,
-            createdAt: 1_751_760_000_000)
+            createdAt: 1_751_760_000_000
+        )
         let message = try await generator.messageForDelete(location)
         #expect(message.dataset == "payee_locations")
         #expect(message.row == "loc-1")
@@ -272,7 +288,8 @@ struct PayeeLocationTests {
         let form = BudgetStore.TransactionForm(
             accountId: "a", type: .expense, amount: "1.00", payeeName: "P",
             transferToAccountId: nil, categoryId: nil, notes: "",
-            date: Date(), cleared: true)
+            date: Date(), cleared: true
+        )
         #expect(form.recordLocation)
     }
 }

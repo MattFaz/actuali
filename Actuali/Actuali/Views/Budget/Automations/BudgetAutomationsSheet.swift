@@ -8,6 +8,7 @@ import SwiftUI
 struct BudgetAutomationsSheet: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     let categoryId: String
     let month: String
 
@@ -34,10 +35,12 @@ struct BudgetAutomationsSheet: View {
         }
     }
 
-    private var templates: [GoalTemplate] { entries.map(\.template) }
+    private var templates: [GoalTemplate] {
+        entries.map(\.template)
+    }
 
     private var validSources: Set<String> {
-        var sources: Set<String> = ["all income", "available funds"]
+        var sources: Set = ["all income", "available funds"]
         for source in data?.incomeSources ?? [] {
             sources.insert(source.id)
             sources.insert(source.name.lowercased())
@@ -51,14 +54,15 @@ struct BudgetAutomationsSheet: View {
             allTemplates: templates,
             schedules: data?.schedules ?? [],
             currentMonth: BudgetMonthMath.currentMonth(),
-            validPercentageSources: validSources)
+            validPercentageSources: validSources
+        )
     }
 
     private var conflicts: [AutomationConflict] {
         [
             AutomationValidation.percentageAllocationConflict(templates),
             AutomationValidation.schedulePriorityConflict(templates),
-        ].compactMap { $0 }
+        ].compactMap(\.self)
     }
 
     private var hasErrors: Bool {
@@ -84,7 +88,8 @@ struct BudgetAutomationsSheet: View {
                     ContentUnavailableView(
                         "Couldn't Load Automations",
                         systemImage: "exclamationmark.triangle",
-                        description: Text(loadError))
+                        description: Text(loadError)
+                    )
                 } else if let data {
                     if data.hasUnsupportedTemplates {
                         unsupportedNotice
@@ -119,7 +124,8 @@ struct BudgetAutomationsSheet: View {
                         onDelete: {
                             entries.removeAll { $0.id == id }
                             editingTarget = nil
-                        })
+                        }
+                    )
                 case .cleanup:
                     CleanupEditor(
                         cleanup: $cleanup,
@@ -134,7 +140,8 @@ struct BudgetAutomationsSheet: View {
                         onDelete: {
                             cleanup = CleanupConfig()
                             editingTarget = nil
-                        })
+                        }
+                    )
                 }
             }
             .sheet(isPresented: $showingUnmigrate) {
@@ -144,8 +151,10 @@ struct BudgetAutomationsSheet: View {
                         initialNote: budgetStore.renderUnmigrateNote(
                             data: data,
                             templates: templates,
-                            cleanup: cleanup.toCleanupTemplates()),
-                        onDone: { dismiss() })
+                            cleanup: cleanup.toCleanupTemplates()
+                        ),
+                        onDone: { dismiss() }
+                    )
                 }
             }
         }
@@ -166,14 +175,14 @@ struct BudgetAutomationsSheet: View {
         }
     }
 
-    @ViewBuilder
     private func editorList(_ data: BudgetStore.AutomationEditorData) -> some View {
         List {
             if data.needsMigration {
                 Section {
                     Label(
                         "Imported from notes-based templates. Review and Save to complete the migration.",
-                        systemImage: "arrow.up.doc")
+                        systemImage: "arrow.up.doc"
+                    )
                     .font(.footnote)
                     if !data.originalNoteLines.isEmpty {
                         DisclosureGroup("Show original templates") {
@@ -201,7 +210,8 @@ struct BudgetAutomationsSheet: View {
                 Button {
                     var entry = AutomationEntry(
                         template: BudgetAutomations.defaultTemplate(for: .fixed),
-                        displayType: .fixed)
+                        displayType: .fixed
+                    )
                     entry.template.priority = BudgetAutomations.defaultPriority
                     entries.append(entry)
                     editingTarget = .entry(entry.id)
@@ -212,7 +222,7 @@ struct BudgetAutomationsSheet: View {
                 Text("Contributions")
             } footer: {
                 if !contributionEntries.isEmpty {
-                    Text("Estimated monthly total: \(budgetStore.displayBalance(totalMonthly))")
+                    Text(String(format: String(localized: "Estimated monthly total: %@"), budgetStore.displayBalance(totalMonthly)))
                 }
             }
 
@@ -244,7 +254,8 @@ struct BudgetAutomationsSheet: View {
                             title: "End of month cleanup",
                             subtitle: cleanupSummary,
                             trailing: nil,
-                            isError: false)
+                            isError: false
+                        )
                     }
                     .buttonStyle(.plain)
                 } else {
@@ -272,8 +283,10 @@ struct BudgetAutomationsSheet: View {
     private var cleanupSummary: String {
         let global = cleanup.global.send || cleanup.global.take
         let scopes = (global ? 1 : 0) + cleanup.groups.count(where: { $0.send || $0.take })
-        if scopes > 1 { return "Active in \(scopes) scopes" }
-        return global ? "Active globally" : "Active in a pool"
+        if scopes > 1 {
+            return String(localized: "Active in \(scopes) scopes")
+        }
+        return global ? String(localized: "Active globally") : String(localized: "Active in a pool")
     }
 
     @ViewBuilder
@@ -284,11 +297,12 @@ struct BudgetAutomationsSheet: View {
         } label: {
             row(
                 icon: entry.displayType.systemImage,
-                title: entry.displayType.label,
+                title: entry.displayType.label(locale: locale),
                 subtitle: entryError?.shortMessage ?? sentence(for: entry.template),
                 trailing: AutomationDisplayType.nonContribution.contains(entry.displayType)
                     ? nil : contributions[entry.id].map(budgetStore.displayBalance),
-                isError: entryError != nil)
+                isError: entryError != nil
+            )
         }
         .buttonStyle(.plain)
     }
@@ -328,13 +342,15 @@ struct BudgetAutomationsSheet: View {
         AutomationSentences.sentence(
             for: template,
             amount: { budgetStore.displayBalance(BudgetMonthMath.amountToInteger($0)) },
-            categoryName: { data?.categoryNames[$0] })
+            categoryName: { data?.categoryNames[$0] }
+        )
     }
 
     private func addOption(_ type: AutomationDisplayType) {
         guard !entries.contains(where: { $0.displayType == type }) else { return }
         let entry = AutomationEntry(
-            template: BudgetAutomations.defaultTemplate(for: type), displayType: type)
+            template: BudgetAutomations.defaultTemplate(for: type), displayType: type
+        )
         entries.append(entry)
         editingTarget = .entry(entry.id)
     }
@@ -345,19 +361,22 @@ struct BudgetAutomationsSheet: View {
                 entries.first { $0.id == id }
                     ?? AutomationEntry(
                         template: BudgetAutomations.defaultTemplate(for: .fixed),
-                        displayType: .fixed)
+                        displayType: .fixed
+                    )
             },
             set: { newValue in
                 if let index = entries.firstIndex(where: { $0.id == id }) {
                     entries[index] = newValue
                 }
-            })
+            }
+        )
     }
 
     private func load() async {
         do {
             let loaded = try await budgetStore.loadAutomationEditor(
-                categoryId: categoryId, month: month)
+                categoryId: categoryId, month: month
+            )
             data = loaded
             entries = loaded.entries
             cleanup = loaded.cleanup
@@ -376,7 +395,8 @@ struct BudgetAutomationsSheet: View {
             try? await Task.sleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
             let result = budgetStore.dryRunAutomations(
-                month: month, data: data, templates: snapshot.map(\.template))
+                month: month, data: data, templates: snapshot.map(\.template)
+            )
             totalMonthly = result.budgeted
             var byEntry: [UUID: Int] = [:]
             for (index, entry) in snapshot.enumerated()
@@ -394,7 +414,8 @@ struct BudgetAutomationsSheet: View {
                 categoryId: categoryId,
                 templates: templates,
                 cleanup: cleanup.toCleanupTemplates(),
-                cleanupGroups: data?.cleanupGroups ?? [])
+                cleanupGroups: data?.cleanupGroups ?? []
+            )
             dismiss()
         } catch {
             loadError = error.localizedDescription
@@ -434,7 +455,8 @@ private struct UnmigrateAutomationsSheet: View {
                     .padding(4)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color(.separator)))
+                            .stroke(Color(.separator))
+                    )
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.footnote)

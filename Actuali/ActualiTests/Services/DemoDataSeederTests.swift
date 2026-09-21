@@ -10,7 +10,6 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct DemoDataSeederTests {
-
     private func seedAndOpen(tracking: Bool = false, now: Date = Date()) throws -> BudgetDatabase {
         try DemoDataSeeder.seed(tracking: tracking, now: now)
         let dbPath = BudgetFileManager.shared.databasePath(for: DemoDataSeeder.budgetId)
@@ -58,8 +57,8 @@ struct DemoDataSeederTests {
         #expect(!newest.cleared)
     }
 
-    // Two pages so the demo exercises the dashboard switcher (GH #120);
-    // "Main" is first so it's the default dashboard on open.
+    /// Two pages so the demo exercises the dashboard switcher (GH #120);
+    /// "Main" is first so it's the default dashboard on open.
     @Test func seedsTwoDashboardPages() async throws {
         let database = try seedAndOpen()
         let pages = try await database.fetchDashboardPages()
@@ -97,8 +96,12 @@ struct DemoDataSeederTests {
         var netWorthMeta: NetWorthMeta?
         var summaryMeta: SummaryMeta?
         for widget in widgets {
-            if case .netWorth(_, let meta) = widget { netWorthMeta = meta }
-            if case .summary(_, let meta) = widget { summaryMeta = meta }
+            if case .netWorth(_, let meta) = widget {
+                netWorthMeta = meta
+            }
+            if case .summary(_, let meta) = widget {
+                summaryMeta = meta
+            }
         }
 
         // Net worth: the seeded starting balance + activity must yield a chartable
@@ -113,6 +116,49 @@ struct DemoDataSeederTests {
 
     /// Every account needs a transfer payee (Actual creates one per account)
     /// or the add/edit transfer flows fail with "Transfer payee not found".
+    /// The demo ships a rules table (Settings > Rules must show the list, not
+    /// the "Rules Unavailable" placeholder) and two upcoming schedules backed
+    /// by their own rules, per ScheduleWriteBuilder.createPlan's shape.
+    @Test func seedsRulesAndSchedules() async throws {
+        let database = try seedAndOpen()
+
+        let rules = try await database.fetchRulesRanked()
+        #expect(rules.count == 3)
+
+        let schedules = try await database.fetchSchedules()
+        #expect(schedules.compactMap(\.name).sorted() == ["Netflix", "Rent"])
+        // Every schedule resolves its payee/account from the rule conditions,
+        // and the recurrence's day pattern matches the stored next date —
+        // mismatched patterns advance to the wrong day after the first post.
+        for schedule in schedules {
+            #expect(schedule.payeeId != nil && schedule.accountId != nil,
+                    "Schedule \(schedule.name ?? "?") is missing payee/account conditions")
+            guard case .recurring(let config) = try #require(schedule.dateCondition),
+                  let next = schedule.nextDate else { continue }
+            let patternDays = config.patterns.filter { $0.type == "day" }.map(\.value)
+            #expect(patternDays.contains(next.day),
+                    "\(schedule.name ?? "?") recurs on \(patternDays) but next date is \(next)")
+        }
+    }
+
+    /// Seeded schedules must be strictly future-dated: the auto-poster
+    /// (SchedulePoster.runIfNeeded) posts every schedule whose next date is
+    /// today or past, and a fresh demo load must never mutate its own seeded
+    /// data (or record history) on its own.
+    @Test func seededSchedulesAreNeverDueOnLoad() async throws {
+        // One reference instant for both seed and assertion: two independent
+        // Date() calls would flake if the test straddles local midnight.
+        let now = Date()
+        let database = try seedAndOpen(now: now)
+        let schedules = try await database.fetchSchedules()
+        #expect(!schedules.isEmpty)
+        let today = DayDate.today(now: now)
+        for schedule in schedules {
+            let next = try #require(schedule.nextDate)
+            #expect(next > today, "\(schedule.name ?? "?") is due at load")
+        }
+    }
+
     @Test func everyAccountHasATransferPayee() async throws {
         let database = try seedAndOpen()
         let accounts = try await database.fetchAccounts()
@@ -152,7 +198,8 @@ struct DemoDataSeederTests {
         let groups = try await database.fetchCategoryGroups()
 
         let groceries = try #require(
-            groups.flatMap(\.categories).first { $0.name == "Groceries" })
+            groups.flatMap(\.categories).first { $0.name == "Groceries" }
+        )
         let note = try await database.fetchNote(id: groceries.id)
 
         #expect(note.supported)

@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Regression coverage for actios-tq4w, database-layer half: on a cold
@@ -9,7 +9,6 @@ import GRDB
 /// survive that race (wait for the lock, not throw SQLITE_BUSY), and a fully
 /// migrated file must open without taking the write lock at all.
 struct BudgetDatabaseOpenContentionTests {
-
     /// A file whose runnable migrations have all been applied by one
     /// `BudgetDatabase` open. The `transactions` table deliberately starts
     /// without the `schedule` column; the schema-guarded backfill migration
@@ -78,12 +77,14 @@ struct BudgetDatabaseOpenContentionTests {
         let url = try makeMigratedDatabaseFile()
         defer {
             try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o644], ofItemAtPath: url.path)
+                [.posixPermissions: 0o644], ofItemAtPath: url.path
+            )
             try? FileManager.default.removeItem(at: url)
         }
 
         try FileManager.default.setAttributes(
-            [.posixPermissions: 0o444], ofItemAtPath: url.path)
+            [.posixPermissions: 0o444], ofItemAtPath: url.path
+        )
 
         _ = try BudgetDatabase(path: url)
     }

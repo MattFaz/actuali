@@ -1,0 +1,50 @@
+# SwiftFormat config — CI (ci.yml) fails PRs whose Swift code isn't formatted
+# with this exact config; dev/scripts/pre-commit auto-fixes on commit.
+#
+# Generated/ is produced by protoc and must stay byte-stable (see AGENTS.md) —
+# never reformat or hand-edit it.
+--exclude Actuali/Actuali/Generated
+--swiftversion 6
+
+# Numeric literals: leave hash constants (MurmurHash3 etc.) and long IDs as
+# written so they stay comparable to the upstream spec; group only short
+# decimals. Hex digits lowercase, matching the codebase.
+--binary-grouping none
+--hex-grouping none
+--octal-grouping none
+--decimal-grouping 3,6
+--hex-literal-case lowercase
+
+# Ranges without surrounding spaces (0..<10), matching Xcode/Apple style.
+--ranges no-space
+
+# `case .foo(let x)` stays inline; `let` is not hoisted out of patterns.
+--pattern-let inline
+
+# Only strip unused args inside closures; keep named parameters in function
+# declarations readable even when unused.
+--strip-unused-args closure-only
+
+# Trailing commas are added to multiline literals (swiftformat default —
+# appending an item then touches one diff line, not two).
+
+# #if directives sit flush with the surrounding code, and code inside them is
+# not re-indented — matches the repo's existing style (differs from the
+# swiftformat default).
+--ifdef no-indent
+
+# @testable imports go last (repo convention)
+--import-grouping testable-last,alpha
+
+# Opening brace stays on the line of a wrapped condition (matches existing
+# style and Xcode).
+--disable wrapMultilineStatementBraces
+
+# redundantSelf strips self. from string interpolation inside actor-isolated
+# closures, where Swift still requires it — broke the build on adoption.
+--disable redundantSelf
+
+# These rewrite test code semantics (force unwrap/try -> #require), which is
+# a behavioral change, not formatting; the rewrite also breaks test-target
+# compilation (recursive #require/#expect macro expansion) on swiftformat 0.63.
+--disable noForceTryInTests,noForceUnwrapInTests

@@ -6,9 +6,8 @@ import XCTest
 /// focus or the keyboard drops mid-typing, and the reveal has to be undone
 /// before iOS snapshots the screen for the app switcher.
 final class PasswordVisibilityUITests: XCTestCase {
-
     @MainActor
-    func testRevealKeepsKeyboardAndResetsOnBackground() throws {
+    func testRevealKeepsKeyboardAndResetsOnBackground() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()

@@ -25,12 +25,12 @@ struct ReconcileView: View {
         guard let clearedBalance, let targetCents else { return nil }
         return targetCents - clearedBalance
     }
-    
+
     /// Signed so a shortfall and a surplus read differently at a glance.
     private func differenceText(_ cents: Int) -> String {
         (cents > 0 ? "+" : "") + budgetStore.formatCurrency(cents)
     }
-    
+
     /// Which of the mutually exclusive sections below the entry fields is
     /// showing. The section swap is animated off this rather than off
     /// `difference`, which recomputes on every keystroke — an implicit
@@ -54,7 +54,7 @@ struct ReconcileView: View {
             Form {
                 Section {
                     HStack {
-                        Text("Cleared Balance")
+                        Text(String(localized: "reconcile.clearedBalance"))
                         Spacer()
                         if let clearedBalance {
                             // Deliberately bypasses the hide-balances mask:
@@ -69,7 +69,7 @@ struct ReconcileView: View {
                         }
                     }
                     HStack {
-                        Text("Bank Balance")
+                        Text(String(localized: "reconcile.bankBalance"))
                         Spacer()
                         // Credit-card and overdrawn accounts reconcile against
                         // a negative bank balance, so the sign toggle is needed.
@@ -82,7 +82,7 @@ struct ReconcileView: View {
                         )
                     }
                 } footer: {
-                    Text("Enter the current balance of the bank account you want to reconcile with.")
+                    Text(String(localized: "reconcile.balancePrompt"))
                 }
 
                 if let difference {
@@ -123,10 +123,10 @@ struct ReconcileView: View {
                             }
                             .disabled(isWorking)
                         } footer: {
-                            Text("Your cleared balance needs \(budgetStore.formatCurrency(difference)) to match the bank. The adjustment is a cleared transaction for that amount; you can lock afterwards.")
+                            Text(String(format: String(localized: "Your cleared balance needs %@ to match the bank. The adjustment is a cleared transaction for that amount; you can lock afterwards."), budgetStore.formatCurrency(difference)))
                         }
                     }
-                } else if clearedBalance != nil && !balanceText.isEmpty {
+                } else if clearedBalance != nil, !balanceText.isEmpty {
                     Section {
                         Text("Enter a valid amount to compare balances.")
                             .foregroundStyle(.secondary)
@@ -187,7 +187,7 @@ struct ReconcileView: View {
             offBudget: false,
             closed: false,
             sortOrder: 0,
-            balance: 245073
+            balance: 245_073
         )
     )
     .environmentObject(BudgetStore.previewInstance())

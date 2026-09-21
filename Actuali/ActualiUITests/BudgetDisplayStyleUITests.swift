@@ -2,7 +2,6 @@ import XCTest
 
 /// Budget layout preferences exercised through the user-visible Budget tab.
 final class BudgetDisplayStyleUITests: XCTestCase {
-
     @MainActor private func budgetedCaption(in app: XCUIApplication) -> XCUIElement {
         app.staticTexts
             .matching(NSPredicate(format: "label BEGINSWITH 'Budgeted:'"))
@@ -18,14 +17,14 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     @MainActor
     private func scrollToSettingsControl(_ control: XCUIElement, in app: XCUIApplication) {
         var swipesLeft = 8
-        while !control.exists && swipesLeft > 0 {
+        while !control.exists, swipesLeft > 0 {
             app.swipeUp()
             swipesLeft -= 1
         }
     }
 
     @MainActor
-    func testCleanStyleShowsCaptions() throws {
+    func testCleanStyleShowsCaptions() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", "clean",
@@ -45,7 +44,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testOptionsMenuTogglesLayoutLive() throws {
+    func testOptionsMenuTogglesLayoutLive() {
         let app = XCUIApplication()
         // Seed clean explicitly: argument-domain values are volatile (the
         // init write-back was removed in actios-96wa), so this can't leak
@@ -81,7 +80,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testLegacyDetailedStyleOpensCompact() throws {
+    func testLegacyDetailedStyleOpensCompact() {
         let app = XCUIApplication()
         // NSArgumentDomain: seeds the persisted preference for this launch.
         app.launchArguments = [
@@ -103,7 +102,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompactStyleShowsDistinctOverviewAndAddsSpentColumnLive() throws {
+    func testCompactStyleShowsDistinctOverviewAndAddsSpentColumnLive() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -143,7 +142,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(essentials.label.contains("balance"))
         essentials.tap()
         XCTAssertTrue(groceriesDetails.waitForNonExistence(timeout: 5),
-                       "collapsing the header hides only its category rows")
+                      "collapsing the header hides only its category rows")
         XCTAssertTrue(essentials.exists,
                       "a collapsed group keeps its totals header visible")
         essentials.tap()
@@ -166,7 +165,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompactTrackingStyleUsesNativeSummaryAndIncomeColumns() throws {
+    func testCompactTrackingStyleUsesNativeSummaryAndIncomeColumns() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -189,7 +188,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
 
         let incomeSection = app.descendants(matching: .any)["compactIncomeSection"]
         var scrollsLeft = 12
-        while !incomeSection.exists && scrollsLeft > 0 {
+        while !incomeSection.exists, scrollsLeft > 0 {
             app.swipeUp()
             scrollsLeft -= 1
         }
@@ -219,7 +218,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompactOptionalOverviewAndProgressBarsAffectPresentation() throws {
+    func testCompactOptionalOverviewAndProgressBarsAffectPresentation() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -246,7 +245,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
                       "the progress assertions require an expanded fixture group")
         XCTAssertEqual(groceries.label, "Details for Groceries")
         let progressBar = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label MATCHES[c] '.*spent [0-9]+ percent'")
+            NSPredicate(format: "label MATCHES[c] '.*spent [0-9]+ percent.*'")
         ).firstMatch
         XCTAssertFalse(progressBar.exists,
                        "disabled progress mode displays no progress bar")
@@ -272,7 +271,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompactAccessibilityDynamicTypeUsesStackedPresentation() throws {
+    func testCompactAccessibilityDynamicTypeUsesStackedPresentation() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -294,7 +293,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Groceries'")
         ).firstMatch
         var scrollsLeft = 8
-        while !editGroceries.exists && scrollsLeft > 0 {
+        while !editGroceries.exists, scrollsLeft > 0 {
             app.swipeUp()
             scrollsLeft -= 1
         }
@@ -305,7 +304,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompactLongNamesRemainDiscoverableWhileAmountsArePrivate() throws {
+    func testCompactLongNamesRemainDiscoverableWhileAmountsArePrivate() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -326,7 +325,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
 
         let longGroup = app.buttons["compactBudgetGroup.Health & Wellness"]
         var scrollsLeft = 10
-        while !longGroup.exists && scrollsLeft > 0 {
+        while !longGroup.exists, scrollsLeft > 0 {
             app.swipeUp()
             scrollsLeft -= 1
         }
@@ -337,7 +336,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
 
         let longCategory = app.buttons["All transactions for Starting Balances"]
         scrollsLeft = 10
-        while !longCategory.exists && scrollsLeft > 0 {
+        while !longCategory.exists, scrollsLeft > 0 {
             app.swipeUp()
             scrollsLeft -= 1
         }
@@ -346,7 +345,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testCategoryNameOpensCompactEditor() throws {
+    func testCategoryNameOpensCompactEditor() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1",
@@ -370,7 +369,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testCheckInStripFiltersUnassignedCategoriesInPlace() throws {
+    func testCheckInStripFiltersUnassignedCategoriesInPlace() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-showBudgetCheckInStrip", "YES", "-initialTab", "1",
@@ -384,7 +383,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         // viewport, and a full-velocity swipe scrolls Parking straight past
         // the hittable band and off the other side.
         var scrollsLeft = 20
-        while !editParking.isHittable && scrollsLeft > 0 {
+        while !editParking.isHittable, scrollsLeft > 0 {
             app.swipeUp(velocity: .slow)
             scrollsLeft -= 1
         }
@@ -398,11 +397,53 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         app.buttons["Save"].tap()
         XCTAssertTrue(amount.waitForNonExistence(timeout: 5))
 
-        for _ in 0..<8 { app.swipeDown() }
+        for _ in 0..<8 {
+            app.swipeDown()
+        }
         tapBudgetFilter(app, "unassigned")
 
         XCTAssertTrue(app.buttons["Details for Parking"].waitForExistence(timeout: 5),
                       "the horizontal check-in filter keeps matching categories in the budget table")
         XCTAssertFalse(app.buttons["Details for Groceries"].exists)
+    }
+
+    /// Clean rows used to carry hide/show `.swipeActions`, which swallowed the
+    /// shared horizontal month swipe (GH #425). Compact has the same guard in
+    /// `CompactBudgetParityUITests.testKeepsSharedMonthSwipeNavigation`.
+    @MainActor
+    func testCleanStyleKeepsMonthSwipeNavigation() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1",
+        ]
+        app.launch()
+
+        let currentMonth = monthTitle(offset: 0)
+        let nextMonth = monthTitle(offset: 1)
+        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 10))
+
+        app.swipeLeft()
+        XCTAssertTrue(app.buttons[nextMonth].waitForExistence(timeout: 5),
+                      "the shared horizontal gesture advances Clean by one month")
+        app.swipeRight()
+        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 5))
+    }
+
+    /// The hide/show action moved off the clean income row's swipe (GH #425)
+    /// into its context menu, matching Compact's income row.
+    @MainActor
+    func testCleanIncomeContextMenuOffersHide() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1",
+        ]
+        app.launch()
+
+        let salary = app.buttons["All transactions for Salary"]
+        scrollUntilHittable(salary, in: app)
+        XCTAssertTrue(salary.isHittable)
+        salary.press(forDuration: 1)
+        XCTAssertTrue(app.buttons["Hide"].firstMatch.waitForExistence(timeout: 5),
+                      "the clean income row offers hide/show without a swipe action")
     }
 }

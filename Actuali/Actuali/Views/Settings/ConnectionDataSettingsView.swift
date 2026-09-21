@@ -20,7 +20,7 @@ struct ConnectionDataSettingsView: View {
             }
         }
         .readableWidth()
-        .navigationTitle("Connection & Data")
+        .navigationTitle(String(localized: "Connection & Data"))
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.horizontal, 6, for: .scrollContent)
     }
@@ -52,30 +52,32 @@ private struct ServerConnectionSettingsSection: View {
                 fallbackServerURL: editedFallbackServerURL
             )
             savingServerConnection = false
-            if saved { editingServerConnection = false }
+            if saved {
+                editingServerConnection = false
+            }
         }
     }
 
     private var serverConnectionHeader: some View {
         HStack {
-            Text("Connection")
+            Text(String(localized: "Connection"))
             Spacer()
             if budgetStore.isConnected {
                 if editingServerConnection {
-                    Button("Cancel", role: .cancel) {
+                    Button(String(localized: "Cancel"), role: .cancel) {
                         editingServerConnection = false
                     }
                     .disabled(savingServerConnection)
                     Divider()
                         .frame(height: 16)
-                    Button("Save") { saveServerConnection() }
+                    Button(String(localized: "Save")) { saveServerConnection() }
                         .disabled(
                             editedServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                 || budgetStore.isLoading
                                 || savingServerConnection
                         )
                 } else {
-                    Button("Edit") { beginEditingServerConnection() }
+                    Button(String(localized: "Edit")) { beginEditingServerConnection() }
                 }
             }
         }
@@ -88,17 +90,17 @@ private struct ServerConnectionSettingsSection: View {
         serverURL: Binding<String>,
         fallbackServerURL: Binding<String>
     ) -> some View {
-        TextField("Server URL", text: serverURL)
+        TextField(String(localized: "Server URL"), text: serverURL)
             .textContentType(.URL)
             .autocapitalization(.none)
             .keyboardType(.URL)
-            .accessibilityHint("Example: https://actual.example.com")
+            .accessibilityHint(String(localized: "Example: https://actual.example.com"))
 
-        TextField("Fallback server URL (optional)", text: fallbackServerURL)
+        TextField(String(localized: "Fallback Server URL"), text: fallbackServerURL)
             .textContentType(.URL)
             .autocapitalization(.none)
             .keyboardType(.URL)
-            .accessibilityHint("Used when the primary server cannot be reached")
+            .accessibilityHint(String(localized: "Optional. Used when the primary server cannot be reached"))
     }
 
     var body: some View {
@@ -110,11 +112,11 @@ private struct ServerConnectionSettingsSection: View {
                         fallbackServerURL: $editedFallbackServerURL
                     )
                 } else {
-                    LabeledContent("Server URL", value: budgetStore.serverURL)
+                    LabeledContent(String(localized: "Server URL"), value: budgetStore.serverURL)
                     LabeledContent(
-                        "Fallback Server URL",
+                        String(localized: "Fallback Server URL"),
                         value: budgetStore.fallbackServerURL.isEmpty
-                            ? "None"
+                            ? String(localized: "None")
                             : budgetStore.fallbackServerURL
                     )
                 }
@@ -127,18 +129,18 @@ private struct ServerConnectionSettingsSection: View {
 
             if budgetStore.isConnected {
                 HStack {
-                    Text("Status")
+                    Text(String(localized: "Status"))
                     Spacer()
                     HStack(spacing: 4) {
                         Circle()
                             .fill(.green)
                             .frame(width: 8, height: 8)
-                        Text("Connected")
+                        Text(String(localized: "Connected"))
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Button("Disconnect", role: .destructive) {
+                Button(String(localized: "Disconnect"), role: .destructive) {
                     showingDisconnectConfirm = true
                 }
             } else {
@@ -149,8 +151,8 @@ private struct ServerConnectionSettingsSection: View {
                     || budgetStore.passwordLoginActive
                     || budgetStore.requiresServerPassword {
                     let placeholder = budgetStore.requiresServerPassword && !budgetStore.passwordLoginActive
-                        ? "Server password (first sign-in)"
-                        : "Password"
+                        ? String(localized: "Server password (first sign-in)")
+                        : String(localized: "Password")
                     HStack {
                         if isPasswordVisible {
                             TextField(placeholder, text: $password)
@@ -173,11 +175,11 @@ private struct ServerConnectionSettingsSection: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(isPasswordVisible ? "Hide password" : "Show password")
+                        .accessibilityLabel(isPasswordVisible ? String(localized: "Hide password") : String(localized: "Show password"))
                     }
                 }
 
-                Button("Connect") {
+                Button(String(localized: "Connect")) {
                     Task {
                         await budgetStore.connect()
                         guard budgetStore.error == nil else { return }
@@ -188,7 +190,7 @@ private struct ServerConnectionSettingsSection: View {
                         // already explained why; don't repeat the same
                         // failure as a login attempt.
                         guard budgetStore.error == nil else { return }
-                        if budgetStore.passwordLoginActive && !password.isEmpty {
+                        if budgetStore.passwordLoginActive, !password.isEmpty {
                             await budgetStore.login(password: password)
                         }
                     }
@@ -196,7 +198,7 @@ private struct ServerConnectionSettingsSection: View {
                 .disabled(budgetStore.serverURL.isEmpty || budgetStore.isLoading)
 
                 if budgetStore.supportsOpenIDLogin {
-                    Button("Sign in with OpenID") {
+                    Button(String(localized: "Sign in with OpenID")) {
                         Task {
                             await budgetStore.loginWithOpenID(
                                 firstTimePassword: password.isEmpty ? nil : password
@@ -209,11 +211,11 @@ private struct ServerConnectionSettingsSection: View {
                     )
                 }
 
-                Menu("Try the demo budget") {
-                    Button("Envelope budget") {
+                Menu(String(localized: "Try the demo budget")) {
+                    Button(String(localized: "Envelope budget")) {
                         Task { await budgetStore.loadDemoData() }
                     }
-                    Button("Tracking budget") {
+                    Button(String(localized: "Tracking budget")) {
                         Task { await budgetStore.loadDemoData(tracking: true) }
                     }
                 }
@@ -223,7 +225,7 @@ private struct ServerConnectionSettingsSection: View {
                     CustomHeadersEditor(headers: $budgetStore.customHeaders)
                 } label: {
                     HStack {
-                        Text("Custom HTTP headers")
+                        Text(String(localized: "Custom HTTP headers"))
                         Spacer()
                         let count = budgetStore.customHeaders.filter {
                             !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
@@ -243,25 +245,29 @@ private struct ServerConnectionSettingsSection: View {
             }
         }
         .confirmationDialog(
-            "Disconnect and remove data?",
+            String(localized: "Disconnect and remove data?"),
             isPresented: $showingDisconnectConfirm,
             titleVisibility: .visible
         ) {
-            Button("Disconnect & Remove Data", role: .destructive) {
+            Button(String(localized: "Disconnect & Remove Data"), role: .destructive) {
                 budgetStore.logout()
                 password = ""
             }
-            Button("Cancel", role: .cancel) {}
+            Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
-            Text("Signs out and deletes this device's copy of your budgets. Any changes that haven't synced to the server yet will be lost. Your data on the server is not affected.")
+            Text(String(localized: "Signs out and deletes this device's copy of your budgets. Any changes that haven't synced to the server yet will be lost. Your data on the server is not affected."))
         }
         // Re-hide before iOS snapshots the screen for the app switcher, so a
         // revealed password doesn't land in that on-disk snapshot.
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase != .active { isPasswordVisible = false }
+            if newPhase != .active {
+                isPasswordVisible = false
+            }
         }
         .onChange(of: budgetStore.isConnected) { _, isConnected in
-            if !isConnected { editingServerConnection = false }
+            if !isConnected {
+                editingServerConnection = false
+            }
         }
     }
 }
@@ -273,6 +279,7 @@ private struct BudgetSelectionSettingsSection: View {
     @State private var budgetToRemoveLocally: BudgetStore.RemoteBudget?
     @State private var budgetToDeleteFromServer: BudgetStore.RemoteBudget?
     @State private var showingCreateBudgetPrompt = false
+    @State private var showingBudgetPicker = false
     @State private var newBudgetName = ""
 
     /// The open budget's server fileId — currentBudgetId is the internal id,
@@ -299,20 +306,26 @@ private struct BudgetSelectionSettingsSection: View {
         )
     }
 
+    private func selectedBudget(in locals: [BudgetMetadata]) -> BudgetStore.RemoteBudget? {
+        guard let cloudFileId = currentCloudFileId(in: locals) else { return nil }
+        if let budget = budgetStore.remoteBudgets.first(where: { $0.id == cloudFileId }) {
+            return budget
+        }
+        return unlistedCurrentBudget(in: locals)
+    }
+
     var body: some View {
         // One directory read per render; every row check below shares it.
         let localBudgets = BudgetFileManager.shared.listLocalBudgets()
 
         Section {
-            ForEach(budgetStore.remoteBudgets) { budget in
-                budgetRow(budget, locals: localBudgets)
+            if let selectedBudget = selectedBudget(in: localBudgets) {
+                selectedBudgetRow(selectedBudget, locals: localBudgets)
+            } else {
+                budgetPickerForNoSelection()
             }
 
-            if let unlisted = unlistedCurrentBudget(in: localBudgets) {
-                budgetRow(unlisted, locals: localBudgets)
-            }
-
-            if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
+            if budgetStore.remoteBudgets.isEmpty, !budgetStore.isLoading {
                 Button("Refresh Budgets") {
                     Task { await budgetStore.fetchRemoteBudgets() }
                 }
@@ -327,13 +340,13 @@ private struct BudgetSelectionSettingsSection: View {
             Text("Budget Selection")
         } footer: {
             if budgetStore.currentBudgetId == nil {
-                if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
+                if budgetStore.remoteBudgets.isEmpty, !budgetStore.isLoading {
                     Text("No budgets were found on your server. Tap Create New Budget to make one, or Refresh Budgets if you've created one elsewhere.")
                 } else {
-                    Text("Select a budget to load it onto this device. The app stays empty until one is chosen.\n\nTouch and hold a budget for options to remove it from this device or delete it from the server.")
+                    Text("Select a budget to load it onto this device.")
                 }
             } else if !budgetStore.remoteBudgets.isEmpty {
-                Text("Touch and hold a budget for options to remove it from this device or delete it from the server.")
+                Text("Tap the selected budget to switch budgets. Touch and hold it for options to remove it from this device or delete it from the server.")
             }
         }
         .alert("New Budget", isPresented: $showingCreateBudgetPrompt) {
@@ -369,7 +382,11 @@ private struct BudgetSelectionSettingsSection: View {
             "Remove from this device?",
             isPresented: Binding(
                 get: { budgetToRemoveLocally != nil },
-                set: { if !$0 { budgetToRemoveLocally = nil } }
+                set: {
+                    if !$0 {
+                        budgetToRemoveLocally = nil
+                    }
+                }
             ),
             titleVisibility: .visible,
             presenting: budgetToRemoveLocally
@@ -379,7 +396,7 @@ private struct BudgetSelectionSettingsSection: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { budget in
-            Text("Removes “\(budget.name)” from this device, including its local backups. Any changes that haven't synced to the server yet will be lost. The budget stays on your server and can be downloaded again.")
+            Text(String(format: String(localized: "Removes “%@” from this device, including its local backups. Any changes that haven't synced to the server yet will be lost. The budget stays on your server and can be downloaded again."), budget.name))
         }
         .task {
             await budgetStore.fetchRemoteBudgets()
@@ -387,57 +404,129 @@ private struct BudgetSelectionSettingsSection: View {
         }
     }
 
-    private func budgetRow(
-        _ budget: BudgetStore.RemoteBudget, locals: [BudgetMetadata]
+    private func selectedBudgetRow(
+        _ budget: BudgetStore.RemoteBudget,
+        locals: [BudgetMetadata]
     ) -> some View {
         let hasLocalCopy = locals.contains { $0.cloudFileId == budget.id }
+
         return Button {
-            openBudget(budget)
+            showingBudgetPicker = true
         } label: {
             HStack {
                 if budget.isEncrypted {
-                    Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(.secondary)
                 }
+
                 Text(budget.name)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
                 Spacer()
-                if budgetStore.downloadingBudgetId == budget.id {
+
+                if budgetStore.downloadingBudgetId != nil {
                     ProgressView()
-                } else if budget.id == currentCloudFileId(in: locals) {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(.tint)
-                        .accessibilityLabel("Selected")
+                } else {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .disabled(budgetStore.downloadingBudgetId != nil)
-        // No .destructive role on the swipe buttons: that animates the row
-        // away on tap, before the confirmation has run.
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button("Delete", systemImage: "trash") {
-                budgetToDeleteFromServer = budget
-            }
-            .tint(.red)
-            if hasLocalCopy {
-                Button("Remove", systemImage: "iphone.slash") {
-                    budgetToRemoveLocally = budget
-                }
-                .tint(.orange)
-            }
-        }
+        .accessibilityIdentifier("budget-selection-selected")
         .contextMenu {
             if hasLocalCopy {
                 Button("Remove from This Device", systemImage: "iphone.slash") {
                     budgetToRemoveLocally = budget
                 }
             }
+
             Button("Delete from Server…", systemImage: "trash", role: .destructive) {
                 budgetToDeleteFromServer = budget
             }
         }
+        .popover(isPresented: $showingBudgetPicker) {
+            let otherBudgets = budgetStore.remoteBudgets.filter { $0.id != budget.id }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(otherBudgets) { otherBudget in
+                        Button {
+                            showingBudgetPicker = false
+                            openBudget(otherBudget)
+                        } label: {
+                            HStack {
+                                if otherBudget.isEncrypted {
+                                    Image(systemName: "lock.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Text(otherBudget.name)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if otherBudgets.isEmpty {
+                        Text("No other budgets")
+                            .foregroundStyle(.secondary)
+                            .padding(16)
+                    }
+                }
+            }
+            .frame(minWidth: 240, maxHeight: 320)
+            .padding(.vertical, 8)
+            .presentationCompactAdaptation(.popover)
+            .accessibilityIdentifier("budget-selection-picker")
+        }
+    }
+
+    private func budgetPickerForNoSelection() -> some View {
+        Menu {
+            ForEach(budgetStore.remoteBudgets) { budget in
+                Button {
+                    openBudget(budget)
+                } label: {
+                    HStack {
+                        if budget.isEncrypted {
+                            Image(systemName: "lock.fill")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text(budget.name)
+                    }
+                }
+            }
+        } label: {
+            HStack {
+                Text("Select a Budget")
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .disabled(budgetStore.downloadingBudgetId != nil || budgetStore.remoteBudgets.isEmpty)
     }
 
     private func openBudget(_ budget: BudgetStore.RemoteBudget) {
-        if budget.isEncrypted && EncryptionKeyManager.load(fileId: budget.id) == nil {
+        if budget.isEncrypted, EncryptionKeyManager.load(fileId: budget.id) == nil {
             budgetToUnlock = budget
         } else {
             Task { await budgetStore.downloadBudget(budget) }
@@ -447,7 +536,7 @@ private struct BudgetSelectionSettingsSection: View {
     /// One-time nudge after connecting: surface budget selection so a fresh
     /// connection doesn't leave the user staring at empty tabs.
     private func promptBudgetSelectionIfNeeded() {
-        if budgetStore.currentBudgetId == nil && !budgetStore.remoteBudgets.isEmpty {
+        if budgetStore.currentBudgetId == nil, !budgetStore.remoteBudgets.isEmpty {
             showingBudgetSelectPrompt = true
         }
     }
@@ -480,7 +569,7 @@ private struct DeleteServerBudgetSheet: View {
                 } header: {
                     Text("Delete from Server")
                 } footer: {
-                    Text("This permanently deletes “\(budget.name)” from your Actual server for every device that uses it, along with this device's copy and its local backups. This cannot be undone.\n\nType the budget's name to confirm.")
+                    Text(String(format: String(localized: "This permanently deletes “%@” from your Actual server for every device that uses it, along with this device's copy and its local backups. This cannot be undone.\n\nType the budget's name to confirm."), budget.name))
                 }
 
                 if let errorText {
@@ -542,7 +631,7 @@ private struct SyncSettingsSection: View {
                 }
             }
 
-            if case let .error(message) = budgetStore.syncState {
+            if case .error(let message) = budgetStore.syncState {
                 Text(message)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -661,9 +750,7 @@ private struct BackupSettingsSection: View {
         } header: {
             Text("Backups")
         } footer: {
-            // No cadence promise — iOS can't run a 15-minute
-            // background timer (plan D2).
-            Text("Backups are stored on this device. One is taken automatically when you leave the app.")
+            Text(String(localized: "Backups are stored in Actuali's private app storage on this device. One is taken automatically when you leave the app. Tap Backups to restore or export them anytime."))
         }
         .task { await budgetStore.refreshBackups() }
         .confirmationDialog(

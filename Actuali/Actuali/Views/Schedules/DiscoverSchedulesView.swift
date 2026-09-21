@@ -4,6 +4,7 @@ import SwiftUI
 struct DiscoverSchedulesView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
 
     @State private var proposals: [ScheduleDiscovery.Proposal] = []
     @State private var selected = Set<UUID>()
@@ -19,7 +20,8 @@ struct DiscoverSchedulesView: View {
                 ContentUnavailableView(
                     "Nothing Found",
                     systemImage: "magnifyingglass",
-                    description: Text("No repeating transactions were found in your history."))
+                    description: Text("No repeating transactions were found in your history.")
+                )
             } else {
                 List(proposals, selection: $selected) { proposal in
                     VStack(alignment: .leading, spacing: 4) {
@@ -30,7 +32,7 @@ struct DiscoverSchedulesView: View {
                             Text(budgetStore.displayBalance(proposal.amount))
                                 .monospacedDigit()
                         }
-                        Text(ScheduleDescription.recurring(proposal.config))
+                        Text(ScheduleDescription.recurring(proposal.config, locale: locale, bundle: .main))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(accountName(proposal.accountId))
@@ -52,8 +54,12 @@ struct DiscoverSchedulesView: View {
         .task { await search() }
         .alert("Couldn't Create Schedules", isPresented: Binding(
             get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } })
-        ) {
+            set: {
+                if !$0 {
+                    errorMessage = nil
+                }
+            }
+        )) {
             Button("OK") {}
         } message: {
             Text(errorMessage ?? "")
@@ -79,7 +85,8 @@ struct DiscoverSchedulesView: View {
         defer { isCreating = false }
         do {
             try await budgetStore.createSchedules(
-                proposals.filter { selected.contains($0.id) }.map(\.formFields))
+                proposals.filter { selected.contains($0.id) }.map(\.formFields)
+            )
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

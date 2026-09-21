@@ -44,11 +44,11 @@ enum ScheduleUpcomingLength {
             guard parts.count == 2, let parsed = Int(parts[0]) else { return 7 }
             let amount = max(1, parsed)
             switch parts[1] {
-            case "day":   return amount
-            case "week":  return amount * 7
+            case "day": return amount
+            case "week": return amount * 7
             case "month": return monthStart.days(until: today.adding(months: amount)) + 1
-            case "year":  return monthStart.days(until: today.adding(months: amount * 12)) + 1
-            default:      return 7
+            case "year": return monthStart.days(until: today.adding(months: amount * 12)) + 1
+            default: return 7
             }
         }
     }
@@ -64,36 +64,52 @@ enum ScheduleStatusCalculator {
         upcomingLength: String?,
         today: DayDate = .today()
     ) -> ScheduleStatus {
-        if completed { return .completed }
-        if hasTransaction { return .paid }
+        if completed {
+            return .completed
+        }
+        if hasTransaction {
+            return .paid
+        }
         // A schedule whose next-date row is missing or unreadable still has to
         // render; upstream can't reach this case because its view guarantees
         // the column.
         guard let nextDate else { return .scheduled }
 
-        if nextDate == today { return .due }
+        if nextDate == today {
+            return .due
+        }
         let window = today.adding(days: days(upcomingLength, today))
-        if nextDate > today, nextDate <= window { return .upcoming }
-        if nextDate < today { return .missed }
+        if nextDate > today, nextDate <= window {
+            return .upcoming
+        }
+        if nextDate < today {
+            return .missed
+        }
         return .scheduled
     }
 
-    /// Port of loot-core `getScheduleOccurrenceMatchStartDate`: the earliest
-    /// date a transaction may carry and still count as covering this
-    /// occurrence.
-    ///
-    /// An exact-date schedule and an auto-posting one both match only on or
-    /// after the occurrence itself — a lookback there would let yesterday's
-    /// posting satisfy today's occurrence. Everything else (a manual
-    /// `isapprox` schedule) allows two days, so paying a bill early still
-    /// reads as `paid`.
+    /// Earliest date a transaction may carry and still cover this occurrence.
+    /// Recurring schedules deliberately differ from loot-core by allowing a
+    /// frequency-bounded early payment window.
     static func occurrenceMatchStartDate(
         nextDate: DayDate,
         dateOp: String?,
-        postsTransaction: Bool
+        postsTransaction: Bool,
+        frequency: RecurConfig.Frequency? = nil
     ) -> DayDate {
-        if dateOp == "is" { return nextDate }
-        if postsTransaction { return nextDate }
+        if let frequency {
+            switch frequency {
+            case .daily: return nextDate
+            case .weekly: return nextDate.adding(days: -2)
+            case .monthly, .yearly: return nextDate.adding(days: -4)
+            }
+        }
+        if dateOp == "is" {
+            return nextDate
+        }
+        if postsTransaction {
+            return nextDate
+        }
         return nextDate.adding(days: -2)
     }
 

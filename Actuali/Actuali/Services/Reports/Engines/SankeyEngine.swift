@@ -8,12 +8,12 @@ struct SankeyMeta: Codable, Equatable {
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
     let timeFrame: WidgetTimeFrame?
-    let mode: String?           // "budgeted" | "spent"; nil = "spent"
+    let mode: String? // "budgeted" | "spent"; nil = "spent"
     let topNcategories: Int?
-    let categorySort: String?   // "per-group" | "global" | "budget-order"
+    let categorySort: String? // "per-group" | "global" | "budget-order"
     let showPercentages: Bool?
     let groupAccounts: Bool?
-    let layerFrom: String?      // SankeyLayer raw value
+    let layerFrom: String? // SankeyLayer raw value
     let layerTo: String?
 }
 
@@ -28,7 +28,9 @@ enum SankeyLayer: String, CaseIterable, Equatable {
     case categoryGroup = "category_group"
     case category
 
-    var orderIndex: Int { Self.allCases.firstIndex(of: self)! }
+    var orderIndex: Int {
+        Self.allCases.firstIndex(of: self)!
+    }
 }
 
 enum SankeySortMode: String {
@@ -47,12 +49,15 @@ struct SankeyData: Equatable {
         let layer: SankeyLayer
         let isNegative: Bool
 
-        var isHidden: Bool { key.hasSuffix("__HIDDEN") }
+        var isHidden: Bool {
+            key.hasSuffix("__HIDDEN")
+        }
     }
+
     struct Link: Equatable {
         let source: Int
         let target: Int
-        let value: Int  // cents; hidden layout-scaffolding links carry -1
+        let value: Int // cents; hidden layout-scaffolding links carry -1
     }
 
     let nodes: [Node]
@@ -75,15 +80,21 @@ struct SankeyGraph {
         var toOrder: [String] = []
         var toValues: [String: Int] = [:]
 
-        var hasChild: Bool { !toOrder.isEmpty }
+        var hasChild: Bool {
+            !toOrder.isEmpty
+        }
     }
 
     private(set) var order: [String] = []
     var nodes: [String: Node] = [:]
 
-    var keys: [String] { order }
+    var keys: [String] {
+        order
+    }
 
-    subscript(key: String) -> Node? { nodes[key] }
+    subscript(key: String) -> Node? {
+        nodes[key]
+    }
 
     mutating func addNode(_ key: String, type: SankeyLayer, name: String?, isNegative: Bool = false) {
         guard nodes[key] == nil else { return }
@@ -93,7 +104,9 @@ struct SankeyGraph {
 
     mutating func addValueToLink(from: String, to: String, value: Int) {
         guard var node = nodes[from] else { return }
-        if node.toValues[to] == nil { node.toOrder.append(to) }
+        if node.toValues[to] == nil {
+            node.toOrder.append(to)
+        }
         node.toValues[to] = (node.toValues[to] ?? 0) + value
         nodes[from] = node
     }
@@ -110,7 +123,9 @@ struct SankeyGraph {
         order.removeAll { $0 == key }
     }
 
-    mutating func reorder(_ newOrder: [String]) { order = newOrder }
+    mutating func reorder(_ newOrder: [String]) {
+        order = newOrder
+    }
 
     func links(from key: String) -> [(to: String, value: Int)] {
         guard let node = nodes[key] else { return [] }
@@ -131,10 +146,10 @@ struct SankeyCategoryEntry: Equatable {
     let value: Int
     let isIncome: Bool
     let isNegative: Bool
-    var accountName: String? = nil
-    var accountId: String? = nil
-    var payeeName: String? = nil
-    var payeeId: String? = nil
+    var accountName: String?
+    var accountId: String?
+    var payeeName: String?
+    var payeeId: String?
 }
 
 /// Budget-mode input. INTEGRATOR WIRING: `entries` come from
@@ -147,10 +162,11 @@ struct SankeyCategoryEntry: Equatable {
 /// Leaving them 0 simply omits those flows (zero links are cleaned up).
 struct SankeyBudgetInput: Equatable {
     struct Entry: Equatable {
-        let month: Int  // YYYYMM
+        let month: Int // YYYYMM
         let categoryId: String
         let amountCents: Int
     }
+
     var entries: [Entry] = []
     var toBudgetCents: Int = 0
     var fromPreviousMonthCents: Int = 0
@@ -164,7 +180,6 @@ struct SankeyBudgetInput: Equatable {
 /// Deliberate cuts vs upstream: no tooltip info, no colors (the view derives
 /// them), i18n labels resolved inline at node creation.
 enum SankeyEngine {
-
     enum SpecialKey {
         static let toBudget = "to_budget"
         static let budgeted = "budgeted"
@@ -176,11 +191,11 @@ enum SankeyEngine {
         static let otherSuffix = "__OTHER_BUCKET"
         static let hiddenSuffix = "__HIDDEN"
         static let negativeSuffix = "__NEGATIVE"
-        // Upstream builds this from Object.values(SpecialNodeKeys), which
-        // includes the literal suffix strings.
+        /// Upstream builds this from Object.values(SpecialNodeKeys), which
+        /// includes the literal suffix strings.
         static let structural: Set<String> = [
             toBudget, budgeted, lastMonthOverspent, forNextMonth, fromPrevMonth,
-            availableIncome, allAccounts, otherSuffix, hiddenSuffix, negativeSuffix
+            availableIncome, allAccounts, otherSuffix, hiddenSuffix, negativeSuffix,
         ]
     }
 
@@ -204,7 +219,9 @@ enum SankeyEngine {
         budget: SankeyBudgetInput? = nil,
         today: Date,
         context: ConditionsFilter.Context = .empty,
-        maxNodesPerLayer: Int = 6
+        maxNodesPerLayer: Int = 6,
+        locale: Locale = .current,
+        bundle: Bundle = .main
     ) -> SankeyData {
         var (start, end) = TimeFrame.resolve(meta?.timeFrame, asOf: today)
         // Upstream queries firstDayOfMonth(start)..lastDayOfMonth(end).
@@ -234,7 +251,9 @@ enum SankeyEngine {
                 entries,
                 budget: budget ?? SankeyBudgetInput(),
                 startMonth: monthLabel(start),
-                endMonth: monthLabel(end)
+                endMonth: monthLabel(end),
+                locale: locale,
+                bundle: bundle
             )
         } else {
             let entries = transactionEntries(
@@ -245,7 +264,7 @@ enum SankeyEngine {
                 groupAccounts: meta?.groupAccounts ?? false,
                 context: context
             )
-            graph = createTransactionsGraph(entries)
+            graph = createTransactionsGraph(entries, locale: locale, bundle: bundle)
         }
 
         let topN = min(meta?.topNcategories ?? 15, maxNodesPerLayer)
@@ -270,7 +289,9 @@ enum SankeyEngine {
             categorySort: sort,
             layerFrom: layerFrom,
             layerTo: layerTo,
-            showPercentages: meta?.showPercentages ?? false
+            showPercentages: meta?.showPercentages ?? false,
+            locale: locale,
+            bundle: bundle
         )
     }
 
@@ -331,7 +352,7 @@ enum SankeyEngine {
         if groupAccounts {
             entries = entries.map { entry in
                 var e = entry
-                if e.accountId?.isEmpty == false && e.accountName?.isEmpty == false {
+                if e.accountId?.isEmpty == false, e.accountName?.isEmpty == false {
                     e.accountId = SpecialKey.allAccounts
                     e.accountName = SpecialKey.allAccounts
                 }
@@ -341,14 +362,20 @@ enum SankeyEngine {
         return entries
     }
 
-    static func createTransactionsGraph(_ categoryData: [SankeyCategoryEntry]) -> SankeyGraph {
+    static func createTransactionsGraph(
+        _ categoryData: [SankeyCategoryEntry],
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> SankeyGraph {
         var graph = SankeyGraph()
 
         func addAccountNode(_ accountId: String, _ accountName: String) {
             graph.addNode(
                 accountId,
                 type: .account,
-                name: accountId == SpecialKey.allAccounts ? "Income" : accountName
+                name: accountId == SpecialKey.allAccounts
+                    ? ReportStrings.text("Income", locale: locale, bundle: bundle)
+                    : accountName
             )
         }
 
@@ -505,12 +532,16 @@ enum SankeyEngine {
         _ categoryData: [SankeyCategoryEntry],
         budget: SankeyBudgetInput,
         startMonth: String,
-        endMonth: String
+        endMonth: String,
+        locale: Locale = .current,
+        bundle: Bundle = .main
     ) -> SankeyGraph {
         var graph = SankeyGraph()
 
-        graph.addNode(SpecialKey.budgeted, type: .budget, name: "Budgeted")
-        graph.addNode(SpecialKey.availableIncome, type: .account, name: "Available funds")
+        graph.addNode(SpecialKey.budgeted, type: .budget,
+                      name: ReportStrings.text("Budgeted", locale: locale, bundle: bundle))
+        graph.addNode(SpecialKey.availableIncome, type: .account,
+                      name: ReportStrings.text("Available funds", locale: locale, bundle: bundle))
 
         for entry in categoryData {
             if entry.isIncome {
@@ -526,26 +557,37 @@ enum SankeyEngine {
                 graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.budgeted, value: entry.value)
             } else {
                 // Negative budget: category feeds the budget pool
-                graph.addNode(entry.categoryId, type: .account, name: "From \(entry.category)", isNegative: true)
+                graph.addNode(entry.categoryId, type: .account,
+                              name: ReportStrings.format("From %@", entry.category,
+                                                         locale: locale, bundle: bundle),
+                              isNegative: true)
                 graph.addValueToLink(from: entry.categoryId, to: SpecialKey.budgeted, value: abs(entry.value))
                 graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.budgeted, value: entry.value)
             }
         }
 
         if budget.toBudgetCents > 0 {
-            graph.addNode(SpecialKey.toBudget, type: .categoryGroup, name: "To budget")
+            graph.addNode(SpecialKey.toBudget, type: .categoryGroup,
+                          name: ReportStrings.text("To budget", locale: locale, bundle: bundle))
             graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.toBudget, value: budget.toBudgetCents)
         } else {
-            graph.addNode(SpecialKey.toBudget, type: .account, name: "Overbudgeted", isNegative: true)
+            graph.addNode(SpecialKey.toBudget, type: .account,
+                          name: ReportStrings.text("Overbudgeted", locale: locale, bundle: bundle),
+                          isNegative: true)
             graph.addValueToLink(from: SpecialKey.toBudget, to: SpecialKey.budgeted, value: abs(budget.toBudgetCents))
             graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.budgeted, value: -abs(budget.toBudgetCents))
         }
 
-        graph.addNode(SpecialKey.fromPrevMonth, type: .incomeCategory, name: "From \(shiftMonth(startMonth, by: -1))")
+        graph.addNode(SpecialKey.fromPrevMonth, type: .incomeCategory,
+                      name: ReportStrings.format("From %@", localizedMonthLabel(shiftMonth(startMonth, by: -1), locale: locale),
+                                                 locale: locale, bundle: bundle))
         graph.addValueToLink(from: SpecialKey.fromPrevMonth, to: SpecialKey.availableIncome, value: budget.fromPreviousMonthCents)
-        graph.addNode(SpecialKey.forNextMonth, type: .budget, name: "For \(shiftMonth(endMonth, by: 1))")
+        graph.addNode(SpecialKey.forNextMonth, type: .budget,
+                      name: ReportStrings.format("For %@", localizedMonthLabel(shiftMonth(endMonth, by: 1), locale: locale),
+                                                 locale: locale, bundle: bundle))
         graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.forNextMonth, value: budget.forNextMonthCents)
-        graph.addNode(SpecialKey.lastMonthOverspent, type: .budget, name: "Overspent")
+        graph.addNode(SpecialKey.lastMonthOverspent, type: .budget,
+                      name: ReportStrings.text("Overspent", locale: locale, bundle: bundle))
         graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.lastMonthOverspent, value: abs(budget.lastMonthOverspentCents))
 
         return graph
@@ -560,12 +602,15 @@ enum SankeyEngine {
         categorySort: SankeySortMode,
         layerFrom: SankeyLayer,
         layerTo: SankeyLayer,
-        showPercentages: Bool = false
+        showPercentages: Bool = false,
+        locale: Locale = .current,
+        bundle: Bundle = .main
     ) -> SankeyData {
-        var graph = baseGraph  // value type; upstream clones
-        groupOtherCategories(&graph, topN: topN, categorySort: categorySort)
+        var graph = baseGraph // value type; upstream clones
+        groupOtherCategories(&graph, topN: topN, categorySort: categorySort,
+                             locale: locale, bundle: bundle)
         sortGraph(&graph, categorySort: categorySort, categoryGroups: categoryGroups)
-        addPercentageLabels(&graph)
+        addPercentageLabels(&graph, locale: locale)
         cleanUpNodes(&graph)
         addHiddenNodes(&graph)
         filterGraphByLayers(&graph, from: layerFrom, to: layerTo)
@@ -609,7 +654,13 @@ enum SankeyEngine {
 
     // MARK: Other-bucket grouping
 
-    static func groupOtherCategories(_ graph: inout SankeyGraph, topN: Int, categorySort: SankeySortMode) {
+    static func groupOtherCategories(
+        _ graph: inout SankeyGraph,
+        topN: Int,
+        categorySort: SankeySortMode,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) {
         func isGroupable(_ key: String) -> Bool {
             guard let node = graph[key] else { return false }
             return !key.hasSuffix(SpecialKey.otherSuffix)
@@ -625,14 +676,21 @@ enum SankeyEngine {
                 // min(by:) keeps the first of equal elements, matching the
                 // upstream strict `<` scan.
                 guard let nodeToDelete = ordinary.min(by: { getNodeValue(graph, $0) < getNodeValue(graph, $1) }) else { break }
-                moveToOther(&graph, nodeToDelete, globalOther: categorySort == .global)
+                moveToOther(&graph, nodeToDelete, globalOther: categorySort == .global,
+                            locale: locale, bundle: bundle)
                 ordinary = nodesInLayer(graph, layer).filter(isGroupable)
                 others = nodesInLayer(graph, layer).filter { $0.hasSuffix(SpecialKey.otherSuffix) }
             }
         }
     }
 
-    static func moveToOther(_ graph: inout SankeyGraph, _ key: String, globalOther: Bool) {
+    static func moveToOther(
+        _ graph: inout SankeyGraph,
+        _ key: String,
+        globalOther: Bool,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) {
         guard let nodeData = graph[key] else { return }
 
         let toNodes = nodeData.toOrder
@@ -648,7 +706,8 @@ enum SankeyEngine {
             }
         }
 
-        graph.addNode(otherKey, type: nodeData.type, name: "Other")
+        graph.addNode(otherKey, type: nodeData.type,
+                      name: ReportStrings.text("Other", locale: locale, bundle: bundle))
 
         for fromKey in fromNodes {
             if let value = graph[fromKey]?.toValues[key] {
@@ -661,8 +720,12 @@ enum SankeyEngine {
             }
         }
 
-        for toKey in toNodes { graph.deleteLink(from: key, to: toKey) }
-        for fromKey in fromNodes { graph.deleteLink(from: fromKey, to: key) }
+        for toKey in toNodes {
+            graph.deleteLink(from: key, to: toKey)
+        }
+        for fromKey in fromNodes {
+            graph.deleteLink(from: fromKey, to: key)
+        }
         graph.delete(key)
     }
 
@@ -671,7 +734,7 @@ enum SankeyEngine {
     static func sortGraph(_ graph: inout SankeyGraph, categorySort: SankeySortMode, categoryGroups: [CategoryGroup]) {
         let snapshot = graph
 
-        // Stable value-descending sort (JS Array.sort is stable).
+        /// Stable value-descending sort (JS Array.sort is stable).
         func valueSortedKeys() -> [String] {
             snapshot.keys.enumerated().sorted { a, b in
                 let va = getNodeValue(snapshot, a.element)
@@ -707,13 +770,17 @@ enum SankeyEngine {
                 let otherEntry: String? = relatedOtherKey.flatMap { entries.contains($0) ? $0 : nil }
 
                 var keysToMove = Set(orderedRelatedKeys)
-                if let relatedOtherKey { keysToMove.insert(relatedOtherKey) }
+                if let relatedOtherKey {
+                    keysToMove.insert(relatedOtherKey)
+                }
                 var without = entries.filter { !keysToMove.contains($0) }
                 guard let anchorIndex = without.firstIndex(of: anchorKey) else { continue }
 
                 let insertionIndex = placeAfter ? anchorIndex + 1 : anchorIndex
                 var nodesToInsert = relatedEntries
-                if let otherEntry { nodesToInsert.append(otherEntry) }
+                if let otherEntry {
+                    nodesToInsert.append(otherEntry)
+                }
                 without.insert(contentsOf: nodesToInsert, at: insertionIndex)
                 entries = without
             }
@@ -785,7 +852,7 @@ enum SankeyEngine {
 
     // MARK: Labels / cleanup
 
-    static func addPercentageLabels(_ graph: inout SankeyGraph) {
+    static func addPercentageLabels(_ graph: inout SankeyGraph, locale: Locale = .current) {
         var layerSums: [SankeyLayer: Int] = [:]
         for key in graph.keys {
             guard let layer = graph[key]?.type else { continue }
@@ -794,8 +861,10 @@ enum SankeyEngine {
         for key in graph.keys {
             guard let node = graph[key] else { continue }
             let total = layerSums[node.type] ?? 1
-            let percentage = total != 0 ? Double(getNodeValue(graph, key)) / Double(total) * 100 : 0
-            graph.nodes[key]?.percentageLabel = String(format: "%.1f%%", percentage)
+            let percentage = total != 0 ? Double(getNodeValue(graph, key)) / Double(total) : 0
+            graph.nodes[key]?.percentageLabel = percentage.formatted(
+                .percent.locale(locale).precision(.fractionLength(1))
+            )
         }
     }
 
@@ -866,10 +935,10 @@ enum SankeyEngine {
             for key in nodesByType[layer] ?? [] {
                 let nodeHasParent = hasParent(graph, key)
                 let nodeHasChild = graph[key]?.hasChild == true
-                if !nodeHasParent && typeHasParent[layer] == true {
+                if !nodeHasParent, typeHasParent[layer] == true {
                     addHiddenParentChain(key, layer)
                 }
-                if !nodeHasChild && typeHasChild[layer] == true {
+                if !nodeHasChild, typeHasChild[layer] == true {
                     addHiddenChildChain(key, layer)
                 }
             }
@@ -941,6 +1010,20 @@ enum SankeyEngine {
     private static func monthLabel(_ date: Date) -> String {
         let comps = calendar.dateComponents([.year, .month], from: date)
         return String(format: "%04d-%02d", comps.year ?? 0, comps.month ?? 0)
+    }
+
+    private static func localizedMonthLabel(_ label: String, locale: Locale) -> String {
+        let parts = label.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2,
+              let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: 1)) else {
+            return label
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM yyyy"
+        formatter.locale = locale
+        formatter.calendar = calendar
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: date)
     }
 
     private static func shiftMonth(_ label: String, by months: Int) -> String {

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Actuali
 
@@ -6,6 +7,7 @@ import Testing
 /// actually run.
 @MainActor
 struct BudgetStoreRulesTests {
+    private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     private func rule(
         conditions: [Rule.Condition],
@@ -18,7 +20,7 @@ struct BudgetStoreRulesTests {
 
     @Test func acceptsAWellFormedRule() throws {
         try BudgetStore.validate(rule(conditions: [
-            .init(op: "contains", field: "imported_payee", value: .string("woolworths"), options: nil)
+            .init(op: "contains", field: "imported_payee", value: .string("woolworths"), options: nil),
         ]))
     }
 
@@ -32,7 +34,8 @@ struct BudgetStoreRulesTests {
         #expect(throws: BudgetStoreError.ruleNeedsAction) {
             try BudgetStore.validate(rule(
                 conditions: [.init(op: "is", field: "payee", value: .string("p"), options: nil)],
-                actions: []))
+                actions: []
+            ))
         }
     }
 
@@ -40,16 +43,30 @@ struct BudgetStoreRulesTests {
     @Test func rejectsOperatorTheFieldDoesNotSupport() {
         #expect(throws: BudgetStoreError.ruleInvalidCondition(field: "notes", op: "oneOf")) {
             try BudgetStore.validate(rule(conditions: [
-                .init(op: "oneOf", field: "notes", value: .list([.string("a")]), options: nil)
+                .init(op: "oneOf", field: "notes", value: .list([.string("a")]), options: nil),
             ]))
         }
+    }
+
+    @Test func validationErrorsLocalizeNestedRuleLabels() {
+        let locale = Locale(identifier: "fr_FR")
+        #expect(BudgetStoreError.ruleInvalidCondition(
+            field: "notes", op: "oneOf"
+        ).message(locale: locale, bundle: appBundle) == "\"est parmi\" ne peut pas être utilisé avec Notes.")
+        #expect(BudgetStoreError.ruleInvalidCondition(
+            field: "date", op: "gt"
+        ).message(locale: locale, bundle: appBundle) == "\"est après\" ne peut pas être utilisé avec Date.")
+        #expect(BudgetStoreError.ruleEmptyValue(field: "notes")
+            .message(locale: locale, bundle: appBundle) == "Notes doit avoir une valeur.")
+        #expect(BudgetStoreError.ruleEmptyValue(field: "amount")
+            .message(locale: Locale(identifier: "en_US"), bundle: appBundle) == "Amount needs a value.")
     }
 
     @Test func rejectsIsBetweenWithoutARange() {
         // A scalar here makes upstream's parse assert and the whole rule
         // vanish from the web client — it must never save.
         let scalar = rule(conditions: [
-            .init(op: "isbetween", field: "amount", value: .number(500), options: nil)
+            .init(op: "isbetween", field: "amount", value: .number(500), options: nil),
         ])
         #expect(throws: BudgetStoreError.ruleEmptyValue(field: "amount")) {
             try BudgetStore.validate(scalar)
@@ -59,7 +76,7 @@ struct BudgetStoreRulesTests {
     @Test func acceptsIsBetweenWithARange() throws {
         let ranged = rule(conditions: [
             .init(op: "isbetween", field: "amount",
-                  value: .object(["num1": .number(1000), "num2": .number(2000)]), options: nil)
+                  value: .object(["num1": .number(1000), "num2": .number(2000)]), options: nil),
         ])
         try BudgetStore.validate(ranged)
     }
@@ -67,7 +84,7 @@ struct BudgetStoreRulesTests {
     @Test func rejectsEmptyMultiValue() {
         #expect(throws: BudgetStoreError.ruleEmptyValue(field: "payee")) {
             try BudgetStore.validate(rule(conditions: [
-                .init(op: "oneOf", field: "payee", value: .list([]), options: nil)
+                .init(op: "oneOf", field: "payee", value: .list([]), options: nil),
             ]))
         }
     }
@@ -75,7 +92,7 @@ struct BudgetStoreRulesTests {
     @Test func rejectsEmptyContainsValue() {
         #expect(throws: BudgetStoreError.ruleEmptyValue(field: "imported_payee")) {
             try BudgetStore.validate(rule(conditions: [
-                .init(op: "contains", field: "imported_payee", value: .string(""), options: nil)
+                .init(op: "contains", field: "imported_payee", value: .string(""), options: nil),
             ]))
         }
     }
@@ -86,7 +103,7 @@ struct BudgetStoreRulesTests {
         for value in ["", "2026", "2026-05"] {
             #expect(throws: BudgetStoreError.ruleEmptyValue(field: "date")) {
                 try BudgetStore.validate(rule(conditions: [
-                    .init(op: "gt", field: "date", value: .string(value), options: nil)
+                    .init(op: "gt", field: "date", value: .string(value), options: nil),
                 ]))
             }
         }
@@ -94,14 +111,14 @@ struct BudgetStoreRulesTests {
 
     @Test func acceptsFullDateValue() throws {
         try BudgetStore.validate(rule(conditions: [
-            .init(op: "is", field: "date", value: .string("2026-05-03"), options: nil)
+            .init(op: "is", field: "date", value: .string("2026-05-03"), options: nil),
         ]))
     }
 
     @Test func rejectsUncompilableRegex() {
         #expect(throws: BudgetStoreError.ruleInvalidPattern(pattern: "[")) {
             try BudgetStore.validate(rule(conditions: [
-                .init(op: "matches", field: "notes", value: .string("["), options: nil)
+                .init(op: "matches", field: "notes", value: .string("["), options: nil),
             ]))
         }
     }
@@ -110,7 +127,8 @@ struct BudgetStoreRulesTests {
         #expect(throws: BudgetStoreError.ruleEmptyValue(field: "account")) {
             try BudgetStore.validate(rule(
                 conditions: [.init(op: "is", field: "payee", value: .string("p"), options: nil)],
-                actions: [.init(op: "set", field: "account", value: .null, options: nil)]))
+                actions: [.init(op: "set", field: "account", value: .null, options: nil)]
+            ))
         }
     }
 }

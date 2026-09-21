@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins pagination and database-backed search in `fetchTransactions` (GH #65):
@@ -11,7 +11,6 @@ import GRDB
 /// notes, progressive amount) into SQL so it covers every transaction.
 @MainActor
 struct BudgetDatabaseTransactionPagingSearchTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -126,7 +125,7 @@ struct BudgetDatabaseTransactionPagingSearchTests {
 
         // 505 transactions on consecutive dates, newest last inserted.
         let values = (0..<505).map { i in
-            "('t-\(i)', 'acct-1', 'payee-market', -1000, \(20240101 + i), \(i))"
+            "('t-\(i)', 'acct-1', 'payee-market', -1000, \(20_240_101 + i), \(i))"
         }.joined(separator: ",\n")
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """

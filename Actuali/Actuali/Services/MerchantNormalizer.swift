@@ -5,7 +5,6 @@ import Foundation
 ///
 /// Pure function — no I/O, no state.
 enum MerchantNormalizer {
-
     /// Leading prefixes to strip, case-insensitive.
     private static let leadingPrefixes: [String] = [
         "SQ *",
@@ -16,10 +15,8 @@ enum MerchantNormalizer {
     ]
 
     /// Trailing store-number pattern: a space, `#`, then one or more digits, to end of string.
-    private static let trailingStoreNumberRegex: NSRegularExpression = {
-        // swiftlint:disable:next force_try
+    private static let trailingStoreNumberRegex: NSRegularExpression = // swiftlint:disable:next force_try
         try! NSRegularExpression(pattern: #"\s+#\d+\s*$"#, options: [])
-    }()
 
     static func normalize(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: .whitespaces)

@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct TransactionPrefillTests {
-
     @Test func roundTripsAllFields() {
         let date = Date(timeIntervalSince1970: 1_750_000_000)
         let prefill = TransactionPrefill(

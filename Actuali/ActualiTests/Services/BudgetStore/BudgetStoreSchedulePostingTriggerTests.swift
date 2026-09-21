@@ -12,7 +12,6 @@ import Testing
 /// or any pull-to-refresh / background-push sync — never posted anything.
 @MainActor
 struct BudgetStoreSchedulePostingTriggerTests {
-
     /// Upstream-shaped schema for everything the fetch + post + local-apply
     /// pipeline touches (matches SchedulePosterTests, plus messages_crdt so
     /// the real SyncClient can store the CRDT messages it generates).
@@ -107,36 +106,41 @@ struct BudgetStoreSchedulePostingTriggerTests {
     }
 
     /// A postable monthly schedule whose next date is already in the past.
+    /// The monthly recurrence is anchored to the due date itself, not a fixed
+    /// calendar day: with a fixed start (e.g. the 15th) the catch-up loop
+    /// posts `dueOn`, advances onto today when today IS that day, and posts
+    /// again — the test failed on the 15th of every month (posted == 2).
     private func insertDueSchedule(_ db: BudgetDatabase, dueOn: Int) throws {
+        let startISO = DayDate(yyyymmdd: dueOn)!.iso
         let conditionsJSON = """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":1}},
-             {"op":"is","field":"amount","value":-1500}]
-            """
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"date","value":{"frequency":"monthly","start":"\(startISO)","interval":1}},
+         {"op":"is","field":"amount","value":-1500}]
+        """
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: "INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking')")
             try conn.execute(sql: """
-                INSERT INTO rules (id, stage, conditions_op, conditions, actions)
-                VALUES ('rule-1', NULL, 'and', ?, '[]')
-                """, arguments: [conditionsJSON])
+            INSERT INTO rules (id, stage, conditions_op, conditions, actions)
+            VALUES ('rule-1', NULL, 'and', ?, '[]')
+            """, arguments: [conditionsJSON])
             try conn.execute(sql: """
-                INSERT INTO schedules (id, rule, completed, posts_transaction, tombstone, name)
-                VALUES ('sched-1', 'rule-1', 0, 1, 0, 'Rent')
-                """)
+            INSERT INTO schedules (id, rule, completed, posts_transaction, tombstone, name)
+            VALUES ('sched-1', 'rule-1', 0, 1, 0, 'Rent')
+            """)
             try conn.execute(sql: """
-                INSERT INTO schedules_next_date
-                    (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
-                VALUES ('nd-1', 'sched-1', ?, 1000, ?, 1000)
-                """, arguments: [dueOn, dueOn])
+            INSERT INTO schedules_next_date
+                (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
+            VALUES ('nd-1', 'sched-1', ?, 1000, ?, 1000)
+            """, arguments: [dueOn, dueOn])
         }
     }
 
     private func postedTransactionCount(_ db: BudgetDatabase) throws -> Int {
         try db.dbQueueForTesting.read { conn in
             try Int.fetchOne(conn, sql: """
-                SELECT COUNT(*) FROM transactions
-                WHERE schedule = 'sched-1' AND (tombstone = 0 OR tombstone IS NULL)
-                """) ?? 0
+            SELECT COUNT(*) FROM transactions
+            WHERE schedule = 'sched-1' AND (tombstone = 0 OR tombstone IS NULL)
+            """) ?? 0
         }
     }
 
@@ -177,7 +181,9 @@ struct BudgetStoreSchedulePostingTriggerTests {
         var posted = 0
         for _ in 0..<200 {
             posted = try postedTransactionCount(database)
-            if posted > 0 { break }
+            if posted > 0 {
+                break
+            }
             try await Task.sleep(for: .milliseconds(25))
         }
         #expect(posted == 1)

@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Creating category groups and categories from the app (GH #284). Mirrors
@@ -9,7 +9,6 @@ import GRDB
 /// to the top of their group, and both refuse duplicate names.
 @MainActor
 struct BudgetDatabaseCategoryWriteTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -54,7 +53,7 @@ struct BudgetDatabaseCategoryWriteTests {
                     ('cat-fuel', 'cat-fuel');
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func cleanup(_ url: URL) {
@@ -89,6 +88,32 @@ struct BudgetDatabaseCategoryWriteTests {
         // The rejected group left nothing behind.
         let groups = try await db.fetchCategoryGroups()
         #expect(groups.count == 3)
+    }
+
+    @Test func groupNamesUseUnicodeCaseFolding() throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        _ = try db.insertCategoryGroup(id: "grp-savings", name: "Épargne")
+
+        #expect(throws: BudgetDatabase.CategoryWriteError.duplicateGroupName("Épargne")) {
+            try db.insertCategoryGroup(id: "grp-dupe", name: "épargne")
+        }
+    }
+
+    @Test func unnamedCRDTRowsDoNotBlockCategoryWrites() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: "INSERT INTO category_groups (id) VALUES ('grp-partial')")
+            try conn.execute(sql: """
+            INSERT INTO categories (id, cat_group) VALUES ('cat-partial', 'grp-daily')
+            """)
+        }
+
+        _ = try db.insertCategoryGroup(id: "grp-fun", name: "Fun")
+        _ = try db.insertCategory(id: "cat-coffee", name: "Coffee", groupId: "grp-daily")
+        try db.validateCategoryGroupRename(id: "grp-bills", name: "Fixed Costs")
+        try db.validateCategoryRename(id: "cat-fuel", name: "Transport")
     }
 
     @Test func aTombstonedGroupDoesNotBlockItsName() async throws {
@@ -145,7 +170,8 @@ struct BudgetDatabaseCategoryWriteTests {
             try String.fetchOne(
                 conn,
                 sql: "SELECT transferId FROM category_mapping WHERE id = ?",
-                arguments: ["cat-coffee"])
+                arguments: ["cat-coffee"]
+            )
         }
         #expect(target == "cat-coffee")
     }
@@ -162,7 +188,7 @@ struct BudgetDatabaseCategoryWriteTests {
 
         #expect(insertion.movedSiblings == [
             SortOrder.Position(id: "cat-groceries", sortOrder: 16386),
-            SortOrder.Position(id: "cat-fuel", sortOrder: 32770)
+            SortOrder.Position(id: "cat-fuel", sortOrder: 32770),
         ])
         #expect(insertion.category.sortOrder == 1)
 
@@ -171,7 +197,7 @@ struct BudgetDatabaseCategoryWriteTests {
         #expect(daily?.categories.map(\.name) == ["Coffee", "Groceries", "Fuel"])
     }
 
-    @Test func categoryNamesAreUniqueWithinTheirGroup() async throws {
+    @Test func categoryNamesAreUniqueWithinTheirGroup() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
@@ -183,7 +209,7 @@ struct BudgetDatabaseCategoryWriteTests {
         }
     }
 
-    @Test func theSameNameIsFineInAnotherGroup() async throws {
+    @Test func theSameNameIsFineInAnotherGroup() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
@@ -213,7 +239,7 @@ struct BudgetDatabaseCategoryWriteTests {
         }
     }
 
-    @Test func anUnknownGroupIsRefused() async throws {
+    @Test func anUnknownGroupIsRefused() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 

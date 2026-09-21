@@ -6,19 +6,20 @@ import Testing
 /// where the standard presentation shows a locale-dependent disambiguation
 /// prefix ("NZ$", "US$", "NZD "), without changing any other formatting.
 struct CurrencyAmountFormatTests {
-
     private let enUS = Locale(identifier: "en_US")
     private let enNZ = Locale(identifier: "en_NZ")
 
     @Test func standardPresentationKeepsDisambiguationPrefix() {
         let formatted = CurrencyAmountFormat.string(
-            cents: 123_450, currencyCode: "NZD", narrowSymbol: false, locale: enUS)
+            cents: 123_450, currencyCode: "NZD", narrowSymbol: false, locale: enUS
+        )
         #expect(formatted == "NZ$1,234.50")
     }
 
     @Test func narrowSymbolDropsPrefixForForeignCurrency() {
         let formatted = CurrencyAmountFormat.string(
-            cents: 123_450, currencyCode: "NZD", narrowSymbol: true, locale: enUS)
+            cents: 123_450, currencyCode: "NZD", narrowSymbol: true, locale: enUS
+        )
         #expect(formatted == "$1,234.50")
     }
 
@@ -26,9 +27,11 @@ struct CurrencyAmountFormatTests {
     /// USD gets "US$"; narrow collapses it to "$" too.
     @Test func narrowSymbolDropsPrefixInForeignLocale() {
         let standard = CurrencyAmountFormat.string(
-            cents: 123_450, currencyCode: "USD", narrowSymbol: false, locale: enNZ)
+            cents: 123_450, currencyCode: "USD", narrowSymbol: false, locale: enNZ
+        )
         let narrow = CurrencyAmountFormat.string(
-            cents: 123_450, currencyCode: "USD", narrowSymbol: true, locale: enNZ)
+            cents: 123_450, currencyCode: "USD", narrowSymbol: true, locale: enNZ
+        )
         #expect(standard == "US$1,234.50")
         #expect(narrow == "$1,234.50")
     }
@@ -36,14 +39,16 @@ struct CurrencyAmountFormatTests {
     @Test func wholeUnitsDropCents() {
         let formatted = CurrencyAmountFormat.string(
             cents: 105_150, currencyCode: "NZD", narrowSymbol: true, wholeUnits: true,
-            locale: enUS)
+            locale: enUS
+        )
         #expect(formatted == "$1,052")
     }
 
     @Test func wholeUnitsRoundPlainNumbersWithoutCurrency() {
         let formatted = CurrencyAmountFormat.string(
             cents: 105_150, currencyCode: "", narrowSymbol: false, wholeUnits: true,
-            locale: enUS)
+            locale: enUS
+        )
         #expect(formatted == "1,052")
     }
 
@@ -51,10 +56,12 @@ struct CurrencyAmountFormatTests {
     @Test func budgetTableWholeUnitsUseTheSameRounding() {
         for cents in [105_150, -105_150] {
             #expect(CurrencyAmountFormat.symbolLessString(
-                        cents: cents, currencyCode: "", wholeUnits: true) ==
-                    CurrencyAmountFormat.string(
-                        cents: cents, currencyCode: "", narrowSymbol: false,
-                        wholeUnits: true, locale: enUS))
+                cents: cents, currencyCode: "", wholeUnits: true
+            ) ==
+                CurrencyAmountFormat.string(
+                    cents: cents, currencyCode: "", narrowSymbol: false,
+                    wholeUnits: true, locale: enUS
+                ))
         }
     }
 
@@ -62,7 +69,8 @@ struct CurrencyAmountFormatTests {
     /// narrowSymbol has nothing to narrow and must not disturb plain numbers.
     @Test func emptyCodeRendersPlainNumber() {
         let formatted = CurrencyAmountFormat.string(
-            cents: 123_450, currencyCode: "", narrowSymbol: true, locale: enUS)
+            cents: 123_450, currencyCode: "", narrowSymbol: true, locale: enUS
+        )
         #expect(formatted == "1,234.50")
     }
 
@@ -70,18 +78,22 @@ struct CurrencyAmountFormatTests {
     /// narrowing only changes the symbol, never the digits.
     @Test func narrowKeepsCurrencyNativePrecision() {
         let standard = CurrencyAmountFormat.string(
-            cents: 123_450, currencyCode: "JPY", narrowSymbol: false, locale: enUS)
+            cents: 123_450, currencyCode: "JPY", narrowSymbol: false, locale: enUS
+        )
         let narrow = CurrencyAmountFormat.string(
-            cents: 123_450, currencyCode: "JPY", narrowSymbol: true, locale: enUS)
+            cents: 123_450, currencyCode: "JPY", narrowSymbol: true, locale: enUS
+        )
         #expect(standard == "¥1,234")
         #expect(narrow == "¥1,234")
     }
 
     @Test func zeroKeepsCurrencyNativePrecision() {
         let yen = CurrencyAmountFormat.string(
-            cents: 0, currencyCode: "JPY", narrowSymbol: true, locale: enUS)
+            cents: 0, currencyCode: "JPY", narrowSymbol: true, locale: enUS
+        )
         let dinar = CurrencyAmountFormat.string(
-            cents: 0, currencyCode: "KWD", narrowSymbol: true, locale: enUS)
+            cents: 0, currencyCode: "KWD", narrowSymbol: true, locale: enUS
+        )
         #expect(yen == "¥0")
         #expect(dinar == "KWD 0.000")
     }
@@ -160,7 +172,7 @@ struct CurrencyAmountFormatTests {
             (.dotComma, "$0,00"),
             (.spaceComma, "$0,00"),
             (.apostropheDot, "$0.00"),
-            (.commaDotIn, "$0.00")
+            (.commaDotIn, "$0.00"),
         ]
 
         for (format, value) in expected {
@@ -193,7 +205,7 @@ struct CurrencyAmountFormatTests {
             "dot-comma",
             "space-comma",
             "apostrophe-dot",
-            "comma-dot-in"
+            "comma-dot-in",
         ])
     }
 }

@@ -9,14 +9,41 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "Transacti
 /// via `BudgetStore.createTransaction`.
 @MainActor
 final class TransactionLogger {
-
     enum LoggerError: LocalizedError {
         case noBudgetLoaded
+        case transactionAlreadyExists
+        case transactionSuppressedByRule
+        case transactionNeedsRecovery
 
         var errorDescription: String? {
+            message()
+        }
+
+        func message(
+            locale: Locale = .autoupdatingCurrent,
+            bundle: Bundle = .main
+        ) -> String {
             switch self {
             case .noBudgetLoaded:
-                return "Open Actuali and select a budget first."
+                ReportStrings.text(
+                    "Open Actuali and select a budget first.",
+                    locale: locale, bundle: bundle
+                )
+            case .transactionAlreadyExists:
+                ReportStrings.text(
+                    "This transaction was already saved.",
+                    locale: locale, bundle: bundle
+                )
+            case .transactionSuppressedByRule:
+                ReportStrings.text(
+                    "A transaction rule suppressed this transaction.",
+                    locale: locale, bundle: bundle
+                )
+            case .transactionNeedsRecovery:
+                ReportStrings.text(
+                    "This import needs review before it can be approved.",
+                    locale: locale, bundle: bundle
+                )
             }
         }
     }
@@ -49,12 +76,13 @@ final class TransactionLogger {
         rawMerchant: String,
         notes: String?,
         date: Date,
-        cleared: Bool = true
+        cleared: Bool = true,
+        financialId: String? = nil,
+        transactionId: String? = nil
     ) async throws -> Result {
         guard let database = store.databaseForLogger else {
             throw LoggerError.noBudgetLoaded
         }
-
         let normalized = MerchantNormalizer.normalize(rawMerchant)
         let payeeName = normalized.isEmpty ? rawMerchant : normalized
         let payee = try await store.findOrCreatePayee(name: payeeName)
@@ -65,8 +93,8 @@ final class TransactionLogger {
         // like "imported_payee CONTAINS X" can match the original bank text.
         let importedPayee = rawMerchant.isEmpty ? payeeName : rawMerchant
 
-        let transaction = Transaction(
-            id: UUID().uuidString,
+        var transaction = Transaction(
+            id: transactionId ?? UUID().uuidString,
             accountId: accountId,
             date: Transaction.yyyymmdd(from: date),
             amount: amountCents,
@@ -84,8 +112,24 @@ final class TransactionLogger {
             sortOrder: nil,
             importedPayee: importedPayee
         )
+        transaction.financialId = financialId
 
-        try await store.createTransaction(transaction)
+        let persistedTransactionId: String
+        do {
+            switch try await store.createTransaction(transaction) {
+            case .inserted(let id):
+                persistedTransactionId = id
+            case .duplicate:
+                throw LoggerError.transactionAlreadyExists
+            case .suppressedByRule:
+                throw LoggerError.transactionSuppressedByRule
+            }
+        } catch BudgetDatabase.TransactionWriteError.incompleteFinancialIdMessages {
+            // The old HLC cells may already be on the server. Replacing them
+            // would create a second CRDT history, so leave the row untouched
+            // and keep the pending import available for explicit recovery.
+            throw LoggerError.transactionNeedsRecovery
+        }
         // With when-in-use permission, background automations get no fix and silently skip.
         store.recordPayeeLocationIfAppropriate(payeeId: payee.id)
         // Writes push in the background so the UI never waits on the network
@@ -96,8 +140,14 @@ final class TransactionLogger {
         // The push is detached, so it can't report its own outcome: ask the
         // queue instead. Anything still pending here means the server wasn't
         // reachable and the row lives only on this device (issue #139).
-        let synced = !(await store.hasPendingLocalWrites())
-        logger.info("Logged transaction \(transaction.id, privacy: .public) for \(payee.name, privacy: .public), synced: \(synced, privacy: .public)")
-        return Result(transaction: transaction, synced: synced)
+        let synced = await !(store.hasPendingLocalWrites(
+            dataset: Transaction.datasetName,
+            row: persistedTransactionId
+        ))
+        guard let persistedTransaction = try await database.fetchTransaction(id: persistedTransactionId) else {
+            throw LoggerError.noBudgetLoaded
+        }
+        logger.info("Logged transaction \(persistedTransaction.id, privacy: .public) for \(payee.name, privacy: .public), synced: \(synced, privacy: .public)")
+        return Result(transaction: persistedTransaction, synced: synced)
     }
 }

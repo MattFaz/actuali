@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 import Testing
-
 @testable import Actuali
 
 struct BackupServiceMakeTests {
@@ -16,15 +15,15 @@ struct BackupServiceMakeTests {
             try db.execute(sql: "CREATE TABLE t (id TEXT PRIMARY KEY, note TEXT)")
             try db.execute(sql: "INSERT INTO t VALUES ('row1', 'original')")
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE, dataset TEXT, row TEXT,
-                    column TEXT, value BLOB)
-                """)
+            CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE, dataset TEXT, row TEXT,
+                column TEXT, value BLOB)
+            """)
             try db.execute(sql: "CREATE TABLE messages_clock (id INTEGER PRIMARY KEY, clock TEXT)")
             try db.execute(sql: """
-                INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
-                VALUES ('2026-08-12T00:00:00.000Z-0000-0123456789abcdef', 't', 'row1', 'note', 'x')
-                """)
+            INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
+            VALUES ('2026-08-12T00:00:00.000Z-0000-0123456789abcdef', 't', 'row1', 'note', 'x')
+            """)
             try db.execute(sql: "INSERT INTO messages_clock VALUES (1, '{}')")
             try db.execute(sql: "CREATE TABLE __migrations__ (id INTEGER PRIMARY KEY NOT NULL)")
             try db.execute(sql: "INSERT INTO __migrations__ (id) VALUES (1548957970627)") // real upstream id
@@ -74,7 +73,7 @@ struct BackupServiceMakeTests {
             #expect(crdtCount == 0)
             #expect(clockCount == 0)
             #expect(note == "original")
-            #expect(try Int64.fetchAll(db, sql: "SELECT id FROM __migrations__") == [1548957970627])
+            #expect(try Int64.fetchAll(db, sql: "SELECT id FROM __migrations__") == [1_548_957_970_627])
         }
 
         // The live db is untouched.
@@ -83,9 +82,9 @@ struct BackupServiceMakeTests {
             try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM messages_crdt")
         }
         #expect(liveMessages == 1)
-        
+
         let liveMigrations = try await liveQueue.read {
-        try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM __migrations__")
+            try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM __migrations__")
         }
         #expect(liveMigrations == 2)
 
@@ -126,7 +125,7 @@ struct BackupServiceMakeTests {
             .filter { $0.pathExtension == "zip" }
         #expect(zips.count == 1)
     }
-    
+
     @Test func backupSweepsLeftoverArchiveTemp() async throws {
         let (manager, root) = makeManager()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -140,10 +139,10 @@ struct BackupServiceMakeTests {
 
         let service = BackupService(fileManager: manager)
         let before = await service.availableBackups(budgetId: "b4")
-        #expect(!before.contains { $0.id.hasSuffix(".tmp") })   // never listed
+        #expect(!before.contains { $0.id.hasSuffix(".tmp") }) // never listed
 
         try await service.makeBackup(budgetId: "b4", database: nil)
-        #expect(!FileManager.default.fileExists(atPath: leftover.path))   // swept
+        #expect(!FileManager.default.fileExists(atPath: leftover.path)) // swept
 
         // Exactly the one real archive remains, no temp residue.
         let remaining = try FileManager.default.contentsOfDirectory(
@@ -151,5 +150,49 @@ struct BackupServiceMakeTests {
         )
         #expect(remaining.filter { $0.pathExtension == "zip" }.count == 1)
         #expect(remaining.filter { $0.lastPathComponent.hasSuffix(".tmp") }.isEmpty)
+    }
+
+    @Test func backupMirrorsToInjectedDestinationManager() async throws {
+        let (manager, root) = makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(manager: manager, id: "b5")
+
+        let suiteName = "test.backup.service.dest.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let destManager = BackupDestinationManager(userDefaults: defaults)
+        let customFolder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("custom-dest-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: customFolder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: customFolder) }
+
+        try await destManager.saveDestination(from: customFolder)
+
+        let service = BackupService(fileManager: manager, destinationManager: destManager)
+        let now = Date()
+        let t1 = now.addingTimeInterval(-300)
+        let t2 = now.addingTimeInterval(-200)
+        let t3 = now.addingTimeInterval(-100)
+        let t4 = now
+
+        try await service.makeBackup(budgetId: "b5", database: nil, now: t1)
+        try await service.makeBackup(budgetId: "b5", database: nil, now: t2)
+        try await service.makeBackup(budgetId: "b5", database: nil, now: t3)
+
+        let f1 = BudgetFileManager.backupArchiveName(for: t1)
+        let f2 = BudgetFileManager.backupArchiveName(for: t2)
+        let f3 = BudgetFileManager.backupArchiveName(for: t3)
+        let f4 = BudgetFileManager.backupArchiveName(for: t4)
+
+        #expect(FileManager.default.fileExists(atPath: customFolder.appendingPathComponent("Actuali/b5/\(f1)").path))
+        #expect(FileManager.default.fileExists(atPath: customFolder.appendingPathComponent("Actuali/b5/\(f2)").path))
+        #expect(FileManager.default.fileExists(atPath: customFolder.appendingPathComponent("Actuali/b5/\(f3)").path))
+
+        // 4th backup on the same day triggers prune of the oldest (keeps 3 today)
+        try await service.makeBackup(budgetId: "b5", database: nil, now: t4)
+
+        #expect(!FileManager.default.fileExists(atPath: customFolder.appendingPathComponent("Actuali/b5/\(f1)").path))
+        #expect(FileManager.default.fileExists(atPath: customFolder.appendingPathComponent("Actuali/b5/\(f4)").path))
     }
 }

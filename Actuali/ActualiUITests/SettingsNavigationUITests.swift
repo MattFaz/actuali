@@ -20,15 +20,26 @@ final class SettingsNavigationUITests: XCTestCase {
         case "Privacy":
             content = app.switches["Hide Balances"]
         case "Scheduled Transactions":
-            content = app.searchFields["Search schedules"]
+            // The demo budget ships Rent and Netflix schedules. Assert on the
+            // row rather than the "Search schedules" field: with a non-empty
+            // list iOS 26 collapses the search bar into a nav-bar glyph, so
+            // no SearchField element exists to match.
+            content = app.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH 'Rent'")
+            ).firstMatch
         case "Rules":
-            // The demo budget does not include a rules table, so RulesListView
-            // shows its unavailable placeholder instead of the Add Rule button.
-            content = app.staticTexts["Rules Unavailable"]
+            // The demo budget ships a rules table with rules in it, so
+            // RulesListView shows the list with its Add Rule toolbar button
+            // instead of the no-rules-table placeholder.
+            content = app.buttons["Add Rule"]
         case "Bank Sync (SimpleFIN & Wallet)":
             content = app.textFields["Setup token"]
+        case "History":
+            content = app.staticTexts["No History Yet"]
         case "About":
             content = app.staticTexts["Version"]
+        case "Support":
+            content = app.descendants(matching: .any)["support.discord"]
         default:
             XCTFail("No representative content assertion for \(destination)")
             return
@@ -41,7 +52,7 @@ final class SettingsNavigationUITests: XCTestCase {
     }
 
     @MainActor
-    func testHubOpensEverySettingsDestination() throws {
+    func testHubOpensEverySettingsDestination() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
@@ -55,9 +66,11 @@ final class SettingsNavigationUITests: XCTestCase {
             "Scheduled Transactions",
             "Rules",
             "Bank Sync (SimpleFIN & Wallet)",
-            "About"
+            "History",
+            "About",
+            "Support",
         ] {
-            let row = app.buttons[destination]
+            let row = rowOnHub(destination, in: app)
             XCTAssertTrue(row.waitForExistence(timeout: 5), "\(destination) row not found")
             row.tap()
 
@@ -71,5 +84,80 @@ final class SettingsNavigationUITests: XCTestCase {
             assertExpectedContent(for: destination, in: app)
             navigationBar.buttons.element(boundBy: 0).tap()
         }
+    }
+
+    /// The Shortcuts section (GH #528) pushes the bottom rows below the
+    /// fold, and a SwiftUI Form doesn't materialize off-screen rows — swipe
+    /// until the row exists before asserting on it.
+    @MainActor
+    private func rowOnHub(_ title: String, in app: XCUIApplication) -> XCUIElement {
+        let row = app.buttons[title]
+        var swipes = 0
+        while !row.exists && swipes < 8 {
+            app.swipeUp()
+            swipes += 1
+        }
+        return row
+    }
+
+    @MainActor
+    func testBudgetSelectionPickerShowsOtherBudgetsAndDismissesOnSelection() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-connectedServerSettings",
+            "-budgetSelectionFixture",
+            "-initialTab",
+            "4",
+        ]
+        app.launch()
+
+        let row = app.buttons["Connection & Data"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        let selected = app.buttons["budget-selection-selected"]
+        XCTAssertTrue(selected.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Other Budget"].exists)
+        XCTAssertFalse(app.buttons["Encrypted Budget"].exists)
+
+        selected.tap()
+
+        let other = app.buttons["Other Budget"]
+        XCTAssertTrue(other.waitForExistence(timeout: 5))
+
+        let encrypted = app.buttons["Encrypted Budget"]
+        XCTAssertTrue(encrypted.waitForExistence(timeout: 5))
+        XCTAssertTrue(encrypted.images.firstMatch.waitForExistence(timeout: 5))
+
+        other.tap()
+
+        XCTAssertFalse(app.buttons["Other Budget"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Encrypted Budget"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["budget-selection-selected"].exists)
+    }
+
+    @MainActor
+    func testBudgetSelectionLongPressShowsManagementActions() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-connectedServerSettings",
+            "-budgetSelectionFixture",
+            "-initialTab",
+            "4",
+        ]
+        app.launch()
+
+        let row = app.buttons["Connection & Data"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        let selected = app.buttons["budget-selection-selected"]
+        XCTAssertTrue(selected.waitForExistence(timeout: 5))
+        selected.press(forDuration: 1.0)
+
+        XCTAssertTrue(app.buttons["Remove from This Device"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Delete from Server…"].waitForExistence(timeout: 5))
     }
 }

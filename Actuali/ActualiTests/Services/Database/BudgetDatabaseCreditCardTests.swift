@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins `fetchCreditCardConfigs()` and `fetchPreferences(prefix:)` against the
@@ -9,7 +9,6 @@ import GRDB
 /// Actual preferences without schema alterations.
 @MainActor
 struct BudgetDatabaseCreditCardTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -29,7 +28,7 @@ struct BudgetDatabaseCreditCardTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
-        let chaseConfig = CreditCardConfig(statementDay: 18, dueOffsetDays: 25, limit: 500000)
+        let chaseConfig = CreditCardConfig(statementDay: 18, dueOffsetDays: 25, limit: 500_000)
         let appleConfig = CreditCardConfig(statementDay: 31, dueOffsetDays: 15, limit: nil)
 
         let chaseData = try JSONEncoder().encode(chaseConfig)
@@ -57,7 +56,7 @@ struct BudgetDatabaseCreditCardTests {
         let chase = try #require(configs["acct_chase"])
         #expect(chase.statementDay == 18)
         #expect(chase.dueOffsetDays == 25)
-        #expect(chase.limit == 500000)
+        #expect(chase.limit == 500_000)
 
         let apple = try #require(configs["acct_apple"])
         #expect(apple.statementDay == 31)
@@ -84,6 +83,11 @@ struct BudgetDatabaseCreditCardTests {
             try conn.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
                 arguments: ["actuali:credit_card:acct_corrupt", "{invalid_json}"]
+            )
+            // Synced preferences are external input; reject impossible fixed due days.
+            try conn.execute(
+                sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
+                arguments: ["actuali:credit_card:acct_invalid_due_day", #"{"statementDay":15,"dueDay":0}"#]
             )
         }
 

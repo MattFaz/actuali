@@ -79,7 +79,7 @@ final class CoreLocationSource: NSObject, PositionSource, @unchecked Sendable {
         guard statusManager.authorizationStatus == .notDetermined else {
             return Self.map(statusManager.authorizationStatus)
         }
-        return Self.map(await Self.promptForPermission())
+        return await Self.map(Self.promptForPermission())
     }
 
     /// requestWhenInUseAuthorization delegate dance: hold a manager + delegate
@@ -110,7 +110,8 @@ final class CoreLocationSource: NSObject, PositionSource, @unchecked Sendable {
                     if let location = update.location {
                         return Coordinates(
                             latitude: location.coordinate.latitude,
-                            longitude: location.coordinate.longitude)
+                            longitude: location.coordinate.longitude
+                        )
                     }
                     if update.authorizationDenied {
                         logger.info("Location fetch aborted: authorization denied")
@@ -134,9 +135,9 @@ final class CoreLocationSource: NSObject, PositionSource, @unchecked Sendable {
 
     private static func map(_ status: CLAuthorizationStatus) -> LocationAuthStatus {
         switch status {
-        case .authorizedWhenInUse, .authorizedAlways: return .granted
-        case .notDetermined: return .notDetermined
-        default: return .denied
+        case .authorizedWhenInUse, .authorizedAlways: .granted
+        case .notDetermined: .notDetermined
+        default: .denied
         }
     }
 

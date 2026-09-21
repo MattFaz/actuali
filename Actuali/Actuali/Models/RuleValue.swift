@@ -54,22 +54,30 @@ enum RuleValue: Equatable, Hashable {
     }
 
     var stringValue: String? {
-        if case .string(let value) = self { return value }
+        if case .string(let value) = self {
+            return value
+        }
         return nil
     }
 
     var numberValue: Double? {
-        if case .number(let value) = self { return value }
+        if case .number(let value) = self {
+            return value
+        }
         return nil
     }
 
     var boolValue: Bool? {
-        if case .bool(let value) = self { return value }
+        if case .bool(let value) = self {
+            return value
+        }
         return nil
     }
 
     var listValue: [RuleValue]? {
-        if case .list(let items) = self { return items }
+        if case .list(let items) = self {
+            return items
+        }
         return nil
     }
 
@@ -82,7 +90,9 @@ enum RuleValue: Equatable, Hashable {
     }
 
     var isNull: Bool {
-        if case .null = self { return true }
+        if case .null = self {
+            return true
+        }
         return false
     }
 }

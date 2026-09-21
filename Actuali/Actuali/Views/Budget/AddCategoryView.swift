@@ -9,19 +9,38 @@ enum NewBudgetItem: String, Identifiable {
     case category
     case group
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 }
 
-struct NewCategoryGroupSheet: View {
+struct CategoryGroupSheet: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name = ""
+    let group: CategoryGroup?
+    let month: String
+
+    @State private var name: String
     @State private var isSaving = false
     @State private var errorMessage: String?
 
+    init(group: CategoryGroup? = nil, month: String = "") {
+        self.group = group
+        self.month = month
+        _name = State(initialValue: group?.name ?? "")
+    }
+
     private var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var title: LocalizedStringKey {
+        group == nil ? "New Group" : "Rename Group"
+    }
+
+    private var actionTitle: LocalizedStringKey {
+        group == nil ? "Create" : "Save"
     }
 
     var body: some View {
@@ -31,24 +50,25 @@ struct NewCategoryGroupSheet: View {
                     TextField("Group Name", text: $name)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.words)
+                        .accessibilityIdentifier("categoryGroupEditor.name")
                 } footer: {
                     if let errorMessage {
                         Text(errorMessage)
                             .foregroundStyle(.red)
-                    } else {
+                    } else if group == nil {
                         Text("The group is added below your existing ones, ready for categories.")
                     }
                 }
             }
-            .navigationTitle("New Group")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        Task { await create() }
+                    Button(actionTitle) {
+                        Task { await submit() }
                     }
                     .disabled(isSaving || trimmedName.isEmpty)
                 }
@@ -58,7 +78,7 @@ struct NewCategoryGroupSheet: View {
         }
     }
 
-    private func create() async {
+    private func submit() async {
         // A second tap can race the button's .disabled(isSaving) re-render
         // and enqueue a second Task — bail so one tap means one group.
         guard !isSaving else { return }
@@ -66,7 +86,19 @@ struct NewCategoryGroupSheet: View {
         errorMessage = nil
 
         do {
-            try await budgetStore.createCategoryGroup(name: name)
+            if let group {
+                guard trimmedName != group.name else {
+                    dismiss()
+                    return
+                }
+                try await budgetStore.renameCategoryGroup(
+                    id: group.id,
+                    name: name,
+                    month: month
+                )
+            } else {
+                try await budgetStore.createCategoryGroup(name: name)
+            }
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -160,7 +192,7 @@ struct NewCategorySheet: View {
 }
 
 #Preview("New Group") {
-    NewCategoryGroupSheet()
+    CategoryGroupSheet()
         .environmentObject(BudgetStore.previewInstance())
 }
 

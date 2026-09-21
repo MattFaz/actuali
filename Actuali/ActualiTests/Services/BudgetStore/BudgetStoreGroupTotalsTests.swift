@@ -11,7 +11,6 @@ import Testing
 /// settings suites.
 @MainActor
 struct BudgetStoreGroupTotalsTests {
-
     @Test func groupTotalsShowByDefault() {
         #expect(BudgetStore.previewInstance().showGroupTotals)
     }

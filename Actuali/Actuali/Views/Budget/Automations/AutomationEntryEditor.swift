@@ -5,6 +5,7 @@ import SwiftUI
 /// and the editor/* form components.
 struct AutomationEntryEditor: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @Binding var entry: AutomationEntry
     let error: AutomationError?
     let data: BudgetStore.AutomationEditorData
@@ -49,7 +50,7 @@ struct AutomationEntryEditor: View {
                 }
             } else {
                 Section {
-                    Text(entry.displayType.explanation)
+                    Text(entry.displayType.explanation(locale: locale))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -72,8 +73,10 @@ struct AutomationEntryEditor: View {
                     "Note",
                     text: Binding(
                         get: { entry.template.description ?? "" },
-                        set: { entry.template.description = $0.isEmpty ? nil : $0 }),
-                    axis: .vertical)
+                        set: { entry.template.description = $0.isEmpty ? nil : $0 }
+                    ),
+                    axis: .vertical
+                )
                 .lineLimit(2...5)
             }
 
@@ -81,7 +84,7 @@ struct AutomationEntryEditor: View {
                 Button("Delete Automation", role: .destructive, action: onDelete)
             }
         }
-        .navigationTitle(entry.displayType.label)
+        .navigationTitle(entry.displayType.label(locale: locale))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -98,10 +101,10 @@ struct AutomationEntryEditor: View {
                     entry = BudgetAutomations.convert(entry, to: type)
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Label(type.label, systemImage: type.systemImage)
+                        Label(type.label(locale: locale), systemImage: type.systemImage)
                             .font(.caption.weight(.semibold))
                             .lineLimit(1)
-                        Text(type.explanation)
+                        Text(type.explanation(locale: locale))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -110,10 +113,12 @@ struct AutomationEntryEditor: View {
                     .padding(8)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(isActive ? Color.accentColor.opacity(0.15) : Color(.secondarySystemGroupedBackground)))
+                            .fill(isActive ? Color.accentColor.opacity(0.15) : Color(.secondarySystemGroupedBackground))
+                    )
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(isActive ? Color.accentColor : Color(.separator)))
+                            .stroke(isActive ? Color.accentColor : Color(.separator))
+                    )
                 }
                 .buttonStyle(.plain)
                 .disabled(isDisabled)
@@ -143,7 +148,7 @@ struct AutomationEntryEditor: View {
 
     private var fixedForm: some View {
         Section("Configuration") {
-            AutomationAmountField(title: "Amount", amount: $entry.template.amount)
+            AutomationAmountField(title: String(localized: "Amount"), amount: $entry.template.amount)
             Stepper(value: periodAmountBinding, in: 1...999) {
                 LabeledContent("Every", value: "\(entry.template.period?.amount ?? 1)")
             }
@@ -176,23 +181,26 @@ struct AutomationEntryEditor: View {
                 }
                 Picker("Savings mode", selection: Binding(
                     get: { entry.template.full == true },
-                    set: { entry.template.full = $0 ? true : nil })) {
+                    set: { entry.template.full = $0 ? true : nil }
+                )) {
                     Text("Save up for the next occurrence").tag(false)
                     Text("Cover each occurrence when it occurs").tag(true)
                 }
                 AutomationAdjustmentFields(
                     adjustment: $entry.template.adjustment,
-                    adjustmentType: $entry.template.adjustmentType)
+                    adjustmentType: $entry.template.adjustmentType
+                )
             }
         }
     }
 
     private var byForm: some View {
         Section {
-            AutomationAmountField(title: "Total amount", amount: $entry.template.amount)
-            YearMonthPicker(title: "Target month", month: Binding(
+            AutomationAmountField(title: String(localized: "Total amount"), amount: $entry.template.amount)
+            YearMonthPicker(title: String(localized: "Target month"), month: Binding(
                 get: { entry.template.month ?? BudgetMonthMath.currentMonth() },
-                set: { entry.template.month = $0 }))
+                set: { entry.template.month = $0 }
+            ))
             Toggle("Repeats", isOn: Binding(
                 get: { entry.template.annual != nil },
                 set: { repeats in
@@ -203,25 +211,29 @@ struct AutomationEntryEditor: View {
                         entry.template.annual = nil
                         entry.template.repeatCount = nil
                     }
-                }))
+                }
+            ))
             if entry.template.annual != nil {
                 Stepper(value: repeatBinding, in: 1...99) {
                     LabeledContent("Repeat every", value: "\(entry.template.repeatCount ?? 1)")
                 }
                 Picker("Period", selection: Binding(
                     get: { entry.template.annual == true },
-                    set: { entry.template.annual = $0 })) {
+                    set: { entry.template.annual = $0 }
+                )) {
                     Text("Months").tag(false)
                     Text("Years").tag(true)
                 }
             }
             Toggle("Allow early spending", isOn: Binding(
                 get: { entry.template.type == .spend },
-                set: { entry.template = BudgetAutomations.setEarlySpending(entry.template, enabled: $0) }))
+                set: { entry.template = BudgetAutomations.setEarlySpending(entry.template, enabled: $0) }
+            ))
             if entry.template.type == .spend {
-                YearMonthPicker(title: "Start spending in", month: Binding(
+                YearMonthPicker(title: String(localized: "Start spending in"), month: Binding(
                     get: { entry.template.from ?? entry.template.month ?? BudgetMonthMath.currentMonth() },
-                    set: { entry.template.from = $0 }))
+                    set: { entry.template.from = $0 }
+                ))
             }
         } header: {
             Text("Configuration")
@@ -234,7 +246,8 @@ struct AutomationEntryEditor: View {
         Section("Configuration") {
             Picker("Category", selection: Binding(
                 get: { entry.template.category ?? "" },
-                set: { entry.template.category = $0.isEmpty ? nil : $0 })) {
+                set: { entry.template.category = $0.isEmpty ? nil : $0 }
+            )) {
                 if (entry.template.category ?? "").isEmpty {
                     Text("Select a category").tag("")
                 }
@@ -253,10 +266,11 @@ struct AutomationEntryEditor: View {
             LabeledContent("Percentage") {
                 TextField("Percent", value: Binding(
                     get: { entry.template.percent ?? 0 },
-                    set: { entry.template.percent = $0 }), format: .number.precision(.fractionLength(0...2)))
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
-                .frame(maxWidth: 100)
+                    set: { entry.template.percent = $0 }
+                ), format: .number.precision(.fractionLength(0...2)))
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 100)
                 Text("%").foregroundStyle(.secondary)
             }
             Picker("Percentage of", selection: Binding(
@@ -267,7 +281,8 @@ struct AutomationEntryEditor: View {
                     if previous, entry.template.category == "available funds" {
                         entry.template.category = nil
                     }
-                })) {
+                }
+            )) {
                 Text("This month").tag(false)
                 Text("Last month").tag(true)
             }
@@ -278,7 +293,8 @@ struct AutomationEntryEditor: View {
         Section("Configuration") {
             Picker("Mode", selection: Binding(
                 get: { entry.template.type == .copy },
-                set: { entry.template = BudgetAutomations.setHistoricalMode(entry.template, copyMode: $0) })) {
+                set: { entry.template = BudgetAutomations.setHistoricalMode(entry.template, copyMode: $0) }
+            )) {
                 Text("Copy a previous month").tag(true)
                 Text("Average of previous months").tag(false)
             }
@@ -288,16 +304,18 @@ struct AutomationEntryEditor: View {
             if entry.template.type == .average {
                 AutomationAdjustmentFields(
                     adjustment: $entry.template.adjustment,
-                    adjustmentType: $entry.template.adjustmentType)
+                    adjustmentType: $entry.template.adjustmentType
+                )
             }
         }
     }
 
     private var limitForm: some View {
         Section {
-            AutomationAmountField(title: "Amount", amount: Binding(
+            AutomationAmountField(title: String(localized: "Amount"), amount: Binding(
                 get: { limitBinding.wrappedValue.amount },
-                set: { limitBinding.wrappedValue.amount = $0 ?? 0 }))
+                set: { limitBinding.wrappedValue.amount = $0 ?? 0 }
+            ))
             Picker("Every", selection: Binding(
                 get: { limitBinding.wrappedValue.period },
                 set: { period in
@@ -305,7 +323,8 @@ struct AutomationEntryEditor: View {
                     if period == .weekly, limitBinding.wrappedValue.start == nil {
                         limitBinding.wrappedValue.start = defaultWeeklyStart
                     }
-                })) {
+                }
+            )) {
                 Text("Day").tag(GoalTemplate.LimitPeriod.daily)
                 Text("Week").tag(GoalTemplate.LimitPeriod.weekly)
                 Text("Month").tag(GoalTemplate.LimitPeriod.monthly)
@@ -319,7 +338,8 @@ struct AutomationEntryEditor: View {
             }
             Toggle("Retain existing funds over the cap", isOn: Binding(
                 get: { limitBinding.wrappedValue.hold },
-                set: { limitBinding.wrappedValue.hold = $0 }))
+                set: { limitBinding.wrappedValue.hold = $0 }
+            ))
         } header: {
             Text("Configuration")
         } footer: {
@@ -327,7 +347,6 @@ struct AutomationEntryEditor: View {
         }
     }
 
-    @ViewBuilder
     private var refillForm: some View {
         Section {
             Text("Each month, this tops the category back up to the balance cap.")
@@ -353,7 +372,7 @@ struct AutomationEntryEditor: View {
 
     private var goalForm: some View {
         Section("Configuration") {
-            AutomationAmountField(title: "Target amount", amount: $entry.template.amount)
+            AutomationAmountField(title: String(localized: "Target amount"), amount: $entry.template.amount)
         }
     }
 
@@ -362,7 +381,8 @@ struct AutomationEntryEditor: View {
     private var priorityBinding: Binding<Int> {
         Binding(
             get: { entry.template.priority ?? 0 },
-            set: { entry.template.priority = max(0, $0) })
+            set: { entry.template.priority = max(0, $0) }
+        )
     }
 
     private var periodAmountBinding: Binding<Int> {
@@ -370,8 +390,10 @@ struct AutomationEntryEditor: View {
             get: { entry.template.period?.amount ?? 1 },
             set: {
                 entry.template.period = .init(
-                    period: entry.template.period?.period ?? .month, amount: max(1, $0))
-            })
+                    period: entry.template.period?.period ?? .month, amount: max(1, $0)
+                )
+            }
+        )
     }
 
     private var periodUnitBinding: Binding<GoalTemplate.PeriodUnit> {
@@ -379,14 +401,17 @@ struct AutomationEntryEditor: View {
             get: { entry.template.period?.period ?? .month },
             set: {
                 entry.template.period = .init(
-                    period: $0, amount: entry.template.period?.amount ?? 1)
-            })
+                    period: $0, amount: entry.template.period?.amount ?? 1
+                )
+            }
+        )
     }
 
     private var repeatBinding: Binding<Int> {
         Binding(
             get: { entry.template.repeatCount ?? 1 },
-            set: { entry.template.repeatCount = max(1, $0) })
+            set: { entry.template.repeatCount = max(1, $0) }
+        )
     }
 
     private var historicalMonthsBinding: Binding<Int> {
@@ -401,13 +426,15 @@ struct AutomationEntryEditor: View {
                 } else {
                     entry.template.numMonths = max(1, $0)
                 }
-            })
+            }
+        )
     }
 
     private var weightBinding: Binding<Int> {
         Binding(
             get: { Int(entry.template.weight ?? 1) },
-            set: { entry.template.weight = Double(max(1, $0)) })
+            set: { entry.template.weight = Double(max(1, $0)) }
+        )
     }
 
     private var limitBinding: Binding<GoalTemplate.Limit> {
@@ -420,7 +447,8 @@ struct AutomationEntryEditor: View {
                 entry.template.limit = limit
                 // limit-type templates mirror the amount at the top level.
                 entry.template.amount = limit.amount
-            })
+            }
+        )
     }
 
     /// Earliest fixed-automation start or save-by target, else the first of
@@ -451,7 +479,8 @@ struct AutomationEntryEditor: View {
                 let start = limitBinding.wrappedValue.start ?? defaultWeeklyStart
                 guard let day = DayDate(iso: start) else { return }
                 limitBinding.wrappedValue.start = day.adding(days: (index + 1) - day.weekday).iso
-            })
+            }
+        )
     }
 
     private func scheduleBinding(_ selectable: [GoalScheduleInfo]) -> Binding<String> {
@@ -465,7 +494,8 @@ struct AutomationEntryEditor: View {
                 guard let schedule = selectable.first(where: { $0.id == id }) else { return }
                 entry.template.scheduleId = schedule.id
                 entry.template.name = schedule.name ?? ""
-            })
+            }
+        )
     }
 }
 
@@ -480,10 +510,11 @@ struct AutomationAmountField: View {
         LabeledContent(title) {
             TextField(title, value: Binding(
                 get: { amount ?? 0 },
-                set: { amount = $0 }), format: .number.precision(.fractionLength(0...2)))
-            .keyboardType(.decimalPad)
-            .multilineTextAlignment(.trailing)
-            .frame(maxWidth: 120)
+                set: { amount = $0 }
+            ), format: .number.precision(.fractionLength(0...2)))
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 120)
         }
     }
 }
@@ -517,7 +548,8 @@ struct AutomationAdjustmentFields: View {
                     adjustment = -abs(adjustment ?? 5)
                     adjustmentType = adjustmentType ?? .percent
                 }
-            })) {
+            }
+        )) {
             Text("None").tag(Direction.none)
             Text("Increase").tag(Direction.increase)
             Text("Decrease").tag(Direction.decrease)
@@ -529,14 +561,16 @@ struct AutomationAdjustmentFields: View {
                     set: { value in
                         let sign: Double = direction == .decrease ? -1 : 1
                         adjustment = sign * abs(value)
-                    }), format: .number.precision(.fractionLength(0...2)))
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
-                .frame(maxWidth: 80)
+                    }
+                ), format: .number.precision(.fractionLength(0...2)))
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 80)
             }
             Picker("Unit", selection: Binding(
                 get: { adjustmentType ?? .percent },
-                set: { adjustmentType = $0 })) {
+                set: { adjustmentType = $0 }
+            )) {
                 Text("Percent").tag(GoalTemplate.AdjustmentType.percent)
                 Text("Fixed amount").tag(GoalTemplate.AdjustmentType.fixed)
             }
@@ -559,7 +593,8 @@ struct YearMonthPicker: View {
             Spacer()
             Picker("Month", selection: Binding(
                 get: { components.month },
-                set: { month = String(format: "%04d-%02d", components.year, $0) })) {
+                set: { month = String(format: "%04d-%02d", components.year, $0) }
+            )) {
                 ForEach(1...12, id: \.self) { index in
                     Text(Calendar.current.shortMonthSymbols[index - 1]).tag(index)
                 }
@@ -567,7 +602,8 @@ struct YearMonthPicker: View {
             .labelsHidden()
             Picker("Year", selection: Binding(
                 get: { components.year },
-                set: { month = String(format: "%04d-%02d", $0, components.month) })) {
+                set: { month = String(format: "%04d-%02d", $0, components.month) }
+            )) {
                 ForEach(yearRange, id: \.self) { year in
                     Text(String(year)).tag(year)
                 }
@@ -616,10 +652,12 @@ struct CleanupEditor: View {
                 if cleanup.global.take {
                     Stepper(value: Binding(
                         get: { Int(cleanup.global.weight) },
-                        set: { cleanup.global.weight = Double(max(1, $0)) }), in: 1...99) {
+                        set: { cleanup.global.weight = Double(max(1, $0)) }
+                    ), in: 1...99) {
                         LabeledContent(
                             "Weight",
-                            value: AutomationSentences.trimTrailingZeros(cleanup.global.weight))
+                            value: AutomationSentences.trimTrailingZeros(cleanup.global.weight)
+                        )
                     }
                 }
             }
@@ -633,10 +671,12 @@ struct CleanupEditor: View {
                         if !group.overspendOnly {
                             Stepper(value: Binding(
                                 get: { Int(group.weight) },
-                                set: { group.weight = Double(max(1, $0)) }), in: 1...99) {
+                                set: { group.weight = Double(max(1, $0)) }
+                            ), in: 1...99) {
                                 LabeledContent(
                                     "Weight",
-                                    value: AutomationSentences.trimTrailingZeros(group.weight))
+                                    value: AutomationSentences.trimTrailingZeros(group.weight)
+                                )
                             }
                         }
                     }

@@ -10,11 +10,11 @@ enum HLCError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .clockDrift:
-            return "Maximum clock drift exceeded. Check this device's date and time settings."
+            String(localized: "Maximum clock drift exceeded. Check this device's date and time settings.")
         case .counterOverflow:
-            return "Timestamp counter overflow."
+            String(localized: "Timestamp counter overflow.")
         case .invalidTimestamp:
-            return "Timestamp is not valid."
+            String(localized: "Timestamp is not valid.")
         }
     }
 }
@@ -87,7 +87,7 @@ actor HybridLogicalClock {
         }
 
         // Check for counter overflow
-        guard newCounter <= 0xFFFF else {
+        guard newCounter <= 0xffff else {
             throw HLCError.counterOverflow
         }
 
@@ -117,19 +117,18 @@ actor HybridLogicalClock {
         // Calculate new counter based on which clock(s) are at newMillis
         // (widened so the overflow check below can observe 0x10000 instead of
         // trapping on a remote message carrying counter FFFF)
-        let newCounter: UInt32
-        if newMillis == millis && newMillis == remote.millis {
+        let newCounter: UInt32 = if newMillis == millis, newMillis == remote.millis {
             // All three at same time - take max counter + 1
-            newCounter = UInt32(max(counter, remote.counter)) + 1
+            UInt32(max(counter, remote.counter)) + 1
         } else if newMillis == millis {
             // Local clock wins - increment local counter
-            newCounter = UInt32(counter) + 1
+            UInt32(counter) + 1
         } else if newMillis == remote.millis {
             // Remote clock wins - increment remote counter
-            newCounter = UInt32(remote.counter) + 1
+            UInt32(remote.counter) + 1
         } else {
             // Wall clock wins - reset counter
-            newCounter = 0
+            0
         }
 
         // Check for clock drift after calculation
@@ -138,7 +137,7 @@ actor HybridLogicalClock {
         }
 
         // Check for counter overflow
-        guard newCounter <= 0xFFFF else {
+        guard newCounter <= 0xffff else {
             throw HLCError.counterOverflow
         }
 

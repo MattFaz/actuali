@@ -5,11 +5,10 @@ import XCTest
 /// without opening the edit sheet, and the account Reconcile flow locks
 /// cleared transactions once the bank balance matches.
 final class ReconciliationUITests: XCTestCase {
-
     @MainActor
     private func openChaseChecking() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        app.launchArguments = ["-loadDemoData", "-resetStatusFilterState"]
         app.launch()
 
         app.tabBars.buttons["Accounts"].tap()
@@ -20,12 +19,14 @@ final class ReconciliationUITests: XCTestCase {
     }
 
     @MainActor
-    func testTappingDotTogglesClearedStatus() throws {
+    func testTappingDotTogglesClearedStatus() {
         let app = openChaseChecking()
 
         // Demo data leaves the newest transactions pending (uncleared).
         let uncleared = app.buttons.matching(
-            NSPredicate(format: "label == 'Uncleared'")
+            NSPredicate(
+                format: "identifier BEGINSWITH 'transaction.status.' AND label == 'Uncleared'"
+            )
         )
         XCTAssertTrue(uncleared.firstMatch.waitForExistence(timeout: 10),
                       "demo data should include pending transactions")
@@ -42,17 +43,21 @@ final class ReconciliationUITests: XCTestCase {
     }
 
     @MainActor
-    func testReconcileLocksClearedTransactions() throws {
+    func testReconcileLocksClearedTransactions() {
         let app = openChaseChecking()
 
         // Wait for the pushed detail screen (rows + toolbar) to settle.
         let cleared = app.buttons.matching(
-            NSPredicate(format: "label == 'Cleared'")
+            NSPredicate(
+                format: "identifier BEGINSWITH 'transaction.status.' AND label == 'Cleared'"
+            )
         )
         XCTAssertTrue(cleared.firstMatch.waitForExistence(timeout: 10),
                       "demo data should include cleared transactions")
         XCTAssertEqual(app.buttons.matching(
-            NSPredicate(format: "label == 'Reconciled'")
+            NSPredicate(
+                format: "identifier BEGINSWITH 'transaction.status.' AND label == 'Reconciled'"
+            )
         ).count, 0, "demo data starts with nothing reconciled")
 
         // Reconcile sits in the toolbar's overflow menu, so open that first.
@@ -73,31 +78,37 @@ final class ReconciliationUITests: XCTestCase {
 
         // Locking marks every cleared transaction reconciled (blue dot).
         let reconciled = app.buttons.matching(
-            NSPredicate(format: "label == 'Reconciled'")
+            NSPredicate(
+                format: "identifier BEGINSWITH 'transaction.status.' AND label == 'Reconciled'"
+            )
         ).firstMatch
         XCTAssertTrue(reconciled.waitForExistence(timeout: 20),
                       "locking should mark cleared transactions as reconciled")
     }
 
     @MainActor
-    func testTappingBalanceRevealsBreakdown() throws {
+    func testTappingBalanceRevealsBreakdown() {
         let app = openChaseChecking()
 
-        let balanceRow = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Current Balance'")
-        ).firstMatch
-        XCTAssertTrue(balanceRow.waitForExistence(timeout: 10))
+        let balanceToggle = app.buttons["accountBalance.toggle"].firstMatch
+        XCTAssertTrue(balanceToggle.waitForExistence(timeout: 10),
+                      "On Budget account should expose the balance disclosure")
+        let enabled = NSPredicate(format: "isEnabled == true")
+        expectation(for: enabled, evaluatedWith: balanceToggle)
+        waitForExpectations(timeout: 10)
+        XCTAssertTrue(app.staticTexts["Cleared"].exists,
+                      "cleared should be visible without expanding the balance")
+        XCTAssertTrue(app.staticTexts["Uncleared"].exists,
+                      "uncleared should be visible without expanding the balance")
         XCTAssertFalse(app.staticTexts["Reconciled"].exists,
-                       "breakdown starts collapsed")
+                       "reconciled starts collapsed")
 
-        balanceRow.tap()
+        balanceToggle.tap()
 
-        // GH #134: the split appears in place, without a reconciliation.
-        XCTAssertTrue(app.staticTexts["Cleared"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Uncleared"].exists)
-        XCTAssertTrue(app.staticTexts["Reconciled"].exists)
+        // GH #134: the split appears in place, without starting reconciliation.
+        XCTAssertTrue(app.staticTexts["Reconciled"].waitForExistence(timeout: 10))
 
-        balanceRow.tap()
+        balanceToggle.tap()
 
         let collapsed = NSPredicate(format: "exists == false")
         expectation(for: collapsed, evaluatedWith: app.staticTexts["Reconciled"])

@@ -1,9 +1,16 @@
 import SwiftUI
 
+struct DisplaySettingsLoadRequest: Equatable {
+    let budgetID: String?
+    let databaseID: ObjectIdentifier?
+}
+
 private struct CurrencyOption: Identifiable, Sendable {
     let symbol: String
     let code: String
-    var id: String { code }
+    var id: String {
+        code
+    }
 }
 
 /// Every currency in Actual's loot-core currencies list, plus a few
@@ -65,11 +72,12 @@ private let currencyOptions = [
     CurrencyOption(symbol: "$", code: "USD"),
     CurrencyOption(symbol: "$U", code: "UYU"),
     CurrencyOption(symbol: "UZS", code: "UZS"),
-    CurrencyOption(symbol: "R", code: "ZAR")
+    CurrencyOption(symbol: "R", code: "ZAR"),
 ]
 
 struct DisplaySettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @State private var dashboardPages: [DashboardPage] = []
 
     /// Routes the picker's selection through `setCurrencyCode`, which
@@ -90,6 +98,13 @@ struct DisplaySettingsView: View {
             set: { newValue in
                 Task { await budgetStore.setNumberFormat(newValue) }
             }
+        )
+    }
+
+    private var currentLoadRequest: DisplaySettingsLoadRequest {
+        DisplaySettingsLoadRequest(
+            budgetID: budgetStore.currentBudgetId,
+            databaseID: budgetStore.databaseForLogger.map(ObjectIdentifier.init)
         )
     }
 
@@ -127,7 +142,7 @@ struct DisplaySettingsView: View {
             Section("Appearance") {
                 Picker("Appearance", selection: $budgetStore.appearanceMode) {
                     ForEach(AppearanceMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
+                        Text(mode.label(locale: locale)).tag(mode)
                     }
                 }
             }
@@ -135,7 +150,7 @@ struct DisplaySettingsView: View {
             Section {
                 Picker("Start Page", selection: $budgetStore.startTab) {
                     ForEach(StartTab.allCases) { tab in
-                        Text(tab.label).tag(tab)
+                        Text(tab.label(locale: locale)).tag(tab)
                     }
                 }
 
@@ -160,13 +175,26 @@ struct DisplaySettingsView: View {
         .navigationTitle("Display")
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.horizontal, 6, for: .scrollContent)
-        .task {
-            await reloadDashboardPages()
+        .task(id: currentLoadRequest) { [request = currentLoadRequest] in
+            await reloadDashboardPages(request: request)
         }
     }
 
-    private func reloadDashboardPages() async {
+    nonisolated static func shouldPublish(
+        request: DisplaySettingsLoadRequest,
+        currentRequest: DisplaySettingsLoadRequest,
+        taskIsCancelled: Bool
+    ) -> Bool {
+        !taskIsCancelled && request == currentRequest
+    }
+
+    private func reloadDashboardPages(request: DisplaySettingsLoadRequest) async {
         guard let database = budgetStore.databaseForLogger else {
+            guard Self.shouldPublish(
+                request: request,
+                currentRequest: currentLoadRequest,
+                taskIsCancelled: Task.isCancelled
+            ) else { return }
             dashboardPages = []
             return
         }
@@ -175,6 +203,11 @@ struct DisplaySettingsView: View {
         // after currentBudgetId has already flipped, so clearing the default
         // here would wipe the *incoming* budget's preference.
         guard let pages = try? await database.fetchDashboardPages() else { return }
+        guard Self.shouldPublish(
+            request: request,
+            currentRequest: currentLoadRequest,
+            taskIsCancelled: Task.isCancelled
+        ) else { return }
         dashboardPages = pages
         // A default naming a page that's since been deleted has no tag to
         // match in the picker, and the Reports tab already falls back to the

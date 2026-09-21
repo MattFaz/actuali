@@ -2,14 +2,15 @@ import Foundation
 
 struct CustomReportData: Equatable {
     var name: String
-    var rangeLabel: String   // "All time", "Year to date", or "" for static
+    var rangeLabel: String // "All time", "Year to date", or "" for static
 
     struct Bar: Equatable { var label: String; var valueUnits: Double }
     struct Stacked: Equatable {
         var intervalLabels: [String]
-        var seriesNames: [String]     // legend, ordered
-        var values: [[Double]]        // [series][interval], currency units
+        var seriesNames: [String] // legend, ordered
+        var values: [[Double]] // [series][interval], currency units
     }
+
     struct TableRow: Equatable { var name: String; var totalUnits: Double }
     /// One donut wedge. `group` indexes `Kind.donut`'s `groups` ring for the
     /// two-ring Category+Group layout; nil on a single-ring donut.
@@ -19,14 +20,15 @@ struct CustomReportData: Equatable {
     struct Trend: Equatable { var startUnits: Double; var endUnits: Double }
 
     enum Kind: Equatable {
-        case bars([Bar], signed: Bool)   // signed → color bars by sign (Net)
+        case bars([Bar], signed: Bool) // signed → color bars by sign (Net)
         case stacked(Stacked)
-        case lines(Stacked, trends: [Trend])   // trends empty unless showTrendLines
-        case area([Bar])                       // one point per interval
-        case donut(slices: [Slice], groups: [Bar])   // groups empty → single ring
+        case lines(Stacked, trends: [Trend]) // trends empty unless showTrendLines
+        case area([Bar]) // one point per interval
+        case donut(slices: [Slice], groups: [Bar]) // groups empty → single ring
         case table([TableRow])
         case unsupported(String)
     }
+
     var kind: Kind
 }
 
@@ -36,7 +38,6 @@ struct CustomReportData: Equatable {
 /// outside the matrix return `.unsupported` naming the offending option so
 /// the card can explain itself.
 enum CustomReportEngine {
-
     /// Row keys for the synthetic rows upstream appends after the real
     /// categories/groups (ReportOptions.ts: uncategorizedCategory,
     /// offBudgetCategory, transferCategory, uncategorizedGroup).
@@ -47,13 +48,13 @@ enum CustomReportEngine {
     }
 
     struct ReportContext {
-        var categories: [Category]       // in budget sort order
-        var groups: [CategoryGroup]      // in budget sort order
+        var categories: [Category] // in budget sort order
+        var groups: [CategoryGroup] // in budget sort order
         var offBudgetAccountIds: Set<String>
         var firstDayOfWeekIdx: Int
-        var payees: [Payee] = []                              // groupBy Payee, store order
-        var accounts: [Account] = []                          // groupBy Account, store order
-        var budgetEntries: [BudgetAnalysisBudgetEntry] = []   // balanceType Budgeted
+        var payees: [Payee] = [] // groupBy Payee, store order
+        var accounts: [Account] = [] // groupBy Account, store order
+        var budgetEntries: [BudgetAnalysisBudgetEntry] = [] // balanceType Budgeted
     }
 
     /// Assets/debts sums for one row or bucket (upstream QueryDataEntity split).
@@ -62,7 +63,11 @@ enum CustomReportEngine {
         var debts = 0
 
         mutating func add(_ amount: Int) {
-            if amount > 0 { assets += amount } else { debts += amount }
+            if amount > 0 {
+                assets += amount
+            } else {
+                debts += amount
+            }
         }
 
         static func + (lhs: Cell, rhs: Cell) -> Cell {
@@ -74,9 +79,9 @@ enum CustomReportEngine {
     private struct Row {
         let key: String
         let name: String
-        let cell: Cell            // whole-range aggregate
-        var perBucket: [Double]   // metric per interval, currency units
-        let total: Double         // metric over the aggregate, not Σ perBucket
+        let cell: Cell // whole-range aggregate
+        var perBucket: [Double] // metric per interval, currency units
+        let total: Double // metric over the aggregate, not Σ perBucket
     }
 
     static func compute(
@@ -84,14 +89,21 @@ enum CustomReportEngine {
         transactions: [Transaction],
         reportContext: ReportContext,
         filterContext: ConditionsFilter.Context,
-        today: Date
+        today: Date,
+        locale: Locale = .current,
+        bundle: Bundle = .main
     ) -> CustomReportData {
         guard let config else {
-            return CustomReportData(name: "Custom Report", rangeLabel: "",
-                                    kind: .unsupported("Report not found — try syncing"))
+            return CustomReportData(
+                name: ReportStrings.text("Custom Report", locale: locale, bundle: bundle),
+                rangeLabel: "",
+                kind: .unsupported(ReportStrings.text("Report not found — try syncing", locale: locale, bundle: bundle))
+            )
         }
         var data = CustomReportData(name: config.name,
-                                    rangeLabel: config.dateStatic ? "" : (config.dateRange ?? "All time"),
+                                    rangeLabel: config.dateStatic ? "" : localizedRangeLabel(
+                                        config.dateRange ?? "All time", locale: locale, bundle: bundle
+                                    ),
                                     kind: .unsupported(""))
 
         // Supported-matrix guard (upstream ReportOptions.ts): name the first
@@ -103,7 +115,11 @@ enum CustomReportEngine {
             (config.interval, ["Daily", "Weekly", "Monthly", "Yearly"], "interval"),
             (config.graphType, ["BarGraph", "StackedBarGraph", "LineGraph", "AreaGraph", "DonutGraph", "TableGraph"], "graph"),
         ] where !supported.contains(value) {
-            data.kind = .unsupported("\(value) \(label) isn't supported yet")
+            data.kind = .unsupported(ReportStrings.format(
+                "%@ %@ isn't supported yet", value,
+                ReportStrings.text(label, locale: locale, bundle: bundle),
+                locale: locale, bundle: bundle
+            ))
             return data
         }
 
@@ -117,9 +133,9 @@ enum CustomReportEngine {
             startDate: config.startDate, endDate: config.endDate,
             includeCurrent: config.includeCurrent,
             earliest: earliest, latest: latest, today: today,
-            firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx)
+            firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx
+        )
         let startYMD = ymdInt(from: start), endYMD = ymdInt(from: end)
-
         let categoriesById = Dictionary(uniqueKeysWithValues: reportContext.categories.map { ($0.id, $0) })
         let groupsById = Dictionary(uniqueKeysWithValues: reportContext.groups.map { ($0.id, $0) })
 
@@ -147,22 +163,27 @@ enum CustomReportEngine {
                 return false
             }
             let offBudget = reportContext.offBudgetAccountIds.contains(tx.accountId)
-            if !config.showOffBudget && offBudget { return false }
-            if !config.showUncategorized && category == nil && !offBudget { return false }
+            if !config.showOffBudget, offBudget {
+                return false
+            }
+            if !config.showUncategorized, category == nil, !offBudget {
+                return false
+            }
             return true
         }
 
         // Interval buckets, chronological.
         let buckets = intervalBuckets(from: start, to: end,
                                       interval: config.interval,
-                                      firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx)
+                                      firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx,
+                                      locale: locale)
         let bucketIndex = Dictionary(uniqueKeysWithValues:
             buckets.enumerated().map { ($0.element.key, $0.offset) })
         var labels = buckets.map(\.label)
 
         // Accumulate assets/debts per (row, bucket). Row key "" = whole
         // dataset (groupBy Interval).
-        var cells: [String: [Int: Cell]] = [:]   // rowKey -> bucketIdx -> sums
+        var cells: [String: [Int: Cell]] = [:] // rowKey -> bucketIdx -> sums
         for tx in pool {
             let key = bucketKey(forYMD: tx.date, interval: config.interval,
                                 firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx)
@@ -178,20 +199,38 @@ enum CustomReportEngine {
             let offBudget = reportContext.offBudgetAccountIds.contains(tx.accountId)
             let rowKey: String
             switch config.groupBy {
-            case "Category", "CategoryGroup":
-                if let category, !offBudget { rowKey = category.id }
-                else if offBudget { rowKey = Synthetic.offBudget }
-                else if tx.transferAcct != nil { rowKey = Synthetic.transfer }
-                else { rowKey = Synthetic.uncategorized }
+            case "Category":
+                if let category, !offBudget {
+                    rowKey = category.id
+                } else if offBudget {
+                    rowKey = Synthetic.offBudget
+                } else if tx.transferAcct != nil {
+                    rowKey = Synthetic.transfer
+                } else {
+                    rowKey = Synthetic.uncategorized
+                }
+            case "CategoryGroup":
+                if let category, !offBudget {
+                    rowKey = category.id
+                } else if offBudget {
+                    rowKey = Synthetic.offBudget
+                } else if tx.transferAcct != nil {
+                    rowKey = Synthetic.transfer
+                } else {
+                    rowKey = Synthetic.uncategorized
+                }
             case "Group":
-                if let category, !offBudget { rowKey = category.groupId }
-                else { rowKey = Synthetic.uncategorized }
+                if let category, !offBudget {
+                    rowKey = category.groupId
+                } else {
+                    rowKey = Synthetic.uncategorized
+                }
             case "Payee":
                 guard let payee = tx.payeeId else { continue }
                 rowKey = payee
             case "Account":
                 rowKey = tx.accountId
-            default: rowKey = ""   // Interval
+            default: rowKey = "" // Interval
             }
             cells[rowKey, default: [:]][idx, default: Cell()].add(tx.amount)
         }
@@ -219,8 +258,8 @@ enum CustomReportEngine {
                 // Upstream allows Interval on a total-mode donut: one wedge
                 // per interval, and a wedge can't have a non-positive angle.
                 data.kind = .donut(slices: zip(labels, values).filter { $0.1 > 0 }
-                                       .map { .init(label: $0, valueUnits: $1, group: nil) },
-                                   groups: [])
+                    .map { .init(label: $0, valueUnits: $1, group: nil) },
+                    groups: [])
             default:
                 data.kind = .bars(zip(labels, values).map { .init(label: $0, valueUnits: $1) },
                                   signed: signed)
@@ -235,7 +274,9 @@ enum CustomReportEngine {
         switch config.groupBy {
         case "Group":
             orderedRows = reportContext.groups.map { ($0.id, $0.name) }
-                + [(Synthetic.uncategorized, "Uncategorized & Off budget")]
+                + [(Synthetic.uncategorized, ReportStrings.text(
+                    "Uncategorized & Off budget", locale: locale, bundle: bundle
+                ))]
         case "Payee":
             // Transfer payees carry no name of their own; upstream's v_payees
             // shows the linked account.
@@ -246,12 +287,23 @@ enum CustomReportEngine {
             }
         case "Account":
             orderedRows = reportContext.accounts.map { ($0.id, $0.name) }
-        default:   // Category, CategoryGroup
+        case "Category", "CategoryGroup":
             orderedRows = reportContext.categories.map { ($0.id, $0.name) } + [
-                (Synthetic.uncategorized, "Uncategorized"),
-                (Synthetic.offBudget, "Off budget"),
-                (Synthetic.transfer, "Transfers"),
+                (Synthetic.uncategorized, ReportStrings.text(
+                    "Uncategorized", locale: locale, bundle: bundle
+                )),
+                (Synthetic.offBudget, ReportStrings.text(
+                    "Off budget", locale: locale, bundle: bundle
+                )),
+                (Synthetic.transfer, ReportStrings.text(
+                    "Transfers", locale: locale, bundle: bundle
+                )),
             ]
+        default:
+            orderedRows = reportContext.groups.map { ($0.id, $0.name) }
+                + [(Synthetic.uncategorized, ReportStrings.text(
+                    "Uncategorized & Off budget", locale: locale, bundle: bundle
+                ))]
         }
 
         var rows: [Row] = orderedRows.map { row in
@@ -275,9 +327,11 @@ enum CustomReportEngine {
             }
             let range = trimmedRange(rows.map(\.perBucket) + [overall])
             labels = Array(labels[range])
-            for i in rows.indices { rows[i].perBucket = Array(rows[i].perBucket[range]) }
+            for i in rows.indices {
+                rows[i].perBucket = Array(rows[i].perBucket[range])
+            }
         }
-        rows = sorted(rows, by: config.sortBy, total: \.total, name: \.name)
+        rows = sorted(rows, by: config.sortBy, total: \.total, name: \.name, locale: locale)
 
         switch config.graphType {
         case "TableGraph":
@@ -289,13 +343,14 @@ enum CustomReportEngine {
             data.kind = .lines(s, trends: config.showTrendLines ? s.values.compactMap(trend) : [])
         case "DonutGraph" where config.groupBy == "CategoryGroup":
             data.kind = twoRingDonut(rows, context: reportContext,
-                                     categoriesById: categoriesById, sortBy: config.sortBy)
+                                     categoriesById: categoriesById, sortBy: config.sortBy,
+                                     locale: locale, bundle: bundle)
         case "DonutGraph":
             // A wedge can't have a negative angle; upstream disables Net here,
             // so every allowed metric is already non-negative.
             data.kind = .donut(slices: rows.filter { $0.total > 0 }
-                                   .map { .init(label: $0.name, valueUnits: $0.total, group: nil) },
-                               groups: [])
+                .map { .init(label: $0.name, valueUnits: $0.total, group: nil) },
+                groups: [])
         default:
             data.kind = .bars(rows.map { .init(label: $0.name, valueUnits: $0.total) }, signed: signed)
         }
@@ -311,11 +366,11 @@ enum CustomReportEngine {
     private static func metric(_ cell: Cell, balanceType: String) -> Double {
         let net = cell.assets + cell.debts
         switch balanceType {
-        case "Payment":     return Double(-cell.debts) / 100
-        case "Deposit":     return Double(cell.assets) / 100
+        case "Payment": return Double(-cell.debts) / 100
+        case "Deposit": return Double(cell.assets) / 100
         case "Net Payment": return net < 0 ? Double(-net) / 100 : 0
         case "Net Deposit": return net > 0 ? Double(net) / 100 : 0
-        default:            return Double(net) / 100
+        default: return Double(net) / 100
         }
     }
 
@@ -323,15 +378,32 @@ enum CustomReportEngine {
     /// already baked in because Payment is stored positive here).
     private static func sorted<T>(
         _ items: [T], by sortBy: String,
-        total: KeyPath<T, Double>, name: KeyPath<T, String>
+        total: KeyPath<T, Double>, name: KeyPath<T, String>, locale: Locale
     ) -> [T] {
         switch sortBy {
-        case "asc":  return items.sorted { $0[keyPath: total] < $1[keyPath: total] }
-        case "name": return items.sorted {
-            $0[keyPath: name].localizedCaseInsensitiveCompare($1[keyPath: name]) == .orderedAscending
-        }
-        case "budget": return items                 // keep store order
-        default:     return items.sorted { $0[keyPath: total] > $1[keyPath: total] }  // desc
+        case "asc": items.sorted { $0[keyPath: total] < $1[keyPath: total] }
+        case "name":
+            items.enumerated().sorted { lhs, rhs in
+                let comparison = lhs.element[keyPath: name].compare(
+                    rhs.element[keyPath: name],
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    range: nil,
+                    locale: locale
+                )
+                if comparison != .orderedSame {
+                    return comparison == .orderedAscending
+                }
+                let exactComparison = lhs.element[keyPath: name].compare(
+                    rhs.element[keyPath: name], options: [.caseInsensitive],
+                    range: nil, locale: locale
+                )
+                if exactComparison != .orderedSame {
+                    return exactComparison == .orderedAscending
+                }
+                return lhs.offset < rhs.offset
+            }.map(\.element)
+        case "budget": items // keep store order
+        default: items.sorted { $0[keyPath: total] > $1[keyPath: total] } // desc
         }
     }
 
@@ -381,7 +453,8 @@ enum CustomReportEngine {
                 payeeId: nil, payeeName: nil, categoryId: entry.categoryId, categoryName: nil,
                 notes: nil, cleared: true, reconciled: false, transferId: nil,
                 isParent: false, parentId: nil, tombstone: false,
-                sortOrder: nil, importedPayee: nil)
+                sortOrder: nil, importedPayee: nil
+            )
         }
     }
 
@@ -394,25 +467,30 @@ enum CustomReportEngine {
     /// out, and groups and their categories sort by the same rule.
     private static func twoRingDonut(
         _ rows: [Row], context: ReportContext,
-        categoriesById: [String: Category], sortBy: String
+        categoriesById: [String: Category], sortBy: String,
+        locale: Locale, bundle: Bundle
     ) -> CustomReportData.Kind {
         struct Group { let name: String; let total: Double; let members: [Row] }
         let order = context.groups.map { ($0.id, $0.name) }
-            + [(Synthetic.uncategorized, "Uncategorized & Off budget")]
+            + [(Synthetic.uncategorized, ReportStrings.text(
+                "Uncategorized & Off budget", locale: locale, bundle: bundle
+            ))]
         var groups: [Group] = order.compactMap { entry -> Group? in
             let (id, name) = entry
             let members = sorted(
                 rows.filter { $0.total > 0 && (categoriesById[$0.key]?.groupId ?? Synthetic.uncategorized) == id },
-                by: sortBy, total: \.total, name: \.name)
+                by: sortBy, total: \.total, name: \.name, locale: locale
+            )
             guard !members.isEmpty else { return nil }
             return Group(name: name, total: members.map(\.total).reduce(0, +), members: members)
         }
-        groups = sorted(groups, by: sortBy, total: \.total, name: \.name)
+        groups = sorted(groups, by: sortBy, total: \.total, name: \.name, locale: locale)
         return .donut(
             slices: groups.enumerated().flatMap { gi, group in
                 group.members.map { .init(label: $0.name, valueUnits: $0.total, group: gi) }
             },
-            groups: groups.map { .init(label: $0.name, valueUnits: $0.total) })
+            groups: groups.map { .init(label: $0.name, valueUnits: $0.total) }
+        )
     }
 
     // MARK: - Interval bucketing
@@ -428,26 +506,27 @@ enum CustomReportEngine {
             let date = dateFrom(ymd)
             return ymdInt(from: ReportDateRange.weekStart(of: date, firstDayOfWeekIdx: firstDayOfWeekIdx))
         case "Yearly": return ymd / 10000
-        default: return ymd / 100   // Monthly
+        default: return ymd / 100 // Monthly
         }
     }
 
     private static func intervalBuckets(
-        from start: Date, to end: Date, interval: String, firstDayOfWeekIdx: Int
+        from start: Date, to end: Date, interval: String, firstDayOfWeekIdx: Int,
+        locale: Locale
     ) -> [BucketDef] {
         var out: [BucketDef] = []
         switch interval {
         case "Daily":
             var d = cal.startOfDay(for: start)
             while d <= end {
-                out.append(.init(key: ymdInt(from: d), label: dayFormatter.string(from: d)))
+                out.append(.init(key: ymdInt(from: d), label: dayFormatter(locale: locale).string(from: d)))
                 d = cal.date(byAdding: .day, value: 1, to: d)!
             }
         case "Weekly":
             var d = ReportDateRange.weekStart(of: start, firstDayOfWeekIdx: firstDayOfWeekIdx)
             let last = ReportDateRange.weekStart(of: end, firstDayOfWeekIdx: firstDayOfWeekIdx)
             while d <= last {
-                out.append(.init(key: ymdInt(from: d), label: dayFormatter.string(from: d)))
+                out.append(.init(key: ymdInt(from: d), label: dayFormatter(locale: locale).string(from: d)))
                 d = cal.date(byAdding: .day, value: 7, to: d)!
             }
         case "Yearly":
@@ -455,7 +534,7 @@ enum CustomReportEngine {
             let lastY = cal.component(.year, from: end)
             while y <= lastY {
                 let d = cal.date(from: DateComponents(year: y, month: 1, day: 1))!
-                out.append(.init(key: y, label: yearFormatter.string(from: d)))
+                out.append(.init(key: y, label: yearFormatter(locale: locale).string(from: d)))
                 y += 1
             }
         default: // Monthly — label "MMM ''yy" → Sep '25 (upstream intervalFormat)
@@ -466,7 +545,7 @@ enum CustomReportEngine {
             while d <= last {
                 let mc = cal.dateComponents([.year, .month], from: d)
                 out.append(.init(key: (mc.year ?? 0) * 100 + (mc.month ?? 0),
-                                 label: monthFormatter.string(from: d)))
+                                 label: monthFormatter(locale: locale).string(from: d)))
                 d = cal.date(byAdding: .month, value: 1, to: d)!
             }
         }
@@ -481,29 +560,40 @@ enum CustomReportEngine {
         return c
     }()
 
-    private static let dayFormatter: DateFormatter = {
+    private static func dayFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "yy-MM-dd"
         f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
+        f.locale = locale
+        f.calendar = Calendar(identifier: .gregorian)
         return f
-    }()
+    }
 
-    private static let monthFormatter: DateFormatter = {
+    private static func monthFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "MMM ''yy"
         f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
+        f.locale = locale
+        f.calendar = Calendar(identifier: .gregorian)
         return f
-    }()
+    }
 
-    private static let yearFormatter: DateFormatter = {
+    private static func yearFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "yyyy"
         f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
+        f.locale = locale
+        f.calendar = Calendar(identifier: .gregorian)
         return f
-    }()
+    }
+
+    private static func localizedRangeLabel(_ value: String, locale: Locale, bundle: Bundle) -> String {
+        switch value {
+        case "All time": ReportStrings.text("All Time", locale: locale, bundle: bundle)
+        case "Year to date": ReportStrings.text("Year to date", locale: locale, bundle: bundle)
+        default: value
+        }
+    }
 
     private static func dateFrom(_ ymd: Int) -> Date {
         cal.date(from: DateComponents(year: ymd / 10000, month: (ymd % 10000) / 100, day: ymd % 100))!

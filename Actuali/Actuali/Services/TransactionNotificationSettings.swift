@@ -5,7 +5,6 @@ import Foundation
 /// runs regardless (fresh data on open) and iOS's per-app Background App
 /// Refresh switch remains the off button for background activity.
 struct TransactionNotificationSettings {
-
     static let key = "transactionNotificationsEnabled"
 
     private let defaults: UserDefaults

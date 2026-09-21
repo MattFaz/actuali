@@ -1,22 +1,45 @@
 import SwiftUI
 
+enum RuleRowLocalization {
+    nonisolated static func fragment(
+        _ value: String.LocalizationValue,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        String(localized: LocalizedStringResource(value, locale: locale, bundle: bundle))
+    }
+
+    nonisolated static func joiner(
+        isAnd: Bool,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        fragment(isAnd ? "and" : "or", locale: locale, bundle: bundle)
+    }
+}
+
 /// Manage the rules Actual applies to incoming transactions (GH #222).
 /// Mirrors the web's mobile rules page: stage badge, an IF/THEN summary per
 /// rule, search over that summary text, and swipe to delete.
 struct RulesListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @State private var searchText = ""
     @State private var editingRule: Rule?
     @State private var isCreating = false
     @State private var failureMessage: String?
     @State private var hasLoaded = false
-
-    private var summary: RuleSummary { budgetStore.ruleSummary }
+    private var summary: RuleSummary {
+        budgetStore.ruleSummary
+    }
 
     private var filteredRules: [Rule] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(with: locale)
         guard !query.isEmpty else { return budgetStore.rules }
-        return budgetStore.rules.filter { summary.searchText($0).contains(query) }
+        return budgetStore.rules.filter {
+            summary.searchText($0, locale: locale).contains(query)
+        }
     }
 
     var body: some View {
@@ -25,17 +48,17 @@ struct RulesListView: View {
                 ProgressView()
             } else if !budgetStore.rulesSupported {
                 ContentUnavailableView(
-                    "Rules Unavailable",
+                    String(localized: "Rules Unavailable"),
                     systemImage: "slider.horizontal.3",
-                    description: Text("This budget file has no rules table. Open it in Actual once to add one.")
+                    description: Text(String(localized: "This budget file has no rules table. Open it in Actual once to add one."))
                 )
             } else if budgetStore.rules.isEmpty {
                 ContentUnavailableView {
-                    Label("No Rules", systemImage: "slider.horizontal.3")
+                    Label(String(localized: "No Rules"), systemImage: "slider.horizontal.3")
                 } description: {
-                    Text("Rules rewrite transactions as they're added — renaming payees, setting categories, and more.")
+                    Text(String(localized: "Rules rewrite transactions as they're added — renaming payees, setting categories, and more."))
                 } actions: {
-                    Button("Create Rule") { isCreating = true }
+                    Button(String(localized: "Create Rule")) { isCreating = true }
                 }
             } else {
                 rulesList
@@ -62,7 +85,11 @@ struct RulesListView: View {
         }
         .alert("Couldn't Delete Rule", isPresented: Binding(
             get: { failureMessage != nil },
-            set: { if !$0 { failureMessage = nil } }
+            set: {
+                if !$0 {
+                    failureMessage = nil
+                }
+            }
         )) {
             Button("OK") { failureMessage = nil }
         } message: {
@@ -111,7 +138,7 @@ struct RulesListView: View {
                 }
             }
         }
-        .searchable(text: $searchText, prompt: "Search rules")
+        .searchable(text: $searchText, prompt: String(localized: "Search rules"))
     }
 
     private func delete(_ rule: Rule) {
@@ -130,11 +157,12 @@ private struct RuleRow: View {
     let rule: Rule
     let summary: RuleSummary
     let isOwnedBySchedule: Bool
+    @Environment(\.locale) private var locale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Text(rule.stage.label.uppercased())
+                Text(rule.stage.label(locale: locale).uppercased(with: locale))
                     .font(.caption2.weight(.semibold))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -148,18 +176,21 @@ private struct RuleRow: View {
                 }
             }
 
-            labelled("IF", lines: rule.conditions.map(summary.condition),
-                     joiner: rule.conditionsOp == .and ? "and" : "or")
-            labelled("THEN", lines: rule.actions.map(summary.action), joiner: nil)
+            labelled(RuleRowLocalization.fragment("IF", locale: locale),
+                     lines: rule.conditions.map { summary.condition($0, locale: locale) },
+                     joiner: RuleRowLocalization.joiner(isAnd: rule.conditionsOp == .and, locale: locale))
+            labelled(RuleRowLocalization.fragment("THEN", locale: locale),
+                     lines: rule.actions.map { summary.action($0, locale: locale) },
+                     joiner: nil)
         }
         .padding(.vertical, 2)
     }
 
     private var stageColor: Color {
         switch rule.stage {
-        case .pre: return .blue
-        case .default: return .secondary
-        case .post: return .orange
+        case .pre: .blue
+        case .default: .secondary
+        case .post: .orange
         }
     }
 

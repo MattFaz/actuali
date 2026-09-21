@@ -4,7 +4,6 @@ import Testing
 
 @MainActor
 struct NotificationRouterRouteTests {
-
     @Test func successMarkerSetsNavigationFlagOnly() {
         let router = NotificationRouter()
         router.route(userInfo: TransactionLoggedMarker.userInfo)
@@ -30,6 +29,17 @@ struct NotificationRouterRouteTests {
         router.route(userInfo: [:])
         router.route(userInfo: ["kind": "com.mfazz.Actuali.somethingElse"])
         router.route(userInfo: ["unrelated": true])
+        #expect(router.pendingPrefill == nil)
+        #expect(router.pendingAllAccountsNavigation == false)
+    }
+
+    @Test func creditCardDueNotificationSetsAccountNavigation() {
+        let router = NotificationRouter()
+        router.route(
+            userInfo: [CreditCardDueNotifier.accountIdKey: "card-123"],
+            categoryIdentifier: CreditCardDueNotifier.categoryIdentifier
+        )
+        #expect(router.pendingAccountNavigation == "card-123")
         #expect(router.pendingPrefill == nil)
         #expect(router.pendingAllAccountsNavigation == false)
     }

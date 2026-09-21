@@ -8,61 +8,63 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
     case apostropheDot = "apostrophe-dot"
     case commaDotIn = "comma-dot-in"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var example: String {
         switch self {
         case .commaDot:
-            return "1,000.33"
+            "1,000.33"
         case .dotComma:
-            return "1.000,33"
+            "1.000,33"
         case .spaceComma:
-            return "1\u{202F}000,33"
+            "1\u{202F}000,33"
         case .apostropheDot:
-            return "1\u{2019}000.33"
+            "1\u{2019}000.33"
         case .commaDotIn:
-            return "10,00,000.33"
+            "10,00,000.33"
         }
     }
 
     var decimalSeparator: String {
         switch self {
         case .commaDot, .apostropheDot, .commaDotIn:
-            return "."
+            "."
         case .dotComma, .spaceComma:
-            return ","
+            ","
         }
     }
 
     private var locale: Locale {
         switch self {
         case .commaDot:
-            return Locale(identifier: "en_US")
+            Locale(identifier: "en_US")
         case .dotComma:
-            return Locale(identifier: "de_DE")
+            Locale(identifier: "de_DE")
         case .spaceComma:
-            return Locale(identifier: "fr_FR")
+            Locale(identifier: "fr_FR")
         case .apostropheDot:
-            return Locale(identifier: "de_CH")
+            Locale(identifier: "de_CH")
         case .commaDotIn:
-            return Locale(identifier: "en_IN")
+            Locale(identifier: "en_IN")
         }
     }
 
     fileprivate func normalize(_ string: String) -> String {
         switch self {
         case .spaceComma:
-            return string.replacingOccurrences(
+            string.replacingOccurrences(
                 of: "\u{00A0}",
                 with: "\u{202F}"
             )
         case .apostropheDot:
-            return string.replacingOccurrences(
+            string.replacingOccurrences(
                 of: "'",
                 with: "\u{2019}"
             )
         default:
-            return string
+            string
         }
     }
 
@@ -84,8 +86,9 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
 
         return formatter
     }
-     /// The NSLock serializes every access to the non-Sendable NumberFormatter
-     /// dictionary (and each format call), so sharing across actors is safe.
+
+    /// The NSLock serializes every access to the non-Sendable NumberFormatter
+    /// dictionary (and each format call), so sharing across actors is safe.
     private final class FormatterCache: @unchecked Sendable {
         private let lock = NSLock()
         private var formatters: [String: NumberFormatter] = [:]
@@ -143,7 +146,7 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         wholeUnits: Bool,
         currencyCode: String?
     ) -> String {
-        if currencyCode == nil && number.doubleValue == 0 {
+        if currencyCode == nil, number.doubleValue == 0 {
             return wholeUnits
                 ? "0"
                 : "0\(decimalSeparator)00"

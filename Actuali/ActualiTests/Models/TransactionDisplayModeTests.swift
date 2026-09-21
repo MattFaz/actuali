@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Actuali
 
@@ -6,7 +7,6 @@ import Testing
 /// Swift Testing runs a suite's tests in parallel — two tests sharing one key
 /// race each other.
 struct TransactionDisplayModeTests {
-
     @Test func resolvesDefaultWhenUnset() {
         #expect(TransactionDisplayMode.resolved(from: nil) == .flat)
     }
@@ -23,7 +23,9 @@ struct TransactionDisplayModeTests {
     }
 
     @Test func labelsAreDescriptive() {
-        #expect(TransactionDisplayMode.flat.label == "Flat List")
-        #expect(TransactionDisplayMode.groupedByDate.label == "Grouped by Date")
+        let locale = Locale(identifier: "en_US")
+        let bundle = Bundle(identifier: "com.mfazz.ActualiOS")!
+        #expect(TransactionDisplayMode.flat.label(locale: locale, bundle: bundle) == "Flat List")
+        #expect(TransactionDisplayMode.groupedByDate.label(locale: locale, bundle: bundle) == "Grouped by Date")
     }
 }

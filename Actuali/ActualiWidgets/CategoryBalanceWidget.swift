@@ -11,8 +11,8 @@ struct CategoryBalanceWidget: Widget {
         ) { entry in
             CategoryBalanceWidgetView(entry: entry)
         }
-        .configurationDisplayName("Category Balances")
-        .description("Remaining available amount for your chosen categories.")
+        .configurationDisplayName(String(localized: "Category Balances"))
+        .description(String(localized: "Remaining available amount for your chosen categories."))
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
@@ -27,17 +27,16 @@ struct CategoryBalanceEntry: TimelineEntry {
         date: .now,
         balancesHidden: false,
         categories: [
-            WidgetCategoryBalance(id: "dining", name: "Dining Out", available: 12_350, formattedAvailable: "$123.50"),
-            WidgetCategoryBalance(id: "groceries", name: "Groceries", available: 8_020, formattedAvailable: "$80.20"),
-            WidgetCategoryBalance(id: "fun", name: "Fun Money", available: -1_550, formattedAvailable: "-$15.50"),
-            WidgetCategoryBalance(id: "transport", name: "Transport", available: 4_000, formattedAvailable: "$40.00"),
+            WidgetCategoryBalance(id: "dining", name: "Dining Out", available: 12350, formattedAvailable: "$123.50"),
+            WidgetCategoryBalance(id: "groceries", name: "Groceries", available: 8020, formattedAvailable: "$80.20"),
+            WidgetCategoryBalance(id: "fun", name: "Fun Money", available: -1550, formattedAvailable: "-$15.50"),
+            WidgetCategoryBalance(id: "transport", name: "Transport", available: 4000, formattedAvailable: "$40.00"),
         ],
         hasSnapshot: true
     )
 }
 
 struct CategoryBalanceProvider: AppIntentTimelineProvider {
-
     func placeholder(in context: Context) -> CategoryBalanceEntry {
         .sample
     }
@@ -50,7 +49,7 @@ struct CategoryBalanceProvider: AppIntentTimelineProvider {
         // The app pushes reloads after every data refresh; the midnight
         // expiry only exists so a month rollover without an app launch
         // swaps stale balances for the empty state.
-        let nextMidnight = Calendar.current.startOfDay(for: .now.addingTimeInterval(86_400))
+        let nextMidnight = Calendar.current.startOfDay(for: .now.addingTimeInterval(86400))
         return Timeline(entries: [entry(for: configuration, in: context)], policy: .after(nextMidnight))
     }
 
@@ -72,6 +71,7 @@ struct CategoryBalanceProvider: AppIntentTimelineProvider {
 
 struct CategoryBalanceWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.locale) private var locale
 
     let entry: CategoryBalanceEntry
 
@@ -93,7 +93,7 @@ struct CategoryBalanceWidgetView: View {
             Image(systemName: "chart.pie")
                 .font(.title3)
                 .foregroundStyle(.secondary)
-            Text(entry.hasSnapshot ? "No categories to show" : "Open Actuali to load your budget")
+            Text(entry.hasSnapshot ? String(localized: "No categories to show") : String(localized: "Open Actuali to load your budget"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -112,7 +112,7 @@ struct CategoryBalanceWidgetView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .foregroundStyle(amountColor(for: category))
-            Text("available")
+            Text(String(localized: "available"))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
@@ -134,9 +134,12 @@ struct CategoryBalanceWidgetView: View {
                 }
             }
             Spacer(minLength: 0)
-            Text("Updated \(entry.date, style: .relative) ago")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            Text(String(
+                format: String(localized: "Updated %@", locale: locale),
+                WidgetDateFormatting.relative(entry.date, locale: locale)
+            ))
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -145,7 +148,9 @@ struct CategoryBalanceWidgetView: View {
     /// otherwise — muted to neutral when balances are hidden so the mask
     /// doesn't leak the sign.
     private func amountColor(for category: WidgetCategoryBalance) -> Color {
-        if entry.balancesHidden { return .primary }
+        if entry.balancesHidden {
+            return .primary
+        }
         return category.isOverspent ? .red : .green
     }
 }

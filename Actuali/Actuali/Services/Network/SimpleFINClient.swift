@@ -23,19 +23,19 @@ enum SimpleFINError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidSetupToken:
-            return "That doesn't look like a SimpleFIN setup token. Copy the whole token from SimpleFIN and paste it again."
+            String(localized: "That doesn't look like a SimpleFIN setup token. Copy the whole token from SimpleFIN and paste it again.")
         case .invalidAccessKey:
-            return "The stored SimpleFIN access key is unreadable. Disconnect SimpleFIN and set it up again."
+            String(localized: "The stored SimpleFIN access key is unreadable. Disconnect SimpleFIN and set it up again.")
         case .claimRejected:
-            return "SimpleFIN rejected this setup token. Tokens can only be claimed once — generate a new one at SimpleFIN and paste that."
+            String(localized: "SimpleFIN rejected this setup token. Tokens can only be claimed once — generate a new one at SimpleFIN and paste that.")
         case .forbidden:
-            return "SimpleFIN rejected the saved access key. Disconnect SimpleFIN and set it up again with a new setup token."
+            String(localized: "SimpleFIN rejected the saved access key. Disconnect SimpleFIN and set it up again with a new setup token.")
         case .httpError(let statusCode):
-            return "SimpleFIN returned an unexpected response (HTTP \(statusCode))."
+            String(localized: "SimpleFIN returned an unexpected response (HTTP \(statusCode)).")
         case .invalidResponse:
-            return "SimpleFIN returned a response Actuali couldn't read."
+            String(localized: "SimpleFIN returned a response Actuali couldn't read.")
         case .networkError(let message):
-            return "Couldn't reach SimpleFIN: \(message)"
+            String(localized: "Couldn't reach SimpleFIN: \(message)")
         }
     }
 }
@@ -105,7 +105,7 @@ struct SimpleFINAccessKey: Sendable, Equatable {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let data = Data(base64Encoded: trimmed, options: [.ignoreUnknownCharacters]),
               let decoded = String(data: data, encoding: .utf8)?
-                  .trimmingCharacters(in: .whitespacesAndNewlines),
+              .trimmingCharacters(in: .whitespacesAndNewlines),
               let url = URL(string: decoded),
               url.scheme?.lowercased() == "https",
               url.host != nil else {
@@ -150,11 +150,15 @@ struct SimpleFINOrg: Decodable, Sendable, Equatable {
     /// The stable identifier Actual keys its `banks` rows on
     /// (`orgDomain ?? orgId` upstream), so an account linked here and an
     /// account linked in the web UI land on the same bank row.
-    var bankId: String? { domain ?? id }
+    var bankId: String? {
+        domain ?? id
+    }
 
     /// What to show a person picking accounts. Falls back through the org's
     /// other identifiers rather than showing nothing.
-    var displayName: String { name ?? domain ?? id ?? "Unknown institution" }
+    var displayName: String {
+        name ?? domain ?? id ?? "Unknown institution"
+    }
 
     private enum CodingKeys: String, CodingKey {
         case domain, name, id
@@ -172,7 +176,9 @@ struct SimpleFINAccount: Decodable, Sendable, Equatable, Identifiable {
     let balanceDate: Int?
     let transactions: [SimpleFINTransaction]
 
-    var balanceCents: Int? { SimpleFINAmount.cents(from: balance) }
+    var balanceCents: Int? {
+        SimpleFINAmount.cents(from: balance)
+    }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -206,17 +212,23 @@ struct SimpleFINTransaction: Decodable, Sendable, Equatable, Identifiable {
     let memo: String?
     let pending: Bool?
 
-    var amountCents: Int? { SimpleFINAmount.cents(from: amount) }
+    var amountCents: Int? {
+        SimpleFINAmount.cents(from: amount)
+    }
 
     /// Whether the bank considers the transaction final. Mirrors upstream's
     /// `trans.pending ?? trans.posted === 0` — `pending` is optional in the
     /// protocol, and a zero `posted` is how bridges that omit it say the same
     /// thing. Booked transactions import as cleared.
-    var isBooked: Bool { !(pending ?? (posted == 0)) }
+    var isBooked: Bool {
+        !(pending ?? (posted == 0))
+    }
 
     /// The timestamp the transaction's date comes from: what the bank posted
     /// it on once it is final, when it happened while it is still pending.
-    var effectiveTimestamp: Int { isBooked ? posted : (transactedAt ?? posted) }
+    var effectiveTimestamp: Int {
+        isBooked ? posted : (transactedAt ?? posted)
+    }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -358,7 +370,7 @@ actor SimpleFINClient {
         guard httpResponse.statusCode == 200 else {
             logger.error("SimpleFIN claim failed (HTTP \(httpResponse.statusCode, privacy: .public))")
             throw httpResponse.statusCode == 403 ? SimpleFINError.claimRejected
-                                                 : SimpleFINError.httpError(statusCode: httpResponse.statusCode)
+                : SimpleFINError.httpError(statusCode: httpResponse.statusCode)
         }
         guard let body = String(data: data, encoding: .utf8) else {
             throw SimpleFINError.invalidResponse

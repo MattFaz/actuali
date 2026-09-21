@@ -1,9 +1,8 @@
 import XCTest
 
 final class ServerConnectionEditingUITests: XCTestCase {
-
     @MainActor
-    func testConnectedServerURLsCanBeEditedWithoutDisconnecting() throws {
+    func testConnectedServerURLsCanBeEditedWithoutDisconnecting() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-connectedServerSettings", "-initialTab", "4", "-currentBudgetId", "",
@@ -19,7 +18,7 @@ final class ServerConnectionEditingUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Connected"].exists)
         edit.tap()
 
-        let fallback = app.textFields["Fallback server URL (optional)"]
+        let fallback = app.textFields["Fallback Server URL"]
         XCTAssertTrue(fallback.waitForExistence(timeout: 5))
         fallback.tap()
         fallback.typeText("fallback.example.com")

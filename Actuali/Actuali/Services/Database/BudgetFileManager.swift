@@ -12,17 +12,17 @@ enum BudgetFileError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidZipFile:
-            return "The downloaded file is not a valid ZIP archive"
+            String(localized: "The downloaded file is not a valid ZIP archive")
         case .missingDatabase:
-            return "The budget file is missing the database"
+            String(localized: "The budget file is missing the database")
         case .missingMetadata:
-            return "The budget file is missing metadata"
+            String(localized: "The budget file is missing metadata")
         case .extractionFailed(let error):
-            return "Failed to extract budget file: \(error.localizedDescription)"
+            String(localized: "Failed to extract budget file: \(error.localizedDescription)")
         case .metadataParsingFailed:
-            return "Failed to parse budget metadata"
+            String(localized: "Failed to parse budget metadata")
         case .unsafeArchive(let error):
-            return "The archive failed a safety check: \(error)"
+            String(localized: "The archive failed a safety check: \(error)")
         }
     }
 }
@@ -37,8 +37,8 @@ struct BudgetMetadata: Codable {
     let encryptKeyId: String?
 }
 
-// Immutable singleton: both stored properties are `let`, and FileManager.default
-// is thread-safe, so instances are safe to share across actors.
+/// Immutable singleton: both stored properties are `let`, and FileManager.default
+/// is thread-safe, so instances are safe to share across actors.
 final class BudgetFileManager: @unchecked Sendable {
     static let shared = BudgetFileManager()
 
@@ -85,9 +85,9 @@ final class BudgetFileManager: @unchecked Sendable {
     func metadataPath(for budgetId: String) -> URL {
         budgetDirectory(for: budgetId).appendingPathComponent("metadata.json")
     }
-    
+
     // MARK: - Backup Paths
-    
+
     /// Directory holding this budget's local backup archives, created on first use.
     func backupsDirectory(for budgetId: String) -> URL {
         let dir = budgetDirectory(for: budgetId).appendingPathComponent("backups", isDirectory: true)
@@ -96,21 +96,21 @@ final class BudgetFileManager: @unchecked Sendable {
         }
         return dir
     }
-    
+
     func backupPath(for budgetId: String, name: String) -> URL {
         backupsDirectory(for: budgetId).appendingPathComponent(name)
     }
-    
+
     func latestDatabasePath(for budgetId: String) -> URL {
         budgetDirectory(for: budgetId).appendingPathComponent("db.latest.sqlite")
     }
-    
+
     func latestMetadataPath(for budgetId: String) -> URL {
         budgetDirectory(for: budgetId).appendingPathComponent("metadata.latest.json")
     }
-    
+
     // MARK: - Backup Naming
-    
+
     /// Archive names match upstream's yyyy-MM-dd_HH-mm-ss.zip.
     /// The device timezone is deliberate: "today"  means the user's today.
     static let backupNameFormatter: DateFormatter = {
@@ -119,7 +119,7 @@ final class BudgetFileManager: @unchecked Sendable {
         formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         return formatter
     }()
-    
+
     static func backupArchiveName(for date: Date) -> String {
         backupNameFormatter.string(from: date) + ".zip"
     }
@@ -127,14 +127,17 @@ final class BudgetFileManager: @unchecked Sendable {
     static func backupTempName(now: Date) -> String {
         "db.\(Int(now.timeIntervalSince1970 * 1000)).sqlite.tmp"
     }
-    
+
     // MARK: - Backup Archives
-    
+
     /// Creates a backup archive with EXACTLY the two root entries the import
     /// path looks for, so Actuali-made archives round-trip through
     /// `importBudget` and open in Actual desktop (upstream zips the same two
     /// names, backups.ts:145-148).
     func makeBudgetArchive(dbURL: URL, metadataURL: URL, to destinationURL: URL) throws {
+        guard fileManager.fileExists(atPath: dbURL.path) else { throw BudgetFileError.missingDatabase }
+        guard fileManager.fileExists(atPath: metadataURL.path) else { throw BudgetFileError.missingMetadata }
+
         // Build at a temp path and rename into place: a crash or an iOS
         // suspension mid-write (background backups have no time assertion) can
         // then only leave a *.zip.tmp the sweep removes — never a truncated
@@ -146,7 +149,7 @@ final class BudgetFileManager: @unchecked Sendable {
         try archive.addEntry(with: "db.sqlite", fileURL: dbURL, compressionMethod: .deflate)
         try archive.addEntry(with: "metadata.json", fileURL: metadataURL, compressionMethod: .deflate)
         if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)   // same-second overwrite, per upstream
+            try fileManager.removeItem(at: destinationURL) // same-second overwrite, per upstream
         }
         try fileManager.moveItem(at: tempURL, to: destinationURL)
     }
@@ -350,7 +353,7 @@ final class BudgetFileManager: @unchecked Sendable {
         defer {
             try? fileManager.removeItem(at: tempURL)
         }
-        
+
         let extracted = try extractBudgetArchive(at: tempURL)
         defer {
             try? fileManager.removeItem(at: extracted.databaseURL)

@@ -47,7 +47,9 @@ enum SortOrder {
             while next < items.count {
                 // A row already past the new order has a big enough gap of
                 // its own, and so does everything below it.
-                if order <= items[next].sortOrder { break }
+                if order <= items[next].sortOrder {
+                    break
+                }
                 moved.append(Position(id: items[next].id, sortOrder: order))
                 next += 1
                 order += increment
