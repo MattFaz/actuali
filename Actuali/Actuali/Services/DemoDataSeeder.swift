@@ -553,11 +553,14 @@ enum DemoDataSeeder {
         let nowMs = Int64(now.timeIntervalSince1970 * 1000)
 
         func scheduleDateJSON(_ next: Int) throws -> String {
+            // The pattern day must match the stored next date's day of month,
+            // or the recurrence advances to the wrong day after the first
+            // post (nextOccurrence is built from the patterns).
             try serialize([
                 "frequency": "monthly",
                 "interval": 1,
                 "start": isoDay(next),
-                "patterns": [["type": "day", "value": 1]],
+                "patterns": [["type": "day", "value": next % 100]],
                 "skipWeekend": false,
                 "weekendSolveMode": "after",
                 "endMode": "never",

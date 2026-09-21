@@ -124,10 +124,17 @@ struct DemoDataSeederTests {
 
         let schedules = try await database.fetchSchedules()
         #expect(schedules.compactMap(\.name).sorted() == ["Netflix", "Rent"])
-        // Every schedule resolves its payee/account from the rule conditions.
+        // Every schedule resolves its payee/account from the rule conditions,
+        // and the recurrence's day pattern matches the stored next date —
+        // mismatched patterns advance to the wrong day after the first post.
         for schedule in schedules {
             #expect(schedule.payeeId != nil && schedule.accountId != nil,
                     "Schedule \(schedule.name ?? "?") is missing payee/account conditions")
+            guard case .recurring(let config) = try #require(schedule.dateCondition),
+                  let next = schedule.nextDate else { continue }
+            let patternDays = config.patterns.filter { $0.type == "day" }.map(\.value)
+            #expect(patternDays.contains(next.day),
+                    "\(schedule.name ?? "?") recurs on \(patternDays) but next date is \(next)")
         }
     }
 
@@ -136,10 +143,13 @@ struct DemoDataSeederTests {
     /// today or past, and a fresh demo load must never mutate its own seeded
     /// data (or record history) on its own.
     @Test func seededSchedulesAreNeverDueOnLoad() async throws {
-        let database = try seedAndOpen()
+        // One reference instant for both seed and assertion: two independent
+        // Date() calls would flake if the test straddles local midnight.
+        let now = Date()
+        let database = try seedAndOpen(now: now)
         let schedules = try await database.fetchSchedules()
         #expect(!schedules.isEmpty)
-        let today = DayDate.today()
+        let today = DayDate.today(now: now)
         for schedule in schedules {
             let next = try #require(schedule.nextDate)
             #expect(next > today, "\(schedule.name ?? "?") is due at load")
