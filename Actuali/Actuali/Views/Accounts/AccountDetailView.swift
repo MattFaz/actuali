@@ -13,6 +13,7 @@ struct AccountDetailView: View {
     @State private var showingBreakdown = false
     @State private var showingBillingCycle = false
     @State private var showingLoanDetails = false
+    @State private var showingLoanEditor = false
     @State private var searchText = ""
     @State private var showingAddTransaction = false
     @State private var showingReconcile = false
@@ -499,6 +500,19 @@ struct AccountDetailView: View {
                         breakdownRow(String(localized: "Payments Remaining"), value: "\(schedule.paymentCount)")
                         breakdownRow(String(localized: "Interest Remaining"), amount: schedule.totalInterest)
                     }
+
+                    // The terms are most often questioned while looking at the
+                    // loan itself, so the editor opens from here rather than
+                    // sending the user back out to the Loans screen.
+                    Button {
+                        showingLoanEditor = true
+                    } label: {
+                        Label(String(localized: "Edit Loan"), systemImage: "pencil")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(budgetStore.syncDetachedByRestore)
+                    .accessibilityIdentifier("accountLoan.edit")
                 }
             }
         }
@@ -690,6 +704,15 @@ struct AccountDetailView: View {
             }
         }
         .toolbar(isSelecting ? .hidden : .visible, for: .tabBar)
+        .sheet(isPresented: $showingLoanEditor) {
+            // Read at presentation rather than captured with the button, so
+            // the editor opens on the current terms even if a sync landed
+            // between the tap and the sheet.
+            if let config = budgetStore.activeLoanConfig(for: account.id) {
+                LoanEditorView(mode: .edit(accountId: account.id, config: config))
+                    .environmentObject(budgetStore)
+            }
+        }
         .sheet(isPresented: $showingReconcile) {
             ReconcileView(account: account)
                 .environmentObject(budgetStore)
