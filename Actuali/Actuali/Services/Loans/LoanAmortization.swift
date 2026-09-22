@@ -32,10 +32,21 @@ enum LoanAmortization {
         let entries: [Entry]
 
         /// The month the final payment lands, or nil for a balance already clear.
-        var payoffDate: DayDate? { entries.last?.month }
-        var paymentCount: Int { entries.count }
-        var totalInterest: Int { entries.reduce(0) { $0 + $1.interest } }
-        var totalPaid: Int { entries.reduce(0) { $0 + $1.payment } }
+        var payoffDate: DayDate? {
+            entries.last?.month
+        }
+
+        var paymentCount: Int {
+            entries.count
+        }
+
+        var totalInterest: Int {
+            entries.reduce(0) { $0 + $1.interest }
+        }
+
+        var totalPaid: Int {
+            entries.reduce(0) { $0 + $1.payment }
+        }
     }
 
     /// What paying more than the minimum buys — the headline the loan overview
@@ -99,7 +110,9 @@ enum LoanAmortization {
                 principal: principal,
                 balance: remaining
             ))
-            if remaining <= 0 { return Schedule(entries: entries) }
+            if remaining <= 0 {
+                return Schedule(entries: entries)
+            }
             month = month.adding(months: 1)
         }
         return nil
@@ -139,7 +152,11 @@ enum LoanAmortization {
                 escrowOrFees: escrowOrFees,
                 startingMonth: startingMonth
             ).map { $0.paymentCount <= months } ?? false
-            if clears { high = mid } else { low = mid + 1 }
+            if clears {
+                high = mid
+            } else {
+                low = mid + 1
+            }
         }
         return low
     }

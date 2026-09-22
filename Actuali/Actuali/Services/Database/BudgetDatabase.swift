@@ -4975,6 +4975,8 @@ final class BudgetDatabase: Sendable {
     /// Returns a dictionary mapping `accountId -> LoanConfig`.
     func fetchLoanConfigs() async throws -> [String: LoanConfig] {
         try await fetchAccountConfigs(prefix: Self.loanPreferenceKeyPrefix)
+    }
+
     /// Preference key prefix for synced card-to-account mappings.
     static let cardMappingPreferenceKeyPrefix = "actuali:card_mapping:"
 

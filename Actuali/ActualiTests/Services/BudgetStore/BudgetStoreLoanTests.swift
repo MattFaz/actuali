@@ -5,7 +5,6 @@ import Testing
 
 @MainActor
 struct BudgetStoreLoanTests {
-
     private let config = LoanConfig(
         originalBalance: 2_200_000,
         annualRatePercent: 6,
@@ -38,7 +37,7 @@ struct BudgetStoreLoanTests {
     private func seedLoan(_ config: LoanConfig, accountId: String, budgetId: String,
                           in manager: BudgetFileManager) async throws {
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: budgetId).path)
-        let json = String(decoding: try JSONEncoder().encode(config), as: UTF8.self)
+        let json = try String(decoding: JSONEncoder().encode(config), as: UTF8.self)
         try await dbQueue.write { db in
             try db.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",

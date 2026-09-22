@@ -1,9 +1,8 @@
-import Testing
 import Foundation
+import Testing
 @testable import Actuali
 
 struct LoanConfigTests {
-
     @Test func encodesAndDecodesJSON() throws {
         let config = LoanConfig(
             originalBalance: 2_200_000,

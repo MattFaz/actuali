@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins `fetchLoanConfigs()` against the SQLite `preferences` table. Loans share
@@ -8,7 +8,6 @@ import GRDB
 /// what these cover.
 @MainActor
 struct BudgetDatabaseLoanTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -22,6 +21,10 @@ struct BudgetDatabaseLoanTests {
 
     private func cleanup(_ url: URL) {
         try? FileManager.default.removeItem(at: url)
+    }
+
+    private func encoded(_ value: some Encodable) throws -> String {
+        try String(decoding: JSONEncoder().encode(value), as: UTF8.self)
     }
 
     private func insert(_ db: BudgetDatabase, id: String, json: String) async throws {
@@ -38,14 +41,20 @@ struct BudgetDatabaseLoanTests {
         defer { cleanup(url) }
 
         let car = LoanConfig(
-            originalBalance: 2_200_000, annualRatePercent: 6, minimumPayment: 36500, escrowOrFees: nil)
+            originalBalance: 2_200_000,
+            annualRatePercent: 6,
+            minimumPayment: 36500,
+            escrowOrFees: nil
+        )
         let house = LoanConfig(
-            originalBalance: 45_000_000, annualRatePercent: 4.125, minimumPayment: 210_000, escrowOrFees: 40000)
+            originalBalance: 45_000_000,
+            annualRatePercent: 4.125,
+            minimumPayment: 210_000,
+            escrowOrFees: 40000
+        )
 
-        try await insert(db, id: "actuali:loan:acct_car",
-                         json: String(decoding: try JSONEncoder().encode(car), as: UTF8.self))
-        try await insert(db, id: "actuali:loan:acct_house",
-                         json: String(decoding: try JSONEncoder().encode(house), as: UTF8.self))
+        try await insert(db, id: "actuali:loan:acct_car", json: encoded(car))
+        try await insert(db, id: "actuali:loan:acct_house", json: encoded(house))
         try await insert(db, id: "defaultCurrencyCode", json: "USD")
 
         let configs = try await db.fetchLoanConfigs()
@@ -61,13 +70,16 @@ struct BudgetDatabaseLoanTests {
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, NULL)",
-                arguments: ["actuali:loan:acct_null"])
+                arguments: ["actuali:loan:acct_null"]
+            )
             try conn.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, '')",
-                arguments: ["actuali:loan:acct_empty"])
+                arguments: ["actuali:loan:acct_empty"]
+            )
             try conn.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
-                arguments: ["actuali:loan:acct_corrupt", "{invalid_json}"])
+                arguments: ["actuali:loan:acct_corrupt", "{invalid_json}"]
+            )
         }
 
         let configs = try await db.fetchLoanConfigs()
@@ -81,13 +93,15 @@ struct BudgetDatabaseLoanTests {
         defer { cleanup(url) }
 
         let loan = LoanConfig(
-            originalBalance: 2_200_000, annualRatePercent: 6, minimumPayment: 36500, escrowOrFees: nil)
+            originalBalance: 2_200_000,
+            annualRatePercent: 6,
+            minimumPayment: 36500,
+            escrowOrFees: nil
+        )
         let card = CreditCardConfig(statementDay: 18, dueOffsetDays: 25, limit: 500_000)
 
-        try await insert(db, id: "actuali:loan:acct_shared",
-                         json: String(decoding: try JSONEncoder().encode(loan), as: UTF8.self))
-        try await insert(db, id: "actuali:credit_card:acct_shared",
-                         json: String(decoding: try JSONEncoder().encode(card), as: UTF8.self))
+        try await insert(db, id: "actuali:loan:acct_shared", json: encoded(loan))
+        try await insert(db, id: "actuali:credit_card:acct_shared", json: encoded(card))
 
         let loans = try await db.fetchLoanConfigs()
         let cards = try await db.fetchCreditCardConfigs()

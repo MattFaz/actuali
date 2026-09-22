@@ -1265,8 +1265,8 @@ actor SyncClient {
     }
 
     /// Stores `config` as the JSON value of `key`, or clears the key when nil.
-    private func setEncodedPreference<T: Encodable>(key: String, config: T?) async throws {
-        let jsonString = try config.map { String(decoding: try JSONEncoder().encode($0), as: UTF8.self) }
+    private func setEncodedPreference(key: String, config: (some Encodable)?) async throws {
+        let jsonString = try config.map { try String(decoding: JSONEncoder().encode($0), as: UTF8.self) }
         try await setPreference(key: key, value: jsonString)
     }
 

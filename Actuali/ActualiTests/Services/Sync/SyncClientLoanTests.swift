@@ -9,28 +9,27 @@ import Testing
 /// other synced preference.
 @MainActor
 struct SyncClientLoanTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE preferences (
-                    id TEXT PRIMARY KEY,
-                    value TEXT
-                );
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-                """)
+            CREATE TABLE preferences (
+                id TEXT PRIMARY KEY,
+                value TEXT
+            );
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            );
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {

@@ -247,6 +247,7 @@ final class BudgetStore: ObservableObject {
             if currentBudgetId != oldValue {
                 creditCardConfigs = [:]
                 loanConfigs = [:]
+                cardAccountMappings = [:]
             }
         }
     }
@@ -314,6 +315,8 @@ final class BudgetStore: ObservableObject {
 
     /// Synced loan configurations loaded from the preferences table (accountId -> LoanConfig).
     @Published var loanConfigs: [String: LoanConfig] = [:]
+    /// Synced card-to-account mappings loaded from the preferences table (keyword -> accountId).
+    @Published var cardAccountMappings: [String: String] = [:]
 
     /// Currency code for formatting (e.g., "USD", "EUR", "GBP")
     /// Persisted to UserDefaults, defaults to "USD"
@@ -2348,6 +2351,7 @@ final class BudgetStore: ObservableObject {
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await openedDb.fetchCreditCardConfigs()
             let fetchedLoans = try await openedDb.fetchLoanConfigs()
+            let fetchedCardMappings = try await openedDb.fetchCardAccountMappings()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
             let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
@@ -2413,7 +2417,6 @@ final class BudgetStore: ObservableObject {
             }
             creditCardConfigs = fetchedCreditCards.merging(legacyConfigs) { synced, _ in synced }
             loanConfigs = fetchedLoans
-            
 
             var legacyCardMappings: [String: String] = [:]
             let savedCardMappings = UserDefaults.standard.dictionary(forKey: "cardAccountMappings_\(budgetId)") as? [String: String] ?? [:]
@@ -2632,6 +2635,7 @@ final class BudgetStore: ObservableObject {
         let numberFormatBefore = numberFormat
         let creditCardsBefore = creditCardConfigs
         let loansBefore = loanConfigs
+        let cardMappingsBefore = cardAccountMappings
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -2683,6 +2687,7 @@ final class BudgetStore: ObservableObject {
             }
             if loanConfigs == loansBefore {
                 loanConfigs = fetchedLoans
+            }
             if cardAccountMappings == cardMappingsBefore {
                 cardAccountMappings = fetchedCardMappings
             }
