@@ -323,7 +323,16 @@ struct AccountsListView: View {
                 AppAnimation.disclosure,
                 value: [isOnBudgetExpanded, isOffBudgetExpanded, isClosedExpanded]
             )
-            .contentMargins(.horizontal, 6, for: .scrollContent)
+            .contentMargins(
+                .horizontal,
+                TopBoxLayout.horizontalContentMargin,
+                for: .scrollContent
+            )
+            .contentMargins(
+                .top,
+                TopBoxLayout.verticalContentMargin,
+                for: .scrollContent
+            )
 //            .navigationTitle("Accounts")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

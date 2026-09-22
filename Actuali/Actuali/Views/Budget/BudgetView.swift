@@ -41,9 +41,17 @@ enum BudgetCategoryAccessibility {
     }
 }
 
+/// The horizontal inset shared by the summary boxes at the top of the budget
+/// and accounts views. Keeping this in one place prevents their edges from
+/// drifting apart as either screen's list chrome changes.
+enum TopBoxLayout {
+    static let horizontalContentMargin: CGFloat = 4
+    static let verticalContentMargin: CGFloat = 8
+}
+
 /// Style-specific list metrics live behind one exhaustive switch so adding a
 /// display style cannot silently inherit another style's spacing or background.
-private struct BudgetListMetrics {
+struct BudgetListMetrics {
     let sectionSpacing: ListSectionSpacing
     let horizontalContentMargin: CGFloat
     let topContentMargin: CGFloat
@@ -53,8 +61,8 @@ private struct BudgetListMetrics {
         switch style {
         case .clean:
             sectionSpacing = .default
-            horizontalContentMargin = 4
-            topContentMargin = 20
+            horizontalContentMargin = TopBoxLayout.horizontalContentMargin
+            topContentMargin = TopBoxLayout.verticalContentMargin + 12
             showsTopFade = true
         case .compact:
             sectionSpacing = .custom(0)
@@ -697,7 +705,7 @@ struct BudgetView: View {
                     }
                 }
                 .padding(.horizontal, isCompact ? 0 : 4)
-                .padding(.vertical, isCompact ? 0 : 8)
+                .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
                 .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }
 
