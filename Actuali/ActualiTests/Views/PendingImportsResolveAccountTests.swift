@@ -297,16 +297,19 @@ struct PendingImportsResolveAccountTests {
     }
 
     @Test func currencyMismatchDetection() {
-        let same = PendingImport(sourceCurrencyCode: "INR")
-        #expect(!PendingImportsView.hasCurrencyMismatch(for: same, budgetCurrency: "INR"))
-        #expect(!PendingImportsView.hasCurrencyMismatch(for: same, budgetCurrency: "inr"))
+        let same = PendingImport(originBudgetId: "active-budget", sourceCurrencyCode: "INR")
+        #expect(!PendingImportsView.hasCurrencyMismatch(for: same, activeBudgetId: "active-budget", budgetCurrency: "INR"))
+        #expect(!PendingImportsView.hasCurrencyMismatch(for: same, activeBudgetId: "active-budget", budgetCurrency: "inr"))
 
-        let diff = PendingImport(sourceCurrencyCode: "INR")
-        #expect(PendingImportsView.hasCurrencyMismatch(for: diff, budgetCurrency: "USD"))
-        #expect(PendingImportsView.hasCurrencyMismatch(for: diff, budgetCurrency: ""))
+        let diff = PendingImport(originBudgetId: "active-budget", sourceCurrencyCode: "INR")
+        #expect(PendingImportsView.hasCurrencyMismatch(for: diff, activeBudgetId: "active-budget", budgetCurrency: "USD"))
+        #expect(PendingImportsView.hasCurrencyMismatch(for: diff, activeBudgetId: "active-budget", budgetCurrency: ""))
 
-        let noSource = PendingImport(sourceCurrencyCode: nil)
-        #expect(!PendingImportsView.hasCurrencyMismatch(for: noSource, budgetCurrency: "USD"))
+        let noSource = PendingImport(originBudgetId: "active-budget", sourceCurrencyCode: nil)
+        #expect(PendingImportsView.hasCurrencyMismatch(for: noSource, activeBudgetId: "active-budget", budgetCurrency: "USD"))
+
+        let crossBudgetSameCurrency = PendingImport(originBudgetId: "other-budget", sourceCurrencyCode: "USD")
+        #expect(!PendingImportsView.hasCurrencyMismatch(for: crossBudgetSameCurrency, activeBudgetId: "active-budget", budgetCurrency: "USD"))
     }
 
     @Test func emptyBudgetCurrencyShowsNone() {

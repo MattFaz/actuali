@@ -2464,11 +2464,6 @@ final class BudgetStore: ObservableObject {
             // refresh the data.
             await loadBankSyncAccounts()
 
-            if budgetId == DemoDataSeeder.budgetId,
-               PendingImportStore.shared.imports.filter({ $0.originBudgetId == budgetId }).isEmpty {
-                try? DemoDataSeeder.seedPendingImports()
-            }
-
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
             // So we need to load the local metadata to get the cloudFileId for lookup

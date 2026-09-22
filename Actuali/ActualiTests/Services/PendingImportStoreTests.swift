@@ -106,7 +106,7 @@ struct PendingImportStoreTests {
         try! store.add(other)
         try! store.add(legacy)
 
-        let visible = store.visibleImports()
+        let visible = store.visibleImports(activeBudgetId: "budget-a")
         #expect(Set(visible.map(\.id)) == Set([current.id, other.id, legacy.id]))
     }
 
