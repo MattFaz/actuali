@@ -36,8 +36,6 @@ final class SettingsNavigationUITests: XCTestCase {
             content = app.textFields["Setup token"]
         case "History":
             content = app.staticTexts["No History Yet"]
-        case "About":
-            content = app.staticTexts["Version"]
         case "Support":
             content = app.descendants(matching: .any)["support.discord"]
         default:
@@ -67,7 +65,6 @@ final class SettingsNavigationUITests: XCTestCase {
             "Rules",
             "Bank Sync (SimpleFIN & Wallet)",
             "History",
-            "About",
             "Support",
         ] {
             let row = rowOnHub(destination, in: app)

@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let privacyPolicyURL = URL(string: "https://actuali.mfazz.com/privacy")!
+
 struct SettingsItem {
     let title: String
     let systemImage: String
@@ -53,11 +55,6 @@ struct SettingsView: View {
     static var informationItems: [SettingsItem] {
         [
             SettingsItem(
-                title: String(localized: "About"),
-                systemImage: "info.circle",
-                destination: { AnyView(AboutSettingsView()) }
-            ),
-            SettingsItem(
                 title: String(localized: "Support"),
                 systemImage: "questionmark.circle",
                 destination: { AnyView(SupportView()) }
@@ -67,6 +64,14 @@ struct SettingsView: View {
 
     nonisolated static func titlePrecedes(_ lhs: String, _ rhs: String) -> Bool {
         lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+            ?? "Unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+            ?? "Unknown"
+        return "\(version) (\(build))"
     }
 
     var body: some View {
@@ -115,12 +120,21 @@ struct SettingsView: View {
                     Text(String(localized: "Before using a shortcut, set up Card & Account Mappings in More → Transactions & Automation so purchases route to the right account."))
                 }
                 Section(String(localized: "Information")) {
+                    Link(destination: privacyPolicyURL) {
+                        Label(String(localized: "Privacy Policy"), systemImage: "lock.shield")
+                    }
                     ForEach(Self.informationItems, id: \.title) { item in
                         NavigationLink {
                             item.destination()
                         } label: {
                             Label(item.title, systemImage: item.systemImage)
                         }
+                    }
+                    HStack {
+                        Text(String(localized: "Version"))
+                        Spacer()
+                        Text(appVersion)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
