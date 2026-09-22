@@ -48,6 +48,13 @@ enum PendingImportReviewRequirement: Hashable {
     case adoptIntoActiveBudget
     case confirmActiveBudgetCurrency(source: String?, budget: String)
 
+    var isCurrencyRequirement: Bool {
+        if case .confirmActiveBudgetCurrency = self {
+            return true
+        }
+        return false
+    }
+
     func prompt(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
         case .adoptIntoActiveBudget:
@@ -57,10 +64,11 @@ enum PendingImportReviewRequirement: Hashable {
                 bundle: bundle
             )
         case .confirmActiveBudgetCurrency(let source, let budget):
+            let budgetLabel = budget.isEmpty ? ReportStrings.text("None", locale: locale, bundle: bundle) : budget
             if let source {
                 return ReportStrings.format(
                     "I confirm that the numeric amount is in the active budget currency (%@); no conversion from %@ will be performed.",
-                    budget,
+                    budgetLabel,
                     source,
                     locale: locale,
                     bundle: bundle
@@ -68,7 +76,7 @@ enum PendingImportReviewRequirement: Hashable {
             }
             return ReportStrings.format(
                 "I confirm that the numeric amount should be treated as the active budget currency (%@); no conversion will be performed.",
-                budget,
+                budgetLabel,
                 locale: locale,
                 bundle: bundle
             )

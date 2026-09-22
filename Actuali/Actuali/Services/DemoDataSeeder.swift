@@ -49,6 +49,28 @@ enum DemoDataSeeder {
         logger.info("Demo data seeded successfully at \(dbPath.path, privacy: .public)")
     }
 
+    /// Seeds sample pending imports for exploring and testing the import review flow,
+    /// including currency mismatch warnings.
+    @MainActor
+    static func seedPendingImports(store: PendingImportStore = .shared, now: Date = Date()) throws {
+        let existing = store.imports.filter { $0.originBudgetId == budgetId }
+        for item in existing {
+            try store.remove(id: item.id)
+        }
+        let sample = PendingImport(
+            originBudgetId: budgetId,
+            amount: 156.00,
+            sourceCurrencyCode: "INR",
+            payee: "SWIGGY INST",
+            cardHint: "Apple Card",
+            date: now,
+            isIncome: false,
+            rawText: "Paid INR 156.00 with Apple Card at SWIGGY INST",
+            createdAt: now
+        )
+        try store.add(sample)
+    }
+
     // MARK: - Schema
 
     private static func createSchema(_ db: Database, tracking: Bool) throws {
