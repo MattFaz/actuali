@@ -62,6 +62,17 @@ struct SettingsView: View {
         ].sorted { Self.titlePrecedes($0.title, $1.title) }
     }
 
+    /// External links offered in the Information section of the More tab.
+    static var informationLinkItems: [SettingsLinkItem] {
+        [
+            SettingsLinkItem(
+                title: String(localized: "Privacy Policy"),
+                systemImage: "lock.shield",
+                url: privacyPolicyURL
+            ),
+        ]
+    }
+
     nonisolated static func titlePrecedes(_ lhs: String, _ rhs: String) -> Bool {
         lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
     }
@@ -120,10 +131,12 @@ struct SettingsView: View {
                     Text(String(localized: "Before using a shortcut, set up Card & Account Mappings in More → Transactions & Automation so purchases route to the right account."))
                 }
                 Section(String(localized: "Information")) {
-                    Link(destination: privacyPolicyURL) {
-                        Label(String(localized: "Privacy Policy"), systemImage: "lock.shield")
+                    ForEach(Self.informationLinkItems, id: \.title) { item in
+                        Link(destination: item.url) {
+                            Label(item.title, systemImage: item.systemImage)
+                        }
+                        .accessibilityIdentifier("settings.privacyPolicy")
                     }
-                    .accessibilityIdentifier("settings.privacyPolicy")
                     ForEach(Self.informationItems, id: \.title) { item in
                         NavigationLink {
                             item.destination()

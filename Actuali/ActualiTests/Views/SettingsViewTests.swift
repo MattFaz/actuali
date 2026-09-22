@@ -16,6 +16,13 @@ struct SettingsViewTests {
         #expect(SettingsView.informationItems.map(\.title) == ["Support"])
     }
 
+    @Test func informationLinkOpensPrivacyPolicy() {
+        let items = SettingsView.informationLinkItems
+
+        #expect(items.map(\.title) == ["Privacy Policy"])
+        #expect(items.first?.url.absoluteString == "https://actuali.mfazz.com/privacy")
+    }
+
     @Test @MainActor func shortcutSectionListsSharedWalletShortcut() {
         let items = SettingsView.shortcutItems
 
