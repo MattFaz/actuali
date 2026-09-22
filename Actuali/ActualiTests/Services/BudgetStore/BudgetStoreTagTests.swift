@@ -84,4 +84,23 @@ struct BudgetStoreTagTests {
         #expect(BudgetStoreError.tagCreationFailed("disk full").message(locale: enLocale, bundle: appBundle) == "Failed to create tag: disk full")
         #expect(BudgetStoreError.tagUpdateFailed("db error").message(locale: enLocale, bundle: appBundle) == "Failed to update tag: db error")
     }
+
+    @Test func tagSummaryDisplayCaptionRespectsInflowAndOutflow() {
+        let store = BudgetStore.previewInstance()
+        store.hideBalances = false
+        defer { UserDefaults.standard.removeObject(forKey: "hideBalances") }
+
+        let tag = Tag(id: "t1", tag: "zerodha")
+        // Inflows (deposits/transfers) have positive netAmount and totalSpent == 0
+        let inflowSummary = TagSummary(tag: tag, transactionCount: 2, totalSpent: 0, netAmount: 1_286_688)
+        #expect(store.displaySpentCaption(inflowSummary.netAmount) == "+\(store.formatCurrency(1_286_688))")
+
+        // Outflows (expenses) have negative netAmount
+        let outflowSummary = TagSummary(tag: tag, transactionCount: 6, totalSpent: 11_000_000, netAmount: -11_000_000)
+        #expect(store.displaySpentCaption(outflowSummary.netAmount) == store.formatCurrency(11_000_000))
+
+        // Zero activity shows 0
+        let zeroSummary = TagSummary(tag: tag, transactionCount: 0, totalSpent: 0, netAmount: 0)
+        #expect(store.displaySpentCaption(zeroSummary.netAmount) == store.formatCurrency(0))
+    }
 }

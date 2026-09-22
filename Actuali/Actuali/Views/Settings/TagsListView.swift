@@ -223,8 +223,9 @@ struct TagsListView: View {
 
             if let summary = summariesByTagId[tag.id] {
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(budgetStore.displaySpentCaption(summary.totalSpent))
+                    Text(budgetStore.displaySpentCaption(summary.netAmount))
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(summary.netAmount > 0 ? .green : .primary)
 
                     Text(String(format: String(localized: "%lld txs"), Int64(summary.transactionCount)))
                         .font(.caption2)
