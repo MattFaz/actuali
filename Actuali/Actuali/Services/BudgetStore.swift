@@ -986,6 +986,23 @@ final class BudgetStore: ObservableObject {
         await scheduleCreditCardDueNotifications()
     }
 
+    /// Loans whose account still exists and is open — what the Loans screen
+    /// lists. Closed and deleted accounts keep their stored config (reopening
+    /// restores the loan) but drop out, mirroring `activeCreditCardStatementDays`.
+    var activeLoanConfigs: [String: LoanConfig] {
+        let openAccountIds = Set(accounts.filter { !$0.closed }.map(\.id))
+        return loanConfigs.filter { openAccountIds.contains($0.key) }
+    }
+
+    /// The config to *display* for an account: nil unless it is a tracked loan
+    /// whose account still exists and is open. Every surface hides a closed
+    /// loan through this one predicate rather than each re-deciding, the same
+    /// contract `activeCreditCardCycle` holds for cards.
+    func activeLoanConfig(for accountId: String) -> LoanConfig? {
+        guard let account = accounts.first(where: { $0.id == accountId }), !account.closed else { return nil }
+        return loanConfigs[accountId]
+    }
+
     /// Writes a loan's config and persists it through SyncClient.
     /// A nil `config` stops tracking the account and clears everything stored for it.
     func setLoan(accountId: String, config: LoanConfig?) async {

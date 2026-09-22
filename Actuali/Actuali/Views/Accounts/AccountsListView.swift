@@ -30,6 +30,7 @@ struct AccountsListView: View {
     @State private var path = NavigationPath()
     @State private var showingAddAccount = false
     @State private var showingCreditCards = false
+    @State private var showingLoans = false
     @State private var showingBills = false
     @State private var showingPendingImports = false
     @StateObject private var pendingImportStore = PendingImportStore.shared
@@ -350,6 +351,11 @@ struct AccountsListView: View {
                             Label(String(localized: "Credit Cards"), systemImage: "creditcard")
                         }
                         Button {
+                            showingLoans = true
+                        } label: {
+                            Label(String(localized: "Loans"), systemImage: "banknote")
+                        }
+                        Button {
                             showingBills = true
                         } label: {
                             Label("Bills & Calendar", systemImage: "calendar")
@@ -408,6 +414,17 @@ struct AccountsListView: View {
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
                                 Button(String(localized: "common.done")) { showingCreditCards = false }
+                            }
+                        }
+                }
+            }
+            .sheet(isPresented: $showingLoans) {
+                NavigationStack {
+                    LoansSettingsView()
+                        .environmentObject(budgetStore)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button(String(localized: "common.done")) { showingLoans = false }
                             }
                         }
                 }

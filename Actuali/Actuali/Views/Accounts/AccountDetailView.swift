@@ -12,6 +12,7 @@ struct AccountDetailView: View {
     @State private var breakdown: AccountBalanceBreakdown?
     @State private var showingBreakdown = false
     @State private var showingBillingCycle = false
+    @State private var showingLoanDetails = false
     @State private var searchText = ""
     @State private var showingAddTransaction = false
     @State private var showingReconcile = false
@@ -444,6 +445,65 @@ struct AccountDetailView: View {
         }
     }
 
+    /// Payoff tracking for an account marked as a loan. Collapsed by default
+    /// like the billing cycle above, with the payoff date riding on the header
+    /// row — that's the part worth acting on. Read-only: the terms are edited
+    /// on the Loans screen.
+    @ViewBuilder private var loanSection: some View {
+        if let config = budgetStore.activeLoanConfig(for: account.id), searchQuery == nil {
+            Section {
+                let summary = config.payoffSummary(accountBalance: currentBalance)
+                let fraction = config.fractionPaidOff(accountBalance: currentBalance)
+
+                Button {
+                    withAnimation(AppAnimation.disclosure) { showingLoanDetails.toggle() }
+                } label: {
+                    VStack(spacing: 6) {
+                        HStack {
+                            Text(String(localized: "Loan"))
+                            Spacer()
+                            Text(summary)
+                                .fontWeight(.semibold)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(showingLoanDetails ? 180 : 0))
+                        }
+                        ProgressView(value: fraction)
+                            .tint(.accentColor)
+                        HStack {
+                            Text(LoanSummaryRow.progressText(fraction))
+                            Spacer()
+                            Text(String(format: String(localized: "of %@"), budgetStore.displayBalance(config.originalBalance)))
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("accountLoan.toggle")
+                .accessibilityLabel(String(format: String(localized: "Loan, %1$@, %2$@"), LoanSummaryRow.progressText(fraction), summary))
+                .accessibilityHint(showingLoanDetails
+                    ? String(localized: "Hides the loan details")
+                    : String(localized: "Shows the loan's rate, payment and remaining interest"))
+
+                if showingLoanDetails {
+                    breakdownRow(String(localized: "Original Balance"), amount: config.originalBalance)
+                    breakdownRow(String(localized: "Interest Rate"), value: LoanSummaryRow.percentText(config.annualRatePercent / 100))
+                    breakdownRow(String(localized: "Monthly Payment"), amount: config.minimumPayment)
+                    if let escrow = config.escrowOrFees {
+                        breakdownRow(String(localized: "Escrow or Fees"), amount: escrow)
+                    }
+                    if let schedule = config.schedule(accountBalance: currentBalance) {
+                        breakdownRow(String(localized: "Payments Remaining"), value: "\(schedule.paymentCount)")
+                        breakdownRow(String(localized: "Interest Remaining"), amount: schedule.totalInterest)
+                    }
+                }
+            }
+        }
+    }
+
     @ViewBuilder private var notesSection: some View {
         if Self.showsNote(
             supported: note.supported,
@@ -603,6 +663,7 @@ struct AccountDetailView: View {
         List {
             balanceSection
             billingCycleSection
+            loanSection
             notesSection.animation(AppAnimation.disclosure, value: hideNotes)
             transactionSection
         }

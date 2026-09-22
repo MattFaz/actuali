@@ -113,4 +113,36 @@ struct BudgetStoreLoanTests {
             #expect(cleared["acct_car"] == nil)
         }
     }
+
+    // MARK: - Active loans
+
+    /// A closed account keeps its stored config — reopening restores the loan —
+    /// but drops out of everything that displays loans, through one predicate
+    /// rather than each surface re-deciding.
+    @Test func closedAccountsKeepTheirConfigButDropOutOfTheActiveList() async throws {
+        try await withStore { store, _ in
+            store.accounts = [
+                Account(id: "acct_open", name: "Car", type: .debt, offBudget: true, closed: false, sortOrder: 0, balance: -100),
+                Account(id: "acct_closed", name: "Paid Car", type: .debt, offBudget: true, closed: true, sortOrder: 1, balance: 0),
+            ]
+            await store.setLoan(accountId: "acct_open", config: config)
+            await store.setLoan(accountId: "acct_closed", config: config)
+
+            #expect(store.loanConfigs.count == 2)
+            #expect(store.activeLoanConfigs.keys.sorted() == ["acct_open"])
+            #expect(store.activeLoanConfig(for: "acct_open") == config)
+            #expect(store.activeLoanConfig(for: "acct_closed") == nil)
+        }
+    }
+
+    @Test func activeLoanConfigIsNilForAnAccountThatNoLongerExists() async throws {
+        try await withStore { store, _ in
+            store.accounts = []
+            await store.setLoan(accountId: "acct_car", config: config)
+
+            #expect(store.loanConfigs["acct_car"] == config)
+            #expect(store.activeLoanConfig(for: "acct_car") == nil)
+            #expect(store.activeLoanConfigs.isEmpty)
+        }
+    }
 }

@@ -42,3 +42,69 @@ extension LoanConfig {
         escrowOrFees = try container.decodeIfPresent(Int.self, forKey: .escrowOrFees)
     }
 }
+
+// MARK: - Payoff progress
+
+extension LoanConfig {
+    /// What is still owed, as a positive number. Actual holds a loan balance
+    /// negative while money is owed, the same convention `availableCredit`
+    /// relies on for cards, so the sign is flipped here once rather than at
+    /// every call site.
+    nonisolated static func owed(accountBalance: Int) -> Int {
+        max(0, -accountBalance)
+    }
+
+    /// Principal repaid so far, in cents. Clamped at both ends: a balance that
+    /// grew past the original (an early loan where interest outruns payments)
+    /// reads as nothing repaid rather than a negative, and one overpaid past
+    /// zero can't exceed the original.
+    func paidOff(accountBalance: Int) -> Int {
+        min(originalBalance, max(0, originalBalance - Self.owed(accountBalance: accountBalance)))
+    }
+
+    /// Share of the original balance repaid, 0...1 — the "10.0% Paid Off" ring.
+    /// A zero original balance has no meaningful progress, so it reads as 0
+    /// rather than dividing by zero.
+    func fractionPaidOff(accountBalance: Int) -> Double {
+        guard originalBalance > 0 else { return 0 }
+        return Double(paidOff(accountBalance: accountBalance)) / Double(originalBalance)
+    }
+
+    /// The projection for this loan against `accountBalance`, at whichever
+    /// payment is in force. nil when the payment can't clear the balance —
+    /// see `LoanAmortization.schedule`.
+    func schedule(accountBalance: Int, from month: DayDate = .today()) -> LoanAmortization.Schedule? {
+        LoanAmortization.schedule(
+            balance: Self.owed(accountBalance: accountBalance),
+            annualRatePercent: annualRatePercent,
+            payment: minimumPayment,
+            escrowOrFees: escrowOrFees ?? 0,
+            startingMonth: month
+        )
+    }
+
+    /// One-line payoff summary, shared by the Loans list and the account
+    /// header so the two can't word the same fact differently — the same
+    /// contract `CreditCardCycle.dueSummary` holds for cards.
+    ///
+    /// A payment too small to cover the monthly interest has no payoff date to
+    /// show. That says so rather than showing nothing: a loan going backwards
+    /// is the case most worth surfacing.
+    func payoffSummary(
+        accountBalance: Int,
+        from month: DayDate = .today(),
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        guard Self.owed(accountBalance: accountBalance) > 0 else {
+            return String(localized: "Paid off")
+        }
+        guard let payoff = schedule(accountBalance: accountBalance, from: month)?.payoffDate else {
+            return String(localized: "Payment doesn't cover interest")
+        }
+        let label = AutomationSentences.monthLabel(
+            String(format: "%04d-%02d", payoff.year, payoff.month),
+            locale: locale
+        )
+        return String(format: String(localized: "Paid off %@"), label)
+    }
+}
