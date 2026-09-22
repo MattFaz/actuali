@@ -21,6 +21,32 @@ enum TagFilter {
         return tags
     }
 
+    private static let hashtagRegex = try! NSRegularExpression(pattern: "(?<!#)#([^\\s#]+)")
+
+    /// Extracts genuine `#hashtags` from a transaction note string.
+    /// Unlike `extractTags(_:)` which is for filter input where words can omit `#`,
+    /// this parses free-form notes where only tokens with a `#` prefix are tags.
+    /// Excludes `##hidden` prefixes per upstream Actual Budget convention.
+    /// E.g. "Team lunch #reimbursable #food" → ["#reimbursable", "#food"]
+    static func extractHashtags(from notes: String) -> [String] {
+        guard notes.contains("#") else { return [] }
+        let range = NSRange(notes.startIndex..., in: notes)
+        let matches = hashtagRegex.matches(in: notes, range: range)
+        var seen = Set<String>()
+        var result: [String] = []
+        for match in matches {
+            guard let tagRange = Range(match.range, in: notes) else { continue }
+            let rawTag = String(notes[tagRange])
+            let normalized = Tag.normalizeTagName(rawTag)
+            guard Tag.isValidTagName(normalized) else { continue }
+            let tagWithHash = "#" + normalized
+            if seen.insert(tagWithHash.lowercased()).inserted {
+                result.append(tagWithHash)
+            }
+        }
+        return result
+    }
+
     /// Matches upstream's tag pattern `(?<!#)tag([\s#]|$)`: the tag must not
     /// be preceded by an extra `#` (so `##hidden` tags never match) and must
     /// end at whitespace, another tag, or the end of the notes.

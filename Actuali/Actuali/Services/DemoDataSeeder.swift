@@ -261,6 +261,16 @@ enum DemoDataSeeder {
         """)
 
         try db.execute(sql: """
+        CREATE TABLE tags (
+            id TEXT PRIMARY KEY,
+            tag TEXT NOT NULL,
+            color TEXT,
+            description TEXT,
+            tombstone INTEGER DEFAULT 0
+        )
+        """)
+
+        try db.execute(sql: """
         CREATE TABLE __migrations__ (
             id INT PRIMARY KEY NOT NULL
         )
@@ -410,6 +420,12 @@ enum DemoDataSeeder {
             try insertPayee(db, id: UUID().uuidString, name: nil, transferAccountId: accountId)
         }
 
+        // --- Tags ---
+        try insertTag(db, id: "demo-tag-vacation", tag: "vacation", color: "#3b82f6", description: "Vacation and travel expenses")
+        try insertTag(db, id: "demo-tag-reimbursable", tag: "reimbursable", color: "#10b981", description: "Work expenses to submit for reimbursement")
+        try insertTag(db, id: "demo-tag-tax-deductible", tag: "tax-deductible", color: "#f59e0b", description: "Items for tax deduction")
+        try insertTag(db, id: "demo-tag-coffee", tag: "coffee", color: "#8b5cf6", description: "Coffee shops and cafes")
+
         // --- Transactions ---
         // We generate ~6 full months of history plus the current month-to-date so
         // the Reports (net worth, cash flow, spending vs. average) have real trends.
@@ -427,51 +443,51 @@ enum DemoDataSeeder {
             return (cc.year ?? year) * 10000 + (cc.month ?? month) * 100 + (cc.day ?? safeDay)
         }
 
-        var transactions: [(payee: String, category: String?, amount: Int, date: Int, account: String, cleared: Bool, startingBalance: Bool)] = []
+        var transactions: [(payee: String, category: String?, amount: Int, date: Int, account: String, cleared: Bool, startingBalance: Bool, notes: String?)] = []
 
         // Starting balances ~`historyMonths` months ago, before the recurring
         // flow. On-budget ones carry the Starting Balances income category
         // (Actual's behavior); the off-budget brokerage takes none.
         let openDate = ymd(monthsAgo: historyMonths, day: 1)
-        transactions.append((startingBalanceId, startingBalancesCategoryId, 1_050_000, openDate, allyId, true, true))
-        transactions.append((startingBalanceId, startingBalancesCategoryId, 280_000, openDate, chaseId, true, true))
-        transactions.append((startingBalanceId, nil, 4_200_000, openDate, vanguardId, true, true))
+        transactions.append((startingBalanceId, startingBalancesCategoryId, 1_050_000, openDate, allyId, true, true, nil))
+        transactions.append((startingBalanceId, startingBalancesCategoryId, 280_000, openDate, chaseId, true, true, nil))
+        transactions.append((startingBalanceId, nil, 4_200_000, openDate, vanguardId, true, true, nil))
 
-        // Per-month spending template: (payee, category, account, day, base amount in cents).
+        // Per-month spending template: (payee, category, account, day, base amount in cents, optional note with hashtags).
         // Slight per-month variation is applied deterministically below.
-        let monthly: [(payee: String, category: String?, account: String, day: Int, amount: Int)] = [
+        let monthly: [(payee: String, category: String?, account: String, day: Int, amount: Int, notes: String?)] = [
             // Income (positive)
-            (paycheckId, salaryId, chaseId, 1, 320_000),
-            (paycheckId, salaryId, chaseId, 15, 320_000),
+            (paycheckId, salaryId, chaseId, 1, 320_000, nil),
+            (paycheckId, salaryId, chaseId, 15, 320_000, nil),
             // Essentials
-            (landlordId, rentId, chaseId, 1, -185_000),
-            (pgeId, utilitiesId, chaseId, 7, -8500),
-            (comcastId, internetId, chaseId, 6, -7000),
-            (wholeFoodsId, groceriesId, chaseId, 3, -8750),
-            (traderJoesId, groceriesId, chaseId, 11, -5200),
-            (wholeFoodsId, groceriesId, chaseId, 19, -9600),
-            (traderJoesId, groceriesId, chaseId, 26, -6300),
+            (landlordId, rentId, chaseId, 1, -185_000, nil),
+            (pgeId, utilitiesId, chaseId, 7, -8500, nil),
+            (comcastId, internetId, chaseId, 6, -7000, nil),
+            (wholeFoodsId, groceriesId, chaseId, 3, -8750, nil),
+            (traderJoesId, groceriesId, chaseId, 11, -5200, nil),
+            (wholeFoodsId, groceriesId, chaseId, 19, -9600, nil),
+            (traderJoesId, groceriesId, chaseId, 26, -6300, nil),
             // Transport
-            (shellId, fuelId, chaseId, 9, -5500),
-            (shellId, fuelId, chaseId, 23, -6000),
-            (bartId, transitId, chaseId, 4, -2500),
-            (bartId, transitId, chaseId, 18, -2500),
+            (shellId, fuelId, chaseId, 9, -5500, nil),
+            (shellId, fuelId, chaseId, 23, -6000, "Road trip gas #vacation"),
+            (bartId, transitId, chaseId, 4, -2500, nil),
+            (bartId, transitId, chaseId, 18, -2500, nil),
             // Lifestyle (mostly Apple Card)
-            (chipotleId, diningId, appleCardId, 5, -1450),
-            (chipotleId, diningId, appleCardId, 16, -2500),
-            (chipotleId, diningId, appleCardId, 24, -1725),
-            (blueBottleId, coffeeId, appleCardId, 2, -575),
-            (blueBottleId, coffeeId, appleCardId, 8, -650),
-            (blueBottleId, coffeeId, appleCardId, 14, -700),
-            (blueBottleId, coffeeId, appleCardId, 21, -550),
-            (netflixId, entertainmentId, appleCardId, 11, -2299),
-            (amazonId, shoppingId, appleCardId, 6, -4599),
-            (amazonId, shoppingId, appleCardId, 20, -3199),
+            (chipotleId, diningId, appleCardId, 5, -1450, nil),
+            (chipotleId, diningId, appleCardId, 16, -2500, "Team lunch #reimbursable"),
+            (chipotleId, diningId, appleCardId, 24, -1725, nil),
+            (blueBottleId, coffeeId, appleCardId, 2, -575, "Morning latte #coffee"),
+            (blueBottleId, coffeeId, appleCardId, 8, -650, nil),
+            (blueBottleId, coffeeId, appleCardId, 14, -700, "Client coffee chat #coffee #reimbursable"),
+            (blueBottleId, coffeeId, appleCardId, 21, -550, nil),
+            (netflixId, entertainmentId, appleCardId, 11, -2299, nil),
+            (amazonId, shoppingId, appleCardId, 6, -4599, "Desk equipment #tax-deductible"),
+            (amazonId, shoppingId, appleCardId, 20, -3199, nil),
             // Health & wellness
-            (fitnessId, gymId, chaseId, 10, -3500),
-            (cvsId, pharmacyId, chaseId, 13, -1850),
+            (fitnessId, gymId, chaseId, 10, -3500, nil),
+            (cvsId, pharmacyId, chaseId, 13, -1850, nil),
             // Off-budget: monthly brokerage contribution
-            (vanguardPayeeId, nil, vanguardId, 2, 50000),
+            (vanguardPayeeId, nil, vanguardId, 2, 50000, nil),
         ]
         let pendingDayByAccount = Dictionary(grouping: monthly.filter { $0.day <= today }, by: \.account)
             .mapValues { $0.map(\.day).max() ?? 1 }
@@ -497,13 +513,13 @@ enum DemoDataSeeder {
                 let cleared = monthsAgo != 0 || item.day < pendingDayByAccount[item.account, default: item.day]
                 transactions.append((item.payee, item.category, varied,
                                      ymd(monthsAgo: monthsAgo, day: item.day),
-                                     item.account, cleared, false))
+                                     item.account, cleared, false, item.notes))
             }
 
             // Quarterly market gains on the brokerage account, so net worth trends up.
             if monthsAgo % 3 == 0 {
                 transactions.append((marketId, nil, 95000 + 5000 * (historyMonths - monthsAgo),
-                                     ymd(monthsAgo: monthsAgo, day: 28), vanguardId, true, false))
+                                     ymd(monthsAgo: monthsAgo, day: 28), vanguardId, true, false, nil))
             }
         }
 
@@ -521,7 +537,8 @@ enum DemoDataSeeder {
                 categoryId: t.category,
                 cleared: t.cleared,
                 startingBalance: t.startingBalance,
-                sortOrder: sortOrder
+                sortOrder: sortOrder,
+                notes: t.notes
             )
             sortOrder -= 1
         }
@@ -814,6 +831,19 @@ enum DemoDataSeeder {
         """, arguments: [id, id])
     }
 
+    private static func insertTag(
+        _ db: Database,
+        id: String,
+        tag: String,
+        color: String?,
+        description: String?
+    ) throws {
+        try db.execute(sql: """
+        INSERT INTO tags (id, tag, color, description, tombstone)
+        VALUES (?, ?, ?, ?, 0)
+        """, arguments: [id, tag, color, description])
+    }
+
     private static func insertTransaction(
         _ db: Database,
         id: String,
@@ -824,20 +854,22 @@ enum DemoDataSeeder {
         categoryId: String?,
         cleared: Bool,
         startingBalance: Bool,
-        sortOrder: Double
+        sortOrder: Double,
+        notes: String? = nil
     ) throws {
         try db.execute(sql: """
         INSERT INTO transactions (
             id, isParent, isChild, acct, category, amount, description, notes, date,
             starting_balance_flag, sort_order, tombstone, cleared, reconciled
         )
-        VALUES (?, 0, 0, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0)
+        VALUES (?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0)
         """, arguments: [
             id,
             accountId,
             categoryId,
             amount,
             payeeId,
+            notes,
             date,
             startingBalance ? 1 : 0,
             sortOrder,

@@ -8,15 +8,15 @@ struct SettingsViewTests {
             "Budget View", "Display", "Privacy", "Transactions & Automation",
         ])
         #expect(SettingsView.manageItems(includeRules: false).map(\.title) == [
-            "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "Scheduled Transactions",
+            "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "Scheduled Transactions", "Tags",
         ])
         #expect(SettingsView.manageItems(includeRules: true).map(\.title) == [
-            "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "Rules", "Scheduled Transactions",
+            "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "Rules", "Scheduled Transactions", "Tags",
         ])
         #expect(SettingsView.informationItems.map(\.title) == ["About", "Support"])
     }
 
-    @Test func shortcutSectionListsSharedWalletShortcut() {
+    @Test @MainActor func shortcutSectionListsSharedWalletShortcut() {
         let items = SettingsView.shortcutItems
 
         #expect(items.map(\.title) == ["Log Wallet Payments Automatically"])
