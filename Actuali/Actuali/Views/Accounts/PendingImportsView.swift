@@ -301,12 +301,27 @@ struct PendingImportsView: View {
                     budgetCurrency: budgetStore.currencyCode,
                     locale: locale
                 ) {
-                    Text(context)
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .background(.orange.opacity(0.12))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(context)
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if Self.hasCurrencyMismatch(
+                            for: item,
+                            budgetCurrency: budgetStore.currencyCode
+                        ) {
+                            NavigationLink {
+                                DisplaySettingsView()
+                            } label: {
+                                Label(String(localized: "Currency Settings"), systemImage: "gearshape")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .accessibilityIdentifier("pendingImport.currencySettings")
+                        }
+                    }
+                    .padding()
+                    .background(.orange.opacity(0.12))
                 }
                 AddTransactionView(
                     accountId: accountId,
@@ -339,6 +354,16 @@ struct PendingImportsView: View {
         }
     }
 
+    nonisolated static func hasCurrencyMismatch(
+        for item: PendingImport,
+        budgetCurrency: String
+    ) -> Bool {
+        guard let sourceCurrencyCode = item.sourceCurrencyCode else { return false }
+        let source = PendingImport.normalizedCurrencyCode(sourceCurrencyCode)
+        let budget = PendingImport.normalizedCurrencyCode(budgetCurrency)
+        return source != budget
+    }
+
     nonisolated static func currencyContext(
         for item: PendingImport,
         activeBudgetId: String?,
@@ -362,9 +387,11 @@ struct PendingImportsView: View {
                     bundle: bundle
                 )
             }
+            let budget = PendingImport.normalizedCurrencyCode(budgetCurrency)
+            let budgetLabel = budget.isEmpty ? ReportStrings.text("None", locale: locale, bundle: bundle) : budget
             return ReportStrings.format(
                 "Currency was not identified. Active budget: %@. Review and confirm before saving.",
-                PendingImport.normalizedCurrencyCode(budgetCurrency),
+                budgetLabel,
                 locale: locale,
                 bundle: bundle
             )
@@ -372,8 +399,16 @@ struct PendingImportsView: View {
         let source = PendingImport.normalizedCurrencyCode(sourceCurrencyCode)
         let budget = PendingImport.normalizedCurrencyCode(budgetCurrency)
         guard source != budget else { return nil }
+        if budget.isEmpty {
+            return ReportStrings.format(
+                "This import is in %@, but the active budget has no currency set. No currency conversion will be performed.",
+                source,
+                locale: locale,
+                bundle: bundle
+            )
+        }
         return ReportStrings.format(
-            "Source currency: %@. Active budget: %@. Review and confirm before saving.",
+            "This import is in %@, but the active budget uses %@. No currency conversion will be performed.",
             source,
             budget,
             locale: locale,

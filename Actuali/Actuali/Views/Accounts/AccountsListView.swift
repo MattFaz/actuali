@@ -34,6 +34,7 @@ struct AccountsListView: View {
     @State private var showingDeposits = false
     @State private var showingBills = false
     @State private var showingPendingImports = false
+    @State private var hasCheckedDemoPendingImports = false
     @StateObject private var pendingImportStore = PendingImportStore.shared
     /// Split layout only. Starts on All Accounts so the detail column has
     /// something in it at launch instead of an empty pane.
@@ -471,6 +472,7 @@ struct AccountsListView: View {
             .onAppear {
                 consumePendingAllAccountsNavigation()
                 consumePendingAccountNavigation()
+                seedDemoPendingImportsIfNeeded()
             }
             .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
                 if pending {
@@ -547,6 +549,15 @@ struct AccountsListView: View {
             selection = .account(account.id)
         } else {
             path = NavigationPath([account])
+        }
+    }
+
+    private func seedDemoPendingImportsIfNeeded() {
+        guard !hasCheckedDemoPendingImports else { return }
+        hasCheckedDemoPendingImports = true
+        if budgetStore.currentBudgetId == DemoDataSeeder.budgetId,
+           pendingImportStore.imports.filter({ $0.originBudgetId == DemoDataSeeder.budgetId }).isEmpty {
+            try? DemoDataSeeder.seedPendingImports()
         }
     }
 }

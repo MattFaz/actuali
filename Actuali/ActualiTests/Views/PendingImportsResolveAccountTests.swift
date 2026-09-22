@@ -43,7 +43,7 @@ struct PendingImportsResolveAccountTests {
             budgetCurrency: "USD",
             locale: locale,
             bundle: appBundle
-        ) == "Devise source : EUR. Budget actif : USD. Vérifiez et confirmez avant d’enregistrer.")
+        ) == "Cette importation est en EUR, mais le budget actif utilise USD. Aucune conversion de devise ne sera effectuée.")
         #expect(PendingImportsView.unknownPayee(locale: locale, bundle: appBundle)
             == "Bénéficiaire inconnu")
         #expect(PendingImportsView.cardLabel("1234", locale: locale, bundle: appBundle)
@@ -294,5 +294,39 @@ struct PendingImportsResolveAccountTests {
             == .failure(count: 2))
         #expect(PendingImportsView.bulkApprovalOutcome(reviewItem: nil, failedCount: 0)
             == .none)
+    }
+
+    @Test func currencyMismatchDetection() {
+        let same = PendingImport(sourceCurrencyCode: "INR")
+        #expect(!PendingImportsView.hasCurrencyMismatch(for: same, budgetCurrency: "INR"))
+        #expect(!PendingImportsView.hasCurrencyMismatch(for: same, budgetCurrency: "inr"))
+
+        let diff = PendingImport(sourceCurrencyCode: "INR")
+        #expect(PendingImportsView.hasCurrencyMismatch(for: diff, budgetCurrency: "USD"))
+        #expect(PendingImportsView.hasCurrencyMismatch(for: diff, budgetCurrency: ""))
+
+        let noSource = PendingImport(sourceCurrencyCode: nil)
+        #expect(!PendingImportsView.hasCurrencyMismatch(for: noSource, budgetCurrency: "USD"))
+    }
+
+    @Test func emptyBudgetCurrencyShowsNone() {
+        let locale = Locale(identifier: "en_US")
+        let item = PendingImport(originBudgetId: "active-budget", sourceCurrencyCode: "INR")
+        let context = PendingImportsView.currencyContext(
+            for: item,
+            activeBudgetId: "active-budget",
+            budgetCurrency: "",
+            locale: locale,
+            bundle: appBundle
+        )
+        #expect(context == "This import is in INR, but the active budget has no currency set. No currency conversion will be performed.")
+
+        let req = PendingImportReviewRequirement.confirmActiveBudgetCurrency(source: "INR", budget: "")
+        #expect(req.isCurrencyRequirement)
+        #expect(req.prompt(locale: locale, bundle: appBundle).contains("(None)"))
+        #expect(req.prompt(locale: locale, bundle: appBundle).contains("INR"))
+
+        let adoptReq = PendingImportReviewRequirement.adoptIntoActiveBudget
+        #expect(!adoptReq.isCurrencyRequirement)
     }
 }

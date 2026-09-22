@@ -631,6 +631,15 @@ struct AddTransactionView: View {
                                 )
                             )
                         }
+                    } footer: {
+                        if reviewRequirements.contains(where: \.isCurrencyRequirement) {
+                            NavigationLink {
+                                DisplaySettingsView()
+                            } label: {
+                                Label(String(localized: "Currency Settings"), systemImage: "gearshape")
+                            }
+                            .accessibilityIdentifier("addTransaction.currencySettings")
+                        }
                     }
                 }
 

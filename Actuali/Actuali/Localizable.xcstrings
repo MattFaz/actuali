@@ -1063,6 +1063,54 @@
         }
       }
     },
+    "Currency Settings" : {
+      "comment" : "Button linking to display currency settings from transaction currency warning",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Währungseinstellungen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Currency Settings"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes de moneda"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paramètres de devise"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impostazioni valuta"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valuta-instellingen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurações de moeda"
+          }
+        }
+      }
+    },
     "Deposit Details" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1810,6 +1858,150 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Oculta os detalhes do empréstimo"
+          }
+        }
+      }
+    },
+    "I confirm this amount should be saved as %@ without conversion from %@." : {
+      "comment" : "Confirmation toggle when saving an import in another currency into budget currency",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ich bestätige, dass dieser Betrag als %@ ohne Umrechnung aus %@ gespeichert werden soll."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I confirm this amount should be saved as %@ without conversion from %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este importe se debe guardar como %@ sin conversión de %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je confirme que ce montant doit être enregistré en %@ sans conversion depuis %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confermo che questo importo deve essere salvato come %@ senza conversione da %@."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ik bevestig dat dit bedrag als %@ zonder conversie uit %@ moet worden opgeslagen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este valor deve ser salvo como %@ sem conversão de %@."
+          }
+        }
+      }
+    },
+    "I confirm this amount should be saved directly without conversion from %@." : {
+      "comment" : "Confirmation toggle when saving an import without conversion into an unconfigured budget currency",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ich bestätige, dass dieser Betrag direkt ohne Umrechnung aus %@ gespeichert werden soll."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I confirm this amount should be saved directly without conversion from %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este importe se debe guardar directamente sin conversión de %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je confirme que ce montant doit être enregistré directement sans conversion depuis %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confermo che questo importo deve essere salvato direttamente senza conversione da %@."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ik bevestig dat dit bedrag direct zonder conversie uit %@ moet worden opgeslagen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este valor deve ser salvo diretamente sem conversão de %@."
+          }
+        }
+      }
+    },
+    "I confirm this amount should be saved without currency conversion." : {
+      "comment" : "Confirmation toggle when saving an import without identified currency",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ich bestätige, dass dieser Betrag ohne Währungsumrechnung gespeichert werden soll."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I confirm this amount should be saved without currency conversion."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este importe se debe guardar sin conversión de moneda."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je confirme que ce montant doit être enregistré sans conversion de devise."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confermo che questo importo deve essere salvato senza conversione di valuta."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ik bevestig dat dit bedrag zonder valutaconversie moet worden opgeslagen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este valor deve ser salvo sem conversão de moeda."
           }
         }
       }
@@ -4347,6 +4539,102 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "O pagamento inteiro é atribuído a esta categoria, enquanto o saldo do empréstimo cai apenas pelo principal."
+          }
+        }
+      }
+    },
+    "This import is in %@, but the active budget has no currency set. No currency conversion will be performed." : {
+      "comment" : "Pending import banner when active budget has no currency configured",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Import ist in %@, aber für das aktive Budget ist keine Währung festgelegt. Es wird keine Währungsumrechnung durchgeführt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This import is in %@, but the active budget has no currency set. No currency conversion will be performed."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta importación está en %@, pero el presupuesto activo no tiene una moneda configurada. No se realizará ninguna conversión de moneda."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette importation est en %@, mais le budget actif n'a pas de devise configurée. Aucune conversion de devise ne sera effectuée."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa importazione è in %@, ma il budget attivo non ha una valuta impostata. Non verrà eseguita alcuna conversione di valuta."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze import staat in %@, maar voor het actieve budget is geen valuta ingesteld. Er wordt geen valutaconversie uitgevoerd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta importação está em %@, mas o orçamento ativo não tem moeda definida. Nenhuma conversão de moeda será realizada."
+          }
+        }
+      }
+    },
+    "This import is in %@, but the active budget uses %@. No currency conversion will be performed." : {
+      "comment" : "Pending import banner when active budget uses a different currency",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Import ist in %@, aber das aktive Budget verwendet %@. Es wird keine Währungsumrechnung durchgeführt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This import is in %@, but the active budget uses %@. No currency conversion will be performed."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta importación está en %@, pero el presupuesto activo usa %@. No se realizará ninguna conversión de moneda."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette importation est en %@, mais le budget actif utilise %@. Aucune conversion de devise ne sera effectuée."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa importazione è in %@, ma il budget attivo usa %@. Non verrà eseguita alcuna conversione di valuta."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze import staat in %@, maar het actieve budget gebruikt %@. Er wordt geen valutaconversie uitgevoerd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta importação está em %@, mas o orçamento ativo usa %@. Nenhuma conversão de moeda será realizada."
           }
         }
       }
