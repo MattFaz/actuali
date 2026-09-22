@@ -556,4 +556,16 @@ struct CreditCardCycleTests {
         #expect(CreditCardCycle.pendingStatementDue(in: [pastDue], today: today) == nil)
         #expect(CreditCardCycle.pendingStatementDue(in: [], today: today) == nil)
     }
+
+    @Test func billAmountTextLabelsOwedStatementsWithASpace() {
+        // The space after the label is part of the rule — a Text+Text
+        // concatenation once rendered this as "Due$342.18" (GH #535).
+        #expect(CreditCardCycle.billAmountText(dueLabel: "Due", amount: "$342.18", isPaid: false) == "Due $342.18")
+        #expect(CreditCardCycle.billAmountText(dueLabel: "Due", amount: "-$500.00", isPaid: true) == "-$500.00")
+    }
+
+    @Test func duePillTextJoinsAmountWhileOwed() {
+        #expect(CreditCardCycle.duePillText(amount: "$342.18", summary: "Due in 27d", remainingDue: 34218) == "$342.18 · Due in 27d")
+        #expect(CreditCardCycle.duePillText(amount: "$0.00", summary: "Due in 27d", remainingDue: 0) == "Due in 27d")
+    }
 }

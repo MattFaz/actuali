@@ -231,4 +231,18 @@ struct CreditCardCycle: Equatable, Hashable {
             ? dueSummary(for: today, dueDate: dueDate)
             : String(format: String(localized: "Due in %lldd"), Int64(days))
     }
+
+    /// Amount line for a credit card row in the bills list: "Due $342.18" while
+    /// the statement is owed, the plain amount once paid — the row's status text
+    /// already says "Paid" (GH #535). The label is a parameter so tests pin the
+    /// spacing without locale setup.
+    static func billAmountText(dueLabel: String, amount: String, isPaid: Bool) -> String {
+        isPaid ? amount : "\(dueLabel) \(amount)"
+    }
+
+    /// Cards-row due pill: "$342.18 · Due in 27d". A settled statement (zero
+    /// remaining due) shows the summary alone (GH #535).
+    static func duePillText(amount: String, summary: String, remainingDue: Int) -> String {
+        remainingDue > 0 ? "\(amount) · \(summary)" : summary
+    }
 }

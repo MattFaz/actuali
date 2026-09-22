@@ -311,15 +311,21 @@ struct CreditCardCycleRow: View {
         statementDue?.isPaid ?? false
     }
 
-    /// "Paid", or the remaining due joined to the date ("$342.18 · Due in 27d")
-    /// so the row's balance can't be mistaken for the bill (GH #535).
-    private var duePillText: String {
+    /// Pill text and its VoiceOver twin. The short form drives the pill; the
+    /// long form keeps the calendar date the pill drops (GH #535).
+    private func dueText(short: Bool) -> String {
         if isPaid {
             return String(localized: "Paid")
         }
-        let summary = cycle.dueShortSummary(dueDate: statementDue?.dueDate)
-        guard let due = statementDue, due.remainingDue > 0 else { return summary }
-        return "\(budgetStore.displayBalance(due.remainingDue)) · \(summary)"
+        let summary = short
+            ? cycle.dueShortSummary(dueDate: statementDue?.dueDate)
+            : cycle.dueSummary(dueDate: statementDue?.dueDate)
+        guard let due = statementDue else { return summary }
+        return CreditCardCycle.duePillText(
+            amount: budgetStore.displayBalance(due.remainingDue),
+            summary: summary,
+            remainingDue: due.remainingDue
+        )
     }
 
     var body: some View {
@@ -341,7 +347,7 @@ struct CreditCardCycleRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(duePillText)
+                Text(dueText(short: true))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 7)
@@ -354,10 +360,10 @@ struct CreditCardCycleRow: View {
         }
         .padding(.vertical, 2)
         // One element per card, worded like AccountDetailView's billing cycle
-        // header — the long `dueSummary` carries the date the pill drops.
+        // header — the long form carries the date the pill drops.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), duePillText)
+            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), dueText(short: false))
         )
         // dataVersion is in the key so a transaction landing while this screen
         // is open refreshes the spend, the way AccountDetailView's reload does.
