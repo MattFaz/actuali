@@ -7,7 +7,7 @@ struct TransactionRunningBalanceTests {
         let rows = [
             transaction(id: "1", amount: -3000),
             transaction(id: "2", amount: 5000),
-            transaction(id: "3", amount: 8000)
+            transaction(id: "3", amount: 8000),
         ]
 
         #expect(rows.withRunningBalances(startingAt: 10000).map(\.runningBalance) == [10000, 13000, 8000])
@@ -17,7 +17,7 @@ struct TransactionRunningBalanceTests {
         Transaction(
             id: id,
             accountId: "account",
-            date: 20260912,
+            date: 20_260_912,
             amount: amount,
             payeeId: nil,
             payeeName: nil,
