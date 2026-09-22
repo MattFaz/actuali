@@ -123,6 +123,7 @@ struct SettingsView: View {
                     Link(destination: privacyPolicyURL) {
                         Label(String(localized: "Privacy Policy"), systemImage: "lock.shield")
                     }
+                    .accessibilityIdentifier("settings.privacyPolicy")
                     ForEach(Self.informationItems, id: \.title) { item in
                         NavigationLink {
                             item.destination()
