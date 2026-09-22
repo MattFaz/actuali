@@ -102,6 +102,73 @@ struct SyncClientTagTests {
         }
     }
 
+    @Test func createTagRevivesTombstonedTagWithSameName() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+
+        let original = try await syncClient.createTag(name: "coffee", color: "#ff0000")
+        try await syncClient.deleteTag(id: original.id)
+        let revived = try await syncClient.createTag(name: "coffee", color: "#00ff00")
+
+        #expect(revived.id == original.id)
+        let originalId = original.id
+        try await database.dbQueueForTesting.read { db in
+            // A second row would collide with the server's UNIQUE(tags.tag).
+            let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM tags WHERE tag = 'coffee'")
+            #expect(count == 1)
+            let row = try Row.fetchOne(db, sql: "SELECT * FROM tags WHERE id = ?", arguments: [originalId])
+            #expect(row?["tombstone"] == 0)
+            #expect(row?["color"] == "#00ff00")
+        }
+    }
+
+    @Test func renameTagOntoTombstonedNameThrows() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+
+        let alpha = try await syncClient.createTag(name: "alpha")
+        let beta = try await syncClient.createTag(name: "beta")
+        try await syncClient.deleteTag(id: beta.id)
+
+        await #expect(throws: SyncError.tagAlreadyExists) {
+            try await syncClient.renameTag(id: alpha.id, oldName: "alpha", newName: "beta")
+        }
+
+        let alphaId = alpha.id
+        try await database.dbQueueForTesting.read { db in
+            let row = try Row.fetchOne(db, sql: "SELECT tag FROM tags WHERE id = ?", arguments: [alphaId])
+            #expect(row?["tag"] == "alpha")
+        }
+    }
+
+    @Test func updateTagSkipsUnchangedFields() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+
+        let tag = try await syncClient.createTag(name: "metrics")
+        let tagId = tag.id
+
+        let before = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'tags' AND row = ?", arguments: [tagId]) ?? 0
+        }
+        try await syncClient.updateTag(tag) // no field changed
+        let afterNoop = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'tags' AND row = ?", arguments: [tagId]) ?? 0
+        }
+        #expect(afterNoop == before)
+
+        var changed = tag
+        changed.color = "#123456"
+        try await syncClient.updateTag(changed)
+        let afterChange = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'tags' AND row = ?", arguments: [tagId]) ?? 0
+        }
+        #expect(afterChange == before + 1)
+    }
+
     @Test func renameTagUpdatesTagAndRewritesTransactions() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }

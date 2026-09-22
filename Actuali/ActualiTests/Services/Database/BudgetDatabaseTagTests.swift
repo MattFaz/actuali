@@ -192,6 +192,23 @@ struct BudgetDatabaseTagTests {
         #expect(!discovered.contains("existing"))
     }
 
+    @Test func discoverTagsSkipsOnlyActiveNames() async throws {
+        let (database, path) = try makeDatabase(seedSQL: """
+        INSERT INTO tags (id, tag) VALUES ('t1', 'existing');
+        INSERT INTO tags (id, tag, tombstone) VALUES ('t2', 'archived', 1);
+        INSERT INTO transactions (id, acct, amount, notes, date) VALUES
+        ('tx-1', 'acct-1', -1000, 'Lunch #archived #fresh', 20260101);
+        """)
+        defer { cleanup(path) }
+
+        let discovered = try await database.discoverTags()
+        // Tombstoned names stay discoverable: importing reactivates the old
+        // row instead of inserting a duplicate the server's UNIQUE would reject.
+        #expect(discovered.contains("archived"))
+        #expect(discovered.contains("fresh"))
+        #expect(!discovered.contains("existing"))
+    }
+
     @Test func aggregatesTagSummaries() async throws {
         let (database, path) = try makeDatabase(seedSQL: """
         INSERT INTO tags (id, tag) VALUES ('t1', 'food'), ('t2', 'travel');

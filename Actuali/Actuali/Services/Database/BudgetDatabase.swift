@@ -5198,20 +5198,18 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Tags
 
-    func fetchTags(includeHidden: Bool = true) async throws -> [Tag] {
+    /// Every tag row, tombstoned included. The server's UNIQUE(tags.tag)
+    /// spans tombstones (upstream getAllTags() returns them too), so name
+    /// checks must run against all rows, not just active ones.
+    func allTags() async throws -> [Tag] {
         try await dbQueue.read { db in
             guard try db.tableExists("tags") else { return [] }
             let hasHidden = try db.columns(in: "tags").contains { $0.name == "hidden" }
-            var sql = """
+            return try Row.fetchAll(db, sql: """
             SELECT id, tag, color, description, \(hasHidden ? "hidden" : "0 AS hidden"), tombstone
             FROM tags
-            WHERE (tombstone = 0 OR tombstone IS NULL)
-            """
-            if !includeHidden, hasHidden {
-                sql += " AND (hidden = 0 OR hidden IS NULL)"
-            }
-            sql += " ORDER BY tag COLLATE NOCASE ASC"
-            return try Row.fetchAll(db, sql: sql).map { row in
+            ORDER BY tag COLLATE NOCASE ASC
+            """).map { row in
                 Tag(
                     id: row["id"],
                     tag: row["tag"] ?? "",
@@ -5222,6 +5220,10 @@ final class BudgetDatabase: Sendable {
                 )
             }
         }
+    }
+
+    func fetchTags(includeHidden: Bool = true) async throws -> [Tag] {
+        try await allTags().filter { !$0.tombstone && (includeHidden || !$0.hidden) }
     }
 
     func insertTag(_ tag: Tag) throws {
@@ -5308,13 +5310,15 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    /// Discovers all unique tag names from transaction notes that aren't yet
-    /// present in the `tags` table (active or tombstoned).
+    /// Discovers all unique tag names from transaction notes that no active
+    /// tag already uses. Tombstoned names stay discoverable — importing them
+    /// reactivates the old row (upstream createTag parity) instead of
+    /// inserting a duplicate the server's UNIQUE(tags.tag) would reject.
     func discoverTags() async throws -> [String] {
         try await dbQueue.read { db in
             guard try db.tableExists("tags") else { return [] }
             let existingTags: Set<String> = try Set(
-                String.fetchAll(db, sql: "SELECT LOWER(tag) FROM tags WHERE tag IS NOT NULL")
+                String.fetchAll(db, sql: "SELECT LOWER(tag) FROM tags WHERE tag IS NOT NULL AND (tombstone = 0 OR tombstone IS NULL)")
             )
             let noteRows = try String.fetchAll(db, sql: """
             SELECT notes FROM transactions

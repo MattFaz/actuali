@@ -44,7 +44,6 @@ struct TagTests {
             tombstone: false
         )
         let fields = tag.syncableFields
-        #expect(fields["id"] as? String == "tag-1")
         #expect(fields["tag"] as? String == "work")
         #expect(fields["color"] as? String == "#3b82f6")
         #expect(fields["description"] as? String == "Work expenses")

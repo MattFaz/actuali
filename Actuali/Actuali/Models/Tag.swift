@@ -35,7 +35,8 @@ struct Tag: Identifiable, Equatable, Hashable, Sendable, CRDTSyncable {
 
     var syncableFields: [String: Any?] {
         [
-            "id": id,
+            // Upstream filters `id` out of CRDT messages (db/index.ts), like
+            // every other model here — the row id rides in the message header.
             "tag": tag,
             "color": color,
             "description": description,
