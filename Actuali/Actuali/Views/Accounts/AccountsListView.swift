@@ -284,6 +284,8 @@ struct AccountsListView: View {
 
     private var allAccountsRow: some View {
         AccountsSummaryCard(totalBalance: totalBalance, monthTotals: monthSummary)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("accounts.topBox")
     }
 
     @ViewBuilder

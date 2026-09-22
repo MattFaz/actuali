@@ -41,9 +41,8 @@ enum BudgetCategoryAccessibility {
     }
 }
 
-/// The horizontal inset shared by the summary boxes at the top of the budget
-/// and accounts views. Keeping this in one place prevents their edges from
-/// drifting apart as either screen's list chrome changes.
+/// Insets applied to the two top summary surfaces. UI coverage checks their
+/// rendered frames because List adds its own row and section insets.
 enum TopBoxLayout {
     static let horizontalContentMargin: CGFloat = 4
     static let verticalContentMargin: CGFloat = 8
@@ -51,7 +50,7 @@ enum TopBoxLayout {
 
 /// Style-specific list metrics live behind one exhaustive switch so adding a
 /// display style cannot silently inherit another style's spacing or background.
-struct BudgetListMetrics {
+private struct BudgetListMetrics {
     let sectionSpacing: ListSectionSpacing
     let horizontalContentMargin: CGFloat
     let topContentMargin: CGFloat
@@ -62,7 +61,9 @@ struct BudgetListMetrics {
         case .clean:
             sectionSpacing = .default
             horizontalContentMargin = TopBoxLayout.horizontalContentMargin
-            topContentMargin = TopBoxLayout.verticalContentMargin + 12
+            // Tuned in GH #165. Independent of the navigation-bar gutter
+            // above the summary, so changing that gap doesn't move the table.
+            topContentMargin = 20
             showsTopFade = true
         case .compact:
             sectionSpacing = .custom(0)
@@ -697,6 +698,8 @@ struct BudgetView: View {
                                 RoundedRectangle(cornerRadius: 24)
                                     .fill(Color(.secondarySystemGroupedBackground))
                             )
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("budget.topBox")
                     case .compact:
                         CompactBudgetSummary(
                             budget: budget,
@@ -704,7 +707,10 @@ struct BudgetView: View {
                         )
                     }
                 }
-                .padding(.horizontal, isCompact ? 0 : 4)
+                .padding(
+                    .horizontal,
+                    isCompact ? 0 : TopBoxLayout.horizontalContentMargin
+                )
                 .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
                 .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }

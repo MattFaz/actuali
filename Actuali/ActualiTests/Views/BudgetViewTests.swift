@@ -29,22 +29,6 @@ struct BudgetViewTests {
         #expect(ids == ["essentials", "lifestyle"])
     }
 
-    @Test func cleanBudgetAndAccountsTopBoxesUseTheSameHorizontalPadding() {
-        #expect(
-            BudgetListMetrics(style: .clean).horizontalContentMargin
-                == TopBoxLayout.horizontalContentMargin
-        )
-        #expect(TopBoxLayout.horizontalContentMargin == 4)
-    }
-
-    @Test func cleanBudgetAndAccountsTopBoxesUseTheSameVerticalSpacing() {
-        #expect(TopBoxLayout.verticalContentMargin == 8)
-        #expect(
-            BudgetListMetrics(style: .clean).topContentMargin
-                == TopBoxLayout.verticalContentMargin + 12
-        )
-    }
-
     @Test func monthPickerTitleUsesRequestedLocale() {
         #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "en_US")) == "September 2026")
         #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "fr_FR")) == "septembre 2026")
