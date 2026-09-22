@@ -34,8 +34,12 @@ struct AccountsListView: View {
     @State private var showingDeposits = false
     @State private var showingBills = false
     @State private var showingPendingImports = false
-    @State private var hasCheckedDemoPendingImports = false
     @StateObject private var pendingImportStore = PendingImportStore.shared
+
+    private var pendingImportsCount: Int {
+        pendingImportStore.visibleImports(activeBudgetId: budgetStore.currentBudgetId).count
+    }
+
     /// Split layout only. Starts on All Accounts so the detail column has
     /// something in it at launch instead of an empty pane.
     @State private var selection: AccountSelection? = .allAccounts
@@ -397,14 +401,14 @@ struct AccountsListView: View {
                     .accessibilityLabel(String(localized: "Accounts options"))
                     .accessibilityHint(String(localized: "Account list display options"))
                 }
-                if pendingImportStore.count > 0 {
+                if pendingImportsCount > 0 {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             showingPendingImports = true
                         } label: {
                             Image(systemName: "tray.and.arrow.down")
                                 .overlay(alignment: .topTrailing) {
-                                    Text("\(pendingImportStore.count)")
+                                    Text("\(pendingImportsCount)")
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(.white)
                                         .padding(3)
@@ -413,7 +417,7 @@ struct AccountsListView: View {
                                 }
                         }
                         .accessibilityLabel("Pending imports")
-                        .accessibilityValue(String(localized: "\(pendingImportStore.count) pending"))
+                        .accessibilityValue(String(localized: "\(pendingImportsCount) pending"))
                     }
                 }
             }
@@ -472,7 +476,6 @@ struct AccountsListView: View {
             .onAppear {
                 consumePendingAllAccountsNavigation()
                 consumePendingAccountNavigation()
-                seedDemoPendingImportsIfNeeded()
             }
             .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
                 if pending {
@@ -549,15 +552,6 @@ struct AccountsListView: View {
             selection = .account(account.id)
         } else {
             path = NavigationPath([account])
-        }
-    }
-
-    private func seedDemoPendingImportsIfNeeded() {
-        guard !hasCheckedDemoPendingImports else { return }
-        hasCheckedDemoPendingImports = true
-        if budgetStore.currentBudgetId == DemoDataSeeder.budgetId,
-           pendingImportStore.imports.filter({ $0.originBudgetId == DemoDataSeeder.budgetId }).isEmpty {
-            try? DemoDataSeeder.seedPendingImports()
         }
     }
 }
