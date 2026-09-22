@@ -522,4 +522,38 @@ struct CreditCardCycleTests {
             balance: 0
         )
     }
+
+    // MARK: - Pending Statement Selection (GH #535)
+
+    private func statement(balance: Int, payments: Int, remaining: Int, year: Int, month: Int, day: Int) -> CreditCardCycle.StatementDue {
+        CreditCardCycle.StatementDue(
+            statementBalance: balance,
+            paymentsSince: payments,
+            remainingDue: remaining,
+            dueDate: DayDate(year: year, month: month, day: day)
+        )
+    }
+
+    @Test func pendingStatementDueSkipsPaidStatements() {
+        let today = DayDate(year: 2026, month: 9, day: 21)
+        let paid = statement(balance: 50000, payments: 50000, remaining: 0, year: 2026, month: 9, day: 30)
+        let unpaid = statement(balance: 30000, payments: 0, remaining: 30000, year: 2026, month: 10, day: 15)
+
+        #expect(CreditCardCycle.pendingStatementDue(in: [paid, unpaid], today: today) == unpaid)
+    }
+
+    @Test func pendingStatementDueFallsBackToPaidWhenNothingOwed() {
+        let today = DayDate(year: 2026, month: 9, day: 21)
+        let paid = statement(balance: 50000, payments: 50000, remaining: 0, year: 2026, month: 9, day: 30)
+
+        #expect(CreditCardCycle.pendingStatementDue(in: [paid], today: today) == paid)
+    }
+
+    @Test func pendingStatementDueIgnoresPastDueAndEmpty() {
+        let today = DayDate(year: 2026, month: 9, day: 21)
+        let pastDue = statement(balance: 10000, payments: 0, remaining: 10000, year: 2026, month: 9, day: 1)
+
+        #expect(CreditCardCycle.pendingStatementDue(in: [pastDue], today: today) == nil)
+        #expect(CreditCardCycle.pendingStatementDue(in: [], today: today) == nil)
+    }
 }

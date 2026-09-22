@@ -304,13 +304,22 @@ struct CreditCardCycleRow: View {
 
     private var statementDue: CreditCardCycle.StatementDue? {
         guard let dues = budgetStore.creditCardStatementDues[account.id] else { return nil }
-        let today = DayDate.today()
-        return dues.first { today <= $0.dueDate && $0.remainingDue > 0 }
-            ?? dues.first { today <= $0.dueDate }
+        return CreditCardCycle.pendingStatementDue(in: dues)
     }
 
     private var isPaid: Bool {
         statementDue?.isPaid ?? false
+    }
+
+    /// "Paid", or the remaining due joined to the date ("$342.18 · Due in 27d")
+    /// so the row's balance can't be mistaken for the bill (GH #535).
+    private var duePillText: String {
+        if isPaid {
+            return String(localized: "Paid")
+        }
+        let summary = cycle.dueShortSummary(dueDate: statementDue?.dueDate)
+        guard let due = statementDue, due.remainingDue > 0 else { return summary }
+        return "\(budgetStore.displayBalance(due.remainingDue)) · \(summary)"
     }
 
     var body: some View {
@@ -332,7 +341,7 @@ struct CreditCardCycleRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(isPaid ? String(localized: "Paid") : cycle.dueShortSummary(dueDate: statementDue?.dueDate))
+                Text(duePillText)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 7)
@@ -348,7 +357,7 @@ struct CreditCardCycleRow: View {
         // header — the long `dueSummary` carries the date the pill drops.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), isPaid ? String(localized: "Paid") : cycle.dueSummary(dueDate: statementDue?.dueDate))
+            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), duePillText)
         )
         // dataVersion is in the key so a transaction landing while this screen
         // is open refreshes the spend, the way AccountDetailView's reload does.

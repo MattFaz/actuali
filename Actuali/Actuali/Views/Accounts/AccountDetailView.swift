@@ -32,9 +32,7 @@ struct AccountDetailView: View {
 
     private var statementDue: CreditCardCycle.StatementDue? {
         guard let dues = budgetStore.creditCardStatementDues[account.id] else { return nil }
-        let today = DayDate.today()
-        return dues.first { today <= $0.dueDate && $0.remainingDue > 0 }
-            ?? dues.first { today <= $0.dueDate }
+        return CreditCardCycle.pendingStatementDue(in: dues)
     }
 
     private var currentBalance: Int {

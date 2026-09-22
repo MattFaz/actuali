@@ -164,6 +164,18 @@ struct CreditCardCycle: Equatable, Hashable {
         }
     }
 
+    /// The statement still awaiting payment: the first unpaid one that isn't
+    /// past due, else the first not-yet-due one even if already paid. Shared
+    /// by AccountDetailView and the cards row so both screens pick the same
+    /// statement (GH #535).
+    static func pendingStatementDue(
+        in dues: [StatementDue],
+        today: DayDate = .today()
+    ) -> StatementDue? {
+        dues.first { today <= $0.dueDate && $0.remainingDue > 0 }
+            ?? dues.first { today <= $0.dueDate }
+    }
+
     /// Computes the statement payment status given raw balances and payments.
     static func calculateStatementDue(
         statementRawBalance: Int,
