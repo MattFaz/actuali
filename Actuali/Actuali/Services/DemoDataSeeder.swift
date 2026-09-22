@@ -175,36 +175,36 @@ enum DemoDataSeeder {
         // (fetchRulesRanked, fetchSchedules) and writes (ScheduleWriteBuilder,
         // advanceScheduleNextDate).
         try db.execute(sql: """
-            CREATE TABLE rules (
-                id TEXT PRIMARY KEY,
-                stage TEXT,
-                conditions_op TEXT,
-                conditions TEXT,
-                actions TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
+        CREATE TABLE rules (
+            id TEXT PRIMARY KEY,
+            stage TEXT,
+            conditions_op TEXT,
+            conditions TEXT,
+            actions TEXT,
+            tombstone INTEGER DEFAULT 0
+        )
+        """)
         try db.execute(sql: """
-            CREATE TABLE schedules (
-                id TEXT PRIMARY KEY,
-                rule TEXT,
-                name TEXT,
-                posts_transaction INTEGER DEFAULT 0,
-                custom_upcoming_length TEXT,
-                completed INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
+        CREATE TABLE schedules (
+            id TEXT PRIMARY KEY,
+            rule TEXT,
+            name TEXT,
+            posts_transaction INTEGER DEFAULT 0,
+            custom_upcoming_length TEXT,
+            completed INTEGER DEFAULT 0,
+            tombstone INTEGER DEFAULT 0
+        )
+        """)
         try db.execute(sql: """
-            CREATE TABLE schedules_next_date (
-                id TEXT PRIMARY KEY,
-                schedule_id TEXT,
-                local_next_date INTEGER,
-                local_next_date_ts INTEGER,
-                base_next_date INTEGER,
-                base_next_date_ts INTEGER
-            )
-            """)
+        CREATE TABLE schedules_next_date (
+            id TEXT PRIMARY KEY,
+            schedule_id TEXT,
+            local_next_date INTEGER,
+            local_next_date_ts INTEGER,
+            base_next_date INTEGER,
+            base_next_date_ts INTEGER
+        )
+        """)
         try db.execute(sql: """
         CREATE TABLE notes (
             id TEXT PRIMARY KEY,
@@ -526,22 +526,24 @@ enum DemoDataSeeder {
             sortOrder -= 1
         }
 
-        // --- Rules and schedules ---
-        // A rules table so Settings > Rules shows real rules rather than the
-        // "Rules Unavailable" placeholder, and two upcoming schedules so
-        // Settings > Scheduled Transactions has rows. A schedule is a rules row
-        // (conditions + link-schedule action) plus a schedules row plus a
-        // next-date row, matching ScheduleWriteBuilder.createPlan's shape. Both
-        // next dates are in the future so the auto-poster never fires on a
-        // fresh demo load.
+        /// --- Rules and schedules ---
+        /// A rules table so Settings > Rules shows real rules rather than the
+        /// "Rules Unavailable" placeholder, and two upcoming schedules so
+        /// Settings > Scheduled Transactions has rows. A schedule is a rules row
+        /// (conditions + link-schedule action) plus a schedules row plus a
+        /// next-date row, matching ScheduleWriteBuilder.createPlan's shape. Both
+        /// next dates are in the future so the auto-poster never fires on a
+        /// fresh demo load.
         func serialize(_ value: Any) throws -> String {
             let data = try JSONSerialization.data(withJSONObject: value)
             return String(decoding: data, as: UTF8.self)
         }
 
-        // Next occurrence of a monthly-on-`day` schedule, strictly after today.
+        /// Next occurrence of a monthly-on-`day` schedule, strictly after today.
         func nextMonthly(_ day: Int) -> Int {
-            if today < day { return yyyymm * 100 + day }
+            if today < day {
+                return yyyymm * 100 + day
+            }
             let base = cal.date(byAdding: .month, value: 1, to: now) ?? now
             var c = cal.dateComponents([.year, .month], from: base)
             c.day = day
@@ -572,70 +574,70 @@ enum DemoDataSeeder {
         // A standalone categorization rule — the canonical Actual demo rule:
         // any new Shell transaction lands in Fuel.
         try db.execute(sql: """
-            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
-            VALUES (?, NULL, 'and', ?, ?, 0)
-            """, arguments: [
-                UUID().uuidString,
-                try serialize([["op": "is", "field": "payee", "value": shellId]]),
-                try serialize([["op": "set", "field": "category", "value": fuelId]]),
-            ])
+        INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+        VALUES (?, NULL, 'and', ?, ?, 0)
+        """, arguments: [
+            UUID().uuidString,
+            serialize([["op": "is", "field": "payee", "value": shellId]]),
+            serialize([["op": "set", "field": "category", "value": fuelId]]),
+        ])
 
         // Rent and Netflix, due on the 1st and 11th of the next month.
         let rentScheduleId = UUID().uuidString
         let rentRuleId = UUID().uuidString
         let rentNext = nextMonthly(1)
         try db.execute(sql: """
-            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
-            VALUES (?, NULL, 'and', ?, ?, 0)
-            """, arguments: [
-                rentRuleId,
-                try serialize([
-                    ["op": "is", "field": "payee", "value": landlordId],
-                    ["op": "is", "field": "account", "value": chaseId],
-                    ["op": "isapprox", "field": "date", "value": try scheduleDateJSON(rentNext)],
-                    ["op": "isapprox", "field": "amount", "value": -185_000],
-                ]),
-                try serialize([
-                    ["op": "set", "field": "category", "value": rentId],
-                    ["op": "link-schedule", "value": rentScheduleId],
-                ]),
-            ])
+        INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+        VALUES (?, NULL, 'and', ?, ?, 0)
+        """, arguments: [
+            rentRuleId,
+            serialize([
+                ["op": "is", "field": "payee", "value": landlordId],
+                ["op": "is", "field": "account", "value": chaseId],
+                ["op": "isapprox", "field": "date", "value": scheduleDateJSON(rentNext)],
+                ["op": "isapprox", "field": "amount", "value": -185_000],
+            ]),
+            serialize([
+                ["op": "set", "field": "category", "value": rentId],
+                ["op": "link-schedule", "value": rentScheduleId],
+            ]),
+        ])
         try db.execute(sql: """
-            INSERT INTO schedules (id, rule, name, posts_transaction, custom_upcoming_length, completed, tombstone)
-            VALUES (?, ?, 'Rent', 1, NULL, 0, 0)
-            """, arguments: [rentScheduleId, rentRuleId])
+        INSERT INTO schedules (id, rule, name, posts_transaction, custom_upcoming_length, completed, tombstone)
+        VALUES (?, ?, 'Rent', 1, NULL, 0, 0)
+        """, arguments: [rentScheduleId, rentRuleId])
         try db.execute(sql: """
-            INSERT INTO schedules_next_date (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """, arguments: [UUID().uuidString, rentScheduleId, rentNext, nowMs, rentNext, nowMs])
+        INSERT INTO schedules_next_date (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, arguments: [UUID().uuidString, rentScheduleId, rentNext, nowMs, rentNext, nowMs])
 
         let netflixScheduleId = UUID().uuidString
         let netflixRuleId = UUID().uuidString
         let netflixNext = nextMonthly(11)
         try db.execute(sql: """
-            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
-            VALUES (?, NULL, 'and', ?, ?, 0)
-            """, arguments: [
-                netflixRuleId,
-                try serialize([
-                    ["op": "is", "field": "payee", "value": netflixId],
-                    ["op": "is", "field": "account", "value": appleCardId],
-                    ["op": "isapprox", "field": "date", "value": try scheduleDateJSON(netflixNext)],
-                    ["op": "isapprox", "field": "amount", "value": -2_299],
-                ]),
-                try serialize([
-                    ["op": "set", "field": "category", "value": entertainmentId],
-                    ["op": "link-schedule", "value": netflixScheduleId],
-                ]),
-            ])
+        INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+        VALUES (?, NULL, 'and', ?, ?, 0)
+        """, arguments: [
+            netflixRuleId,
+            serialize([
+                ["op": "is", "field": "payee", "value": netflixId],
+                ["op": "is", "field": "account", "value": appleCardId],
+                ["op": "isapprox", "field": "date", "value": scheduleDateJSON(netflixNext)],
+                ["op": "isapprox", "field": "amount", "value": -2299],
+            ]),
+            serialize([
+                ["op": "set", "field": "category", "value": entertainmentId],
+                ["op": "link-schedule", "value": netflixScheduleId],
+            ]),
+        ])
         try db.execute(sql: """
-            INSERT INTO schedules (id, rule, name, posts_transaction, custom_upcoming_length, completed, tombstone)
-            VALUES (?, ?, 'Netflix', 1, NULL, 0, 0)
-            """, arguments: [netflixScheduleId, netflixRuleId])
+        INSERT INTO schedules (id, rule, name, posts_transaction, custom_upcoming_length, completed, tombstone)
+        VALUES (?, ?, 'Netflix', 1, NULL, 0, 0)
+        """, arguments: [netflixScheduleId, netflixRuleId])
         try db.execute(sql: """
-            INSERT INTO schedules_next_date (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """, arguments: [UUID().uuidString, netflixScheduleId, netflixNext, nowMs, netflixNext, nowMs])
+        INSERT INTO schedules_next_date (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, arguments: [UUID().uuidString, netflixScheduleId, netflixNext, nowMs, netflixNext, nowMs])
 
         // --- Budgets (current month) ---
         var budgets: [(String, Int)] = [

@@ -64,7 +64,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     /// Add again must issue a fresh focus request even when the amount has
     /// already been started.
     @MainActor
-    func testReturningToAddTabRefocusesAmountField() throws {
+    func testReturningToAddTabRefocusesAmountField() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
@@ -90,7 +90,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     }
 
     @MainActor
-    func testCategoryPickerAutofocusesSearchField() throws {
+    func testCategoryPickerAutofocusesSearchField() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
@@ -117,7 +117,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     }
 
     @MainActor
-    func testReturningFromCategoryPickerDoesNotRefocusAmountField() throws {
+    func testReturningFromCategoryPickerDoesNotRefocusAmountField() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()

@@ -44,9 +44,9 @@ struct Transaction: Identifiable, Hashable, Codable {
     /// populated by fetchTransactions for isParent rows, so the list row can
     /// show the breakdown ("Food $6.00, Fun $4.00"). Display-only, not synced.
     var splitPortions: [SplitPortion]? = nil
-    // Display-only running balance used by account transaction registers.
-    // It is populated from the account's current balance in account detail
-    // views and is intentionally not part of CRDT sync.
+    /// Display-only running balance used by account transaction registers.
+    /// It is populated from the account's current balance in account detail
+    /// views and is intentionally not part of CRDT sync.
     var runningBalance: Int? = nil
 
     struct SplitPortion: Hashable, Codable {

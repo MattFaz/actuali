@@ -1675,7 +1675,7 @@ struct CategoryPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedCategoryId: String?
     var autofocusSearch = false
-    var onPick: (() -> Void)? = nil
+    var onPick: (() -> Void)?
     @State private var searchText = ""
     @State private var searchFocused = false
 
@@ -1765,7 +1765,9 @@ private struct CategorySearchField: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
 
     func makeUIView(context: Context) -> AmountInputField.AutofocusTextField {
         let field = AmountInputField.AutofocusTextField()

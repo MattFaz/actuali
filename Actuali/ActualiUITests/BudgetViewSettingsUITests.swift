@@ -248,7 +248,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
             app.descendants(matching: .any)["categoryStatusColorPicker.overspent"]
                 .waitForNonExistence(timeout: 5),
             "Category color pickers should collapse"
-        )        
+        )
         app.tabBars.buttons["Budget"].tap()
         let statusDot = app.descendants(matching: .any)["categoryStatusDot"].firstMatch
         XCTAssertTrue(

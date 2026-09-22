@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
-import UIKit
 import Testing
+import UIKit
 @testable import Actuali
 
 /// Tests share `UserDefaults.standard` keys, so run one at a time.

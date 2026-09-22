@@ -1,10 +1,8 @@
-import Foundation
-import SwiftUI
-import UIKit
 import Combine
 import Foundation
 import os
 import SwiftUI
+import UIKit
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "BudgetStore")
 
@@ -504,7 +502,7 @@ final class BudgetStore: ObservableObject {
 
     private static func loadCategoryStatusDotColors(from defaults: UserDefaults) -> [String: Data] {
         guard let stored = defaults.dictionary(
-            forKey: Self.categoryStatusDotColorsDefaultsKey
+            forKey: categoryStatusDotColorsDefaultsKey
         ) as? [String: Data] else {
             return [:]
         }
@@ -1555,9 +1553,11 @@ final class BudgetStore: ObservableObject {
             initialValue: persistedBool("showBudgetProgressBars", default: true)
         )
         _showCategoryStatusDots = Published(
-            initialValue: persistedBool("showCategoryStatusDots", default: true))
+            initialValue: persistedBool("showCategoryStatusDots", default: true)
+        )
         _categoryStatusDotColors = Published(
-            initialValue: Self.loadCategoryStatusDotColors(from: defaults))
+            initialValue: Self.loadCategoryStatusDotColors(from: defaults)
+        )
         _showGroupTotals = Published(
             initialValue: persistedBool("showGroupTotals", default: true)
         )
@@ -1653,7 +1653,8 @@ final class BudgetStore: ObservableObject {
         switch mode {
         case .loadPersistedPreferences:
             _categoryStatusDotColors = Published(
-                initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard))
+                initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard)
+            )
         }
     }
     #endif
