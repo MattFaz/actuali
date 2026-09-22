@@ -36,8 +36,6 @@ final class SettingsNavigationUITests: XCTestCase {
             content = app.textFields["Setup token"]
         case "History":
             content = app.staticTexts["No History Yet"]
-        case "About":
-            content = app.staticTexts["Version"]
         case "Support":
             content = app.descendants(matching: .any)["support.discord"]
         default:
@@ -67,7 +65,6 @@ final class SettingsNavigationUITests: XCTestCase {
             "Rules",
             "Bank Sync (SimpleFIN & Wallet)",
             "History",
-            "About",
             "Support",
         ] {
             let row = rowOnHub(destination, in: app)
@@ -82,6 +79,19 @@ final class SettingsNavigationUITests: XCTestCase {
                 "\(destination) screen did not open"
             )
             assertExpectedContent(for: destination, in: app)
+            if destination == "Support" {
+                // GH #533: Privacy Policy and Version moved into the Information
+                // section beside Support; assert them while the section is on
+                // screen so a regression can't silently drop either row.
+                XCTAssertTrue(
+                    app.descendants(matching: .any)["settings.privacyPolicy"].waitForExistence(timeout: 5),
+                    "Privacy Policy row missing from the Information section"
+                )
+                XCTAssertTrue(
+                    app.staticTexts["Version"].waitForExistence(timeout: 5),
+                    "Version row missing from the Information section"
+                )
+            }
             navigationBar.buttons.element(boundBy: 0).tap()
         }
     }

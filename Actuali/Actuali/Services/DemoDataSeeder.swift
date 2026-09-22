@@ -543,14 +543,6 @@ enum DemoDataSeeder {
             sortOrder -= 1
         }
 
-        /// --- Rules and schedules ---
-        /// A rules table so Settings > Rules shows real rules rather than the
-        /// "Rules Unavailable" placeholder, and two upcoming schedules so
-        /// Settings > Scheduled Transactions has rows. A schedule is a rules row
-        /// (conditions + link-schedule action) plus a schedules row plus a
-        /// next-date row, matching ScheduleWriteBuilder.createPlan's shape. Both
-        /// next dates are in the future so the auto-poster never fires on a
-        /// fresh demo load.
         func serialize(_ value: Any) throws -> String {
             let data = try JSONSerialization.data(withJSONObject: value)
             return String(decoding: data, as: UTF8.self)
@@ -587,6 +579,15 @@ enum DemoDataSeeder {
                 "endMode": "never",
             ])
         }
+
+        // --- Rules and schedules ---
+        // A rules table so Settings > Rules shows real rules rather than the
+        // "Rules Unavailable" placeholder, and two upcoming schedules so
+        // Settings > Scheduled Transactions has rows. A schedule is a rules row
+        // (conditions + link-schedule action) plus a schedules row plus a
+        // next-date row, matching ScheduleWriteBuilder.createPlan's shape. Both
+        // next dates are in the future so the auto-poster never fires on a
+        // fresh demo load.
 
         // A standalone categorization rule — the canonical Actual demo rule:
         // any new Shell transaction lands in Fuel.

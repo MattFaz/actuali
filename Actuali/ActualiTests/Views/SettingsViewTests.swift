@@ -13,7 +13,14 @@ struct SettingsViewTests {
         #expect(SettingsView.manageItems(includeRules: true).map(\.title) == [
             "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "Rules", "Scheduled Transactions", "Tags",
         ])
-        #expect(SettingsView.informationItems.map(\.title) == ["About", "Support"])
+        #expect(SettingsView.informationItems.map(\.title) == ["Support"])
+    }
+
+    @Test func informationLinkOpensPrivacyPolicy() {
+        let items = SettingsView.informationLinkItems
+
+        #expect(items.map(\.title) == ["Privacy Policy"])
+        #expect(items.first?.url.absoluteString == "https://actuali.mfazz.com/privacy")
     }
 
     @Test @MainActor func shortcutSectionListsSharedWalletShortcut() {
