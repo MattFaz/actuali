@@ -42079,6 +42079,53 @@
         }
       }
     },
+    "Loan settings need sync configured for this budget." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für die Darlehenseinstellungen muss die Synchronisierung für dieses Budget eingerichtet sein."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loan settings need sync configured for this budget."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La configuración del préstamo requiere sincronizar este presupuesto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les réglages de prêt nécessitent une synchronisation configurée pour ce budget."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le impostazioni del prestito richiedono la sincronizzazione configurata per questo budget."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voor leninginstellingen moet synchronisatie voor dit budget zijn ingesteld."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As configurações do empréstimo precisam que a sincronização deste orçamento esteja configurada."
+          }
+        }
+      }
+    },
     "Local data has drifted from the server and couldn't reconcile after several attempts. Tap \"Reset Sync State\" below to recover." : {
       "extractionState" : "stale",
       "localizations" : {

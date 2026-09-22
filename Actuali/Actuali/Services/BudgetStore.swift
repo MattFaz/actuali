@@ -994,7 +994,7 @@ final class BudgetStore: ObservableObject {
         loanConfigs[accountId] = config
         guard let syncClient else {
             loanConfigs[accountId] = previous
-            error = "Loan settings need sync configured for this budget."
+            error = String(localized: "Loan settings need sync configured for this budget.")
             return
         }
         do {
