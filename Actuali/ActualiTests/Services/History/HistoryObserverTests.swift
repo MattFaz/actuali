@@ -334,6 +334,12 @@ struct HistoryObserverTests {
         // Remote data lands while sync is in progress; the refresh happens
         // after the sync transitions back to idle.
         try await execute("UPDATE transactions SET amount = -1800 WHERE id = 'remote'", in: fixture)
+        // Mirror a real remote sync: PR #544 identifies rows written by
+        // another device from the messages_crdt HLC node suffix.
+        try await execute("""
+        INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
+        VALUES ('2026-09-06T00:00:01.000Z-0000-aaaaaaaaaaaaaaaa', 'transactions', 'remote', 'amount', x'00')
+        """, in: fixture)
         store.syncState = .idle
         await Task.yield()
         store.transactions = await page(["remote"], in: fixture)
