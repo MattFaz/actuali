@@ -4674,6 +4674,19 @@ final class BudgetStore: ObservableObject {
         return await (try? database.fetchChildTransactions(parentId: parentId)) ?? []
     }
 
+    /// Every live transaction, for History: `transactions` holds only the
+    /// newest page. `remoteChangesAfter` also reports the rows other devices
+    /// wrote since that messages_crdt id.
+    func fetchAllLiveTransactions(
+        remoteChangesAfter watermark: Int64? = nil
+    ) async throws -> BudgetDatabase.LiveTransactionSnapshot {
+        guard let database else { throw BudgetStoreError.syncNotConfigured }
+        return try await database.fetchAllLiveTransactions(
+            remoteChangesAfter: watermark,
+            localNode: syncClient?.nodeId
+        )
+    }
+
     /// Soft-delete a transaction by setting its tombstone flag (CRDT-compatible).
     /// Failures surface through the published `error` string.
     func deleteTransaction(_ transaction: Transaction) async {

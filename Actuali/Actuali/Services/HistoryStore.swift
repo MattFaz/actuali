@@ -89,6 +89,7 @@ final class HistoryStore: ObservableObject {
     }
 
     static var pendingUndo: PendingUndo?
+    static let maxSnapshotsPerAction = 500
 
     @Published private(set) var actions: [HistoryAction] = []
     @Published private(set) var errorMessage: String?
@@ -147,6 +148,11 @@ final class HistoryStore: ObservableObject {
         after: [Transaction]
     ) {
         guard !Self.recordingSuppressed, !before.isEmpty || !after.isEmpty else { return }
+        // ponytail: bulk writes (locking an account's cleared rows) diff as one
+        // action over every row they touch. Undo restores one row per sync
+        // write and actions persist in UserDefaults, so past the old page
+        // size the action isn't recorded. Batch restores would lift the cap.
+        guard max(before.count, after.count) <= Self.maxSnapshotsPerAction else { return }
 
         if loadedBudgetID != budgetID {
             load(budgetID: budgetID)
@@ -234,16 +240,19 @@ final class HistoryStore: ObservableObject {
         errorMessage = nil
         errorTitle = String(localized: "Couldn't Undo")
 
-        var live = Dictionary(uniqueKeysWithValues: budgetStore.transactions.map { ($0.id, $0) })
-        let splitParentIDs = Set(
-            action.before.compactMap { $0.isParent ? $0.id : $0.parentId } +
-                action.after.compactMap { $0.isParent ? $0.id : $0.parentId }
-        )
-        for parentID in splitParentIDs {
-            for child in await budgetStore.fetchSplitChildren(parentId: parentID) {
-                live[child.id] = child
-            }
+        // Check against every live row: a row missing from the newest page
+        // in `budgetStore.transactions` is not deleted.
+        let snapshot: BudgetDatabase.LiveTransactionSnapshot
+        do {
+            snapshot = try await budgetStore.fetchAllLiveTransactions()
+        } catch {
+            errorMessage = error.localizedDescription
+            return
         }
+        let live = Dictionary(
+            (snapshot.transactions + snapshot.splitChildren).map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         let afterByID = Dictionary(uniqueKeysWithValues: action.after.map { ($0.id, $0) })
         for recordedAfter in action.after {
