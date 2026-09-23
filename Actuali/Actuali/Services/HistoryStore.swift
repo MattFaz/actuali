@@ -234,16 +234,20 @@ final class HistoryStore: ObservableObject {
         errorMessage = nil
         errorTitle = String(localized: "Couldn't Undo")
 
-        var live = Dictionary(uniqueKeysWithValues: budgetStore.transactions.map { ($0.id, $0) })
-        let splitParentIDs = Set(
-            action.before.compactMap { $0.isParent ? $0.id : $0.parentId } +
-                action.after.compactMap { $0.isParent ? $0.id : $0.parentId }
-        )
-        for parentID in splitParentIDs {
-            for child in await budgetStore.fetchSplitChildren(parentId: parentID) {
-                live[child.id] = child
-            }
+        // Check against every live row: a row missing from the newest page
+        // in `budgetStore.transactions` is not deleted.
+        let snapshot: (transactions: [Transaction], splitChildren: [Transaction])
+        do {
+            guard let fetched = try await budgetStore.fetchAllLiveTransactions() else { return }
+            snapshot = fetched
+        } catch {
+            errorMessage = error.localizedDescription
+            return
         }
+        let live = Dictionary(
+            (snapshot.transactions + snapshot.splitChildren).map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         let afterByID = Dictionary(uniqueKeysWithValues: action.after.map { ($0.id, $0) })
         for recordedAfter in action.after {

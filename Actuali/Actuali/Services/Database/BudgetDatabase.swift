@@ -971,33 +971,50 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    private static let childTransactionSelect = """
+    SELECT
+        t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+        t.description, t.notes, t.date, t.imported_description,
+        t.schedule,
+        t.transferred_id, t.cleared, t.reconciled, t.sort_order,
+        t.tombstone, t.parent_id,
+        COALESCE(pa.name, p.name) as payee_name,
+        c.name as category_name,
+        p.transfer_acct as transfer_acct
+    FROM transactions t
+    LEFT JOIN payee_mapping pm ON pm.id = t.description
+    LEFT JOIN payees p ON p.id = pm.targetId
+    LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+        AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+    LEFT JOIN category_mapping cm ON cm.id = t.category
+    LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+    WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+    """
+
     /// All live children of a split parent, in entry order (descending
     /// sort_order, matching the list convention).
     func fetchChildTransactions(parentId: String) async throws -> [Transaction] {
         try await dbQueue.read { db in
-            let rows = try Row.fetchAll(db, sql: """
-            SELECT
-                t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
-                t.description, t.notes, t.date, t.imported_description,
-                t.schedule,
-                t.transferred_id, t.cleared, t.reconciled, t.sort_order,
-                t.tombstone, t.parent_id,
-                COALESCE(pa.name, p.name) as payee_name,
-                c.name as category_name,
-                p.transfer_acct as transfer_acct
-            FROM transactions t
-            LEFT JOIN payee_mapping pm ON pm.id = t.description
-            LEFT JOIN payees p ON p.id = pm.targetId
-            LEFT JOIN accounts pa ON pa.id = p.transfer_acct
-                AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
-            LEFT JOIN category_mapping cm ON cm.id = t.category
-            LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
-            WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-              AND t.parent_id = ?
-            ORDER BY t.sort_order DESC
-            """, arguments: [parentId])
+            try Row.fetchAll(
+                db,
+                sql: Self.childTransactionSelect + " AND t.parent_id = ? ORDER BY t.sort_order DESC",
+                arguments: [parentId]
+            ).map(Self.mapTransaction)
+        }
+    }
 
-            return rows.map(Self.mapTransaction)
+    /// Every live top-level transaction and every live split child, read as
+    /// one snapshot. History diffs this whole set: diffing the newest page
+    /// instead reads rows sliding off it as deletions and rows sliding onto
+    /// it as creations.
+    func fetchAllLiveTransactions() async throws -> (transactions: [Transaction], splitChildren: [Transaction]) {
+        try await dbQueue.read { db in
+            let transactions = try Row.fetchAll(db, sql: Self.transactionSelect).map(Self.mapTransaction)
+            let splitChildren = try Row.fetchAll(
+                db,
+                sql: Self.childTransactionSelect + " AND t.parent_id IS NOT NULL"
+            ).map(Self.mapTransaction)
+            return (transactions, splitChildren)
         }
     }
 

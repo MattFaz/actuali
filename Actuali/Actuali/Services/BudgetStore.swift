@@ -4674,6 +4674,12 @@ final class BudgetStore: ObservableObject {
         return await (try? database.fetchChildTransactions(parentId: parentId)) ?? []
     }
 
+    /// Every live transaction, for History: `transactions` holds only the
+    /// newest page. nil when no budget database is open.
+    func fetchAllLiveTransactions() async throws -> (transactions: [Transaction], splitChildren: [Transaction])? {
+        try await database?.fetchAllLiveTransactions()
+    }
+
     /// Soft-delete a transaction by setting its tombstone flag (CRDT-compatible).
     /// Failures surface through the published `error` string.
     func deleteTransaction(_ transaction: Transaction) async {
