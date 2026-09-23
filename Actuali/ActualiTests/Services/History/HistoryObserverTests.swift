@@ -173,8 +173,8 @@ struct HistoryObserverTests {
         #expect(HistoryStore.shared.actions[2].after.first?.payeeId == "payee-2")
         #expect(HistoryStore.shared.actions[1].before.first?.categoryId == nil)
         #expect(HistoryStore.shared.actions[1].after.first?.categoryId == "category-2")
-        #expect(HistoryStore.shared.actions[0].before.first?.date == 20260906)
-        #expect(HistoryStore.shared.actions[0].after.first?.date == 20260909)
+        #expect(HistoryStore.shared.actions[0].before.first?.date == 20_260_906)
+        #expect(HistoryStore.shared.actions[0].after.first?.date == 20_260_909)
     }
 
     @Test func splitCreationProducesOneHistoryActionWithChildren() async throws {
@@ -225,13 +225,13 @@ struct HistoryObserverTests {
         defer { cleanUp(fixture) }
 
         try await execute("""
-            INSERT INTO transactions (
-                id, isParent, isChild, acct, amount, description, date, sort_order, parent_id
-            ) VALUES
-                ('split-parent', 1, 0, 'account', -1000, 'payee', 20260906, 20, NULL),
-                ('split-child-1', 0, 1, 'account', -600, 'payee', 20260906, 19, 'split-parent'),
-                ('split-child-2', 0, 1, 'account', -400, 'payee', 20260906, 18, 'split-parent')
-            """, in: fixture)
+        INSERT INTO transactions (
+            id, isParent, isChild, acct, amount, description, date, sort_order, parent_id
+        ) VALUES
+            ('split-parent', 1, 0, 'account', -1000, 'payee', 20260906, 20, NULL),
+            ('split-child-1', 0, 1, 'account', -600, 'payee', 20260906, 19, 'split-parent'),
+            ('split-child-2', 0, 1, 'account', -400, 'payee', 20260906, 18, 'split-parent')
+        """, in: fixture)
 
         let store = fixture.store
         store.transactions = await page(["split-parent"], in: fixture)
