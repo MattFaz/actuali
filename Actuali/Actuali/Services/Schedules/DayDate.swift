@@ -46,7 +46,10 @@ struct DayDate: Comparable, Hashable {
         return utcCalendar.range(of: .day, in: .month, for: date)!.count
     }
 
-    private var utcDate: Date {
+    /// This calendar day as a `Date`, pinned to midday UTC so a timezone shift
+    /// can't slide it into the neighbouring day. Exposed for Swift Charts,
+    /// whose axes plot `Date` — the schedule math all stays on `DayDate`.
+    var utcDate: Date {
         DayDate.utcCalendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
     }
 

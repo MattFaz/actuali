@@ -169,3 +169,35 @@ enum LoanAmortization {
         )
     }
 }
+
+// MARK: - Burndown
+
+extension LoanAmortization {
+    /// One point on the payoff curve.
+    struct BalancePoint: Equatable, Sendable, Identifiable {
+        let month: DayDate
+        let balance: Int
+
+        var id: Int {
+            month.yyyymmdd
+        }
+    }
+}
+
+extension LoanAmortization.Schedule {
+    /// Balance over time for a burndown chart.
+    ///
+    /// The opening balance is prepended so the first segment shows the first
+    /// month's progress; without it the curve would start already one payment
+    /// down and understate the loan.
+    func balanceOverTime(openingBalance: Int) -> [LoanAmortization.BalancePoint] {
+        guard let first = entries.first else { return [] }
+        let opening = LoanAmortization.BalancePoint(
+            month: first.month.adding(months: -1),
+            balance: openingBalance
+        )
+        return [opening] + entries.map {
+            LoanAmortization.BalancePoint(month: $0.month, balance: $0.balance)
+        }
+    }
+}
