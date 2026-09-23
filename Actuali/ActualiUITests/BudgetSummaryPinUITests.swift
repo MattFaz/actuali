@@ -81,6 +81,9 @@ final class BudgetSummaryPinUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
             "-showCompactBudgetOverview", "YES",
+            // The status strip now sits above the summary in both styles, so
+            // hide it here: this test measures the summary cards themselves.
+            "-showBudgetCheckInStrip", "NO",
             "-initialTab", "1",
         ]
         app.launch()
