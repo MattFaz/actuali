@@ -182,31 +182,31 @@ struct HistoryObserverTests {
         defer { cleanUp(fixture) }
 
         try await execute("""
-            INSERT INTO transactions (
-                id, isParent, isChild, acct, amount, description, date, sort_order, parent_id
-            ) VALUES
-                ('split-parent', 1, 0, 'account', -1000, 'payee', 20260906, 20, NULL),
-                ('split-child-1', 0, 1, 'account', -600, 'payee', 20260906, 19, 'split-parent'),
-                ('split-child-2', 0, 1, 'account', -400, 'payee', 20260906, 18, 'split-parent')
-            """, in: fixture)
+        INSERT INTO transactions (
+            id, isParent, isChild, acct, amount, description, date, sort_order, parent_id
+        ) VALUES
+            ('split-parent', 1, 0, 'account', -1000, 'payee', 20260906, 20, NULL),
+            ('split-child-1', 0, 1, 'account', -600, 'payee', 20260906, 19, 'split-parent'),
+            ('split-child-2', 0, 1, 'account', -400, 'payee', 20260906, 18, 'split-parent')
+        """, in: fixture)
 
         let store = fixture.store
         store.transactions = await page(["existing"], in: fixture)
         let observer = HistoryObserver(store: store)
         await observer.drainForTesting()
 
-        try await insert("later", date: 20260907, into: fixture)
+        try await insert("later", date: 20_260_907, into: fixture)
         try await execute(
             "UPDATE transactions SET isParent = 1 WHERE id = 'later'",
             in: fixture
         )
         try await execute("""
-            INSERT INTO transactions (
-                id, isParent, isChild, acct, amount, description, date, sort_order, parent_id
-            ) VALUES
-                ('later-child-1', 0, 1, 'account', -700, 'payee', 20260907, 1, 'later'),
-                ('later-child-2', 0, 1, 'account', -300, 'payee', 20260907, 0, 'later')
-            """, in: fixture)
+        INSERT INTO transactions (
+            id, isParent, isChild, acct, amount, description, date, sort_order, parent_id
+        ) VALUES
+            ('later-child-1', 0, 1, 'account', -700, 'payee', 20260907, 1, 'later'),
+            ('later-child-2', 0, 1, 'account', -300, 'payee', 20260907, 0, 'later')
+        """, in: fixture)
 
         store.transactions = await page(["later", "existing"], in: fixture)
         await observer.drainForTesting()
