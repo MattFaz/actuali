@@ -106,6 +106,12 @@ struct HistoryObserverTests {
         try? FileManager.default.removeItem(at: fixture.url)
     }
 
+    @Test func marksRefreshRemoteOnlyWhenSyncTransitionsToIdle() {
+        #expect(HistoryObserver.shouldMarkRemoteRefresh(wasSyncing: true, state: .idle))
+        #expect(!HistoryObserver.shouldMarkRemoteRefresh(wasSyncing: false, state: .idle))
+        #expect(!HistoryObserver.shouldMarkRemoteRefresh(wasSyncing: true, state: .syncing))
+    }
+
     @Test func localEditAfterAutomaticSyncIsStillRecorded() async throws {
         let fixture = try await makeFixture(rows: ["edited"])
         defer { cleanUp(fixture) }
@@ -115,6 +121,12 @@ struct HistoryObserverTests {
 
         store.syncState = .syncing
         store.syncState = .idle
+
+        // The sync completion itself publishes a refresh. That publication
+        // consumes the one-shot remote-refresh marker; the next local edit
+        // must be recorded normally.
+        store.transactions = await page(["edited"], in: fixture)
+        await observer.drainForTesting()
 
         try await execute(
             "UPDATE transactions SET amount = -1200 WHERE id = 'edited'",
@@ -171,11 +183,11 @@ struct HistoryObserverTests {
 
         try await execute("""
             INSERT INTO transactions (
-                id, isParent, isChild, acct, amount, description, date, sort_order
+                id, isParent, isChild, acct, amount, description, date, sort_order, parent_id
             ) VALUES
-                ('split-parent', 1, 0, 'account', -1000, 'payee', 20260906, 20),
-                ('split-child-1', 0, 1, 'account', -600, 'payee', 20260906, 19),
-                ('split-child-2', 0, 1, 'account', -400, 'payee', 20260906, 18)
+                ('split-parent', 1, 0, 'account', -1000, 'payee', 20260906, 20, NULL),
+                ('split-child-1', 0, 1, 'account', -600, 'payee', 20260906, 19, 'split-parent'),
+                ('split-child-2', 0, 1, 'account', -400, 'payee', 20260906, 18, 'split-parent')
             """, in: fixture)
 
         let store = fixture.store
@@ -214,11 +226,11 @@ struct HistoryObserverTests {
 
         try await execute("""
             INSERT INTO transactions (
-                id, isParent, isChild, acct, amount, description, date, sort_order
+                id, isParent, isChild, acct, amount, description, date, sort_order, parent_id
             ) VALUES
-                ('split-parent', 1, 0, 'account', -1000, 'payee', 20260906, 20),
-                ('split-child-1', 0, 1, 'account', -600, 'payee', 20260906, 19),
-                ('split-child-2', 0, 1, 'account', -400, 'payee', 20260906, 18)
+                ('split-parent', 1, 0, 'account', -1000, 'payee', 20260906, 20, NULL),
+                ('split-child-1', 0, 1, 'account', -600, 'payee', 20260906, 19, 'split-parent'),
+                ('split-child-2', 0, 1, 'account', -400, 'payee', 20260906, 18, 'split-parent')
             """, in: fixture)
 
         let store = fixture.store
@@ -318,8 +330,12 @@ struct HistoryObserverTests {
         await observer.drainForTesting()
 
         store.syncState = .syncing
-        store.syncState = .idle
+        await Task.yield()
+        // Remote data lands while sync is in progress; the refresh happens
+        // after the sync transitions back to idle.
         try await execute("UPDATE transactions SET amount = -1800 WHERE id = 'remote'", in: fixture)
+        store.syncState = .idle
+        await Task.yield()
         store.transactions = await page(["remote"], in: fixture)
         await observer.drainForTesting()
 

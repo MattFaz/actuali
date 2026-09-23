@@ -10,6 +10,8 @@ final class HistoryObserver {
     private var previousSplitChildren: [String: [String: Transaction]] = [:]
     private var previousMessageID: Int64 = 0
     private var consumeTask: Task<Void, Never>?
+    private var wasSyncing = false
+    private var remoteRefreshPending = false
     private var baselineGeneration = 0
 
     init(store: BudgetStore) {
@@ -49,15 +51,16 @@ final class HistoryObserver {
         store.$transactions
             .sink { [weak self, weak store] _ in
                 guard let self, let store else { return }
-                self.enqueueConsume(
-                    store: store,
-                    budgetID: store.currentBudgetId,
-                    isRemote: store.isBankSyncing
-                )
+                let isRemote = self.remoteRefreshPending || store.isBankSyncing
+                self.enqueueConsume(store: store, budgetID: store.currentBudgetId, isRemote: isRemote)
             }
             .store(in: &cancellables)
 
         enqueueConsume(store: store, budgetID: store.currentBudgetId, isRemote: false)
+    }
+
+    static func shouldMarkRemoteRefresh(wasSyncing: Bool, state: SyncState) -> Bool {
+        wasSyncing && state == .idle
     }
 
     static func shouldResetBaselineForReload(isLoading: Bool) -> Bool {
@@ -140,9 +143,22 @@ final class HistoryObserver {
             return
         }
 
-        if isRemote || HistoryStore.recordingSuppressed {
+        if HistoryStore.recordingSuppressed || store.isBankSyncing {
             previous = current
             previousSplitChildren = currentSplitChildren
+            return
+        }
+
+        // A sync completion publishes a refresh that is not a user edit.
+        // Consume that one refresh as a new baseline. PR #544's row-level
+        // watermark handling separately excludes transaction rows written
+        // by another device when a local publication races with sync.
+        if isRemote {
+            previous = current
+            previousSplitChildren = currentSplitChildren
+            if remoteRefreshPending {
+                remoteRefreshPending = false
+            }
             return
         }
 

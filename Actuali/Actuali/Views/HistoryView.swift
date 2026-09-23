@@ -119,7 +119,10 @@ struct HistoryView: View {
         let hasNotes = snapshot.notes?.isEmpty == false
 
         if action.kind == .edited {
+            let primaryRootID = snapshot.parentId ?? snapshot.id
             for changedSnapshot in action.after {
+                let changedRootID = changedSnapshot.parentId ?? changedSnapshot.id
+                guard changedRootID == primaryRootID else { continue }
                 guard let before = action.before.first(where: { $0.id == changedSnapshot.id }) else {
                     continue
                 }
