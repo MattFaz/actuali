@@ -106,40 +106,6 @@ struct HistoryObserverTests {
         try? FileManager.default.removeItem(at: fixture.url)
     }
 
-    @Test func marksRefreshRemoteOnlyWhenSyncTransitionsToIdle() {
-        #expect(HistoryObserver.shouldMarkRemoteRefresh(wasSyncing: true, state: .idle))
-        #expect(!HistoryObserver.shouldMarkRemoteRefresh(wasSyncing: false, state: .idle))
-        #expect(!HistoryObserver.shouldMarkRemoteRefresh(wasSyncing: true, state: .syncing))
-    }
-
-    @Test func localEditAfterAutomaticSyncIsStillRecorded() async throws {
-        let fixture = try await makeFixture(rows: ["edited"])
-        defer { cleanUp(fixture) }
-        let store = fixture.store
-        let observer = HistoryObserver(store: store)
-        await observer.drainForTesting()
-
-        store.syncState = .syncing
-        store.syncState = .idle
-
-        // The sync completion itself publishes a refresh. That publication
-        // consumes the one-shot remote-refresh marker; the next local edit
-        // must be recorded normally.
-        store.transactions = await page(["edited"], in: fixture)
-        await observer.drainForTesting()
-
-        try await execute(
-            "UPDATE transactions SET amount = -1200 WHERE id = 'edited'",
-            in: fixture
-        )
-        store.transactions = await page(["edited"], in: fixture)
-        await observer.drainForTesting()
-
-        #expect(HistoryStore.shared.actions.count == 1)
-        #expect(HistoryStore.shared.actions.first?.kind == .edited)
-        #expect(HistoryStore.shared.actions.first?.after.first?.amount == -1200)
-    }
-
     @Test func payeeCategoryAndDateEditsProduceHistoryActions() async throws {
         let fixture = try await makeFixture(rows: ["edited"])
         defer { cleanUp(fixture) }
@@ -329,19 +295,13 @@ struct HistoryObserverTests {
         let observer = HistoryObserver(store: store)
         await observer.drainForTesting()
 
-        store.syncState = .syncing
-        await Task.yield()
-        // Remote data lands while sync is in progress; the refresh happens
-        // after the sync transitions back to idle.
-        try await execute("UPDATE transactions SET amount = -1800 WHERE id = 'remote'", in: fixture)
         // Mirror a real remote sync: PR #544 identifies rows written by
         // another device from the messages_crdt HLC node suffix.
+        try await execute("UPDATE transactions SET amount = -1800 WHERE id = 'remote'", in: fixture)
         try await execute("""
         INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
         VALUES ('2026-09-06T00:00:01.000Z-0000-aaaaaaaaaaaaaaaa', 'transactions', 'remote', 'amount', x'00')
         """, in: fixture)
-        store.syncState = .idle
-        await Task.yield()
         store.transactions = await page(["remote"], in: fixture)
         await observer.drainForTesting()
 

@@ -118,63 +118,12 @@ struct HistoryView: View {
         let category = snapshot.categoryName?.isEmpty == false ? snapshot.categoryName : nil
         let hasNotes = snapshot.notes?.isEmpty == false
 
-        if action.kind == .edited {
-            let primaryRootID = snapshot.parentId ?? snapshot.id
-            for changedSnapshot in action.after {
-                let changedRootID = changedSnapshot.parentId ?? changedSnapshot.id
-                guard changedRootID == primaryRootID else { continue }
-                guard let before = action.before.first(where: { $0.id == changedSnapshot.id }) else {
-                    continue
-                }
-
-                if before.amount != changedSnapshot.amount {
-                    return String(
-                        format: String(localized: "Amount: %@ → %@"),
-                        budgetStore.formatCurrency(before.amount),
-                        budgetStore.formatCurrency(changedSnapshot.amount)
-                    )
-                }
-                if before.categoryId != changedSnapshot.categoryId {
-                    return String(
-                        format: String(localized: "Category: %@ → %@"),
-                        before.categoryName ?? String(localized: "Uncategorized"),
-                        changedSnapshot.categoryName ?? String(localized: "Uncategorized")
-                    )
-                }
-                if before.payeeId != changedSnapshot.payeeId {
-                    return String(
-                        format: String(localized: "Payee: %@ → %@"),
-                        before.payeeName ?? String(localized: "Transaction"),
-                        changedSnapshot.payeeName ?? String(localized: "Transaction")
-                    )
-                }
-                if before.notes != changedSnapshot.notes {
-                    if before.notes?.isEmpty == false, changedSnapshot.notes?.isEmpty == false {
-                        return String(localized: "Note changed")
-                    }
-                    if changedSnapshot.notes?.isEmpty == false {
-                        return String(localized: "Note added")
-                    }
-                    return String(localized: "Note removed")
-                }
-                if before.date != changedSnapshot.date {
-                    return String(localized: "Date changed")
-                        + ": "
-                        + Transaction.formattedDate(from: before.date)
-                        + " → "
-                        + Transaction.formattedDate(from: changedSnapshot.date)
-                }
-                if before.cleared != changedSnapshot.cleared {
-                    return changedSnapshot.cleared
-                        ? String(localized: "Marked cleared")
-                        : String(localized: "Marked uncleared")
-                }
-                if before.reconciled != changedSnapshot.reconciled {
-                    return changedSnapshot.reconciled
-                        ? String(localized: "Marked reconciled")
-                        : String(localized: "Marked unreconciled")
-                }
-            }
+        if let editedDetail = Self.editedDetail(
+            for: action,
+            primary: snapshot,
+            formatCurrency: budgetStore.formatCurrency
+        ) {
+            return editedDetail
         }
 
         if action.after.count == 2,
@@ -206,6 +155,72 @@ struct HistoryView: View {
             parts.append(String(localized: "Note"))
         }
         return parts.isEmpty ? action.detail : parts.joined(separator: " · ")
+    }
+
+    nonisolated static func editedDetail(
+        for action: HistoryAction,
+        primary: Transaction,
+        formatCurrency: (Int) -> String
+    ) -> String? {
+        guard action.kind == .edited else { return nil }
+
+        let primaryRootID = primary.parentId ?? primary.id
+        for changedSnapshot in action.after {
+            let changedRootID = changedSnapshot.parentId ?? changedSnapshot.id
+            guard changedRootID == primaryRootID else { continue }
+            guard let before = action.before.first(where: { $0.id == changedSnapshot.id }) else {
+                continue
+            }
+
+            if before.amount != changedSnapshot.amount {
+                return String(
+                    format: String(localized: "Amount: %@ → %@"),
+                    formatCurrency(before.amount),
+                    formatCurrency(changedSnapshot.amount)
+                )
+            }
+            if before.categoryId != changedSnapshot.categoryId {
+                return String(
+                    format: String(localized: "Category: %@ → %@"),
+                    before.categoryName ?? String(localized: "Uncategorized"),
+                    changedSnapshot.categoryName ?? String(localized: "Uncategorized")
+                )
+            }
+            if before.payeeId != changedSnapshot.payeeId {
+                return String(
+                    format: String(localized: "Payee: %@ → %@"),
+                    before.payeeName ?? String(localized: "Transaction"),
+                    changedSnapshot.payeeName ?? String(localized: "Transaction")
+                )
+            }
+            if before.notes != changedSnapshot.notes {
+                if before.notes?.isEmpty == false, changedSnapshot.notes?.isEmpty == false {
+                    return String(localized: "Note changed")
+                }
+                if changedSnapshot.notes?.isEmpty == false {
+                    return String(localized: "Note added")
+                }
+                return String(localized: "Note removed")
+            }
+            if before.date != changedSnapshot.date {
+                return String(
+                    format: String(localized: "Date: %@ → %@"),
+                    Transaction.formattedDate(from: before.date),
+                    Transaction.formattedDate(from: changedSnapshot.date)
+                )
+            }
+            if before.cleared != changedSnapshot.cleared {
+                return changedSnapshot.cleared
+                    ? String(localized: "Marked cleared")
+                    : String(localized: "Marked uncleared")
+            }
+            if before.reconciled != changedSnapshot.reconciled {
+                return changedSnapshot.reconciled
+                    ? String(localized: "Marked reconciled")
+                    : String(localized: "Marked unreconciled")
+            }
+        }
+        return nil
     }
 
     private func symbol(for kind: HistoryActionKind) -> String {
