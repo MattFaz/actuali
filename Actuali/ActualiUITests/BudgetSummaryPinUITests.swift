@@ -73,4 +73,51 @@ final class BudgetSummaryPinUITests: XCTestCase {
         XCTAssertEqual(stepperMidX, navBar.frame.midX, accuracy: 4,
                        "the month stepper must stay centered in the bar")
     }
+
+    @MainActor
+    func testTopBoxInsetsMatchBetweenBudgetAndAccounts() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-budgetDisplayStyle", "clean",
+            "-showCompactBudgetOverview", "YES",
+            "-initialTab", "1",
+        ]
+        app.launch()
+
+        app.tabBars.buttons["Budget"].tap()
+        let budgetBox = app.descendants(matching: .any)
+            .matching(identifier: "budget.topBox")
+            .firstMatch
+        XCTAssertTrue(budgetBox.waitForExistence(timeout: 10),
+                      "the clean budget summary should be visible")
+        let budgetNavBar = app.navigationBars.firstMatch
+        XCTAssertTrue(budgetNavBar.exists)
+        let budgetFrame = budgetBox.frame
+        let budgetWindow = app.windows.firstMatch.frame
+        let budgetTopGap = budgetFrame.minY - budgetNavBar.frame.maxY
+        let budgetLeadingInset = budgetFrame.minX - budgetWindow.minX
+        let budgetTrailingInset = budgetWindow.maxX - budgetFrame.maxX
+
+        app.tabBars.buttons["Accounts"].tap()
+        let accountsBox = app.descendants(matching: .any)
+            .matching(identifier: "accounts.topBox")
+            .firstMatch
+        XCTAssertTrue(accountsBox.waitForExistence(timeout: 10),
+                      "the accounts summary should be visible")
+        let accountsNavBar = app.navigationBars.firstMatch
+        XCTAssertTrue(accountsNavBar.exists)
+        let accountsFrame = accountsBox.frame
+        let accountsWindow = app.windows.firstMatch.frame
+
+        XCTAssertEqual(accountsFrame.minY - accountsNavBar.frame.maxY,
+                       budgetTopGap, accuracy: 2,
+                       "the first summary should have the same toolbar gap")
+        XCTAssertEqual(accountsFrame.minX - accountsWindow.minX,
+                       budgetLeadingInset, accuracy: 2,
+                       "the summary boxes should share a leading inset")
+        XCTAssertEqual(accountsWindow.maxX - accountsFrame.maxX,
+                       budgetTrailingInset, accuracy: 2,
+                       "the summary boxes should share a trailing inset")
+    }
 }
