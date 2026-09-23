@@ -57,7 +57,7 @@ struct HistoryDetailTests {
         let detail = HistoryView.editedDetail(
             for: action(before: [parentBefore, childBefore], after: [parentAfter, childAfter]),
             primary: parentAfter,
-            formatCurrency: { "($0)" }
+            formatCurrency: { "\($0)" }
         )
 
         #expect(detail == "Amount: -600 → -700")
@@ -70,7 +70,7 @@ struct HistoryDetailTests {
         let detail = HistoryView.editedDetail(
             for: action(before: [before], after: [after]),
             primary: after,
-            formatCurrency: { "($0)" }
+            formatCurrency: { "\($0)" }
         )
 
         #expect(detail == "Payee: Old Payee → New Payee")
@@ -83,7 +83,7 @@ struct HistoryDetailTests {
         let detail = HistoryView.editedDetail(
             for: action(before: [before], after: [after]),
             primary: after,
-            formatCurrency: { "($0)" }
+            formatCurrency: { "\($0)" }
         )
 
         #expect(detail == "Category: Old Category → New Category")
@@ -96,7 +96,7 @@ struct HistoryDetailTests {
         let detail = HistoryView.editedDetail(
             for: action(before: [before], after: [after]),
             primary: after,
-            formatCurrency: { "($0)" }
+            formatCurrency: { "\($0)" }
         )
 
         let expected = String(
@@ -114,7 +114,7 @@ struct HistoryDetailTests {
         let detail = HistoryView.editedDetail(
             for: action(before: [before], after: [after]),
             primary: after,
-            formatCurrency: { "($0)" }
+            formatCurrency: { "\($0)" }
         )
 
         #expect(detail == "Note changed")
