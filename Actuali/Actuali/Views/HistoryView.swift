@@ -149,7 +149,7 @@ struct HistoryView: View {
                     )
                 }
                 if before.notes != changedSnapshot.notes {
-                    if before.notes?.isEmpty == false && changedSnapshot.notes?.isEmpty == false {
+                    if before.notes?.isEmpty == false, changedSnapshot.notes?.isEmpty == false {
                         return String(localized: "Note changed")
                     }
                     if changedSnapshot.notes?.isEmpty == false {
