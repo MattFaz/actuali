@@ -89,6 +89,7 @@ final class HistoryStore: ObservableObject {
     }
 
     static var pendingUndo: PendingUndo?
+    static let maxSnapshotsPerAction = 500
 
     @Published private(set) var actions: [HistoryAction] = []
     @Published private(set) var errorMessage: String?
@@ -147,6 +148,11 @@ final class HistoryStore: ObservableObject {
         after: [Transaction]
     ) {
         guard !Self.recordingSuppressed, !before.isEmpty || !after.isEmpty else { return }
+        // ponytail: bulk writes (locking an account's cleared rows) diff as one
+        // action over every row they touch. Undo restores one row per sync
+        // write and actions persist in UserDefaults, so past the old page
+        // size the action isn't recorded. Batch restores would lift the cap.
+        guard max(before.count, after.count) <= Self.maxSnapshotsPerAction else { return }
 
         if loadedBudgetID != budgetID {
             load(budgetID: budgetID)
@@ -236,10 +242,9 @@ final class HistoryStore: ObservableObject {
 
         // Check against every live row: a row missing from the newest page
         // in `budgetStore.transactions` is not deleted.
-        let snapshot: (transactions: [Transaction], splitChildren: [Transaction])
+        let snapshot: BudgetDatabase.LiveTransactionSnapshot
         do {
-            guard let fetched = try await budgetStore.fetchAllLiveTransactions() else { return }
-            snapshot = fetched
+            snapshot = try await budgetStore.fetchAllLiveTransactions()
         } catch {
             errorMessage = error.localizedDescription
             return

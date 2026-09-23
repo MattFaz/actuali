@@ -8,6 +8,7 @@ final class HistoryObserver {
     private var hasBaseline = false
     private var previous: [String: Transaction] = [:]
     private var previousSplitChildren: [String: [String: Transaction]] = [:]
+    private var previousMessageID: Int64 = 0
     private var consumeTask: Task<Void, Never>?
     private var wasSyncing = false
     private var remoteRefreshPending = false
@@ -112,9 +113,12 @@ final class HistoryObserver {
         // ponytail: reads every live row on each publication. Fine for
         // personal budgets; recording at the write call sites removes the
         // read if huge budgets make it slow.
-        guard let snapshot = try? await store.fetchAllLiveTransactions() else { return }
+        guard let snapshot = try? await store.fetchAllLiveTransactions(
+            remoteChangesAfter: hasBaseline ? previousMessageID : nil
+        ) else { return }
         guard generation == baselineGeneration else { return }
         guard budgetID == store.currentBudgetId else { return }
+        previousMessageID = snapshot.messageID
 
         let current = Dictionary(uniqueKeysWithValues: snapshot.transactions.map { ($0.id, $0) })
         var currentSplitChildren: [String: [String: Transaction]] = [:]
@@ -126,9 +130,7 @@ final class HistoryObserver {
             currentSplitChildren[parentID]?[child.id] = child
         }
 
-        // A load can read the database before or after it is swapped, so
-        // nothing read while loading is a user change; adopt it as baseline.
-        guard hasBaseline, !store.isLoading else {
+        guard hasBaseline else {
             previous = current
             previousSplitChildren = currentSplitChildren
             previousBudgetID = budgetID
@@ -154,6 +156,24 @@ final class HistoryObserver {
             previous = current
             previousSplitChildren = currentSplitChildren
             return
+        }
+
+        // `isRemote` is captured at publication, but this read happens later
+        // and may include a sync that landed in between. Rows another device
+        // wrote since the baseline are adopted, so only local edits diff.
+        var splitParentOf: [String: String] = [:]
+        for (parentID, children) in previousSplitChildren {
+            for childID in children.keys {
+                splitParentOf[childID] = parentID
+            }
+        }
+        for child in snapshot.splitChildren {
+            splitParentOf[child.id] = child.parentId
+        }
+        for id in snapshot.remoteRowIDs {
+            let rootID = splitParentOf[id] ?? id
+            previous[rootID] = current[rootID]
+            previousSplitChildren[rootID] = currentSplitChildren[rootID]
         }
 
         let added = current.values.filter { previous[$0.id] == nil }

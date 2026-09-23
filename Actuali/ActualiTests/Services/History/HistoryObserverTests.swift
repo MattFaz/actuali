@@ -240,6 +240,29 @@ struct HistoryObserverTests {
         #expect(HistoryStore.shared.actions.first?.before.map(\.id) == ["deleted"])
     }
 
+    /// A sync can land between a local publication and the read that diffs
+    /// it. Rows written by another node are sync changes, not the user's.
+    @Test func remoteWriteReadByLocalPublicationIsNotRecorded() async throws {
+        let fixture = try await makeFixture(rows: ["local", "remote"])
+        defer { cleanUp(fixture) }
+        let store = fixture.store
+        let observer = HistoryObserver(store: store)
+        await observer.drainForTesting()
+
+        try await execute("UPDATE transactions SET amount = -1200 WHERE id = 'local'", in: fixture)
+        try await execute("UPDATE transactions SET amount = -1800 WHERE id = 'remote'", in: fixture)
+        try await execute("""
+        INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
+        VALUES ('2026-09-06T00:00:00.000Z-0000-aaaaaaaaaaaaaaaa', 'transactions', 'remote', 'amount', x'00')
+        """, in: fixture)
+        store.transactions = await page(["local", "remote"], in: fixture)
+        await observer.drainForTesting()
+
+        #expect(HistoryStore.shared.actions.count == 1)
+        #expect(HistoryStore.shared.actions.first?.kind == .edited)
+        #expect(HistoryStore.shared.actions.first?.after.map(\.id) == ["local"])
+    }
+
     @Test func editToRowOffThePageIsRecordedAndUndoable() async throws {
         let fixture = try await makeFixture(rows: ["newer"])
         defer { cleanUp(fixture) }

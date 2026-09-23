@@ -1003,18 +1003,58 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    struct LiveTransactionSnapshot: Sendable {
+        let transactions: [Transaction]
+        let splitChildren: [Transaction]
+        /// Highest messages_crdt id at read time: the next snapshot's watermark.
+        let messageID: Int64
+        /// Transaction rows another node wrote after the requested watermark.
+        let remoteRowIDs: Set<String>
+    }
+
     /// Every live top-level transaction and every live split child, read as
     /// one snapshot. History diffs this whole set: diffing the newest page
     /// instead reads rows sliding off it as deletions and rows sliding onto
-    /// it as creations.
-    func fetchAllLiveTransactions() async throws -> (transactions: [Transaction], splitChildren: [Transaction]) {
+    /// it as creations. `remoteRowIDs` comes from the same read, so a sync
+    /// landing between a publication and this read is still attributed to
+    /// the node that wrote it (HLC timestamps end in the 16-char node id).
+    func fetchAllLiveTransactions(
+        remoteChangesAfter watermark: Int64? = nil,
+        localNode nodeId: String? = nil
+    ) async throws -> LiveTransactionSnapshot {
         try await dbQueue.read { db in
-            let transactions = try Row.fetchAll(db, sql: Self.transactionSelect).map(Self.mapTransaction)
             let splitChildren = try Row.fetchAll(
                 db,
-                sql: Self.childTransactionSelect + " AND t.parent_id IS NOT NULL"
+                sql: Self.childTransactionSelect + " AND t.parent_id IS NOT NULL ORDER BY t.sort_order DESC"
             ).map(Self.mapTransaction)
-            return (transactions, splitChildren)
+            var portions: [String: [Transaction.SplitPortion]] = [:]
+            for child in splitChildren {
+                guard let parentId = child.parentId else { continue }
+                portions[parentId, default: []].append(
+                    Transaction.SplitPortion(categoryName: child.categoryName, amount: child.amount)
+                )
+            }
+            let transactions = try Row.fetchAll(db, sql: Self.transactionSelect).map { row in
+                var transaction = Self.mapTransaction(row)
+                if transaction.isParent {
+                    transaction.splitPortions = portions[transaction.id]
+                }
+                return transaction
+            }
+            let messageID = try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM messages_crdt") ?? 0
+            var remoteRowIDs: Set<String> = []
+            if let watermark, let nodeId {
+                remoteRowIDs = try Set(String.fetchAll(db, sql: """
+                SELECT DISTINCT row FROM messages_crdt
+                WHERE dataset = 'transactions' AND id > ? AND substr(timestamp, -16) <> ?
+                """, arguments: [watermark, nodeId]))
+            }
+            return LiveTransactionSnapshot(
+                transactions: transactions,
+                splitChildren: splitChildren,
+                messageID: messageID,
+                remoteRowIDs: remoteRowIDs
+            )
         }
     }
 
