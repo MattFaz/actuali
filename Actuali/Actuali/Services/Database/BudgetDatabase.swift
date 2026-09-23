@@ -971,33 +971,90 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    private static let childTransactionSelect = """
+    SELECT
+        t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+        t.description, t.notes, t.date, t.imported_description,
+        t.schedule,
+        t.transferred_id, t.cleared, t.reconciled, t.sort_order,
+        t.tombstone, t.parent_id,
+        COALESCE(pa.name, p.name) as payee_name,
+        c.name as category_name,
+        p.transfer_acct as transfer_acct
+    FROM transactions t
+    LEFT JOIN payee_mapping pm ON pm.id = t.description
+    LEFT JOIN payees p ON p.id = pm.targetId
+    LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+        AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+    LEFT JOIN category_mapping cm ON cm.id = t.category
+    LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+    WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+    """
+
     /// All live children of a split parent, in entry order (descending
     /// sort_order, matching the list convention).
     func fetchChildTransactions(parentId: String) async throws -> [Transaction] {
         try await dbQueue.read { db in
-            let rows = try Row.fetchAll(db, sql: """
-            SELECT
-                t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
-                t.description, t.notes, t.date, t.imported_description,
-                t.schedule,
-                t.transferred_id, t.cleared, t.reconciled, t.sort_order,
-                t.tombstone, t.parent_id,
-                COALESCE(pa.name, p.name) as payee_name,
-                c.name as category_name,
-                p.transfer_acct as transfer_acct
-            FROM transactions t
-            LEFT JOIN payee_mapping pm ON pm.id = t.description
-            LEFT JOIN payees p ON p.id = pm.targetId
-            LEFT JOIN accounts pa ON pa.id = p.transfer_acct
-                AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
-            LEFT JOIN category_mapping cm ON cm.id = t.category
-            LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
-            WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-              AND t.parent_id = ?
-            ORDER BY t.sort_order DESC
-            """, arguments: [parentId])
+            try Row.fetchAll(
+                db,
+                sql: Self.childTransactionSelect + " AND t.parent_id = ? ORDER BY t.sort_order DESC",
+                arguments: [parentId]
+            ).map(Self.mapTransaction)
+        }
+    }
 
-            return rows.map(Self.mapTransaction)
+    struct LiveTransactionSnapshot: Sendable {
+        let transactions: [Transaction]
+        let splitChildren: [Transaction]
+        /// Highest messages_crdt id at read time: the next snapshot's watermark.
+        let messageID: Int64
+        /// Transaction rows another node wrote after the requested watermark.
+        let remoteRowIDs: Set<String>
+    }
+
+    /// Every live top-level transaction and every live split child, read as
+    /// one snapshot. History diffs this whole set: diffing the newest page
+    /// instead reads rows sliding off it as deletions and rows sliding onto
+    /// it as creations. `remoteRowIDs` comes from the same read, so a sync
+    /// landing between a publication and this read is still attributed to
+    /// the node that wrote it (HLC timestamps end in the 16-char node id).
+    func fetchAllLiveTransactions(
+        remoteChangesAfter watermark: Int64? = nil,
+        localNode nodeId: String? = nil
+    ) async throws -> LiveTransactionSnapshot {
+        try await dbQueue.read { db in
+            let splitChildren = try Row.fetchAll(
+                db,
+                sql: Self.childTransactionSelect + " AND t.parent_id IS NOT NULL ORDER BY t.sort_order DESC"
+            ).map(Self.mapTransaction)
+            var portions: [String: [Transaction.SplitPortion]] = [:]
+            for child in splitChildren {
+                guard let parentId = child.parentId else { continue }
+                portions[parentId, default: []].append(
+                    Transaction.SplitPortion(categoryName: child.categoryName, amount: child.amount)
+                )
+            }
+            let transactions = try Row.fetchAll(db, sql: Self.transactionSelect).map { row in
+                var transaction = Self.mapTransaction(row)
+                if transaction.isParent {
+                    transaction.splitPortions = portions[transaction.id]
+                }
+                return transaction
+            }
+            let messageID = try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM messages_crdt") ?? 0
+            var remoteRowIDs: Set<String> = []
+            if let watermark, let nodeId {
+                remoteRowIDs = try Set(String.fetchAll(db, sql: """
+                SELECT DISTINCT row FROM messages_crdt
+                WHERE dataset = 'transactions' AND id > ? AND substr(timestamp, -16) <> ?
+                """, arguments: [watermark, nodeId]))
+            }
+            return LiveTransactionSnapshot(
+                transactions: transactions,
+                splitChildren: splitChildren,
+                messageID: messageID,
+                remoteRowIDs: remoteRowIDs
+            )
         }
     }
 

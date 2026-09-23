@@ -84,4 +84,13 @@ struct BudgetStoreTagTests {
         #expect(BudgetStoreError.tagCreationFailed("disk full").message(locale: enLocale, bundle: appBundle) == "Failed to create tag: disk full")
         #expect(BudgetStoreError.tagUpdateFailed("db error").message(locale: enLocale, bundle: appBundle) == "Failed to update tag: db error")
     }
+
+    @Test func tagRowCaptionUsesNetAmountNotOutflowTotal() {
+        let tag = Tag(id: "t1", tag: "refund")
+        let inflowOnly = TagSummary(tag: tag, transactionCount: 2, totalSpent: 0, netAmount: 1_286_688)
+        #expect(TagsListView.captionAmount(inflowOnly) == 1_286_688)
+
+        let outflowOnly = TagSummary(tag: tag, transactionCount: 6, totalSpent: 11_000_000, netAmount: -11_000_000)
+        #expect(TagsListView.captionAmount(outflowOnly) == -11_000_000)
+    }
 }

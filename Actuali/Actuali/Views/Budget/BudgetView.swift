@@ -41,6 +41,13 @@ enum BudgetCategoryAccessibility {
     }
 }
 
+/// Insets applied to the two top summary surfaces. UI coverage checks their
+/// rendered frames because List adds its own row and section insets.
+enum TopBoxLayout {
+    static let horizontalContentMargin: CGFloat = 4
+    static let verticalContentMargin: CGFloat = 8
+}
+
 /// Style-specific list metrics live behind one exhaustive switch so adding a
 /// display style cannot silently inherit another style's spacing or background.
 private struct BudgetListMetrics {
@@ -53,7 +60,9 @@ private struct BudgetListMetrics {
         switch style {
         case .clean:
             sectionSpacing = .default
-            horizontalContentMargin = 4
+            horizontalContentMargin = TopBoxLayout.horizontalContentMargin
+            // Tuned in GH #165. Independent of the navigation-bar gutter
+            // above the summary, so changing that gap doesn't move the table.
             topContentMargin = 20
             showsTopFade = true
         case .compact:
@@ -689,6 +698,8 @@ struct BudgetView: View {
                                 RoundedRectangle(cornerRadius: 24)
                                     .fill(Color(.secondarySystemGroupedBackground))
                             )
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("budget.topBox")
                     case .compact:
                         CompactBudgetSummary(
                             budget: budget,
@@ -696,8 +707,11 @@ struct BudgetView: View {
                         )
                     }
                 }
-                .padding(.horizontal, isCompact ? 0 : 4)
-                .padding(.vertical, isCompact ? 0 : 8)
+                .padding(
+                    .horizontal,
+                    isCompact ? 0 : TopBoxLayout.horizontalContentMargin
+                )
+                .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
                 .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }
 

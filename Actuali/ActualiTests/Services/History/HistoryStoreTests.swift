@@ -53,6 +53,31 @@ struct HistoryStoreTests {
         #expect(store.actions.contains { $0.after.first?.id == "10" })
     }
 
+    @Test func skipsActionsLargerThanTheSnapshotCap() {
+        let suite = "HistoryStoreTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = HistoryStore(defaults: defaults)
+        let cap = HistoryStore.maxSnapshotsPerAction
+
+        store.recordSnapshots(
+            budgetID: "budget",
+            kind: .created,
+            before: [],
+            after: (0...cap).map { transaction(id: "over-\($0)") }
+        )
+        #expect(store.actions.isEmpty)
+
+        store.recordSnapshots(
+            budgetID: "budget",
+            kind: .created,
+            before: [],
+            after: (0..<cap).map { transaction(id: "at-\($0)") }
+        )
+        #expect(store.actions.count == 1)
+        #expect(store.actions.first?.after.count == cap)
+    }
+
     @Test func actionsPersistAndReload() {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

@@ -223,8 +223,9 @@ struct TagsListView: View {
 
             if let summary = summariesByTagId[tag.id] {
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(budgetStore.displaySpentCaption(summary.totalSpent))
+                    Text(budgetStore.displaySpentCaption(Self.captionAmount(summary)))
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(summary.netAmount > 0 ? .green : .primary)
 
                     Text(String(format: String(localized: "%lld txs"), Int64(summary.transactionCount)))
                         .font(.caption2)
@@ -235,6 +236,12 @@ struct TagsListView: View {
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("tagRow.\(tag.tag)")
+    }
+
+    /// The row caption reads the signed net, not the outflow-only total:
+    /// an inflow-only tag must not render as 0.00 (see displaySpentCaption).
+    nonisolated static func captionAmount(_ summary: TagSummary) -> Int {
+        summary.netAmount
     }
 
     private func discoverTags() async {

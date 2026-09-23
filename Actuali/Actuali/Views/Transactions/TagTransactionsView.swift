@@ -91,7 +91,7 @@ struct TagTransactionsView: View {
                             Text(String(localized: "Total Spent"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text(budgetStore.displaySpentCaption(totalSpent))
+                            Text(budgetStore.displayBalance(totalSpent))
                                 .font(.headline.weight(.semibold))
                         }
 
@@ -99,8 +99,9 @@ struct TagTransactionsView: View {
                             Text(String(localized: "Net Amount"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text(budgetStore.formatCurrency(netAmount))
+                            Text(budgetStore.displayBalance(netAmount))
                                 .font(.headline.weight(.semibold))
+                                .foregroundStyle(netAmount > 0 ? .green : .primary)
                         }
 
                         VStack(alignment: .leading, spacing: 2) {

@@ -447,6 +447,7 @@ enum DemoDataSeeder {
         try insertTag(db, id: "demo-tag-reimbursable", tag: "reimbursable", color: "#10b981", description: "Work expenses to submit for reimbursement")
         try insertTag(db, id: "demo-tag-tax-deductible", tag: "tax-deductible", color: "#f59e0b", description: "Items for tax deduction")
         try insertTag(db, id: "demo-tag-coffee", tag: "coffee", color: "#8b5cf6", description: "Coffee shops and cafes")
+        try insertTag(db, id: "demo-tag-refund", tag: "refund", color: "#ec4899", description: "Refunds and returns")
 
         // --- Transactions ---
         // We generate ~6 full months of history plus the current month-to-date so
@@ -505,6 +506,7 @@ enum DemoDataSeeder {
             (netflixId, entertainmentId, appleCardId, 11, -2299, nil),
             (amazonId, shoppingId, appleCardId, 6, -4599, "Desk equipment #tax-deductible"),
             (amazonId, shoppingId, appleCardId, 20, -3199, nil),
+            (amazonId, shoppingId, appleCardId, 25, 2999, "Returned item #refund"),
             // Health & wellness
             (fitnessId, gymId, chaseId, 10, -3500, nil),
             (cvsId, pharmacyId, chaseId, 13, -1850, nil),

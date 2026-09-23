@@ -8,6 +8,7 @@ final class HistoryObserver {
     private var hasBaseline = false
     private var previous: [String: Transaction] = [:]
     private var previousSplitChildren: [String: [String: Transaction]] = [:]
+    private var previousMessageID: Int64 = 0
     private var consumeTask: Task<Void, Never>?
     private var wasSyncing = false
     private var remoteRefreshPending = false
@@ -29,12 +30,7 @@ final class HistoryObserver {
                 }
                 let isRemote = remoteRefreshPending || store.isBankSyncing
                 remoteRefreshPending = false
-                self.enqueueConsume(
-                    store: store,
-                    budgetID: budgetID,
-                    transactions: store.transactions,
-                    isRemote: isRemote
-                )
+                self.enqueueConsume(store: store, budgetID: budgetID, isRemote: isRemote)
             }
             .store(in: &cancellables)
 
@@ -58,26 +54,18 @@ final class HistoryObserver {
             }
             .store(in: &cancellables)
 
+        // `transactions` is only the trigger. It holds just the newest page,
+        // so `consume` diffs every live row from the database instead.
         store.$transactions
-            .sink { [weak self, weak store] transactions in
+            .sink { [weak self, weak store] _ in
                 guard let self, let store else { return }
                 let isRemote = self.remoteRefreshPending || store.isBankSyncing
                 self.remoteRefreshPending = false
-                self.enqueueConsume(
-                    store: store,
-                    budgetID: store.currentBudgetId,
-                    transactions: transactions,
-                    isRemote: isRemote
-                )
+                self.enqueueConsume(store: store, budgetID: store.currentBudgetId, isRemote: isRemote)
             }
             .store(in: &cancellables)
 
-        enqueueConsume(
-            store: store,
-            budgetID: store.currentBudgetId,
-            transactions: store.transactions,
-            isRemote: false
-        )
+        enqueueConsume(store: store, budgetID: store.currentBudgetId, isRemote: false)
     }
 
     static func shouldMarkRemoteRefresh(wasSyncing: Bool, state: SyncState) -> Bool {
@@ -88,31 +76,26 @@ final class HistoryObserver {
         isLoading
     }
 
-    private func enqueueConsume(
-        store: BudgetStore,
-        budgetID: String?,
-        transactions: [Transaction],
-        isRemote: Bool
-    ) {
+    #if DEBUG
+    /// Test-only: wait until every queued publication has been diffed.
+    func drainForTesting() async {
+        await consumeTask?.value
+    }
+    #endif
+
+    private func enqueueConsume(store: BudgetStore, budgetID: String?, isRemote: Bool) {
         let generation = baselineGeneration
         let previousTask = consumeTask
         consumeTask = Task { @MainActor [weak self, weak store] in
             _ = await previousTask?.result
             guard let self, let store else { return }
-            await self.consume(
-                store,
-                budgetID: budgetID,
-                transactions: transactions,
-                isRemote: isRemote,
-                generation: generation
-            )
+            await self.consume(store, budgetID: budgetID, isRemote: isRemote, generation: generation)
         }
     }
 
     private func consume(
         _ store: BudgetStore,
         budgetID: String?,
-        transactions: [Transaction],
         isRemote: Bool,
         generation: Int
     ) async {
@@ -125,17 +108,27 @@ final class HistoryObserver {
             return
         }
 
-        // `isLoading` resets the baseline before a reload publishes rows, so
-        // the first transaction snapshot of that load is safe to adopt.
         guard budgetID == store.currentBudgetId else { return }
 
-        let current = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
-        let currentSplitChildren = await fetchSplitChildren(
-            for: current.values.filter(\.isParent),
-            using: store
-        )
+        // ponytail: reads every live row on each publication. Fine for
+        // personal budgets; recording at the write call sites removes the
+        // read if huge budgets make it slow.
+        guard let snapshot = try? await store.fetchAllLiveTransactions(
+            remoteChangesAfter: hasBaseline ? previousMessageID : nil
+        ) else { return }
         guard generation == baselineGeneration else { return }
         guard budgetID == store.currentBudgetId else { return }
+        previousMessageID = snapshot.messageID
+
+        let current = Dictionary(uniqueKeysWithValues: snapshot.transactions.map { ($0.id, $0) })
+        var currentSplitChildren: [String: [String: Transaction]] = [:]
+        for parent in current.values where parent.isParent {
+            currentSplitChildren[parent.id] = [:]
+        }
+        for child in snapshot.splitChildren {
+            guard let parentID = child.parentId, currentSplitChildren[parentID] != nil else { continue }
+            currentSplitChildren[parentID]?[child.id] = child
+        }
 
         guard hasBaseline else {
             previous = current
@@ -163,6 +156,24 @@ final class HistoryObserver {
             previous = current
             previousSplitChildren = currentSplitChildren
             return
+        }
+
+        // `isRemote` is captured at publication, but this read happens later
+        // and may include a sync that landed in between. Rows another device
+        // wrote since the baseline are adopted, so only local edits diff.
+        var splitParentOf: [String: String] = [:]
+        for (parentID, children) in previousSplitChildren {
+            for childID in children.keys {
+                splitParentOf[childID] = parentID
+            }
+        }
+        for child in snapshot.splitChildren {
+            splitParentOf[child.id] = child.parentId
+        }
+        for id in snapshot.remoteRowIDs {
+            let rootID = splitParentOf[id] ?? id
+            previous[rootID] = current[rootID]
+            previousSplitChildren[rootID] = currentSplitChildren[rootID]
         }
 
         let added = current.values.filter { previous[$0.id] == nil }
@@ -301,18 +312,6 @@ final class HistoryObserver {
         previous = current
         previousSplitChildren = currentSplitChildren
         previousBudgetID = budgetID
-    }
-
-    private func fetchSplitChildren(
-        for parents: some Collection<Transaction>,
-        using store: BudgetStore
-    ) async -> [String: [String: Transaction]] {
-        var result: [String: [String: Transaction]] = [:]
-        for parent in parents {
-            let children = await store.fetchSplitChildren(parentId: parent.id)
-            result[parent.id] = Dictionary(uniqueKeysWithValues: children.map { ($0.id, $0) })
-        }
-        return result
     }
 
     private static func matchesPendingUndo(
