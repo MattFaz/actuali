@@ -10,8 +10,6 @@ final class HistoryObserver {
     private var previousSplitChildren: [String: [String: Transaction]] = [:]
     private var previousMessageID: Int64 = 0
     private var consumeTask: Task<Void, Never>?
-    private var wasSyncing = false
-    private var remoteRefreshPending = false
     private var baselineGeneration = 0
 
     init(store: BudgetStore) {
@@ -28,9 +26,11 @@ final class HistoryObserver {
                     self.baselineGeneration += 1
                     return
                 }
-                let isRemote = remoteRefreshPending || store.isBankSyncing
-                remoteRefreshPending = false
-                self.enqueueConsume(store: store, budgetID: budgetID, isRemote: isRemote)
+                self.enqueueConsume(
+                    store: store,
+                    budgetID: budgetID,
+                    isRemote: store.isBankSyncing
+                )
             }
             .store(in: &cancellables)
 
@@ -44,32 +44,20 @@ final class HistoryObserver {
             }
             .store(in: &cancellables)
 
-        store.$syncState
-            .sink { [weak self] state in
-                guard let self else { return }
-                if Self.shouldMarkRemoteRefresh(wasSyncing: self.wasSyncing, state: state) {
-                    self.remoteRefreshPending = true
-                }
-                self.wasSyncing = state == .syncing
-            }
-            .store(in: &cancellables)
-
         // `transactions` is only the trigger. It holds just the newest page,
         // so `consume` diffs every live row from the database instead.
         store.$transactions
             .sink { [weak self, weak store] _ in
                 guard let self, let store else { return }
-                let isRemote = self.remoteRefreshPending || store.isBankSyncing
-                self.remoteRefreshPending = false
-                self.enqueueConsume(store: store, budgetID: store.currentBudgetId, isRemote: isRemote)
+                self.enqueueConsume(
+                    store: store,
+                    budgetID: store.currentBudgetId,
+                    isRemote: store.isBankSyncing
+                )
             }
             .store(in: &cancellables)
 
         enqueueConsume(store: store, budgetID: store.currentBudgetId, isRemote: false)
-    }
-
-    static func shouldMarkRemoteRefresh(wasSyncing: Bool, state: SyncState) -> Bool {
-        wasSyncing && state == .idle
     }
 
     static func shouldResetBaselineForReload(isLoading: Bool) -> Bool {

@@ -15,24 +15,24 @@ struct HistoryView: View {
                 )
             } else {
                 ForEach(historyStore.actions) { action in
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         Image(systemName: symbol(for: action.kind))
-                            .font(.caption2.weight(.semibold))
+                            .font(.title3.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .frame(width: 20)
+                            .frame(width: 28, height: 44)
                             .accessibilityHidden(true)
 
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 6) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 8) {
                                 Text(action.title)
-                                    .font(.caption2)
+                                    .font(.caption)
                                     .foregroundStyle(action.status == .undone ? .secondary : .primary)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
 
                                 if let amount = action.primarySnapshot?.amount {
                                     Text(budgetStore.formatCurrency(amount))
-                                        .font(.caption2.monospacedDigit())
+                                        .font(.caption.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
@@ -40,31 +40,32 @@ struct HistoryView: View {
                             }
 
                             Text(detail(for: action))
-                                .font(.caption2)
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
                         .layoutPriority(1)
 
-                        Spacer(minLength: 4)
+                        Spacer(minLength: 6)
 
                         if action.status == .undone {
                             Text(String(localized: "Undone"))
-                                .font(.caption2)
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
                                 .accessibilityLabel(String(localized: "Undone"))
                         } else if historyStore.canUndo(action) {
                             Button(String(localized: "Undo")) { selectedAction = action }
-                                .font(.caption2)
-                                .frame(minWidth: 44, alignment: .trailing)
+                                .font(.caption)
+                                .frame(minWidth: 52, minHeight: 44, alignment: .trailing)
+                                .contentShape(Rectangle())
                                 .fixedSize(horizontal: true, vertical: false)
                         }
                     }
-                    .frame(height: 48)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                    .frame(minHeight: 54)
+                    .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
                     .listRowSeparator(.visible)
                 }
             }
@@ -117,42 +118,57 @@ struct HistoryView: View {
         let category = snapshot.categoryName?.isEmpty == false ? snapshot.categoryName : nil
         let hasNotes = snapshot.notes?.isEmpty == false
 
-        if action.kind == .edited,
-           let before = action.before.first(where: { $0.id == snapshot.id }) {
-            if before.amount != snapshot.amount {
-                return String(
-                    format: String(localized: "Amount: %@ → %@"),
-                    budgetStore.formatCurrency(before.amount),
-                    budgetStore.formatCurrency(snapshot.amount)
-                )
-            }
-            if before.categoryName != snapshot.categoryName {
-                return String(
-                    format: String(localized: "Category: %@ → %@"),
-                    before.categoryName ?? String(localized: "Uncategorized"),
-                    snapshot.categoryName ?? String(localized: "Uncategorized")
-                )
-            }
-            if before.payeeName != snapshot.payeeName {
-                return String(
-                    format: String(localized: "Payee: %@ → %@"),
-                    before.payeeName ?? String(localized: "Transaction"),
-                    snapshot.payeeName ?? String(localized: "Transaction")
-                )
-            }
-            if before.notes != snapshot.notes {
-                return before.notes?.isEmpty == false && hasNotes
-                    ? String(localized: "Note changed")
-                    : hasNotes ? String(localized: "Note added") : String(localized: "Note removed")
-            }
-            if before.date != snapshot.date {
-                return String(localized: "Date changed")
-            }
-            if before.cleared != snapshot.cleared {
-                return snapshot.cleared ? String(localized: "Marked cleared") : String(localized: "Marked uncleared")
-            }
-            if before.reconciled != snapshot.reconciled {
-                return snapshot.reconciled ? String(localized: "Marked reconciled") : String(localized: "Marked unreconciled")
+        if action.kind == .edited {
+            for changedSnapshot in action.after {
+                guard let before = action.before.first(where: { $0.id == changedSnapshot.id }) else {
+                    continue
+                }
+
+                if before.amount != changedSnapshot.amount {
+                    return String(
+                        format: String(localized: "Amount: %@ → %@"),
+                        budgetStore.formatCurrency(before.amount),
+                        budgetStore.formatCurrency(changedSnapshot.amount)
+                    )
+                }
+                if before.categoryId != changedSnapshot.categoryId {
+                    return String(
+                        format: String(localized: "Category: %@ → %@"),
+                        before.categoryName ?? String(localized: "Uncategorized"),
+                        changedSnapshot.categoryName ?? String(localized: "Uncategorized")
+                    )
+                }
+                if before.payeeId != changedSnapshot.payeeId {
+                    return String(
+                        format: String(localized: "Payee: %@ → %@"),
+                        before.payeeName ?? String(localized: "Transaction"),
+                        changedSnapshot.payeeName ?? String(localized: "Transaction")
+                    )
+                }
+                if before.notes != changedSnapshot.notes {
+                    return before.notes?.isEmpty == false && changedSnapshot.notes?.isEmpty == false
+                        ? String(localized: "Note changed")
+                        : changedSnapshot.notes?.isEmpty == false
+                            ? String(localized: "Note added")
+                            : String(localized: "Note removed")
+                }
+                if before.date != changedSnapshot.date {
+                    return String(localized: "Date changed")
+                        + ": "
+                        + Transaction.formattedDate(from: before.date)
+                        + " → "
+                        + Transaction.formattedDate(from: changedSnapshot.date)
+                }
+                if before.cleared != changedSnapshot.cleared {
+                    return changedSnapshot.cleared
+                        ? String(localized: "Marked cleared")
+                        : String(localized: "Marked uncleared")
+                }
+                if before.reconciled != changedSnapshot.reconciled {
+                    return changedSnapshot.reconciled
+                        ? String(localized: "Marked reconciled")
+                        : String(localized: "Marked unreconciled")
+                }
             }
         }
 
@@ -217,14 +233,22 @@ private struct HistoryUndoReviewView: View {
                     if action.before.isEmpty {
                         Text(String(localized: "The transaction(s) created by this action will be removed."))
                             .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(action.before) { snapshot in
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(snapshot.payeeName?.isEmpty == false ? snapshot.payeeName! : String(localized: "Transaction"))
-                                Text(formatAmount(snapshot.amount))
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
+                    }
+
+                    let snapshots = action.before.isEmpty ? action.after : action.before
+                    ForEach(snapshots) { snapshot in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(
+                                snapshot.payeeName?.isEmpty == false
+                                    ? snapshot.payeeName!
+                                    : String(localized: "Transaction")
+                            )
+                            Text(Transaction.formattedDate(from: snapshot.date))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(formatAmount(snapshot.amount))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
