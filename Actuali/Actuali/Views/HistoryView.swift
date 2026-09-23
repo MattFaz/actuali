@@ -149,11 +149,13 @@ struct HistoryView: View {
                     )
                 }
                 if before.notes != changedSnapshot.notes {
-                    return before.notes?.isEmpty == false && changedSnapshot.notes?.isEmpty == false
-                        ? String(localized: "Note changed")
-                        : changedSnapshot.notes?.isEmpty == false
-                            ? String(localized: "Note added")
-                            : String(localized: "Note removed")
+                    if before.notes?.isEmpty == false && changedSnapshot.notes?.isEmpty == false {
+                        return String(localized: "Note changed")
+                    }
+                    if changedSnapshot.notes?.isEmpty == false {
+                        return String(localized: "Note added")
+                    }
+                    return String(localized: "Note removed")
                 }
                 if before.date != changedSnapshot.date {
                     return String(localized: "Date changed")
