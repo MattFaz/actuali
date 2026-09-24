@@ -684,37 +684,6 @@ struct BudgetView: View {
                 .padding(.bottom, 8)
             }
 
-            // Keep the summary above the List so it stays pinned while the
-            // table scrolls (GH #155).
-            if !isCompact
-                || budgetStore.showCompactBudgetOverview {
-                Group {
-                    switch budgetStore.budgetDisplayStyle {
-                    case .clean:
-                        CleanBudgetSummary(budget: budget)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 24)
-                                    .fill(Color(.secondarySystemGroupedBackground))
-                            )
-                            .accessibilityElement(children: .contain)
-                            .accessibilityIdentifier("budget.topBox")
-                    case .compact:
-                        CompactBudgetSummary(
-                            budget: budget,
-                            showsSpent: budgetStore.showCompactSpentColumn
-                        )
-                    }
-                }
-                .padding(
-                    .horizontal,
-                    isCompact ? 0 : TopBoxLayout.horizontalContentMargin
-                )
-                .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
-                .background(Color(.systemGroupedBackground).ignoresSafeArea())
-            }
-
             // The strip filters categories, so it can't express uncategorized
             // transactions — and the check-in card it replaced held the only
             // in-app route to that list (otherwise reachable only from a
@@ -747,6 +716,38 @@ struct BudgetView: View {
                 .accessibilityIdentifier("budgetUncategorized")
                 .padding(.horizontal, isCompact ? 0 : 4)
                 .padding(.bottom, 8)
+            }
+
+
+            // Keep the summary above the List so it stays pinned while the
+            // table scrolls (GH #155).
+            if !isCompact
+                || budgetStore.showCompactBudgetOverview {
+                Group {
+                    switch budgetStore.budgetDisplayStyle {
+                    case .clean:
+                        CleanBudgetSummary(budget: budget)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 24)
+                                    .fill(Color(.secondarySystemGroupedBackground))
+                            )
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("budget.topBox")
+                    case .compact:
+                        CompactBudgetSummary(
+                            budget: budget,
+                            showsSpent: budgetStore.showCompactSpentColumn
+                        )
+                    }
+                }
+                .padding(
+                    .horizontal,
+                    isCompact ? 0 : TopBoxLayout.horizontalContentMargin
+                )
+                .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
+                .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }
 
             if !isCompact, budgetStore.showBudgetCheckInStrip {
