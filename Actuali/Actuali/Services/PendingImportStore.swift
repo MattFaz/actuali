@@ -36,9 +36,15 @@ final class PendingImportStore: ObservableObject {
         imports.count
     }
 
-    func visibleImports(activeBudgetId: String?) -> [PendingImport] {
-        guard activeBudgetId != DemoDataSeeder.budgetId else { return imports }
-        return imports.filter { $0.originBudgetId != DemoDataSeeder.budgetId }
+    func visibleImports() -> [PendingImport] {
+        imports
+    }
+
+    func removeImports(originBudgetId: String) throws {
+        let updated = imports.filter { $0.originBudgetId != originBudgetId }
+        guard updated.count != imports.count else { return }
+        try save(updated)
+        imports = updated
     }
 
     private let fileURL: URL

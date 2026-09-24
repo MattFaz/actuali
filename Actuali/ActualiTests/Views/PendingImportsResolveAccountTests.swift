@@ -296,20 +296,10 @@ struct PendingImportsResolveAccountTests {
             == .none)
     }
 
-    @Test func currencyMismatchDetection() {
-        let same = PendingImport(originBudgetId: "active-budget", sourceCurrencyCode: "INR")
-        #expect(!PendingImportsView.hasCurrencyMismatch(for: same, activeBudgetId: "active-budget", budgetCurrency: "INR"))
-        #expect(!PendingImportsView.hasCurrencyMismatch(for: same, activeBudgetId: "active-budget", budgetCurrency: "inr"))
-
-        let diff = PendingImport(originBudgetId: "active-budget", sourceCurrencyCode: "INR")
-        #expect(PendingImportsView.hasCurrencyMismatch(for: diff, activeBudgetId: "active-budget", budgetCurrency: "USD"))
-        #expect(PendingImportsView.hasCurrencyMismatch(for: diff, activeBudgetId: "active-budget", budgetCurrency: ""))
-
-        let noSource = PendingImport(originBudgetId: "active-budget", sourceCurrencyCode: nil)
-        #expect(PendingImportsView.hasCurrencyMismatch(for: noSource, activeBudgetId: "active-budget", budgetCurrency: "USD"))
-
-        let crossBudgetSameCurrency = PendingImport(originBudgetId: "other-budget", sourceCurrencyCode: "USD")
-        #expect(!PendingImportsView.hasCurrencyMismatch(for: crossBudgetSameCurrency, activeBudgetId: "active-budget", budgetCurrency: "USD"))
+    @Test func currencyLabelFallback() {
+        let locale = Locale(identifier: "en_US")
+        #expect(PendingImport.currencyLabel("USD", locale: locale, bundle: appBundle) == "USD")
+        #expect(PendingImport.currencyLabel("", locale: locale, bundle: appBundle) == "None")
     }
 
     @Test func emptyBudgetCurrencyShowsNone() {
@@ -325,11 +315,7 @@ struct PendingImportsResolveAccountTests {
         #expect(context == "This import is in INR, but the active budget has no currency set. No currency conversion will be performed.")
 
         let req = PendingImportReviewRequirement.confirmActiveBudgetCurrency(source: "INR", budget: "")
-        #expect(req.isCurrencyRequirement)
         #expect(req.prompt(locale: locale, bundle: appBundle).contains("(None)"))
         #expect(req.prompt(locale: locale, bundle: appBundle).contains("INR"))
-
-        let adoptReq = PendingImportReviewRequirement.adoptIntoActiveBudget
-        #expect(!adoptReq.isCurrencyRequirement)
     }
 }

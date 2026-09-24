@@ -29,7 +29,7 @@ struct PendingImportsView: View {
     var body: some View {
         NavigationStack {
             Group {
-                let visibleImports = store.visibleImports(activeBudgetId: budgetStore.currentBudgetId)
+                let visibleImports = store.visibleImports()
                 if visibleImports.isEmpty {
                     ContentUnavailableView(
                         "No Pending Imports",
@@ -194,7 +194,7 @@ struct PendingImportsView: View {
 
     private func approveAll() {
         let approver = PendingImportApprover(store: budgetStore)
-        let items = store.visibleImports(activeBudgetId: budgetStore.currentBudgetId)
+        let items = store.visibleImports()
         deferredFailureCount = nil
         errorMessage = nil
         isProcessing = true
@@ -294,6 +294,10 @@ struct PendingImportsView: View {
         let targetAccountId = resolveAccountId(for: item)
         if let accountId = targetAccountId {
             let approver = PendingImportApprover(store: budgetStore)
+            let requirements = item.reviewRequirements(
+                activeBudgetId: budgetStore.currentBudgetId,
+                budgetCurrency: budgetStore.currencyCode
+            )
             VStack(spacing: 0) {
                 if let context = Self.currencyContext(
                     for: item,
@@ -307,11 +311,9 @@ struct PendingImportsView: View {
                             .foregroundStyle(.orange)
                             .frame(maxWidth: .infinity, alignment: .leading)
 
-                        if Self.hasCurrencyMismatch(
-                            for: item,
-                            activeBudgetId: budgetStore.currentBudgetId,
-                            budgetCurrency: budgetStore.currencyCode
-                        ) {
+                        if let source = item.sourceCurrencyCode,
+                           PendingImport.normalizedCurrencyCode(source)
+                           != PendingImport.normalizedCurrencyCode(budgetStore.currencyCode) {
                             NavigationLink {
                                 DisplaySettingsView()
                             } label: {
@@ -339,10 +341,7 @@ struct PendingImportsView: View {
                     onSaved: { _ in
                         try store.remove(id: item.id)
                     },
-                    reviewRequirements: item.reviewRequirements(
-                        activeBudgetId: budgetStore.currentBudgetId,
-                        budgetCurrency: budgetStore.currencyCode
-                    )
+                    reviewRequirements: requirements
                 )
                 .environmentObject(budgetStore)
             }
@@ -353,15 +352,6 @@ struct PendingImportsView: View {
                 description: Text("Please add an account before editing this import.")
             )
         }
-    }
-
-    nonisolated static func hasCurrencyMismatch(
-        for item: PendingImport,
-        activeBudgetId: String?,
-        budgetCurrency: String
-    ) -> Bool {
-        item.reviewRequirements(activeBudgetId: activeBudgetId, budgetCurrency: budgetCurrency)
-            .contains(where: \.isCurrencyRequirement)
     }
 
     nonisolated static func currencyContext(
@@ -388,7 +378,7 @@ struct PendingImportsView: View {
                 )
             }
             let budget = PendingImport.normalizedCurrencyCode(budgetCurrency)
-            let budgetLabel = budget.isEmpty ? ReportStrings.text("None", locale: locale, bundle: bundle) : budget
+            let budgetLabel = PendingImport.currencyLabel(budget, locale: locale, bundle: bundle)
             return ReportStrings.format(
                 "Currency was not identified. Active budget: %@. Review and confirm before saving.",
                 budgetLabel,

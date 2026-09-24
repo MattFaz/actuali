@@ -2580,6 +2580,10 @@ final class BudgetStore: ObservableObject {
             // refresh the data.
             await loadBankSyncAccounts()
 
+            if budgetId != DemoDataSeeder.budgetId {
+                try? PendingImportStore.shared.removeImports(originBudgetId: DemoDataSeeder.budgetId)
+            }
+
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
             // So we need to load the local metadata to get the cloudFileId for lookup
@@ -2747,7 +2751,11 @@ final class BudgetStore: ObservableObject {
             // launches, and earlier tests record demo-budget history).
             HistoryStore.shared.clearPersistedActions(budgetID: DemoDataSeeder.budgetId)
             await loadLocalBudget(DemoDataSeeder.budgetId)
-            try? DemoDataSeeder.seedPendingImports()
+            do {
+                try DemoDataSeeder.seedPendingImports()
+            } catch {
+                logger.error("Demo pending import seed failed: \(error.localizedDescription, privacy: .public)")
+            }
             // The seeder recreates the budget directory mid-launch, so any
             // loadLocalBudget already running from init() may have captured an
             // I/O error. A successful demo seed supersedes it.
