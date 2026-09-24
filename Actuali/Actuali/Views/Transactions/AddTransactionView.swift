@@ -19,9 +19,13 @@ struct AddTransactionView: View {
     /// existing blank-form autofocus behavior.
     private let autofocusAmount: Bool?
 
-    /// Width of the sign glyph beside the amount. The same width is reserved
-    /// on the opposite side so the amount itself stays centered.
-    private static let amountSignWidth: CGFloat = 24
+    /// Width of the sign glyph beside the amount, scaled with the glyph's own
+    /// text style so it never clips at accessibility sizes. The same width is
+    /// reserved on the opposite side so the amount itself stays centered.
+    @ScaledMetric(relativeTo: .title2) private var amountSignWidth: CGFloat = 24
+    /// Floor for the content-sized amount field: an empty field's placeholder
+    /// isn't part of its intrinsic width, so without this "0.00" would clip.
+    @ScaledMetric(relativeTo: .largeTitle) private var amountMinWidth: CGFloat = 88
 
     @State private var selectedAccountId: String
     @State private var amount: String
@@ -391,7 +395,6 @@ struct AddTransactionView: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    .font(.headline)
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                     // A split parent's sign is the children's; flipping
                     // it would have to flip every line, so it stays fixed.
@@ -402,25 +405,26 @@ struct AddTransactionView: View {
                     // The amount is the first thing entered in a fresh form,
                     // so the add flow opens with the keyboard ready. Edits and
                     // prefilled amounts already have one and start with the
-                    // keyboard down. The field sizes itself to its text, so
+                    // keyboard down. The field is fixed to its text width, so
                     // the sign hugs it; an equal spacer on the far side keeps
                     // the amount itself on the row's center line.
                     HStack(alignment: .center, spacing: 12) {
                         Text(amountSignSymbol)
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(amountSignColor)
-                            .frame(width: Self.amountSignWidth, alignment: .trailing)
+                            .frame(width: amountSignWidth, alignment: .trailing)
                         AmountInputField(
                             text: $amount,
                             conventionalAmountEntry: budgetStore.conventionalAmountEntry,
                             alignment: .center,
                             textStyle: .extraLargeTitle,
                             weight: .bold,
-                            autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty),
-                            hugsContent: true
+                            autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty)
                         )
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: amountMinWidth)
                         Color.clear
-                            .frame(width: Self.amountSignWidth, height: 1)
+                            .frame(width: amountSignWidth, height: 1)
                             .accessibilityHidden(true)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -547,6 +551,16 @@ struct AddTransactionView: View {
                     // category row was, instead of opening a section of their own.
                     if showsSplitEntry {
                         splitEntryRows
+                        // Right under the lines it counts, so a disabled Save
+                        // button is never a mystery.
+                        if let remaining = splitRemainingCents, remaining != 0 {
+                            Text("\(budgetStore.formatCurrency(remaining)) left to assign")
+                                .foregroundStyle(.red)
+                        } else if splitRemainingCents == 0, hasBlankSplitLine {
+                            // Nothing left to assign but a line is still blank.
+                            Text("Fill in or remove the empty line")
+                                .foregroundStyle(.red)
+                        }
                     }
 
                     DatePicker("Date", selection: $date, displayedComponents: .date)
@@ -570,18 +584,6 @@ struct AddTransactionView: View {
                        budgetStore.payeeLocationWritesEnabled,
                        budgetStore.recordPayeeLocations {
                         Toggle("Save Location", isOn: $saveLocation)
-                    }
-                } footer: {
-                    if showsSplitEntry {
-                        if let remaining = splitRemainingCents, remaining != 0 {
-                            Text("\(budgetStore.formatCurrency(remaining)) left to assign")
-                                .foregroundStyle(.red)
-                        } else if splitRemainingCents == 0, hasBlankSplitLine {
-                            // Nothing left to assign but a line is still blank — say why
-                            // Save stays disabled instead of leaving it a mystery.
-                            Text("Fill in or remove the empty line")
-                                .foregroundStyle(.red)
-                        }
                     }
                 }
 
@@ -721,8 +723,7 @@ struct AddTransactionView: View {
     }
 
     /// Editable split lines, rendered inline in the main section so the pill
-    /// simply grows: one category + amount per line. The unassigned remainder
-    /// shows in that section's footer.
+    /// simply grows: one category + amount per line.
     @ViewBuilder
     private var splitEntryRows: some View {
         ForEach($splitLines) { $line in
@@ -1127,10 +1128,7 @@ private struct SplitLineRow: View {
 /// lives outside the field (a split line's direction flip) and the text stays unsigned.
 /// Neither set means sign is handled elsewhere entirely (e.g. the expense/income toggle).
 ///
-/// `textStyle` picks the Dynamic Type text style the font scales from, and
-/// `hugsContent` makes the field report its text's width instead of filling
-/// whatever it is offered, for layouts that center the amount and sit a sign
-/// glyph right beside it.
+/// `textStyle` picks the Dynamic Type text style the font scales from.
 ///
 /// The toolbar also carries +, −, × and ÷ for quick math: typing 12.50, then
 /// +, then 6.00 shows "12.50 + 6.00" in the field and collapses to "18.50"
@@ -1152,11 +1150,6 @@ struct AmountInputField: UIViewRepresentable {
     /// Bring up the keyboard as soon as the field lands on screen. For
     /// sheets whose whole purpose is entering an amount.
     var autofocus = false
-    /// Size to the displayed text (or the placeholder while empty) rather than
-    /// filling the offered width. The displayed text can be longer than the
-    /// binding — mid-expression, grouping separators — so the field measures
-    /// itself instead of callers guessing from the bound string.
-    var hugsContent = false
     /// Shows the ± toolbar button and delegates it here instead of signing
     /// the text — for callers whose sign is separate state.
     var onToggleSign: (() -> Void)?
@@ -1286,30 +1279,6 @@ struct AmountInputField: UIViewRepresentable {
         } else if formatChanged {
             context.coordinator.renderDisplay(to: uiView)
         }
-    }
-
-    /// Content-hugging layouts measure the text the field is actually
-    /// showing. Everything else keeps SwiftUI's default sizing (nil).
-    func sizeThatFits(
-        _ proposal: ProposedViewSize,
-        uiView: UITextField,
-        context: Context
-    ) -> CGSize? {
-        guard hugsContent else { return nil }
-        let font = uiView.font ?? .preferredFont(forTextStyle: textStyle)
-        // An empty field shows its placeholder ("0.00"), and
-        // intrinsicContentSize doesn't reliably account for it, so measure
-        // whichever string is actually on screen.
-        let shown = (uiView.text?.isEmpty == false) ? uiView.text : uiView.placeholder
-        let measured = ((shown ?? "") as NSString)
-            .size(withAttributes: [.font: font]).width
-        // A little slack keeps the caret from clipping at the trailing edge,
-        // and a floor keeps a blank field tappable.
-        let width = max(ceil(measured) + 4, 44)
-        return CGSize(
-            width: min(width, proposal.width ?? width),
-            height: max(uiView.intrinsicContentSize.height, ceil(font.lineHeight))
-        )
     }
 
     func makeCoordinator() -> Coordinator {
@@ -1705,7 +1674,7 @@ struct AmountInputField: UIViewRepresentable {
             textField.text = computeFieldText()
             // The display can grow or shrink without the binding changing
             // (arming an operator shows "12.50 + " while the binding still
-            // reads 12.50), so a content-hugging field must be told to
+            // reads 12.50), so a field sized to its text must be told to
             // re-measure rather than wait for a SwiftUI update.
             textField.invalidateIntrinsicContentSize()
             let bound = computeBoundText()
