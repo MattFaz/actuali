@@ -718,7 +718,6 @@ struct BudgetView: View {
                 .padding(.bottom, 8)
             }
 
-
             // Keep the summary above the List so it stays pinned while the
             // table scrolls (GH #155).
             if !isCompact
