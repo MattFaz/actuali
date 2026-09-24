@@ -4977,6 +4977,27 @@ final class BudgetDatabase: Sendable {
         try await fetchAccountConfigs(prefix: Self.loanPreferenceKeyPrefix)
     }
 
+    /// Everything ever paid into a loan account, in cents.
+    ///
+    /// On a loan the money only moves one way: payments arrive as inflows
+    /// while the opening balance and the lender's interest and escrow charges
+    /// are outflows, so summing the inflows is the total paid — the figure
+    /// YNAB's Activity tab shows, against the principal-only progress on
+    /// Overview. Split parents are skipped in favour of their children so a
+    /// split payment isn't counted twice.
+    func totalPaidIntoAccount(accountId: String) async throws -> Int {
+        try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(amount), 0)
+                FROM transactions
+                WHERE acct = ?
+                  AND (tombstone = 0 OR tombstone IS NULL)
+                  AND (isParent = 0 OR isParent IS NULL)
+                  AND amount > 0
+            """, arguments: [accountId]) ?? 0
+        }
+    }
+
     /// Preference key prefix for synced card-to-account mappings.
     static let cardMappingPreferenceKeyPrefix = "actuali:card_mapping:"
 

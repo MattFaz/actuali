@@ -31,6 +31,21 @@ struct LoanConfig: Codable, Equatable, Hashable, Sendable {
     /// of the config rather than a display note because it is covered alongside
     /// interest before anything reaches principal, so it changes the payoff.
     var escrowOrFees: Int?
+
+    /// The budget category this loan's payments are assigned to, if any.
+    ///
+    /// Optional on purpose: YNAB offers a paired category when a loan is
+    /// created but does not require one, and an unpaired loan still tracks
+    /// its balance, payoff and interest. Pairing is what lets a payment be
+    /// budgeted for, so it gates the payment target rather than the loan.
+    var categoryId: String?
+
+    /// The month (`YYYY-MM`) the payment target is skipped for, if any.
+    ///
+    /// One month, not a count: YNAB's snooze covers the month you skip a
+    /// payment and expires on its own, so storing the month means a stale
+    /// snooze can never suppress a later one.
+    var targetSnoozedMonth: String?
 }
 
 extension LoanConfig {
@@ -40,6 +55,8 @@ extension LoanConfig {
         annualRatePercent = try container.decode(Double.self, forKey: .annualRatePercent)
         minimumPayment = try container.decode(Int.self, forKey: .minimumPayment)
         escrowOrFees = try container.decodeIfPresent(Int.self, forKey: .escrowOrFees)
+        categoryId = try container.decodeIfPresent(String.self, forKey: .categoryId)
+        targetSnoozedMonth = try container.decodeIfPresent(String.self, forKey: .targetSnoozedMonth)
     }
 }
 
@@ -106,5 +123,64 @@ extension LoanConfig {
             locale: locale
         )
         return String(format: String(localized: "Paid off %@"), label)
+    }
+}
+
+// MARK: - Recording a payment
+
+extension LoanConfig {
+    /// How one real payment divides between the lender's charges and the
+    /// balance.
+    struct PaymentSplit: Equatable, Sendable {
+        let interest: Int
+        let escrow: Int
+        /// What comes off the balance. Negative when the payment doesn't
+        /// cover interest and escrow — a real outcome rather than an error,
+        /// and the one most worth showing, since the loan grew that month.
+        let principal: Int
+    }
+
+    /// The split for a payment of `payment` against `accountBalance`.
+    ///
+    /// Unlike `schedule`, this charges interest and escrow in full whatever
+    /// was paid: the lender bills them against the balance, not against what
+    /// arrived. Underpaying moves the shortfall into a negative principal
+    /// instead of quietly shrinking the charge.
+    func paymentSplit(accountBalance: Int, payment: Int) -> PaymentSplit {
+        let interest = LoanAmortization.monthlyInterest(
+            balance: Self.owed(accountBalance: accountBalance),
+            annualRatePercent: annualRatePercent
+        )
+        let escrow = escrowOrFees ?? 0
+        return PaymentSplit(
+            interest: interest,
+            escrow: escrow,
+            principal: payment - interest - escrow
+        )
+    }
+
+    /// What clearing the loan outright this month would take: the balance
+    /// plus the interest and escrow charged alongside it.
+    func payoffAmount(accountBalance: Int) -> Int {
+        let owed = Self.owed(accountBalance: accountBalance)
+        guard owed > 0 else { return 0 }
+        return owed
+            + LoanAmortization.monthlyInterest(balance: owed, annualRatePercent: annualRatePercent)
+            + (escrowOrFees ?? 0)
+    }
+
+    /// The amount to offer when recording a payment: the required payment,
+    /// except on the last one, where the minimum would overshoot what is left.
+    func suggestedPayment(accountBalance: Int) -> Int {
+        min(minimumPayment, payoffAmount(accountBalance: accountBalance))
+    }
+}
+
+// MARK: - Payment target
+
+extension LoanConfig {
+    /// Whether the payment target is skipped for `month` (`YYYY-MM`).
+    func targetIsSnoozed(in month: String) -> Bool {
+        targetSnoozedMonth == month
     }
 }

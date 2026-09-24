@@ -1022,6 +1022,18 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Everything paid into the loan so far, interest and fees included —
+    /// the Activity figure, against the principal-only progress the payoff
+    /// ring shows. nil when it can't be read rather than 0, so the row hides
+    /// instead of claiming nothing has been paid.
+    ///
+    /// Lives here rather than in `BudgetStore+Loans` because `database` is
+    /// file-private to this one.
+    func totalPaidIntoLoan(accountId: String) async -> Int? {
+        guard let database else { return nil }
+        return try? await database.totalPaidIntoAccount(accountId: accountId)
+    }
+
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
         guard let config = creditCardConfigs[accountId] else { return nil }
         return CreditCardCycle(
@@ -4329,13 +4341,19 @@ final class BudgetStore: ObservableObject {
     ///   - date: YYYYMMDD
     ///   - notes: shared notes (applied to both legs)
     ///   - cleared: applied to both legs
+    /// `categoryId` is applied to whichever leg may carry one — Actual allows
+    /// a category only on an on-budget leg whose partner account is
+    /// off-budget, the same rule `updateTransfer` enforces — and dropped
+    /// otherwise. That is the shape a loan payment takes: budgeted money
+    /// leaving a checking account for an off-budget loan.
     func createTransfer(
         fromAccountId: String,
         toAccountId: String,
         amountCents: Int,
         date: Int,
         notes: String?,
-        cleared: Bool
+        cleared: Bool,
+        categoryId: String? = nil
     ) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
@@ -4356,6 +4374,13 @@ final class BudgetStore: ObservableObject {
         let sourceId = UUID().uuidString
         let targetId = UUID().uuidString
 
+        let offBudgetIds = offBudgetAccountIds
+        func categorizable(_ accountId: String, partner: String) -> String? {
+            guard !offBudgetIds.contains(accountId),
+                  offBudgetIds.contains(partner) else { return nil }
+            return categoryId
+        }
+
         let source = Transaction(
             id: sourceId,
             accountId: fromAccountId,
@@ -4363,7 +4388,7 @@ final class BudgetStore: ObservableObject {
             amount: -amountCents,
             payeeId: toTransferPayee.id,
             payeeName: toTransferPayee.name,
-            categoryId: nil,
+            categoryId: categorizable(fromAccountId, partner: toAccountId),
             categoryName: nil,
             notes: notes,
             cleared: cleared,
@@ -4383,7 +4408,7 @@ final class BudgetStore: ObservableObject {
             amount: amountCents,
             payeeId: fromTransferPayee.id,
             payeeName: fromTransferPayee.name,
-            categoryId: nil,
+            categoryId: categorizable(toAccountId, partner: fromAccountId),
             categoryName: nil,
             notes: notes,
             cleared: cleared,
@@ -6810,6 +6835,14 @@ final class BudgetStore: ObservableObject {
             }
             if let categoryId {
                 categoryTemplates = categoryTemplates.filter { $0.key == categoryId }
+            }
+
+            // A loan whose target is snoozed contributes nothing this month:
+            // YNAB's "skip a payment" without tearing the target down and
+            // rebuilding it next month.
+            let snoozed = snoozedLoanCategoryIds(inMonth: month)
+            if !snoozed.isEmpty {
+                categoryTemplates = categoryTemplates.filter { !snoozed.contains($0.key) }
             }
 
             let sheet = try await database.fetchGoalTemplateSheet(month: month)
