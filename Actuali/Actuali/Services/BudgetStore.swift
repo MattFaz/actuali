@@ -247,6 +247,7 @@ final class BudgetStore: ObservableObject {
             if currentBudgetId != oldValue {
                 creditCardConfigs = [:]
                 loanConfigs = [:]
+                depositConfigs = [:]
                 cardAccountMappings = [:]
             }
         }
@@ -315,6 +316,8 @@ final class BudgetStore: ObservableObject {
 
     /// Synced loan configurations loaded from the preferences table (accountId -> LoanConfig).
     @Published var loanConfigs: [String: LoanConfig] = [:]
+    /// Synced deposit configurations loaded from the preferences table (accountId -> DepositConfig).
+    @Published var depositConfigs: [String: DepositConfig] = [:]
     /// Synced card-to-account mappings loaded from the preferences table (keyword -> accountId).
     @Published var cardAccountMappings: [String: String] = [:]
 
@@ -1018,6 +1021,48 @@ final class BudgetStore: ObservableObject {
             try await syncClient.setLoanConfig(accountId: accountId, config: config)
         } catch {
             loanConfigs[accountId] = previous
+            self.error = error.localizedDescription
+        }
+    }
+
+    // MARK: - Deposits
+
+    /// Deposits whose account still exists and is open — what the Deposits
+    /// screen lists. Closed and deleted accounts keep their stored config
+    /// (reopening restores the deposit) but drop out, the same predicate
+    /// `activeLoanConfigs` holds for loans.
+    var activeDepositConfigs: [String: DepositConfig] {
+        let openAccountIds = Set(accounts.filter { !$0.closed }.map(\.id))
+        return depositConfigs.filter { openAccountIds.contains($0.key) }
+    }
+
+    /// The config to *display* for an account: nil unless it is a tracked
+    /// deposit whose account still exists and is open. Every surface hides a
+    /// closed deposit through this one predicate rather than each re-deciding.
+    ///
+    /// Note that a *matured* deposit is still active — it has a final value
+    /// worth showing until the account itself is closed.
+    func activeDepositConfig(for accountId: String) -> DepositConfig? {
+        guard let account = accounts.first(where: { $0.id == accountId }), !account.closed else { return nil }
+        return depositConfigs[accountId]
+    }
+
+    /// Writes a deposit's config and persists it through SyncClient.
+    /// A nil `config` stops tracking the account and clears everything stored
+    /// for it. Optimistic with rollback, mirroring `setLoan`.
+    func setDeposit(accountId: String, config: DepositConfig?) async {
+        guard currentBudgetId != nil else { return }
+        let previous = depositConfigs[accountId]
+        depositConfigs[accountId] = config
+        guard let syncClient else {
+            depositConfigs[accountId] = previous
+            error = String(localized: "Deposit settings need sync configured for this budget.")
+            return
+        }
+        do {
+            try await syncClient.setDepositConfig(accountId: accountId, config: config)
+        } catch {
+            depositConfigs[accountId] = previous
             self.error = error.localizedDescription
         }
     }
@@ -2380,6 +2425,7 @@ final class BudgetStore: ObservableObject {
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await openedDb.fetchCreditCardConfigs()
             let fetchedLoans = try await openedDb.fetchLoanConfigs()
+            let fetchedDeposits = try await openedDb.fetchDepositConfigs()
             let fetchedCardMappings = try await openedDb.fetchCardAccountMappings()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
@@ -2446,6 +2492,7 @@ final class BudgetStore: ObservableObject {
             }
             creditCardConfigs = fetchedCreditCards.merging(legacyConfigs) { synced, _ in synced }
             loanConfigs = fetchedLoans
+            depositConfigs = fetchedDeposits
 
             var legacyCardMappings: [String: String] = [:]
             let savedCardMappings = UserDefaults.standard.dictionary(forKey: "cardAccountMappings_\(budgetId)") as? [String: String] ?? [:]
@@ -2664,6 +2711,7 @@ final class BudgetStore: ObservableObject {
         let numberFormatBefore = numberFormat
         let creditCardsBefore = creditCardConfigs
         let loansBefore = loanConfigs
+        let depositsBefore = depositConfigs
         let cardMappingsBefore = cardAccountMappings
         do {
             // Fetch into locals, then publish in one batch (no suspension
@@ -2691,6 +2739,7 @@ final class BudgetStore: ObservableObject {
             let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await database.fetchCreditCardConfigs()
             let fetchedLoans = try await database.fetchLoanConfigs()
+            let fetchedDeposits = try await database.fetchDepositConfigs()
             let fetchedCardMappings = try await database.fetchCardAccountMappings()
             // Re-read here too: a sync can bring in a currency set on another
             // client, and nothing else republishes it (GH #297).
@@ -2716,6 +2765,9 @@ final class BudgetStore: ObservableObject {
             }
             if loanConfigs == loansBefore {
                 loanConfigs = fetchedLoans
+            }
+            if depositConfigs == depositsBefore {
+                depositConfigs = fetchedDeposits
             }
             if cardAccountMappings == cardMappingsBefore {
                 cardAccountMappings = fetchedCardMappings

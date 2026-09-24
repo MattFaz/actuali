@@ -1264,6 +1264,13 @@ actor SyncClient {
         try await setEncodedPreference(key: BudgetDatabase.loanPreferenceKey(for: accountId), config: config)
     }
 
+    /// Persists or clears a deposit account configuration in the budget's
+    /// `preferences` table under `actuali:deposit:<accountId>`, so it syncs
+    /// across all devices. Same passthrough guarantee as the two above.
+    func setDepositConfig(accountId: String, config: DepositConfig?) async throws {
+        try await setEncodedPreference(key: BudgetDatabase.depositPreferenceKey(for: accountId), config: config)
+    }
+
     /// Stores `config` as the JSON value of `key`, or clears the key when nil.
     private func setEncodedPreference(key: String, config: (some Encodable)?) async throws {
         let jsonString = try config.map { try String(decoding: JSONEncoder().encode($0), as: UTF8.self) }

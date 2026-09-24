@@ -688,6 +688,53 @@
         }
       }
     },
+    "Deposit settings need sync configured for this budget." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einlagen-Einstellungen erfordern eine eingerichtete Synchronisierung für dieses Budget."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deposit settings need sync configured for this budget."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los ajustes de depósitos requieren tener la sincronización configurada para este presupuesto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les réglages de dépôt nécessitent une synchronisation configurée pour ce budget."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le impostazioni dei depositi richiedono la sincronizzazione configurata per questo budget."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voor deposito-instellingen moet synchronisatie zijn ingesteld voor dit budget."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As configurações de depósito exigem sincronização configurada para este orçamento."
+          }
+        }
+      }
+    },
     "Edit Loan" : {
       "extractionState" : "stale",
       "localizations" : {

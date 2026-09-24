@@ -4945,6 +4945,14 @@ final class BudgetDatabase: Sendable {
         "\(loanPreferenceKeyPrefix)\(accountId)"
     }
 
+    /// Preference key prefix for synced deposit configurations.
+    static let depositPreferenceKeyPrefix = "actuali:deposit:"
+
+    /// Preference key for a specific account's deposit config.
+    static func depositPreferenceKey(for accountId: String) -> String {
+        "\(depositPreferenceKeyPrefix)\(accountId)"
+    }
+
     /// Decodes every `preferences` row stored under `prefix` into `T`, keyed by
     /// the account id the key ends with. A row that no longer decodes is skipped
     /// rather than failing the load, so one bad value can't cost the others.
@@ -4975,6 +4983,12 @@ final class BudgetDatabase: Sendable {
     /// Returns a dictionary mapping `accountId -> LoanConfig`.
     func fetchLoanConfigs() async throws -> [String: LoanConfig] {
         try await fetchAccountConfigs(prefix: Self.loanPreferenceKeyPrefix)
+    }
+
+    /// Fetches all synced deposit configurations stored in the `preferences` table.
+    /// Returns a dictionary mapping `accountId -> DepositConfig`.
+    func fetchDepositConfigs() async throws -> [String: DepositConfig] {
+        try await fetchAccountConfigs(prefix: Self.depositPreferenceKeyPrefix)
     }
 
     /// Everything ever paid into a loan account, in cents.
