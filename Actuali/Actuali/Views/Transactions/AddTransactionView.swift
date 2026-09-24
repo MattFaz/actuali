@@ -543,6 +543,12 @@ struct AddTransactionView: View {
                         }
                     }
 
+                    // Split lines grow the same pill in place, right where the
+                    // category row was, instead of opening a section of their own.
+                    if showsSplitEntry {
+                        splitEntryRows
+                    }
+
                     DatePicker("Date", selection: $date, displayedComponents: .date)
 
                     // One line while the note is short — an empty three-line
@@ -565,12 +571,18 @@ struct AddTransactionView: View {
                        budgetStore.recordPayeeLocations {
                         Toggle("Save Location", isOn: $saveLocation)
                     }
-                }
-
-                // Its own section so the "left to assign" footer sits right
-                // under the lines it describes, not at the bottom of the form.
-                if showsSplitEntry {
-                    splitEntrySection
+                } footer: {
+                    if showsSplitEntry {
+                        if let remaining = splitRemainingCents, remaining != 0 {
+                            Text("\(budgetStore.formatCurrency(remaining)) left to assign")
+                                .foregroundStyle(.red)
+                        } else if splitRemainingCents == 0, hasBlankSplitLine {
+                            // Nothing left to assign but a line is still blank — say why
+                            // Save stays disabled instead of leaving it a mystery.
+                            Text("Fill in or remove the empty line")
+                                .foregroundStyle(.red)
+                        }
+                    }
                 }
 
                 if let error = errorMessage {
@@ -708,75 +720,63 @@ struct AddTransactionView: View {
         }
     }
 
-    /// Editable split lines for the add flow: one category + amount per
-    /// line, with the unassigned remainder in the footer.
-    private var splitEntrySection: some View {
-        Section {
-            ForEach($splitLines) { $line in
-                SplitLineRow(
-                    line: $line,
-                    accountId: selectedAccountId,
-                    txType: txType,
-                    remainingCents: splitRemainingCents,
-                    nearbyPayees: $nearbyPayees,
-                    onOpenPayeePicker: loadNearbyPayees,
-                    onDeleteNearby: deleteNearbySuggestion
-                )
-            }
-            .onDelete { offsets in
-                if isEditingSplitParent {
-                    // Swiping away every line on an existing parent is the
-                    // same intent as "Remove Split": switch to
-                    // single-transaction mode and seed the collapse category
-                    // from a removed line (the parent carries none). The
-                    // lines are gone from memory, so undoing via the split
-                    // button reloads them from the database.
-                    let removed = offsets.compactMap { splitLines[$0] }
-                    splitLines.remove(atOffsets: offsets)
-                    if splitLines.isEmpty {
-                        unsplitRequested = true
-                        if let category = removed.first(where: { $0.categoryId != nil })?.categoryId {
-                            selectedCategoryId = category
-                        }
-                    }
-                } else {
-                    splitLines.remove(atOffsets: offsets)
-                }
-            }
-            Button {
-                splitLines.append(.init())
-            } label: {
-                Label("Add Line", systemImage: "plus")
-            }
-            // Tapping "Remove Split" on an existing parent switches the form
-            // to single-transaction mode: keep the lines in memory for an
-            // instant undo and seed the collapse category from the first
-            // line that has one (the parent itself carries none). In the add
-            // flow it just clears the lines, as before.
-            Button(role: .destructive) {
-                if isEditingSplitParent {
+    /// Editable split lines, rendered inline in the main section so the pill
+    /// simply grows: one category + amount per line. The unassigned remainder
+    /// shows in that section's footer.
+    @ViewBuilder
+    private var splitEntryRows: some View {
+        ForEach($splitLines) { $line in
+            SplitLineRow(
+                line: $line,
+                accountId: selectedAccountId,
+                txType: txType,
+                remainingCents: splitRemainingCents,
+                nearbyPayees: $nearbyPayees,
+                onOpenPayeePicker: loadNearbyPayees,
+                onDeleteNearby: deleteNearbySuggestion
+            )
+        }
+        .onDelete { offsets in
+            if isEditingSplitParent {
+                // Swiping away every line on an existing parent is the
+                // same intent as "Remove Split": switch to
+                // single-transaction mode and seed the collapse category
+                // from a removed line (the parent carries none). The
+                // lines are gone from memory, so undoing via the split
+                // button reloads them from the database.
+                let removed = offsets.compactMap { splitLines[$0] }
+                splitLines.remove(atOffsets: offsets)
+                if splitLines.isEmpty {
                     unsplitRequested = true
-                    if let first = splitLines.first(where: { $0.categoryId != nil }) {
-                        selectedCategoryId = first.categoryId
+                    if let category = removed.first(where: { $0.categoryId != nil })?.categoryId {
+                        selectedCategoryId = category
                     }
-                } else {
-                    splitLines = []
                 }
-            } label: {
-                Text("Remove Split")
+            } else {
+                splitLines.remove(atOffsets: offsets)
             }
-        } header: {
-            Text("Split")
-        } footer: {
-            if let remaining = splitRemainingCents, remaining != 0 {
-                Text("\(budgetStore.formatCurrency(remaining)) left to assign")
-                    .foregroundStyle(.red)
-            } else if splitRemainingCents == 0, hasBlankSplitLine {
-                // Nothing left to assign but a line is still blank — say why
-                // Save stays disabled instead of leaving it a mystery.
-                Text("Fill in or remove the empty line")
-                    .foregroundStyle(.red)
+        }
+        Button {
+            splitLines.append(.init())
+        } label: {
+            Label("Add Line", systemImage: "plus")
+        }
+        // Tapping "Remove Split" on an existing parent switches the form
+        // to single-transaction mode: keep the lines in memory for an
+        // instant undo and seed the collapse category from the first
+        // line that has one (the parent itself carries none). In the add
+        // flow it just clears the lines, as before.
+        Button(role: .destructive) {
+            if isEditingSplitParent {
+                unsplitRequested = true
+                if let first = splitLines.first(where: { $0.categoryId != nil }) {
+                    selectedCategoryId = first.categoryId
+                }
+            } else {
+                splitLines = []
             }
+        } label: {
+            Text("Remove Split")
         }
     }
 
