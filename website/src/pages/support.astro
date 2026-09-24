@@ -115,8 +115,7 @@ import Layout from "../layouts/Layout.astro";
                   Settings</em>.</li>
                 <li>Under Enable Full Trust for Root Certificates, enable your
                   certificate and confirm. <br />
-                  <strong>Note:</strong> a fully trusted certificate is valid for
-                  every site on that iPhone. Keep the key file private. If the key
+                  <strong>Note:</strong> a fully trusted root CA can validate certificates for any site on that iPhone. Only install a CA certificate you control; hostname matching still applies.
                   leaks, remove the profile under <em>Settings → General → 
                   VPN &amp; Device Management</em>.</li>
               </ol>
