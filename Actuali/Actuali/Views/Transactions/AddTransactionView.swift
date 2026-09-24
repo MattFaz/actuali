@@ -19,6 +19,10 @@ struct AddTransactionView: View {
     /// existing blank-form autofocus behavior.
     private let autofocusAmount: Bool?
 
+    /// Width of the sign glyph beside the amount. The same width is reserved
+    /// on the opposite side so the amount itself stays centered.
+    private static let amountSignWidth: CGFloat = 24
+
     @State private var selectedAccountId: String
     @State private var amount: String
     @State private var txType: TransactionType
@@ -212,6 +216,12 @@ struct AddTransactionView: View {
         !splitLines.isEmpty && !unsplitRequested
     }
 
+    /// Whether the split entry section is on screen. Shared by the body and
+    /// the save gate so the two can't disagree about when split rules apply.
+    private var showsSplitEntry: Bool {
+        isSplitting && !isTransfer && showsStandardCategoryFields
+    }
+
     /// Whether the form can offer the split option: a plain transaction in
     /// either flow, or an existing parent mid-"Remove Split" (as an undo).
     /// Transfers are excluded — they pair two accounts through `transferId`
@@ -379,6 +389,8 @@ struct AddTransactionView: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                        .font(.headline)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                         // A split parent's sign is the children's; flipping
                         // it would have to flip every line, so it stays fixed.
                         // A transfer stays a transfer: converting one back
@@ -386,20 +398,35 @@ struct AddTransactionView: View {
                         .disabled(isEditingSplitParent || isEditingTransfer)
                     }
 
-                    HStack {
+                    // The amount is the first thing entered in a fresh form,
+                    // so the add flow opens with the keyboard ready. Edits and
+                    // prefilled amounts already have one and start with the
+                    // keyboard down. The field sizes itself to its text, so
+                    // the sign hugs it; an equal spacer on the far side keeps
+                    // the amount itself on the row's center line.
+                    HStack(alignment: .center, spacing: 12) {
                         Text(amountSignSymbol)
+                            .font(.title2.weight(.semibold))
                             .foregroundStyle(amountSignColor)
-                        // The amount is the first thing entered in a fresh
-                        // form, so the add flow opens with the keyboard ready.
-                        // Edits and prefilled amounts already have one and
-                        // start with the keyboard down.
+                            .frame(width: Self.amountSignWidth, alignment: .trailing)
                         AmountInputField(
                             text: $amount,
                             conventionalAmountEntry: budgetStore.conventionalAmountEntry,
-                            autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty)
+                            alignment: .center,
+                            textStyle: .extraLargeTitle,
+                            weight: .bold,
+                            autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty),
+                            hugsContent: true
                         )
+                        Color.clear
+                            .frame(width: Self.amountSignWidth, height: 1)
+                            .accessibilityHidden(true)
                     }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
                 }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden, edges: .all)
 
                 Section {
                     Picker(accountPickerLabel, selection: $selectedAccountId) {
@@ -453,7 +480,7 @@ struct AddTransactionView: View {
                                         .foregroundStyle(.primary)
                                 }
                             }
-                            .contentShape(Rectangle()) // Ensures the whole row is tappable
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("addTransaction.payee")
@@ -482,8 +509,6 @@ struct AddTransactionView: View {
                     }
 
                     if isEditingSplitParent, !isSplitting, !unsplitRequested {
-                        // Placeholder while the children load into the
-                        // editable split lines below.
                         HStack {
                             Text("Category")
                             Spacer()
@@ -515,35 +540,35 @@ struct AddTransactionView: View {
                         }
                     }
 
-                    DatePicker("Date", selection: $date, displayedComponents: .date)
-                }
-
-                if isSplitting, !isTransfer, showsStandardCategoryFields {
+                // Its own section so the "left to assign" footer sits right
+                // under the lines it describes, not at the bottom of the form.
+                if showsSplitEntry {
                     splitEntrySection
                 }
 
-                Section {
-                    // One line while the note is short — an empty three-line
-                    // box only pushes Cleared and the save button off screen —
-                    // growing as the text needs it, up to six.
+                    DatePicker("Date", selection: $date, displayedComponents: .date)
+
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(1...6)
                     TagSuggestionBar(text: $notes, availableTags: budgetStore.tags)
-                    // Links in the note stay openable while the text is a
-                    // TextField (GH #190) — this form doubles as the only
-                    // full view of a transaction's note.
                     NoteLinkRows(text: notes)
-                }
 
-                Section {
                     Toggle("Cleared", isOn: $cleared)
-                    // Only the paths that record locations (adds and split
-                    // edits) get the per-save opt-out; standard edits never
-                    // record, so the toggle would be a no-op there.
+
                     if !isEditing || isEditingSplitParent, !isTransfer,
                        budgetStore.payeeLocationWritesEnabled,
                        budgetStore.recordPayeeLocations {
                         Toggle("Save Location", isOn: $saveLocation)
+                    }
+                } footer: {
+                    if isSplitting, !isTransfer, showsStandardCategoryFields {
+                        if let remaining = splitRemainingCents, remaining != 0 {
+                            Text("\(budgetStore.formatCurrency(remaining)) left to assign")
+                                .foregroundStyle(.red)
+                        } else if splitRemainingCents == 0, hasBlankSplitLine {
+                            Text("Fill in or remove the empty line")
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
 
@@ -584,17 +609,9 @@ struct AddTransactionView: View {
                         }
                     }
                     .disabled(saveDisabled)
-                    // Hardware-keyboard commit, for the iPad case where the
-                    // form is filled without ever leaving the keys. Return on
-                    // its own belongs to the focused field; ⌘Return is the
-                    // whole form. Inert while the save is disabled.
                     .keyboardShortcut(.return, modifiers: .command)
                 }
 
-                // Cancel sits under the save button rather than in the
-                // navigation bar: the two decisions belong together at the
-                // end of the form, and its own section makes it the same
-                // full-width row as the save button.
                 Section {
                     Button(role: .destructive, action: cancelEntry) {
                         HStack {
@@ -604,12 +621,9 @@ struct AddTransactionView: View {
                             Spacer()
                         }
                     }
-                    // Esc cancels on a hardware keyboard while the row is on
-                    // screen. A Form row is lazy, so on a form long enough to
-                    // scroll the shortcut isn't registered until the row is
-                    // reached — the same reachability the tap has.
                     .keyboardShortcut(.cancelAction)
                 }
+
             }
             .readableWidth()
             // The form's default ~35pt top inset is dead space on the
@@ -682,6 +696,8 @@ struct AddTransactionView: View {
         }
     }
 
+    /// Editable split lines for the add flow: one category + amount per
+    /// line, with the unassigned remainder in the footer.
     /// Editable split lines for the add flow: one category + amount per
     /// line, with the unassigned remainder in the footer.
     private var splitEntrySection: some View {
@@ -819,7 +835,7 @@ struct AddTransactionView: View {
         }
         // A blank line reads as zero for the remainder display, but the store
         // rejects zero-amount children — keep save blocked until it's filled.
-        if isSplitting, !isTransfer, showsStandardCategoryFields,
+        if showsSplitEntry,
            splitRemainingCents != 0 || hasBlankSplitLine {
             return true
         }
@@ -1115,11 +1131,21 @@ struct AmountInputField: UIViewRepresentable {
     /// of shifting into cents.
     var conventionalAmountEntry = false
     var alignment: NSTextAlignment = .natural
+    /// textStyle picks the Dynamic Type text style the font scales from, and
+    /// hugsContent makes the field report its text's width instead of filling
+    /// whatever it is offered, for layouts that center the amount and sit a sign
+    /// glyph right beside it.
+    var textStyle: UIFont.TextStyle = .body
     var allowsNegative = false
     var weight: UIFont.Weight = .regular
     /// Bring up the keyboard as soon as the field lands on screen. For
     /// sheets whose whole purpose is entering an amount.
     var autofocus = false
+    /// Size to the displayed text (or the placeholder while empty) rather than
+    /// filling the offered width. The displayed text can be longer than the
+    /// binding — mid-expression, grouping separators — so the field measures
+    /// itself instead of callers guessing from the bound string.
+    var hugsContent = false
     /// Shows the ± toolbar button and delegates it here instead of signing
     /// the text — for callers whose sign is separate state.
     var onToggleSign: (() -> Void)?
@@ -1160,11 +1186,11 @@ struct AmountInputField: UIViewRepresentable {
         field.delegate = context.coordinator
         field.text = text
         if weight == .regular {
-            field.font = .preferredFont(forTextStyle: .body)
+            field.font = .preferredFont(forTextStyle: textStyle)
         } else {
-            // Weighted variant of the body style so Dynamic Type still scales.
+            // Weighted variant of the selected text style so Dynamic Type still scales.
             let descriptor = UIFontDescriptor
-                .preferredFontDescriptor(withTextStyle: .body)
+                .preferredFontDescriptor(withTextStyle: textStyle)
                 .addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
             field.font = UIFont(descriptor: descriptor, size: 0)
         }
@@ -1249,6 +1275,30 @@ struct AmountInputField: UIViewRepresentable {
         } else if formatChanged {
             context.coordinator.renderDisplay(to: uiView)
         }
+    }
+
+    /// Content-hugging layouts measure the text the field is actually
+    /// showing. Everything else keeps SwiftUI's default sizing (nil).
+    /// An empty field shows its placeholder ("0.00"), and
+    /// intrinsicContentSize doesn't reliably account for it, so measure
+    /// whichever string is actually on screen.
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: UITextField,
+        context: Context
+    ) -> CGSize? {
+        guard hugsContent else { return nil }
+        let font = uiView.font ?? .preferredFont(forTextStyle: textStyle)
+        let shown = (uiView.text?.isEmpty == false) ? uiView.text : uiView.placeholder
+        let measured = ((shown ?? "") as NSString)
+            .size(withAttributes: [.font: font]).width
+        // A little slack keeps the caret from clipping at the trailing edge,
+        // and a floor keeps a blank field tappable.
+        let width = max(ceil(measured) + 4, 44)
+        return CGSize(
+            width: min(width, proposal.width ?? width),
+            height: max(uiView.intrinsicContentSize.height, ceil(font.lineHeight))
+        )
     }
 
     func makeCoordinator() -> Coordinator {
@@ -1637,10 +1687,16 @@ struct AmountInputField: UIViewRepresentable {
         /// must not publish state while SwiftUI is updating the view hierarchy.
         fileprivate func renderDisplay(to textField: UITextField) {
             textField.text = computeFieldText()
+            textField.invalidateIntrinsicContentSize()
         }
 
         fileprivate func applyDisplay(to textField: UITextField) {
             textField.text = computeFieldText()
+            // The display can grow or shrink without the binding changing
+            // (arming an operator shows "12.50 + " while the binding still
+            // reads "18.50"), so a content-hugging field must be told to
+            // re-measure rather than wait for a SwiftUI update.
+            textField.invalidateIntrinsicContentSize()
             let bound = computeBoundText()
             lastPublishedText = bound
             if parent.text != bound {
