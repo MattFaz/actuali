@@ -49,7 +49,7 @@ struct HistoryDetailTests {
     }
 
     @Test func splitChildAmountEditReportsTheChildAmount() {
-        let parentBefore = transaction(id: "parent", isParent: true, categoryId: nil, categoryName: nil)
+        let parentBefore = transaction(id: "parent", categoryId: nil, categoryName: nil, isParent: true)
         let parentAfter = parentBefore
         let childBefore = transaction(id: "child", amount: -600, parentId: "parent")
         let childAfter = transaction(id: "child", amount: -700, parentId: "parent")
