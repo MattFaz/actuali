@@ -35,8 +35,6 @@ struct AccountDetailEmptyStateTests {
         ) == "No transactions")
     }
 
-
-
     @Test func runningBalanceVisibilityUsesStableListState() {
         #expect(AccountDetailView.allowsRunningBalance(
             enabled: true, isSearching: false,
@@ -65,6 +63,7 @@ struct AccountDetailEmptyStateTests {
             statusFilter: .all, hideCleared: false, hideReconciled: true
         ))
     }
+
     @Test func noteSectionHidesWhenHiddenOrSearching() {
         #expect(AccountDetailView.showsNote(
             supported: true, hidden: false, isSearching: false
