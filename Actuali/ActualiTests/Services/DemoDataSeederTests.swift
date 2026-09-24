@@ -292,17 +292,22 @@ struct DemoDataSeederTests {
         #expect(first?.amount == 156.0)
         #expect(first?.payee == "SWIGGY INST")
         #expect(first?.originBudgetId == DemoDataSeeder.budgetId)
+
+        // Idempotency: second call does not re-add or clear
+        try DemoDataSeeder.seedPendingImports(store: store)
+        #expect(store.count == 1)
     }
 
-    @Test func demoImportStaysOutOfOtherBudgets() throws {
+    @Test func demoImportCleanupRemovesSeededImport() throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let store = PendingImportStore(fileURL: tempDir.appendingPathComponent("pending.json"))
 
         try DemoDataSeeder.seedPendingImports(store: store)
+        #expect(store.count == 1)
 
-        #expect(store.visibleImports(activeBudgetId: "real-budget").isEmpty)
-        #expect(store.visibleImports(activeBudgetId: DemoDataSeeder.budgetId).count == 1)
+        try store.removeImports(originBudgetId: DemoDataSeeder.budgetId)
+        #expect(store.count == 0)
     }
 }

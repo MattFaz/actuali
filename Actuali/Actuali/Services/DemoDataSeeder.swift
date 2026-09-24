@@ -52,11 +52,9 @@ enum DemoDataSeeder {
     /// Seeds sample pending imports for exploring and testing the import review flow,
     /// including currency mismatch warnings.
     @MainActor
-    static func seedPendingImports(store: PendingImportStore = .shared, now: Date = Date()) throws {
-        let existing = store.imports.filter { $0.originBudgetId == budgetId }
-        for item in existing {
-            try store.remove(id: item.id)
-        }
+    static func seedPendingImports(store: PendingImportStore = .shared) throws {
+        guard !store.imports.contains(where: { $0.originBudgetId == budgetId }) else { return }
+        let now = Date()
         let sample = PendingImport(
             originBudgetId: budgetId,
             amount: 156.00,

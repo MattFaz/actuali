@@ -34,10 +34,6 @@ struct AccountsListView: View {
     @State private var showingPendingImports = false
     @StateObject private var pendingImportStore = PendingImportStore.shared
 
-    private var pendingImportsCount: Int {
-        pendingImportStore.visibleImports(activeBudgetId: budgetStore.currentBudgetId).count
-    }
-
     /// Split layout only. Starts on All Accounts so the detail column has
     /// something in it at launch instead of an empty pane.
     @State private var selection: AccountSelection? = .allAccounts
@@ -381,14 +377,14 @@ struct AccountsListView: View {
                     .accessibilityLabel(String(localized: "Accounts options"))
                     .accessibilityHint(String(localized: "Account list display options"))
                 }
-                if pendingImportsCount > 0 {
+                if pendingImportStore.count > 0 {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             showingPendingImports = true
                         } label: {
                             Image(systemName: "tray.and.arrow.down")
                                 .overlay(alignment: .topTrailing) {
-                                    Text("\(pendingImportsCount)")
+                                    Text("\(pendingImportStore.count)")
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(.white)
                                         .padding(3)
@@ -397,7 +393,7 @@ struct AccountsListView: View {
                                 }
                         }
                         .accessibilityLabel("Pending imports")
-                        .accessibilityValue(String(localized: "\(pendingImportsCount) pending"))
+                        .accessibilityValue(String(localized: "\(pendingImportStore.count) pending"))
                     }
                 }
             }
