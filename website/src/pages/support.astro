@@ -77,11 +77,51 @@ import Layout from "../layouts/Layout.astro";
           <strong>"Couldn't make a secure connection" / "TLS error"</strong> —
           iPhones only connect to servers with a security certificate they
           trust, and won't let an app skip that check. If your server uses a
-          certificate it generated itself, iOS blocks the connection. Most
-          self-hosting setups can issue a free trusted certificate
-          automatically — tools like Caddy, Nginx Proxy Manager and Cloudflare
-          Tunnel all do this for you. Once Safari loads your server without a
-          warning, Actuali will connect.
+          certificate it generated itself, iOS blocks the connection.<br />
+          There are two ways to fix this: 
+          <ul  class="list-disc space-y-2 pl-6 text-neutral-700">
+            <li>
+              Most self-hosting setups can issue a free trusted certificate
+              automatically — tools like Caddy, Nginx Proxy Manager and 
+              Cloudflare Tunnel all do this for you.
+            </li>
+            <li>
+              You can import the ertificate to your device to have it trusted.
+              To do this check in your server <code>config.json</code> what
+              certificate file is used. it should contain these entries:
+              <pre class="text-xs bg-gray-200"><code>{`
+{
+  "https": {
+    "key": "/path/to/key.pem",
+    "cert": "/path/to/cert.pem"
+  }
+}
+              `}</code></pre>
+              You want to copy the public certificate file to your iPhone. 
+              (<em>DO NOT COPY THE FILE IN KEY</em>). This will be a 
+              <code>.pem/.crt</code> file. 
+              <br />
+              Open the certificate on the iPhone. 
+              <br />
+              iOS should report that a profile has been downloaded. 
+              <br />
+              Go to: <br />
+              <em class="ml-4">Settings → General → VPN & Device Management</em> 
+              <br />
+              Select the downloaded profile and choose Install. 
+              <br />
+              Installing it isn't quite enough, though. Manually installed 
+              certificates aren't automatically trusted for SSL/TLS. 
+              <br />
+              Go to: 
+              <br />
+              <em class="ml-4">Settings → General → About → Certificate Trust Settings</em>
+              <br />
+              Under Enable Full Trust for Root Certificates, enable your 
+              certificate and confirm.
+              </li>
+          </ul>
+          Once Safari loads your server without a warning, Actuali will connect.
         </li>
         <li>
           <strong>"Your server's security certificate has expired"</strong> —
