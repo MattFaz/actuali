@@ -31,6 +31,7 @@ struct AccountsListView: View {
     @State private var showingAddAccount = false
     @State private var showingCreditCards = false
     @State private var showingLoans = false
+    @State private var showingDeposits = false
     @State private var showingBills = false
     @State private var showingPendingImports = false
     @StateObject private var pendingImportStore = PendingImportStore.shared
@@ -367,6 +368,11 @@ struct AccountsListView: View {
                             Label(String(localized: "Loans"), systemImage: "banknote")
                         }
                         Button {
+                            showingDeposits = true
+                        } label: {
+                            Label(String(localized: "Deposits"), systemImage: "chart.line.uptrend.xyaxis")
+                        }
+                        Button {
                             showingBills = true
                         } label: {
                             Label("Bills & Calendar", systemImage: "calendar")
@@ -436,6 +442,17 @@ struct AccountsListView: View {
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
                                 Button(String(localized: "common.done")) { showingLoans = false }
+                            }
+                        }
+                }
+            }
+            .sheet(isPresented: $showingDeposits) {
+                NavigationStack {
+                    DepositsSettingsView()
+                        .environmentObject(budgetStore)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button(String(localized: "common.done")) { showingDeposits = false }
                             }
                         }
                 }

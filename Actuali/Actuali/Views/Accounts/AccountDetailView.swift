@@ -18,6 +18,8 @@ struct AccountDetailView: View {
     @State private var showingLoanPayment = false
     @State private var pairingLoanCategory = false
     @State private var showingLoanAutomations = false
+    @State private var showingDepositDetails = false
+    @State private var showingDepositEditor = false
     /// The paired category's estimated monthly contribution, read through
     /// the automations editor's own dry run so the two agree.
     @State private var loanTarget: Int?
@@ -376,6 +378,48 @@ struct AccountDetailView: View {
         }
     }
 
+    /// The deposit's terms and where it has got to, once its section is
+    /// expanded.
+    @ViewBuilder private func depositBreakdownRows(config: DepositConfig) -> some View {
+        breakdownRow(
+            String(localized: "Type"),
+            value: config.kind == .recurring
+                ? String(localized: "Recurring Deposit")
+                : String(localized: "Fixed Deposit")
+        )
+        breakdownRow(
+            config.kind == .recurring
+                ? String(localized: "Monthly Instalment")
+                : String(localized: "Deposit Amount"),
+            amount: config.amount
+        )
+        breakdownRow(String(localized: "Interest Rate"), value: LoanSummaryRow.percentText(config.annualRatePercent / 100))
+        breakdownRow(String(localized: "Compounding"), value: DepositEditorView.compoundingLabel(config.compounding))
+        breakdownRow(String(localized: "Opened"), value: config.openedOn.utcDate.formatted(date: .abbreviated, time: .omitted))
+        breakdownRow(String(localized: "Matures"), value: config.maturityDate.utcDate.formatted(date: .abbreviated, time: .omitted))
+        breakdownRow(String(localized: "Deposited"), amount: config.deposited())
+        breakdownRow(String(localized: "Interest Earned"), amount: config.interestEarned())
+        breakdownRow(String(localized: "Value at Maturity"), amount: config.maturityValue)
+    }
+
+    /// The growth chart and the way back to the terms. Split out of the
+    /// breakdown so neither overruns ViewBuilder's ten-child limit.
+    @ViewBuilder private func depositActions(config: DepositConfig) -> some View {
+        DepositGrowthChart(config: config)
+            .environmentObject(budgetStore)
+            .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+
+        Button {
+            showingDepositEditor = true
+        } label: {
+            Label(String(localized: "Edit Deposit"), systemImage: "pencil")
+                .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
+        .disabled(budgetStore.syncDetachedByRestore)
+        .accessibilityIdentifier("accountDeposit.edit")
+    }
+
     private func refreshLoanTarget() async {
         loanTarget = await budgetStore.loanTargetMonthly(
             accountId: account.id,
@@ -656,6 +700,58 @@ struct AccountDetailView: View {
         }
     }
 
+    /// Growth tracking for an account marked as a deposit. Same collapsed
+    /// shape as the loan section above, measuring the other direction: the
+    /// progress bar runs through the term rather than down the balance, and
+    /// the header carries what the deposit is worth today.
+    @ViewBuilder private var depositSection: some View {
+        if let config = budgetStore.activeDepositConfig(for: account.id), searchQuery == nil {
+            Section {
+                let today = DayDate.today()
+                let summary = DepositSummaryRow.maturitySummary(config, on: today)
+                let value = budgetStore.displayBalance(config.value(on: today))
+
+                Button {
+                    withAnimation(AppAnimation.disclosure) { showingDepositDetails.toggle() }
+                } label: {
+                    VStack(spacing: 6) {
+                        HStack {
+                            Text(String(localized: "Deposit"))
+                            Spacer()
+                            Text(value)
+                                .fontWeight(.semibold)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(showingDepositDetails ? 180 : 0))
+                        }
+                        ProgressView(value: config.fractionElapsed(on: today))
+                            .tint(.accentColor)
+                        HStack {
+                            Text(summary)
+                            Spacer()
+                            Text(String(format: String(localized: "%@ interest"), budgetStore.displayBalance(config.interestEarned(on: today))))
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("accountDeposit.toggle")
+                .accessibilityLabel(String(format: String(localized: "Deposit, %1$@, %2$@"), value, summary))
+                .accessibilityHint(showingDepositDetails
+                    ? String(localized: "Hides the deposit details")
+                    : String(localized: "Shows the deposit's rate, term and growth"))
+
+                if showingDepositDetails {
+                    depositBreakdownRows(config: config)
+                    depositActions(config: config)
+                }
+            }
+        }
+    }
+
     @ViewBuilder private var notesSection: some View {
         if Self.showsNote(
             supported: note.supported,
@@ -816,6 +912,7 @@ struct AccountDetailView: View {
             balanceSection
             billingCycleSection
             loanSection
+            depositSection
             notesSection.animation(AppAnimation.disclosure, value: hideNotes)
             transactionSection
         }
@@ -869,6 +966,12 @@ struct AccountDetailView: View {
                     month: BudgetMonthMath.currentMonth()
                 )
                 .environmentObject(budgetStore)
+            }
+        }
+        .sheet(isPresented: $showingDepositEditor) {
+            if let config = budgetStore.activeDepositConfig(for: account.id) {
+                DepositEditorView(mode: .edit(accountId: account.id, config: config))
+                    .environmentObject(budgetStore)
             }
         }
         .sheet(isPresented: $showingLoanEditor) {
