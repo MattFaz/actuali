@@ -35,32 +35,28 @@ struct AccountDetailEmptyStateTests {
         ) == "No transactions")
     }
 
-    @Test func runningBalanceVisibilityUsesStableListState() {
+    @Test func runningBalanceNeedsAnUnfilteredLoad() {
         #expect(AccountDetailView.allowsRunningBalance(
-            enabled: true, isSearching: false,
-            statusFilter: .all, hideCleared: false, hideReconciled: false
+            isSearching: false, statusFilter: .all,
+            hideCleared: false, hideReconciled: false
         ))
         #expect(!AccountDetailView.allowsRunningBalance(
-            enabled: false, isSearching: false,
-            statusFilter: .all, hideCleared: false, hideReconciled: false
-        ))
-        #expect(!AccountDetailView.allowsRunningBalance(
-            enabled: true, isSearching: true,
-            statusFilter: .all, hideCleared: false, hideReconciled: false
+            isSearching: true, statusFilter: .all,
+            hideCleared: false, hideReconciled: false
         ))
         for filter in TransactionStatusFilter.allCases where filter != .all {
             #expect(!AccountDetailView.allowsRunningBalance(
-                enabled: true, isSearching: false,
-                statusFilter: filter, hideCleared: false, hideReconciled: false
+                isSearching: false, statusFilter: filter,
+                hideCleared: false, hideReconciled: false
             ))
         }
         #expect(!AccountDetailView.allowsRunningBalance(
-            enabled: true, isSearching: false,
-            statusFilter: .all, hideCleared: true, hideReconciled: false
+            isSearching: false, statusFilter: .all,
+            hideCleared: true, hideReconciled: false
         ))
         #expect(!AccountDetailView.allowsRunningBalance(
-            enabled: true, isSearching: false,
-            statusFilter: .all, hideCleared: false, hideReconciled: true
+            isSearching: false, statusFilter: .all,
+            hideCleared: false, hideReconciled: true
         ))
     }
 

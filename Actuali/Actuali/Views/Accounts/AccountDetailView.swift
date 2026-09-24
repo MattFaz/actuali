@@ -27,6 +27,7 @@ struct AccountDetailView: View {
     @State private var cycleSpend: Int = 0
     @AppStorage("showAccountRunningBalance") private var showRunningBalance = true
     @State private var recentStatements: [CreditCardCycle.StatementRecord] = []
+    @State private var loadedFullHistory = false
     @State private var selectedStatement: CreditCardCycle.StatementRecord? = nil
 
     private var statementDue: CreditCardCycle.StatementDue? {
@@ -38,32 +39,21 @@ struct AccountDetailView: View {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
     }
 
-    /// Running balances are shown only when the register is unfiltered (no search,
-    /// status chip, and not hiding cleared/reconciled rows). The calculation itself is
-    /// valid for any newest-first page prefix, so it does not need transient load state.
+    /// Running balances are shown only when the loaded page is the unfiltered
+    /// register (no search, no status chip, and not hiding cleared/reconciled
+    /// rows). The flag snapshots the state that the loaded page was fetched under.
     private var shouldShowRunningBalance: Bool {
-        Self.allowsRunningBalance(
-            enabled: showRunningBalance,
-            isSearching: searchQuery != nil,
-            statusFilter: budgetStore.transactionStatusFilter,
-            hideCleared: budgetStore.hideClearedTransactions,
-            hideReconciled: budgetStore.hideReconciledTransactions
-        )
+        showRunningBalance && loadedFullHistory
     }
 
     /// Pure so the visibility rule can be covered without constructing a view.
     nonisolated static func allowsRunningBalance(
-        enabled: Bool,
         isSearching: Bool,
         statusFilter: TransactionStatusFilter,
         hideCleared: Bool,
         hideReconciled: Bool
     ) -> Bool {
-        enabled
-            && !isSearching
-            && statusFilter == .all
-            && !hideCleared
-            && !hideReconciled
+        !isSearching && statusFilter == .all && !hideCleared && !hideReconciled
     }
 
     private var transactionsForDisplay: [Transaction] {
@@ -165,6 +155,15 @@ struct AccountDetailView: View {
         await reloadCycleSpend()
         await reloadRecentStatements()
         await currentPager().loadFirstPage(search: searchQuery)
+        // Snapshot the state of the page that just loaded. Updating this only
+        // after the page lands keeps stale rows and the running-balance column
+        // in sync during reloads.
+        loadedFullHistory = Self.allowsRunningBalance(
+            isSearching: searchQuery != nil,
+            statusFilter: budgetStore.transactionStatusFilter,
+            hideCleared: budgetStore.hideClearedTransactions,
+            hideReconciled: budgetStore.hideReconciledTransactions
+        )
     }
 
     private func reloadRecentStatements() async {
