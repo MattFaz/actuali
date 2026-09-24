@@ -247,4 +247,34 @@ struct DemoDataSeederTests {
         #expect(note.supported)
         #expect(note.isEmpty)
     }
+
+    @Test func seededBudgetShipsTagsAndTaggedTransactions() async throws {
+        let database = try seedAndOpen()
+        let tags = try await database.fetchTags(includeHidden: true)
+
+        #expect(tags.count >= 5)
+        let tagNames = Set(tags.map(\.tag))
+        #expect(tagNames.contains("coffee"))
+        #expect(tagNames.contains("vacation"))
+        #expect(tagNames.contains("reimbursable"))
+        #expect(tagNames.contains("tax-deductible"))
+        #expect(tagNames.contains("refund"))
+
+        let transactions = try await database.fetchTransactions()
+        let taggedTransactions = transactions.filter { $0.notes?.contains("#") == true }
+        #expect(!taggedTransactions.isEmpty)
+
+        let summaries = try await database.fetchTagSummaries()
+        #expect(!summaries.isEmpty)
+        let coffeeSummary = summaries.first { $0.tag.tag == "coffee" }
+        #expect(coffeeSummary != nil)
+        #expect((coffeeSummary?.transactionCount ?? 0) > 0)
+        #expect((coffeeSummary?.totalSpent ?? 0) > 0)
+
+        let refundSummary = summaries.first { $0.tag.tag == "refund" }
+        #expect(refundSummary != nil)
+        #expect((refundSummary?.transactionCount ?? 0) > 0)
+        #expect(refundSummary?.totalSpent == 0)
+        #expect((refundSummary?.netAmount ?? 0) > 0)
+    }
 }

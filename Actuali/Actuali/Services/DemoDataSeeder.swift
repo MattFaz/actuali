@@ -175,36 +175,36 @@ enum DemoDataSeeder {
         // (fetchRulesRanked, fetchSchedules) and writes (ScheduleWriteBuilder,
         // advanceScheduleNextDate).
         try db.execute(sql: """
-            CREATE TABLE rules (
-                id TEXT PRIMARY KEY,
-                stage TEXT,
-                conditions_op TEXT,
-                conditions TEXT,
-                actions TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
+        CREATE TABLE rules (
+            id TEXT PRIMARY KEY,
+            stage TEXT,
+            conditions_op TEXT,
+            conditions TEXT,
+            actions TEXT,
+            tombstone INTEGER DEFAULT 0
+        )
+        """)
         try db.execute(sql: """
-            CREATE TABLE schedules (
-                id TEXT PRIMARY KEY,
-                rule TEXT,
-                name TEXT,
-                posts_transaction INTEGER DEFAULT 0,
-                custom_upcoming_length TEXT,
-                completed INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
+        CREATE TABLE schedules (
+            id TEXT PRIMARY KEY,
+            rule TEXT,
+            name TEXT,
+            posts_transaction INTEGER DEFAULT 0,
+            custom_upcoming_length TEXT,
+            completed INTEGER DEFAULT 0,
+            tombstone INTEGER DEFAULT 0
+        )
+        """)
         try db.execute(sql: """
-            CREATE TABLE schedules_next_date (
-                id TEXT PRIMARY KEY,
-                schedule_id TEXT,
-                local_next_date INTEGER,
-                local_next_date_ts INTEGER,
-                base_next_date INTEGER,
-                base_next_date_ts INTEGER
-            )
-            """)
+        CREATE TABLE schedules_next_date (
+            id TEXT PRIMARY KEY,
+            schedule_id TEXT,
+            local_next_date INTEGER,
+            local_next_date_ts INTEGER,
+            base_next_date INTEGER,
+            base_next_date_ts INTEGER
+        )
+        """)
         try db.execute(sql: """
         CREATE TABLE notes (
             id TEXT PRIMARY KEY,
@@ -257,6 +257,16 @@ enum DemoDataSeeder {
         try db.execute(sql: """
         CREATE TABLE db_version (
             version TEXT PRIMARY KEY
+        )
+        """)
+
+        try db.execute(sql: """
+        CREATE TABLE tags (
+            id TEXT PRIMARY KEY,
+            tag TEXT NOT NULL,
+            color TEXT,
+            description TEXT,
+            tombstone INTEGER DEFAULT 0
         )
         """)
 
@@ -410,6 +420,13 @@ enum DemoDataSeeder {
             try insertPayee(db, id: UUID().uuidString, name: nil, transferAccountId: accountId)
         }
 
+        // --- Tags ---
+        try insertTag(db, id: "demo-tag-vacation", tag: "vacation", color: "#3b82f6", description: "Vacation and travel expenses")
+        try insertTag(db, id: "demo-tag-reimbursable", tag: "reimbursable", color: "#10b981", description: "Work expenses to submit for reimbursement")
+        try insertTag(db, id: "demo-tag-tax-deductible", tag: "tax-deductible", color: "#f59e0b", description: "Items for tax deduction")
+        try insertTag(db, id: "demo-tag-coffee", tag: "coffee", color: "#8b5cf6", description: "Coffee shops and cafes")
+        try insertTag(db, id: "demo-tag-refund", tag: "refund", color: "#ec4899", description: "Refunds and returns")
+
         // --- Transactions ---
         // We generate ~6 full months of history plus the current month-to-date so
         // the Reports (net worth, cash flow, spending vs. average) have real trends.
@@ -427,51 +444,52 @@ enum DemoDataSeeder {
             return (cc.year ?? year) * 10000 + (cc.month ?? month) * 100 + (cc.day ?? safeDay)
         }
 
-        var transactions: [(payee: String, category: String?, amount: Int, date: Int, account: String, cleared: Bool, startingBalance: Bool)] = []
+        var transactions: [(payee: String, category: String?, amount: Int, date: Int, account: String, cleared: Bool, startingBalance: Bool, notes: String?)] = []
 
         // Starting balances ~`historyMonths` months ago, before the recurring
         // flow. On-budget ones carry the Starting Balances income category
         // (Actual's behavior); the off-budget brokerage takes none.
         let openDate = ymd(monthsAgo: historyMonths, day: 1)
-        transactions.append((startingBalanceId, startingBalancesCategoryId, 1_050_000, openDate, allyId, true, true))
-        transactions.append((startingBalanceId, startingBalancesCategoryId, 280_000, openDate, chaseId, true, true))
-        transactions.append((startingBalanceId, nil, 4_200_000, openDate, vanguardId, true, true))
+        transactions.append((startingBalanceId, startingBalancesCategoryId, 1_050_000, openDate, allyId, true, true, nil))
+        transactions.append((startingBalanceId, startingBalancesCategoryId, 280_000, openDate, chaseId, true, true, nil))
+        transactions.append((startingBalanceId, nil, 4_200_000, openDate, vanguardId, true, true, nil))
 
-        // Per-month spending template: (payee, category, account, day, base amount in cents).
+        // Per-month spending template: (payee, category, account, day, base amount in cents, optional note with hashtags).
         // Slight per-month variation is applied deterministically below.
-        let monthly: [(payee: String, category: String?, account: String, day: Int, amount: Int)] = [
+        let monthly: [(payee: String, category: String?, account: String, day: Int, amount: Int, notes: String?)] = [
             // Income (positive)
-            (paycheckId, salaryId, chaseId, 1, 320_000),
-            (paycheckId, salaryId, chaseId, 15, 320_000),
+            (paycheckId, salaryId, chaseId, 1, 320_000, nil),
+            (paycheckId, salaryId, chaseId, 15, 320_000, nil),
             // Essentials
-            (landlordId, rentId, chaseId, 1, -185_000),
-            (pgeId, utilitiesId, chaseId, 7, -8500),
-            (comcastId, internetId, chaseId, 6, -7000),
-            (wholeFoodsId, groceriesId, chaseId, 3, -8750),
-            (traderJoesId, groceriesId, chaseId, 11, -5200),
-            (wholeFoodsId, groceriesId, chaseId, 19, -9600),
-            (traderJoesId, groceriesId, chaseId, 26, -6300),
+            (landlordId, rentId, chaseId, 1, -185_000, nil),
+            (pgeId, utilitiesId, chaseId, 7, -8500, nil),
+            (comcastId, internetId, chaseId, 6, -7000, nil),
+            (wholeFoodsId, groceriesId, chaseId, 3, -8750, nil),
+            (traderJoesId, groceriesId, chaseId, 11, -5200, nil),
+            (wholeFoodsId, groceriesId, chaseId, 19, -9600, nil),
+            (traderJoesId, groceriesId, chaseId, 26, -6300, nil),
             // Transport
-            (shellId, fuelId, chaseId, 9, -5500),
-            (shellId, fuelId, chaseId, 23, -6000),
-            (bartId, transitId, chaseId, 4, -2500),
-            (bartId, transitId, chaseId, 18, -2500),
+            (shellId, fuelId, chaseId, 9, -5500, nil),
+            (shellId, fuelId, chaseId, 23, -6000, "Road trip gas #vacation"),
+            (bartId, transitId, chaseId, 4, -2500, nil),
+            (bartId, transitId, chaseId, 18, -2500, nil),
             // Lifestyle (mostly Apple Card)
-            (chipotleId, diningId, appleCardId, 5, -1450),
-            (chipotleId, diningId, appleCardId, 16, -2500),
-            (chipotleId, diningId, appleCardId, 24, -1725),
-            (blueBottleId, coffeeId, appleCardId, 2, -575),
-            (blueBottleId, coffeeId, appleCardId, 8, -650),
-            (blueBottleId, coffeeId, appleCardId, 14, -700),
-            (blueBottleId, coffeeId, appleCardId, 21, -550),
-            (netflixId, entertainmentId, appleCardId, 11, -2299),
-            (amazonId, shoppingId, appleCardId, 6, -4599),
-            (amazonId, shoppingId, appleCardId, 20, -3199),
+            (chipotleId, diningId, appleCardId, 5, -1450, nil),
+            (chipotleId, diningId, appleCardId, 16, -2500, "Team lunch #reimbursable"),
+            (chipotleId, diningId, appleCardId, 24, -1725, nil),
+            (blueBottleId, coffeeId, appleCardId, 2, -575, "Morning latte #coffee"),
+            (blueBottleId, coffeeId, appleCardId, 8, -650, nil),
+            (blueBottleId, coffeeId, appleCardId, 14, -700, "Client coffee chat #coffee #reimbursable"),
+            (blueBottleId, coffeeId, appleCardId, 21, -550, nil),
+            (netflixId, entertainmentId, appleCardId, 11, -2299, nil),
+            (amazonId, shoppingId, appleCardId, 6, -4599, "Desk equipment #tax-deductible"),
+            (amazonId, shoppingId, appleCardId, 20, -3199, nil),
+            (amazonId, shoppingId, appleCardId, 25, 2999, "Returned item #refund"),
             // Health & wellness
-            (fitnessId, gymId, chaseId, 10, -3500),
-            (cvsId, pharmacyId, chaseId, 13, -1850),
+            (fitnessId, gymId, chaseId, 10, -3500, nil),
+            (cvsId, pharmacyId, chaseId, 13, -1850, nil),
             // Off-budget: monthly brokerage contribution
-            (vanguardPayeeId, nil, vanguardId, 2, 50000),
+            (vanguardPayeeId, nil, vanguardId, 2, 50000, nil),
         ]
         let pendingDayByAccount = Dictionary(grouping: monthly.filter { $0.day <= today }, by: \.account)
             .mapValues { $0.map(\.day).max() ?? 1 }
@@ -497,13 +515,13 @@ enum DemoDataSeeder {
                 let cleared = monthsAgo != 0 || item.day < pendingDayByAccount[item.account, default: item.day]
                 transactions.append((item.payee, item.category, varied,
                                      ymd(monthsAgo: monthsAgo, day: item.day),
-                                     item.account, cleared, false))
+                                     item.account, cleared, false, item.notes))
             }
 
             // Quarterly market gains on the brokerage account, so net worth trends up.
             if monthsAgo % 3 == 0 {
                 transactions.append((marketId, nil, 95000 + 5000 * (historyMonths - monthsAgo),
-                                     ymd(monthsAgo: monthsAgo, day: 28), vanguardId, true, false))
+                                     ymd(monthsAgo: monthsAgo, day: 28), vanguardId, true, false, nil))
             }
         }
 
@@ -521,27 +539,22 @@ enum DemoDataSeeder {
                 categoryId: t.category,
                 cleared: t.cleared,
                 startingBalance: t.startingBalance,
-                sortOrder: sortOrder
+                sortOrder: sortOrder,
+                notes: t.notes
             )
             sortOrder -= 1
         }
 
-        // --- Rules and schedules ---
-        // A rules table so Settings > Rules shows real rules rather than the
-        // "Rules Unavailable" placeholder, and two upcoming schedules so
-        // Settings > Scheduled Transactions has rows. A schedule is a rules row
-        // (conditions + link-schedule action) plus a schedules row plus a
-        // next-date row, matching ScheduleWriteBuilder.createPlan's shape. Both
-        // next dates are in the future so the auto-poster never fires on a
-        // fresh demo load.
         func serialize(_ value: Any) throws -> String {
             let data = try JSONSerialization.data(withJSONObject: value)
             return String(decoding: data, as: UTF8.self)
         }
 
-        // Next occurrence of a monthly-on-`day` schedule, strictly after today.
+        /// Next occurrence of a monthly-on-`day` schedule, strictly after today.
         func nextMonthly(_ day: Int) -> Int {
-            if today < day { return yyyymm * 100 + day }
+            if today < day {
+                return yyyymm * 100 + day
+            }
             let base = cal.date(byAdding: .month, value: 1, to: now) ?? now
             var c = cal.dateComponents([.year, .month], from: base)
             c.day = day
@@ -569,73 +582,82 @@ enum DemoDataSeeder {
             ])
         }
 
+        // --- Rules and schedules ---
+        // A rules table so Settings > Rules shows real rules rather than the
+        // "Rules Unavailable" placeholder, and two upcoming schedules so
+        // Settings > Scheduled Transactions has rows. A schedule is a rules row
+        // (conditions + link-schedule action) plus a schedules row plus a
+        // next-date row, matching ScheduleWriteBuilder.createPlan's shape. Both
+        // next dates are in the future so the auto-poster never fires on a
+        // fresh demo load.
+
         // A standalone categorization rule — the canonical Actual demo rule:
         // any new Shell transaction lands in Fuel.
         try db.execute(sql: """
-            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
-            VALUES (?, NULL, 'and', ?, ?, 0)
-            """, arguments: [
-                UUID().uuidString,
-                try serialize([["op": "is", "field": "payee", "value": shellId]]),
-                try serialize([["op": "set", "field": "category", "value": fuelId]]),
-            ])
+        INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+        VALUES (?, NULL, 'and', ?, ?, 0)
+        """, arguments: [
+            UUID().uuidString,
+            serialize([["op": "is", "field": "payee", "value": shellId]]),
+            serialize([["op": "set", "field": "category", "value": fuelId]]),
+        ])
 
         // Rent and Netflix, due on the 1st and 11th of the next month.
         let rentScheduleId = UUID().uuidString
         let rentRuleId = UUID().uuidString
         let rentNext = nextMonthly(1)
         try db.execute(sql: """
-            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
-            VALUES (?, NULL, 'and', ?, ?, 0)
-            """, arguments: [
-                rentRuleId,
-                try serialize([
-                    ["op": "is", "field": "payee", "value": landlordId],
-                    ["op": "is", "field": "account", "value": chaseId],
-                    ["op": "isapprox", "field": "date", "value": try scheduleDateJSON(rentNext)],
-                    ["op": "isapprox", "field": "amount", "value": -185_000],
-                ]),
-                try serialize([
-                    ["op": "set", "field": "category", "value": rentId],
-                    ["op": "link-schedule", "value": rentScheduleId],
-                ]),
-            ])
+        INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+        VALUES (?, NULL, 'and', ?, ?, 0)
+        """, arguments: [
+            rentRuleId,
+            serialize([
+                ["op": "is", "field": "payee", "value": landlordId],
+                ["op": "is", "field": "account", "value": chaseId],
+                ["op": "isapprox", "field": "date", "value": scheduleDateJSON(rentNext)],
+                ["op": "isapprox", "field": "amount", "value": -185_000],
+            ]),
+            serialize([
+                ["op": "set", "field": "category", "value": rentId],
+                ["op": "link-schedule", "value": rentScheduleId],
+            ]),
+        ])
         try db.execute(sql: """
-            INSERT INTO schedules (id, rule, name, posts_transaction, custom_upcoming_length, completed, tombstone)
-            VALUES (?, ?, 'Rent', 1, NULL, 0, 0)
-            """, arguments: [rentScheduleId, rentRuleId])
+        INSERT INTO schedules (id, rule, name, posts_transaction, custom_upcoming_length, completed, tombstone)
+        VALUES (?, ?, 'Rent', 1, NULL, 0, 0)
+        """, arguments: [rentScheduleId, rentRuleId])
         try db.execute(sql: """
-            INSERT INTO schedules_next_date (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """, arguments: [UUID().uuidString, rentScheduleId, rentNext, nowMs, rentNext, nowMs])
+        INSERT INTO schedules_next_date (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, arguments: [UUID().uuidString, rentScheduleId, rentNext, nowMs, rentNext, nowMs])
 
         let netflixScheduleId = UUID().uuidString
         let netflixRuleId = UUID().uuidString
         let netflixNext = nextMonthly(11)
         try db.execute(sql: """
-            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
-            VALUES (?, NULL, 'and', ?, ?, 0)
-            """, arguments: [
-                netflixRuleId,
-                try serialize([
-                    ["op": "is", "field": "payee", "value": netflixId],
-                    ["op": "is", "field": "account", "value": appleCardId],
-                    ["op": "isapprox", "field": "date", "value": try scheduleDateJSON(netflixNext)],
-                    ["op": "isapprox", "field": "amount", "value": -2_299],
-                ]),
-                try serialize([
-                    ["op": "set", "field": "category", "value": entertainmentId],
-                    ["op": "link-schedule", "value": netflixScheduleId],
-                ]),
-            ])
+        INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+        VALUES (?, NULL, 'and', ?, ?, 0)
+        """, arguments: [
+            netflixRuleId,
+            serialize([
+                ["op": "is", "field": "payee", "value": netflixId],
+                ["op": "is", "field": "account", "value": appleCardId],
+                ["op": "isapprox", "field": "date", "value": scheduleDateJSON(netflixNext)],
+                ["op": "isapprox", "field": "amount", "value": -2299],
+            ]),
+            serialize([
+                ["op": "set", "field": "category", "value": entertainmentId],
+                ["op": "link-schedule", "value": netflixScheduleId],
+            ]),
+        ])
         try db.execute(sql: """
-            INSERT INTO schedules (id, rule, name, posts_transaction, custom_upcoming_length, completed, tombstone)
-            VALUES (?, ?, 'Netflix', 1, NULL, 0, 0)
-            """, arguments: [netflixScheduleId, netflixRuleId])
+        INSERT INTO schedules (id, rule, name, posts_transaction, custom_upcoming_length, completed, tombstone)
+        VALUES (?, ?, 'Netflix', 1, NULL, 0, 0)
+        """, arguments: [netflixScheduleId, netflixRuleId])
         try db.execute(sql: """
-            INSERT INTO schedules_next_date (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """, arguments: [UUID().uuidString, netflixScheduleId, netflixNext, nowMs, netflixNext, nowMs])
+        INSERT INTO schedules_next_date (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, arguments: [UUID().uuidString, netflixScheduleId, netflixNext, nowMs, netflixNext, nowMs])
 
         // --- Budgets (current month) ---
         var budgets: [(String, Int)] = [
@@ -812,6 +834,19 @@ enum DemoDataSeeder {
         """, arguments: [id, id])
     }
 
+    private static func insertTag(
+        _ db: Database,
+        id: String,
+        tag: String,
+        color: String?,
+        description: String?
+    ) throws {
+        try db.execute(sql: """
+        INSERT INTO tags (id, tag, color, description, tombstone)
+        VALUES (?, ?, ?, ?, 0)
+        """, arguments: [id, tag, color, description])
+    }
+
     private static func insertTransaction(
         _ db: Database,
         id: String,
@@ -822,20 +857,22 @@ enum DemoDataSeeder {
         categoryId: String?,
         cleared: Bool,
         startingBalance: Bool,
-        sortOrder: Double
+        sortOrder: Double,
+        notes: String? = nil
     ) throws {
         try db.execute(sql: """
         INSERT INTO transactions (
             id, isParent, isChild, acct, category, amount, description, notes, date,
             starting_balance_flag, sort_order, tombstone, cleared, reconciled
         )
-        VALUES (?, 0, 0, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0)
+        VALUES (?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0)
         """, arguments: [
             id,
             accountId,
             categoryId,
             amount,
             payeeId,
+            notes,
             date,
             startingBalance ? 1 : 0,
             sortOrder,

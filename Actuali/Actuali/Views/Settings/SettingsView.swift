@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let privacyPolicyURL = URL(string: "https://actuali.mfazz.com/privacy")!
+
 struct SettingsItem {
     let title: String
     let systemImage: String
@@ -31,6 +33,7 @@ struct SettingsView: View {
             SettingsItem(title: String(localized: "Bank Sync (SimpleFIN & Wallet)"), systemImage: "building.columns", destination: { AnyView(BankSyncSetupView()) }),
             SettingsItem(title: String(localized: "Bills & Calendar"), systemImage: "calendar", destination: { AnyView(BillsCalendarView()) }),
             SettingsItem(title: String(localized: "Scheduled Transactions"), systemImage: "calendar.badge.clock", destination: { AnyView(SchedulesListView()) }),
+            SettingsItem(title: String(localized: "Tags"), systemImage: "number", destination: { AnyView(TagsListView()) }),
         ]
         if includeRules {
             items.append(SettingsItem(title: String(localized: "Rules"), systemImage: "list.bullet.rectangle", destination: { AnyView(RulesListView()) }))
@@ -45,17 +48,12 @@ struct SettingsView: View {
                 title: String(localized: "Log Wallet Payments Automatically"),
                 systemImage: "wallet.pass",
                 url: URL(string: "https://www.icloud.com/shortcuts/48afadc0957a44fa9eaee51ca76ab0d6")!
-            )
+            ),
         ].sorted { Self.titlePrecedes($0.title, $1.title) }
     }
 
     static var informationItems: [SettingsItem] {
         [
-            SettingsItem(
-                title: String(localized: "About"),
-                systemImage: "info.circle",
-                destination: { AnyView(AboutSettingsView()) }
-            ),
             SettingsItem(
                 title: String(localized: "Support"),
                 systemImage: "questionmark.circle",
@@ -64,8 +62,27 @@ struct SettingsView: View {
         ].sorted { Self.titlePrecedes($0.title, $1.title) }
     }
 
+    /// External links offered in the Information section of the More tab.
+    static var informationLinkItems: [SettingsLinkItem] {
+        [
+            SettingsLinkItem(
+                title: String(localized: "Privacy Policy"),
+                systemImage: "lock.shield",
+                url: privacyPolicyURL
+            ),
+        ]
+    }
+
     nonisolated static func titlePrecedes(_ lhs: String, _ rhs: String) -> Bool {
         lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+            ?? "Unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+            ?? "Unknown"
+        return "\(version) (\(build))"
     }
 
     var body: some View {
@@ -114,12 +131,24 @@ struct SettingsView: View {
                     Text(String(localized: "Before using a shortcut, set up Card & Account Mappings in More → Transactions & Automation so purchases route to the right account."))
                 }
                 Section(String(localized: "Information")) {
+                    ForEach(Self.informationLinkItems, id: \.title) { item in
+                        Link(destination: item.url) {
+                            Label(item.title, systemImage: item.systemImage)
+                        }
+                        .accessibilityIdentifier("settings.privacyPolicy")
+                    }
                     ForEach(Self.informationItems, id: \.title) { item in
                         NavigationLink {
                             item.destination()
                         } label: {
                             Label(item.title, systemImage: item.systemImage)
                         }
+                    }
+                    HStack {
+                        Text(String(localized: "Version"))
+                        Spacer()
+                        Text(appVersion)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }

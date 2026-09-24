@@ -418,6 +418,16 @@ final class BudgetDatabase: Sendable {
                 tombstone INTEGER DEFAULT 0
             )
         """),
+        (1_770_000_000_004, """
+            CREATE TABLE IF NOT EXISTS tags (
+                id TEXT PRIMARY KEY,
+                tag TEXT,
+                color TEXT,
+                description TEXT,
+                hidden BOOLEAN DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            )
+        """),
     ]
 
     /// Migration ids Actuali mints itself, no upstream migration file has
@@ -441,6 +451,7 @@ final class BudgetDatabase: Sendable {
         1_780_606_215_003, // locally minted accounts.account_sync_source backfill
         1_780_606_215_004, // locally minted accounts.last_sync backfill
         1_770_000_000_003, // defensive CREATE banks
+        1_770_000_000_004, // defensive CREATE tags
         1_780_606_215_005, // device-local FinanceKit link identities
         1_780_606_215_006, // envelope buffer rows
     ]
@@ -960,33 +971,90 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    private static let childTransactionSelect = """
+    SELECT
+        t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+        t.description, t.notes, t.date, t.imported_description,
+        t.schedule,
+        t.transferred_id, t.cleared, t.reconciled, t.sort_order,
+        t.tombstone, t.parent_id,
+        COALESCE(pa.name, p.name) as payee_name,
+        c.name as category_name,
+        p.transfer_acct as transfer_acct
+    FROM transactions t
+    LEFT JOIN payee_mapping pm ON pm.id = t.description
+    LEFT JOIN payees p ON p.id = pm.targetId
+    LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+        AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+    LEFT JOIN category_mapping cm ON cm.id = t.category
+    LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+    WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+    """
+
     /// All live children of a split parent, in entry order (descending
     /// sort_order, matching the list convention).
     func fetchChildTransactions(parentId: String) async throws -> [Transaction] {
         try await dbQueue.read { db in
-            let rows = try Row.fetchAll(db, sql: """
-            SELECT
-                t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
-                t.description, t.notes, t.date, t.imported_description,
-                t.schedule,
-                t.transferred_id, t.cleared, t.reconciled, t.sort_order,
-                t.tombstone, t.parent_id,
-                COALESCE(pa.name, p.name) as payee_name,
-                c.name as category_name,
-                p.transfer_acct as transfer_acct
-            FROM transactions t
-            LEFT JOIN payee_mapping pm ON pm.id = t.description
-            LEFT JOIN payees p ON p.id = pm.targetId
-            LEFT JOIN accounts pa ON pa.id = p.transfer_acct
-                AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
-            LEFT JOIN category_mapping cm ON cm.id = t.category
-            LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
-            WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-              AND t.parent_id = ?
-            ORDER BY t.sort_order DESC
-            """, arguments: [parentId])
+            try Row.fetchAll(
+                db,
+                sql: Self.childTransactionSelect + " AND t.parent_id = ? ORDER BY t.sort_order DESC",
+                arguments: [parentId]
+            ).map(Self.mapTransaction)
+        }
+    }
 
-            return rows.map(Self.mapTransaction)
+    struct LiveTransactionSnapshot: Sendable {
+        let transactions: [Transaction]
+        let splitChildren: [Transaction]
+        /// Highest messages_crdt id at read time: the next snapshot's watermark.
+        let messageID: Int64
+        /// Transaction rows another node wrote after the requested watermark.
+        let remoteRowIDs: Set<String>
+    }
+
+    /// Every live top-level transaction and every live split child, read as
+    /// one snapshot. History diffs this whole set: diffing the newest page
+    /// instead reads rows sliding off it as deletions and rows sliding onto
+    /// it as creations. `remoteRowIDs` comes from the same read, so a sync
+    /// landing between a publication and this read is still attributed to
+    /// the node that wrote it (HLC timestamps end in the 16-char node id).
+    func fetchAllLiveTransactions(
+        remoteChangesAfter watermark: Int64? = nil,
+        localNode nodeId: String? = nil
+    ) async throws -> LiveTransactionSnapshot {
+        try await dbQueue.read { db in
+            let splitChildren = try Row.fetchAll(
+                db,
+                sql: Self.childTransactionSelect + " AND t.parent_id IS NOT NULL ORDER BY t.sort_order DESC"
+            ).map(Self.mapTransaction)
+            var portions: [String: [Transaction.SplitPortion]] = [:]
+            for child in splitChildren {
+                guard let parentId = child.parentId else { continue }
+                portions[parentId, default: []].append(
+                    Transaction.SplitPortion(categoryName: child.categoryName, amount: child.amount)
+                )
+            }
+            let transactions = try Row.fetchAll(db, sql: Self.transactionSelect).map { row in
+                var transaction = Self.mapTransaction(row)
+                if transaction.isParent {
+                    transaction.splitPortions = portions[transaction.id]
+                }
+                return transaction
+            }
+            let messageID = try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM messages_crdt") ?? 0
+            var remoteRowIDs: Set<String> = []
+            if let watermark, let nodeId {
+                remoteRowIDs = try Set(String.fetchAll(db, sql: """
+                SELECT DISTINCT row FROM messages_crdt
+                WHERE dataset = 'transactions' AND id > ? AND substr(timestamp, -16) <> ?
+                """, arguments: [watermark, nodeId]))
+            }
+            return LiveTransactionSnapshot(
+                transactions: transactions,
+                splitChildren: splitChildren,
+                messageID: messageID,
+                remoteRowIDs: remoteRowIDs
+            )
         }
     }
 
@@ -5238,5 +5306,222 @@ final class BudgetDatabase: Sendable {
             }
             .prefix(10)
             .map(\.self)
+    }
+
+    // MARK: - Tags
+
+    /// Every tag row, tombstoned included. The server's UNIQUE(tags.tag)
+    /// spans tombstones (upstream getAllTags() returns them too), so name
+    /// checks must run against all rows, not just active ones.
+    func allTags() async throws -> [Tag] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("tags") else { return [] }
+            let hasHidden = try db.columns(in: "tags").contains { $0.name == "hidden" }
+            return try Row.fetchAll(db, sql: """
+            SELECT id, tag, color, description, \(hasHidden ? "hidden" : "0 AS hidden"), tombstone
+            FROM tags
+            ORDER BY tag COLLATE NOCASE ASC
+            """).map { row in
+                Tag(
+                    id: row["id"],
+                    tag: row["tag"] ?? "",
+                    color: row["color"],
+                    description: row["description"],
+                    hidden: (row["hidden"] as Int? ?? 0) != 0,
+                    tombstone: (row["tombstone"] as Int? ?? 0) != 0
+                )
+            }
+        }
+    }
+
+    func fetchTags(includeHidden: Bool = true) async throws -> [Tag] {
+        try await allTags().filter { !$0.tombstone && (includeHidden || !$0.hidden) }
+    }
+
+    func insertTag(_ tag: Tag) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+            INSERT INTO tags (id, tag, color, description, hidden, tombstone)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, arguments: [
+                tag.id,
+                tag.tag,
+                tag.color,
+                tag.description,
+                tag.hidden ? 1 : 0,
+                tag.tombstone ? 1 : 0,
+            ])
+        }
+    }
+
+    func updateTag(_ tag: Tag) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+            UPDATE tags
+            SET tag = ?, color = ?, description = ?, hidden = ?, tombstone = ?
+            WHERE id = ?
+            """, arguments: [
+                tag.tag,
+                tag.color,
+                tag.description,
+                tag.hidden ? 1 : 0,
+                tag.tombstone ? 1 : 0,
+                tag.id,
+            ])
+        }
+    }
+
+    func deleteTag(id: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE tags SET tombstone = 1 WHERE id = ?",
+                arguments: [id]
+            )
+        }
+    }
+
+    /// Upstream parity: renaming a tag updates the `tags` row AND rewrites
+    /// all occurrences of `#oldName` to `#newName` in transaction notes.
+    /// Returns the affected transaction IDs and their new notes so callers
+    /// can generate CRDT messages for both the tag and the modified transactions.
+    func renameTag(id: String, oldName: String, newName: String) throws -> [(transactionId: String, newNotes: String)] {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE tags SET tag = ? WHERE id = ?",
+                arguments: [newName, id]
+            )
+
+            // Upstream regex: (?<!#)#oldName([\s#]|$)
+            let escapedOld = NSRegularExpression.escapedPattern(for: oldName)
+            let regex = try NSRegularExpression(pattern: "(?<!#)#\(escapedOld)([\\s#]|$)")
+
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT id, notes FROM transactions
+            WHERE notes LIKE ? AND (tombstone = 0 OR tombstone IS NULL)
+            """, arguments: ["%#\(oldName)%"])
+
+            var updated: [(transactionId: String, newNotes: String)] = []
+            for row in rows {
+                guard let txId: String = row["id"], let notes: String = row["notes"] else { continue }
+                let range = NSRange(notes.startIndex..., in: notes)
+                let escapedTemplate = NSRegularExpression.escapedTemplate(for: "#\(newName)") + "$1"
+                let replaced = regex.stringByReplacingMatches(
+                    in: notes,
+                    range: range,
+                    withTemplate: escapedTemplate
+                )
+                if replaced != notes {
+                    try db.execute(
+                        sql: "UPDATE transactions SET notes = ? WHERE id = ?",
+                        arguments: [replaced, txId]
+                    )
+                    updated.append((txId, replaced))
+                }
+            }
+            return updated
+        }
+    }
+
+    /// Discovers all unique tag names from transaction notes that no active
+    /// tag already uses. Tombstoned names stay discoverable — importing them
+    /// reactivates the old row (upstream createTag parity) instead of
+    /// inserting a duplicate the server's UNIQUE(tags.tag) would reject.
+    func discoverTags() async throws -> [String] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("tags") else { return [] }
+            let existingTags: Set<String> = try Set(
+                String.fetchAll(db, sql: "SELECT LOWER(tag) FROM tags WHERE tag IS NOT NULL AND (tombstone = 0 OR tombstone IS NULL)")
+            )
+            let noteRows = try String.fetchAll(db, sql: """
+            SELECT notes FROM transactions
+            WHERE notes LIKE '%#%' AND (tombstone = 0 OR tombstone IS NULL)
+            """)
+            var discovered = Set<String>()
+            var order: [String] = []
+            for note in noteRows {
+                for rawTag in TagFilter.extractHashtags(from: note) {
+                    let normalized = Tag.normalizeTagName(rawTag)
+                    guard Tag.isValidTagName(normalized) else { continue }
+                    let lower = normalized.lowercased()
+                    if !existingTags.contains(lower), !discovered.contains(lower) {
+                        discovered.insert(lower)
+                        order.append(normalized)
+                    }
+                }
+            }
+            return order
+        }
+    }
+
+    /// Aggregates transaction count and total spend for all tags.
+    func fetchTagSummaries() async throws -> [TagSummary] {
+        let allTags = try await fetchTags(includeHidden: true)
+        guard !allTags.isEmpty else { return [] }
+
+        return try await dbQueue.read { db in
+            // ponytail: Scan transactions with notes once in memory to compute all tag aggregations
+            // in O(tags * txs_with_notes), extracting note hashtags upfront.
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT id, amount, notes
+            FROM transactions
+            WHERE notes IS NOT NULL AND notes != ''
+              AND (tombstone = 0 OR tombstone IS NULL)
+              AND (isChild = 0 OR isChild IS NULL)
+            """)
+
+            struct TxInfo {
+                let amount: Int
+                let notes: String
+            }
+
+            let transactionsWithNotes: [TxInfo] = rows.compactMap { row in
+                guard let notes: String = row["notes"], !notes.isEmpty else { return nil }
+                let amount: Int = row["amount"] ?? 0
+                return TxInfo(amount: amount, notes: notes)
+            }
+
+            let tagged = transactionsWithNotes.map { tx in
+                (tx, Set(TagFilter.extractHashtags(from: tx.notes).map { $0.lowercased() }))
+            }
+
+            return allTags.map { tag in
+                let needle = "#\(tag.tag)".lowercased()
+                let matches = tagged.filter { $0.1.contains(needle) }
+                var count = 0
+                var spent = 0
+                var net = 0
+
+                for (tx, _) in matches {
+                    count += 1
+                    net += tx.amount
+                    if tx.amount < 0 {
+                        spent += -tx.amount
+                    }
+                }
+
+                return TagSummary(
+                    tag: tag,
+                    transactionCount: count,
+                    totalSpent: spent,
+                    netAmount: net
+                )
+            }
+        }
+    }
+
+    /// Transactions carrying the given tag in their notes, newest first.
+    func fetchTransactions(taggedWith tag: String) async throws -> [Transaction] {
+        let needle = "#\(tag)"
+        return try await dbQueue.read { db in
+            let sql = Self.transactionSelect + """
+             AND t.notes LIKE ?
+            ORDER BY t.date DESC, t.sort_order DESC
+            """
+            let rows = try Row.fetchAll(db, sql: sql, arguments: ["%#\(tag)%"])
+            return rows.map(Self.mapTransaction).filter { tx in
+                guard let notes = tx.notes, !notes.isEmpty else { return false }
+                return TagFilter.notesContainTag(notes, tag: needle, caseSensitive: false)
+            }
+        }
     }
 }

@@ -16,6 +16,7 @@ enum SyncError: LocalizedError, Equatable {
     case budgetTableMissing
     case notesTableMissing
     case rulesTableMissing
+    case tagAlreadyExists
 
     var errorDescription: String? {
         switch self {
@@ -35,6 +36,9 @@ enum SyncError: LocalizedError, Equatable {
             String(localized: "This budget file has no notes table to write to.")
         case .rulesTableMissing:
             String(localized: "This budget file has no rules table to write to.")
+        case .tagAlreadyExists:
+            // Reuses the existing `error.tagAlreadyExists` catalog entry (7 locales).
+            String(localized: "error.tagAlreadyExists")
         }
     }
 }
@@ -2404,6 +2408,159 @@ actor SyncClient {
             merkle: merkle.root
         )
         try database.saveClock(clockRecord)
+    }
+
+    // MARK: - Tags
+
+    func createTag(
+        name: String,
+        color: String? = nil,
+        description: String? = nil
+    ) async throws -> Tag {
+        guard let database else { throw SyncError.notConfigured }
+        let normalized = Tag.normalizeTagName(name)
+
+        // Upstream tags-create parity: a name already held by a row —
+        // tombstoned included — reactivates that row instead of inserting a
+        // duplicate, which the server's UNIQUE(tags.tag) would reject.
+        if var existing = try await database.allTags().first(where: { $0.tag == normalized }) {
+            existing.color = color
+            existing.description = description
+            existing.tombstone = false
+            try database.updateTag(existing)
+
+            let messages = try await messageGenerator.messagesForUpdate(
+                existing,
+                changedFields: ["tag", "color", "description", "tombstone"]
+            )
+            for msg in try database.insertMessages(messages) {
+                merkle = merkle.inserting(msg.timestamp)
+            }
+            merkle = merkle.pruned()
+            try saveClock()
+
+            scheduleAutomaticSync()
+            return existing
+        }
+
+        let tag = Tag(
+            tag: normalized,
+            color: color,
+            description: description
+        )
+
+        try database.insertTag(tag)
+
+        let messages = try await messageGenerator.messagesForInsert(tag)
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+        return tag
+    }
+
+    func updateTag(_ tag: Tag) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        // Upstream emits only the fields actually passed; diff against the
+        // stored row so no-op updates don't produce same-value messages.
+        var changed = ["tag", "color", "description", "hidden"]
+        if let prev = try await database.allTags().first(where: { $0.id == tag.id }) {
+            changed = changed.filter { field in
+                switch field {
+                case "tag": prev.tag != tag.tag
+                case "color": prev.color != tag.color
+                case "description": prev.description != tag.description
+                default: prev.hidden != tag.hidden
+                }
+            }
+        }
+        guard !changed.isEmpty else { return }
+
+        try database.updateTag(tag)
+
+        let messages = try await messageGenerator.messagesForUpdate(
+            tag,
+            changedFields: Set(changed)
+        )
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
+    func deleteTag(id: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        try database.deleteTag(id: id)
+
+        let tag = Tag(id: id, tag: "", tombstone: true)
+        let message = try await messageGenerator.messageForDelete(tag)
+        for msg in try database.insertMessages([message]) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
+    func renameTag(id: String, oldName: String, newName: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let normalizedNew = Tag.normalizeTagName(newName)
+
+        // Upstream renameTag checks getAllTags(), tombstones included — the
+        // server's UNIQUE(tags.tag) spans tombstoned rows, so a rename onto a
+        // deleted tag's name would fail server-side.
+        let everyTag = try await database.allTags()
+        if everyTag.contains(where: { $0.id != id && $0.tag == normalizedNew }) {
+            throw SyncError.tagAlreadyExists
+        }
+
+        let updatedTxs = try database.renameTag(id: id, oldName: oldName, newName: normalizedNew)
+
+        var messages = try await messageGenerator.messages(
+            dataset: Tag.datasetName,
+            row: id,
+            fields: [("tag", normalizedNew)]
+        )
+
+        for (txId, newNotes) in updatedTxs {
+            messages += try await messageGenerator.messages(
+                dataset: Transaction.datasetName,
+                row: txId,
+                fields: [("notes", newNotes)]
+            )
+        }
+
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
+    func importDiscoveredTags() async throws -> [Tag] {
+        guard let database else { throw SyncError.notConfigured }
+        let discovered = try await database.discoverTags()
+        guard !discovered.isEmpty else { return [] }
+
+        // One createTag per name (upstream discoverTags does the same), so a
+        // discovered name matching a tombstoned tag reactivates it instead of
+        // inserting a duplicate the server's UNIQUE(tags.tag) would reject.
+        var created: [Tag] = []
+        for name in discovered {
+            try await created.append(createTag(name: name))
+        }
+        return created
     }
 }
 

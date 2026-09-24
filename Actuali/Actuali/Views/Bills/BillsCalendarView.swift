@@ -499,10 +499,25 @@ private struct BillCardView: View {
                         .lineLimit(1)
 
                     HStack(spacing: 4) {
-                        Text(budgetStore.displayBalance(item.amount))
+                        if item.isCreditCard {
+                            // The bill (statement remaining due), labeled so it
+                            // can't be read as the card's total balance (GH #535).
+                            // Paid statements show the plain amount again — the
+                            // row's status text already says "Paid".
+                            Text(CreditCardCycle.billAmountText(
+                                dueLabel: String(localized: "Due"),
+                                amount: budgetStore.displayBalance(item.status == .paid ? item.amount : -item.amount),
+                                isPaid: item.status == .paid
+                            ))
                             .font(.subheadline)
                             .monospacedDigit()
-                            .foregroundStyle(item.amount > 0 ? Color.green : Color.primary)
+                            .foregroundStyle(Color.primary)
+                        } else {
+                            Text(budgetStore.displayBalance(item.amount))
+                                .font(.subheadline)
+                                .monospacedDigit()
+                                .foregroundStyle(item.amount > 0 ? Color.green : Color.primary)
+                        }
 
                         Text("•")
                             .foregroundStyle(.secondary)

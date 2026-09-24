@@ -528,6 +528,7 @@ struct AddTransactionView: View {
                     // growing as the text needs it, up to six.
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(1...6)
+                    TagSuggestionBar(text: $notes, availableTags: budgetStore.tags)
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
                     // full view of a transaction's note.
@@ -1066,6 +1067,7 @@ private struct SplitLineRow: View {
             }
             TextField(String(localized: AddTransactionLocalization.optionalNotes, locale: locale), text: $line.notes)
                 .font(.subheadline)
+            TagSuggestionBar(text: $line.notes, availableTags: budgetStore.tags)
             NoteLinkRows(text: line.notes)
                 .font(.subheadline)
         }
@@ -1675,7 +1677,7 @@ struct CategoryPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedCategoryId: String?
     var autofocusSearch = false
-    var onPick: (() -> Void)? = nil
+    var onPick: (() -> Void)?
     @State private var searchText = ""
     @State private var searchFocused = false
 
@@ -1765,7 +1767,9 @@ private struct CategorySearchField: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
 
     func makeUIView(context: Context) -> AmountInputField.AutofocusTextField {
         let field = AmountInputField.AutofocusTextField()

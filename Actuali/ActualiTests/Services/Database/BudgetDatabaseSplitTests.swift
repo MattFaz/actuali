@@ -319,6 +319,45 @@ struct BudgetDatabaseSplitTests {
         #expect(children.allSatisfy { $0.parentId == "parent" })
     }
 
+    @Test func fetchAllLiveTransactionsSeparatesParentsFromChildren() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedPayees(db)
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, category, description, amount, date, isParent, isChild, parent_id, sort_order, tombstone) VALUES
+                    ('parent',  'acct-1', NULL,       'payee-market', -10000, 20260601, 1, 0, NULL,     10, 0),
+                    ('c-first', 'acct-1', 'cat-food', NULL,            -6000, 20260601, 0, 1, 'parent',  9, 0),
+                    ('c-second','acct-1', 'cat-fun',  NULL,            -4000, 20260601, 0, 1, 'parent',  8, 0),
+                    ('c-dead',  'acct-1', 'cat-fun',  NULL,            -1000, 20260601, 0, 1, 'parent',  7, 1),
+                    ('plain',   'acct-1', 'cat-food', NULL,            -2000, 20260601, 0, 0, NULL,      6, 0),
+                    ('deleted', 'acct-1', 'cat-food', NULL,            -2000, 20260601, 0, 0, NULL,      5, 1);
+                INSERT INTO messages_crdt (id, timestamp, dataset, row, column, value) VALUES
+                    (1, '2026-06-01T00:00:00.000Z-0000-aaaaaaaaaaaaaaaa', 'transactions', 'plain',   'amount', x'00'),
+                    (2, '2026-06-01T00:00:01.000Z-0000-bbbbbbbbbbbbbbbb', 'transactions', 'c-first', 'amount', x'00'),
+                    (3, '2026-06-01T00:00:02.000Z-0000-aaaaaaaaaaaaaaaa', 'transactions', 'parent',  'notes',  x'00'),
+                    (4, '2026-06-01T00:00:03.000Z-0000-bbbbbbbbbbbbbbbb', 'categories',   'cat-fun', 'name',   x'00');
+            """)
+        }
+
+        let snapshot = try await db.fetchAllLiveTransactions(
+            remoteChangesAfter: 1,
+            localNode: "aaaaaaaaaaaaaaaa"
+        )
+
+        #expect(snapshot.transactions.map(\.id).sorted() == ["parent", "plain"])
+        #expect(snapshot.splitChildren.map(\.id) == ["c-first", "c-second"])
+        // Same portions the list reads, so History can caption the split.
+        #expect(snapshot.transactions.first { $0.id == "parent" }?.splitPortions == [
+            .init(categoryName: "Food", amount: -6000),
+            .init(categoryName: "Fun", amount: -4000),
+        ])
+        #expect(snapshot.messageID == 4)
+        // Only other nodes' transaction rows past the watermark.
+        #expect(snapshot.remoteRowIDs == ["c-first"])
+    }
+
     // MARK: - insertSplit atomicity
 
     private func transaction(
