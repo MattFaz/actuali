@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import Actuali
 
@@ -6,6 +7,19 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct BudgetStoreDemoDataTests {
+    private func seedBudget(id: String, in manager: BudgetFileManager) throws {
+        let dir = manager.budgetDirectory(for: id)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let queue = try DatabaseQueue(path: manager.databasePath(for: id).path)
+        try queue.write { db in
+            try db.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema)
+        }
+        try JSONEncoder().encode(BudgetMetadata(
+            id: id, budgetName: "Real Budget", cloudFileId: nil, groupId: nil,
+            resetClock: nil, lastUploaded: nil, encryptKeyId: nil
+        )).write(to: manager.metadataPath(for: id))
+    }
+
     @Test func loadDemoDataSeedsPendingImportAndSwitchingBudgetsCleansIt() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer {
@@ -26,9 +40,7 @@ struct BudgetStoreDemoDataTests {
 
         let manager = BudgetFileManager(rootDirectoryForTesting: root)
         store.setFileManagerForTesting(manager)
-        let realDir = manager.budgetDirectory(for: "real-budget")
-        try FileManager.default.createDirectory(at: realDir, withIntermediateDirectories: true)
-        _ = try BudgetDatabase(path: manager.databasePath(for: "real-budget"))
+        try seedBudget(id: "real-budget", in: manager)
 
         await store.loadLocalBudget("real-budget")
 

@@ -2333,6 +2333,9 @@ final class BudgetStore: ObservableObject {
     }
 
     func loadLocalBudget(_ budgetId: String) async {
+        if budgetId != DemoDataSeeder.budgetId {
+            try? PendingImportStore.shared.removeImports(originBudgetId: DemoDataSeeder.budgetId)
+        }
         isLoading = true
         isBudgetLoaded = false
         error = nil
@@ -2463,10 +2466,6 @@ final class BudgetStore: ObservableObject {
             // this, a fresh launch hides them until something else happens to
             // refresh the data.
             await loadBankSyncAccounts()
-
-            if budgetId != DemoDataSeeder.budgetId {
-                try? PendingImportStore.shared.removeImports(originBudgetId: DemoDataSeeder.budgetId)
-            }
 
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
@@ -2629,7 +2628,7 @@ final class BudgetStore: ObservableObject {
             // reseeded demo opens pristine (this also keeps UI tests
             // deterministic: they share the simulator's defaults across
             // launches, and earlier tests record demo-budget history).
-            await HistoryStore.shared.clearPersistedActions(budgetID: DemoDataSeeder.budgetId)
+            HistoryStore.shared.clearPersistedActions(budgetID: DemoDataSeeder.budgetId)
             await loadLocalBudget(DemoDataSeeder.budgetId)
             do {
                 try DemoDataSeeder.seedPendingImports()
