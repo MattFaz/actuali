@@ -2445,6 +2445,9 @@ final class BudgetStore: ObservableObject {
     }
 
     func loadLocalBudget(_ budgetId: String) async {
+        if budgetId != DemoDataSeeder.budgetId {
+            try? PendingImportStore.shared.removeImports(originBudgetId: DemoDataSeeder.budgetId)
+        }
         isLoading = true
         isBudgetLoaded = false
         error = nil
@@ -2579,10 +2582,6 @@ final class BudgetStore: ObservableObject {
             // this, a fresh launch hides them until something else happens to
             // refresh the data.
             await loadBankSyncAccounts()
-
-            if budgetId != DemoDataSeeder.budgetId {
-                try? PendingImportStore.shared.removeImports(originBudgetId: DemoDataSeeder.budgetId)
-            }
 
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
