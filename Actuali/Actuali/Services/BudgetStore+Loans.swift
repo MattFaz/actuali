@@ -100,8 +100,8 @@ extension BudgetStore {
     /// Fixed rather than localized, like "Starting Balance": `findOrCreatePayee`
     /// matches by name, so a translated name would fork the payee per device
     /// language.
-    static let loanInterestPayeeName = "Interest"
-    static let loanEscrowPayeeName = "Escrow"
+    nonisolated static let loanInterestPayeeName = "Interest"
+    nonisolated static let loanEscrowPayeeName = "Escrow"
 
     /// One lender charge on the loan account. Off-budget, so it carries no
     /// category — `preserveCategory` keeps a rule from attaching one.

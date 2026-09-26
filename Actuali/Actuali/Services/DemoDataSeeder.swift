@@ -304,12 +304,19 @@ enum DemoDataSeeder {
         let allyId = UUID().uuidString
         let appleCardId = UUID().uuidString
         let vanguardId = UUID().uuidString
+        let carLoanId = UUID().uuidString
+        let cdId = UUID().uuidString
 
         try insertAccount(db, id: chaseId, name: "Chase Checking", type: "checking", sortOrder: 0)
         try insertAccount(db, id: allyId, name: "Ally Savings", type: "savings", sortOrder: 1)
         try insertAccount(db, id: appleCardId, name: "Apple Card", type: "credit", sortOrder: 2)
         // Off-budget so it lifts net worth without distorting budget/spending reports.
         try insertAccount(db, id: vanguardId, name: "Vanguard Brokerage", type: "investment", sortOrder: 3, offBudget: true)
+        // Off-budget like Actual's docs recommend for loans, so the loan tracker
+        // (and Record Payment, which needs an off-budget loan) works in the demo.
+        try insertAccount(db, id: carLoanId, name: "Toyota Auto Loan", type: "debt", sortOrder: 4, offBudget: true)
+        // The deposit tracker's demo: a certificate of deposit, off-budget too.
+        try insertAccount(db, id: cdId, name: "Ally 12-Month CD", type: "savings", sortOrder: 5, offBudget: true)
 
         // --- Category groups + categories ---
         // Income group
@@ -344,6 +351,9 @@ enum DemoDataSeeder {
         try insertCategory(db, id: fuelId, name: "Fuel", groupId: transportId, isIncome: false, sortOrder: 0)
         try insertCategory(db, id: transitId, name: "Transit", groupId: transportId, isIncome: false, sortOrder: 1)
         try insertCategory(db, id: parkingId, name: "Parking", groupId: transportId, isIncome: false, sortOrder: 2)
+        // Paired with the auto loan: its payments are budgeted here.
+        let carPaymentId = UUID().uuidString
+        try insertCategory(db, id: carPaymentId, name: "Car Payment", groupId: transportId, isIncome: false, sortOrder: 3)
 
         // Lifestyle
         let lifestyleId = UUID().uuidString
@@ -387,6 +397,10 @@ enum DemoDataSeeder {
         keep a $500 buffer for the card autopay.
         """)
 
+        // The paired loan category carries a template so the loan section's
+        // Payment Target row has a figure to show.
+        try insertNote(db, id: carPaymentId, note: "#template 425")
+
         // --- Payees ---
         let wholeFoodsId = UUID().uuidString
         let traderJoesId = UUID().uuidString
@@ -405,6 +419,7 @@ enum DemoDataSeeder {
         let startingBalanceId = UUID().uuidString
         let vanguardPayeeId = UUID().uuidString
         let marketId = UUID().uuidString
+        let interestId = UUID().uuidString
 
         try insertPayee(db, id: wholeFoodsId, name: "Whole Foods")
         try insertPayee(db, id: traderJoesId, name: "Trader Joe's")
@@ -423,13 +438,17 @@ enum DemoDataSeeder {
         try insertPayee(db, id: startingBalanceId, name: "Starting Balance")
         try insertPayee(db, id: vanguardPayeeId, name: "Vanguard")
         try insertPayee(db, id: marketId, name: "Market Gain")
+        try insertPayee(db, id: interestId, name: BudgetStore.loanInterestPayeeName)
 
         // Transfer payees — one per account, name-less with transfer_acct set,
         // exactly as Actual creates them alongside each account. The add/edit
         // transfer flows resolve each leg's payee through these; without them
         // transfers can't be created in the demo.
-        for accountId in [chaseId, allyId, appleCardId, vanguardId] {
-            try insertPayee(db, id: UUID().uuidString, name: nil, transferAccountId: accountId)
+        var transferPayeeIds: [String: String] = [:]
+        for accountId in [chaseId, allyId, appleCardId, vanguardId, carLoanId, cdId] {
+            let payeeId = UUID().uuidString
+            transferPayeeIds[accountId] = payeeId
+            try insertPayee(db, id: payeeId, name: nil, transferAccountId: accountId)
         }
 
         // --- Tags ---
@@ -456,15 +475,35 @@ enum DemoDataSeeder {
             return (cc.year ?? year) * 10000 + (cc.month ?? month) * 100 + (cc.day ?? safeDay)
         }
 
-        var transactions: [(payee: String, category: String?, amount: Int, date: Int, account: String, cleared: Bool, startingBalance: Bool, notes: String?)] = []
+        var transactions: [(payee: String, category: String?, amount: Int, date: Int, account: String, cleared: Bool, startingBalance: Bool, notes: String?, id: String, transfer: String?)] = []
 
         // Starting balances ~`historyMonths` months ago, before the recurring
         // flow. On-budget ones carry the Starting Balances income category
         // (Actual's behavior); the off-budget brokerage takes none.
         let openDate = ymd(monthsAgo: historyMonths, day: 1)
-        transactions.append((startingBalanceId, startingBalancesCategoryId, 1_050_000, openDate, allyId, true, true, nil))
-        transactions.append((startingBalanceId, startingBalancesCategoryId, 280_000, openDate, chaseId, true, true, nil))
-        transactions.append((startingBalanceId, nil, 4_200_000, openDate, vanguardId, true, true, nil))
+        // A $22,000 car loan at 6% paid $425/mo (about five and a half years),
+        // and a $10,000 12-month CD at 4.5% compounding quarterly, both opened
+        // with the rest of the history.
+        let loanConfig = LoanConfig(
+            originalBalance: 2_200_000,
+            annualRatePercent: 6,
+            minimumPayment: 42500,
+            escrowOrFees: nil,
+            categoryId: carPaymentId
+        )
+        let depositConfig = DepositConfig(
+            kind: .fixed,
+            amount: 1_000_000,
+            annualRatePercent: 4.5,
+            compounding: .quarterly,
+            openedOn: DayDate(yyyymmdd: openDate)!,
+            termMonths: 12
+        )
+        transactions.append((startingBalanceId, startingBalancesCategoryId, 1_050_000, openDate, allyId, true, true, nil, UUID().uuidString, nil))
+        transactions.append((startingBalanceId, startingBalancesCategoryId, 280_000, openDate, chaseId, true, true, nil, UUID().uuidString, nil))
+        transactions.append((startingBalanceId, nil, 4_200_000, openDate, vanguardId, true, true, nil, UUID().uuidString, nil))
+        transactions.append((startingBalanceId, nil, -loanConfig.originalBalance, openDate, carLoanId, true, true, nil, UUID().uuidString, nil))
+        transactions.append((startingBalanceId, nil, depositConfig.amount, openDate, cdId, true, true, nil, UUID().uuidString, nil))
 
         // Per-month spending template: (payee, category, account, day, base amount in cents, optional note with hashtags).
         // Slight per-month variation is applied deterministically below.
@@ -527,13 +566,13 @@ enum DemoDataSeeder {
                 let cleared = monthsAgo != 0 || item.day < pendingDayByAccount[item.account, default: item.day]
                 transactions.append((item.payee, item.category, varied,
                                      ymd(monthsAgo: monthsAgo, day: item.day),
-                                     item.account, cleared, false, item.notes))
+                                     item.account, cleared, false, item.notes, UUID().uuidString, nil))
             }
 
             // Quarterly market gains on the brokerage account, so net worth trends up.
             if monthsAgo % 3 == 0 {
                 transactions.append((marketId, nil, 95000 + 5000 * (historyMonths - monthsAgo),
-                                     ymd(monthsAgo: monthsAgo, day: 28), vanguardId, true, false, nil))
+                                     ymd(monthsAgo: monthsAgo, day: 28), vanguardId, true, false, nil, UUID().uuidString, nil))
             }
         }
 
@@ -542,8 +581,38 @@ enum DemoDataSeeder {
         // the demo budget's uncategorized count is always 0.
         if seedUncategorized {
             transactions.append(
-                (wholeFoodsId, nil, -2500, ymd(monthsAgo: 0, day: today), chaseId, false, false, nil)
+                (wholeFoodsId, nil, -2500, ymd(monthsAgo: 0, day: today), chaseId, false, false, nil, UUID().uuidString, nil)
             )
+        }
+
+        // Auto loan: a payment on the 5th of every month after it opened, split
+        // the way Record Payment posts one — the lender's interest charge on
+        // the loan, then a transfer from checking carrying Car Payment on its
+        // on-budget leg. Interest comes from the same engine the loan screens
+        // project with, so the register and the payoff figures agree.
+        var owed = loanConfig.originalBalance
+        for monthsAgo in stride(from: historyMonths - 1, through: 0, by: -1) {
+            if monthsAgo == 0, today < 5 {
+                continue
+            }
+            let date = ymd(monthsAgo: monthsAgo, day: 5)
+            let interest = LoanAmortization.monthlyInterest(balance: owed, annualRatePercent: loanConfig.annualRatePercent)
+            owed += interest - loanConfig.minimumPayment
+            let sourceId = UUID().uuidString
+            let targetId = UUID().uuidString
+            transactions.append((interestId, nil, -interest, date, carLoanId, true, false, nil, UUID().uuidString, nil))
+            transactions.append((transferPayeeIds[carLoanId]!, carPaymentId, -loanConfig.minimumPayment, date, chaseId, true, false, nil, sourceId, targetId))
+            transactions.append((transferPayeeIds[chaseId]!, nil, loanConfig.minimumPayment, date, carLoanId, true, false, nil, targetId, sourceId))
+        }
+
+        // CD: interest credited at the close of each quarter so far, the same
+        // stepped growth the deposit screens chart.
+        for quarter in 1...(depositConfig.termMonths / 3) {
+            let credited = DayDate(yyyymmdd: openDate)!.adding(months: quarter * 3)
+            guard credited.yyyymmdd <= year * 10000 + month * 100 + today else { break }
+            let interest = DepositGrowth.value(depositConfig, afterMonths: quarter * 3)
+                - DepositGrowth.value(depositConfig, afterMonths: (quarter - 1) * 3)
+            transactions.append((interestId, nil, interest, credited.yyyymmdd, cdId, true, false, nil, UUID().uuidString, nil))
         }
 
         // Newest first, so sort_order (descending) matches date order.
@@ -552,7 +621,7 @@ enum DemoDataSeeder {
         for t in transactions {
             try insertTransaction(
                 db,
-                id: UUID().uuidString,
+                id: t.id,
                 accountId: t.account,
                 date: t.date,
                 amount: t.amount,
@@ -561,7 +630,8 @@ enum DemoDataSeeder {
                 cleared: t.cleared,
                 startingBalance: t.startingBalance,
                 sortOrder: sortOrder,
-                notes: t.notes
+                notes: t.notes,
+                transferId: t.transfer
             )
             sortOrder -= 1
         }
@@ -695,6 +765,7 @@ enum DemoDataSeeder {
             (shoppingId, 15000),
             (gymId, 3500),
             (pharmacyId, 3000),
+            (carPaymentId, 42500),
         ]
         // Tracking budgets also budget income (unlike envelope), so the Saved /
         // Projected savings summary has a budgeted-income figure to work with.
@@ -721,6 +792,15 @@ enum DemoDataSeeder {
             INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking')
             """)
         }
+        // The loan and deposit configs, stored the way SyncClient writes them.
+        try db.execute(sql: """
+        INSERT INTO preferences (id, value) VALUES (?, ?), (?, ?)
+        """, arguments: [
+            BudgetDatabase.loanPreferenceKey(for: carLoanId),
+            String(decoding: JSONEncoder().encode(loanConfig), as: UTF8.self),
+            BudgetDatabase.depositPreferenceKey(for: cdId),
+            String(decoding: JSONEncoder().encode(depositConfig), as: UTF8.self),
+        ])
 
         // --- Reports dashboards ---
         // Two pages so the demo exercises the dashboard switcher (GH #120);
@@ -879,14 +959,15 @@ enum DemoDataSeeder {
         cleared: Bool,
         startingBalance: Bool,
         sortOrder: Double,
-        notes: String? = nil
+        notes: String? = nil,
+        transferId: String? = nil
     ) throws {
         try db.execute(sql: """
         INSERT INTO transactions (
             id, isParent, isChild, acct, category, amount, description, notes, date,
-            starting_balance_flag, sort_order, tombstone, cleared, reconciled
+            starting_balance_flag, sort_order, tombstone, cleared, reconciled, transferred_id
         )
-        VALUES (?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0)
+        VALUES (?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?)
         """, arguments: [
             id,
             accountId,
@@ -898,6 +979,7 @@ enum DemoDataSeeder {
             startingBalance ? 1 : 0,
             sortOrder,
             cleared ? 1 : 0,
+            transferId,
         ])
     }
 }
