@@ -60,7 +60,7 @@ struct HistoryDetailTests {
             formatCurrency: { "\($0)" }
         )
 
-        #expect(detail == "Amount: -600 → -700")
+        #expect(detail == String(format: String(localized: "Amount: %@ → %@"), "-600", "-700"))
     }
 
     @Test func payeeEditUsesPayeeIdChange() {
@@ -73,7 +73,7 @@ struct HistoryDetailTests {
             formatCurrency: { "\($0)" }
         )
 
-        #expect(detail == "Payee: Old Payee → New Payee")
+        #expect(detail == String(format: String(localized: "Payee: %@ → %@"), "Old Payee", "New Payee"))
     }
 
     @Test func categoryEditUsesCategoryIdChange() {
@@ -86,7 +86,7 @@ struct HistoryDetailTests {
             formatCurrency: { "\($0)" }
         )
 
-        #expect(detail == "Category: Old Category → New Category")
+        #expect(detail == String(format: String(localized: "Category: %@ → %@"), "Old Category", "New Category"))
     }
 
     @Test func dateEditUsesTheLocalizedDateFormatKey() {
@@ -107,16 +107,31 @@ struct HistoryDetailTests {
         #expect(detail == expected)
     }
 
-    @Test func noteEditUsesChangedSnapshot() {
-        let before = transaction(id: "txn", notes: "old note")
-        let after = transaction(id: "txn", notes: "new note")
+    @Test func splitChildNoteEditReportsTheChildNote() {
+        let parent = transaction(id: "parent", categoryId: nil, categoryName: nil, isParent: true)
+        let childBefore = transaction(id: "child", notes: "old note", parentId: "parent")
+        let childAfter = transaction(id: "child", notes: "new note", parentId: "parent")
 
         let detail = HistoryView.editedDetail(
-            for: action(before: [before], after: [after]),
-            primary: after,
+            for: action(before: [parent, childBefore], after: [parent, childAfter]),
+            primary: parent,
             formatCurrency: { "\($0)" }
         )
 
-        #expect(detail == "Note changed")
+        #expect(detail == String(localized: "Note changed"))
+    }
+
+    @Test func changeToAnotherTransactionIsNotAttributedToThePrimary() {
+        let primary = transaction(id: "primary")
+        let otherBefore = transaction(id: "other", amount: -600)
+        let otherAfter = transaction(id: "other", amount: -700)
+
+        let detail = HistoryView.editedDetail(
+            for: action(before: [primary, otherBefore], after: [primary, otherAfter]),
+            primary: primary,
+            formatCurrency: { "\($0)" }
+        )
+
+        #expect(detail == nil)
     }
 }

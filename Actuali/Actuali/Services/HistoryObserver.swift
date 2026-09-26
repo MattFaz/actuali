@@ -26,11 +26,7 @@ final class HistoryObserver {
                     self.baselineGeneration += 1
                     return
                 }
-                self.enqueueConsume(
-                    store: store,
-                    budgetID: budgetID,
-                    isRemote: store.isBankSyncing
-                )
+                self.enqueueConsume(store: store, budgetID: budgetID, isRemote: store.isBankSyncing)
             }
             .store(in: &cancellables)
 
@@ -49,11 +45,7 @@ final class HistoryObserver {
         store.$transactions
             .sink { [weak self, weak store] _ in
                 guard let self, let store else { return }
-                self.enqueueConsume(
-                    store: store,
-                    budgetID: store.currentBudgetId,
-                    isRemote: store.isBankSyncing
-                )
+                self.enqueueConsume(store: store, budgetID: store.currentBudgetId, isRemote: store.isBankSyncing)
             }
             .store(in: &cancellables)
 
@@ -140,7 +132,7 @@ final class HistoryObserver {
             return
         }
 
-        if HistoryStore.recordingSuppressed || isRemote {
+        if isRemote || HistoryStore.recordingSuppressed {
             previous = current
             previousSplitChildren = currentSplitChildren
             return

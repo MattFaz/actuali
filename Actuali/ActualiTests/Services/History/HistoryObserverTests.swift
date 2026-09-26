@@ -288,24 +288,23 @@ struct HistoryObserverTests {
         #expect(HistoryStore.shared.actions.first?.after.first?.tombstone == true)
     }
 
-    @Test func publicationDuringSyncRefreshProducesNoHistoryAction() async throws {
-        let fixture = try await makeFixture(rows: ["remote"])
+    /// A sync finishing is not a remote write: remote rows are identified by
+    /// their messages_crdt node suffix, so the next local edit still records.
+    @Test func localEditAfterSyncCompletesIsRecorded() async throws {
+        let fixture = try await makeFixture(rows: ["local"])
         defer { cleanUp(fixture) }
         let store = fixture.store
         let observer = HistoryObserver(store: store)
         await observer.drainForTesting()
 
-        // Mirror a real remote sync: PR #544 identifies rows written by
-        // another device from the messages_crdt HLC node suffix.
-        try await execute("UPDATE transactions SET amount = -1800 WHERE id = 'remote'", in: fixture)
-        try await execute("""
-        INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
-        VALUES ('2026-09-06T00:00:01.000Z-0000-aaaaaaaaaaaaaaaa', 'transactions', 'remote', 'amount', x'00')
-        """, in: fixture)
-        store.transactions = await page(["remote"], in: fixture)
+        store.syncState = .syncing
+        store.syncState = .idle
+        try await execute("UPDATE transactions SET amount = -1200 WHERE id = 'local'", in: fixture)
+        store.transactions = await page(["local"], in: fixture)
         await observer.drainForTesting()
 
-        #expect(HistoryStore.shared.actions.isEmpty)
+        #expect(HistoryStore.shared.actions.count == 1)
+        #expect(HistoryStore.shared.actions.first?.after.first?.amount == -1200)
     }
 
     /// The reported bug: adding a transaction to a full page pushes the
