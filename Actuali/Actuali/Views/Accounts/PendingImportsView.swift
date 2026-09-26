@@ -294,6 +294,10 @@ struct PendingImportsView: View {
         let targetAccountId = resolveAccountId(for: item)
         if let accountId = targetAccountId {
             let approver = PendingImportApprover(store: budgetStore)
+            let requirements = item.reviewRequirements(
+                activeBudgetId: budgetStore.currentBudgetId,
+                budgetCurrency: budgetStore.currencyCode
+            )
             VStack(spacing: 0) {
                 if let context = Self.currencyContext(
                     for: item,
@@ -301,12 +305,26 @@ struct PendingImportsView: View {
                     budgetCurrency: budgetStore.currencyCode,
                     locale: locale
                 ) {
-                    Text(context)
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .background(.orange.opacity(0.12))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(context)
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if let source = item.sourceCurrencyCode,
+                           PendingImport.normalizedCurrencyCode(source)
+                           != PendingImport.normalizedCurrencyCode(budgetStore.currencyCode) {
+                            NavigationLink {
+                                DisplaySettingsView()
+                            } label: {
+                                Label(String(localized: "Currency Settings"), systemImage: "gearshape")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .accessibilityIdentifier("pendingImport.currencySettings")
+                        }
+                    }
+                    .padding()
+                    .background(.orange.opacity(0.12))
                 }
                 AddTransactionView(
                     accountId: accountId,
@@ -323,10 +341,7 @@ struct PendingImportsView: View {
                     onSaved: { _ in
                         try store.remove(id: item.id)
                     },
-                    reviewRequirements: item.reviewRequirements(
-                        activeBudgetId: budgetStore.currentBudgetId,
-                        budgetCurrency: budgetStore.currencyCode
-                    )
+                    reviewRequirements: requirements
                 )
                 .environmentObject(budgetStore)
             }
@@ -362,9 +377,11 @@ struct PendingImportsView: View {
                     bundle: bundle
                 )
             }
+            let budget = PendingImport.normalizedCurrencyCode(budgetCurrency)
+            let budgetLabel = PendingImport.currencyLabel(budget, locale: locale, bundle: bundle)
             return ReportStrings.format(
                 "Currency was not identified. Active budget: %@. Review and confirm before saving.",
-                PendingImport.normalizedCurrencyCode(budgetCurrency),
+                budgetLabel,
                 locale: locale,
                 bundle: bundle
             )
@@ -372,8 +389,16 @@ struct PendingImportsView: View {
         let source = PendingImport.normalizedCurrencyCode(sourceCurrencyCode)
         let budget = PendingImport.normalizedCurrencyCode(budgetCurrency)
         guard source != budget else { return nil }
+        if budget.isEmpty {
+            return ReportStrings.format(
+                "This import is in %@, but the active budget has no currency set. No currency conversion will be performed.",
+                source,
+                locale: locale,
+                bundle: bundle
+            )
+        }
         return ReportStrings.format(
-            "Source currency: %@. Active budget: %@. Review and confirm before saving.",
+            "This import is in %@, but the active budget uses %@. No currency conversion will be performed.",
             source,
             budget,
             locale: locale,

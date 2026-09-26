@@ -110,6 +110,25 @@ struct PendingImportStoreTests {
         #expect(Set(visible.map(\.id)) == Set([current.id, other.id, legacy.id]))
     }
 
+    @Test @MainActor func removeImportsByOriginBudgetId() throws {
+        let (store, url) = makeStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let demo = PendingImport(originBudgetId: "demo", amount: 1)
+        let real = PendingImport(originBudgetId: "real", amount: 2)
+        try store.add(demo)
+        try store.add(real)
+        #expect(store.count == 2)
+
+        try store.removeImports(originBudgetId: "demo")
+        #expect(store.count == 1)
+        #expect(store.imports.first?.id == real.id)
+
+        // Removing non-existent origin budget is a no-op
+        try store.removeImports(originBudgetId: "non-existent")
+        #expect(store.count == 1)
+    }
+
     @Test @MainActor func recoversMalformedFileAndPersistsSubsequentImport() throws {
         let directory = FileManager.default.temporaryDirectory
         let stem = "test_pending_imports_\(UUID().uuidString)"

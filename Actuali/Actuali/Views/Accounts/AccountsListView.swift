@@ -33,6 +33,7 @@ struct AccountsListView: View {
     @State private var showingBills = false
     @State private var showingPendingImports = false
     @StateObject private var pendingImportStore = PendingImportStore.shared
+
     /// Split layout only. Starts on All Accounts so the detail column has
     /// something in it at launch instead of an empty pane.
     @State private var selection: AccountSelection? = .allAccounts

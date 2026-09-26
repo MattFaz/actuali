@@ -42,6 +42,12 @@ struct PendingImport: Codable, Identifiable {
     nonisolated static func normalizedCurrencyCode(_ code: String) -> String {
         code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     }
+
+    nonisolated static func currencyLabel(
+        _ code: String, locale: Locale, bundle: Bundle = .main
+    ) -> String {
+        code.isEmpty ? ReportStrings.text("None", locale: locale, bundle: bundle) : code
+    }
 }
 
 enum PendingImportReviewRequirement: Hashable {
@@ -57,10 +63,11 @@ enum PendingImportReviewRequirement: Hashable {
                 bundle: bundle
             )
         case .confirmActiveBudgetCurrency(let source, let budget):
+            let budgetLabel = PendingImport.currencyLabel(budget, locale: locale, bundle: bundle)
             if let source {
                 return ReportStrings.format(
                     "I confirm that the numeric amount is in the active budget currency (%@); no conversion from %@ will be performed.",
-                    budget,
+                    budgetLabel,
                     source,
                     locale: locale,
                     bundle: bundle
@@ -68,7 +75,7 @@ enum PendingImportReviewRequirement: Hashable {
             }
             return ReportStrings.format(
                 "I confirm that the numeric amount should be treated as the active budget currency (%@); no conversion will be performed.",
-                budget,
+                budgetLabel,
                 locale: locale,
                 bundle: bundle
             )
