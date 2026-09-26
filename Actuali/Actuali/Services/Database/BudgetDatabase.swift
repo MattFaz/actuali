@@ -5005,23 +5005,78 @@ final class BudgetDatabase: Sendable {
         "\(creditCardPreferenceKeyPrefix)\(accountId)"
     }
 
-    /// Fetches all synced credit card configurations stored in the `preferences` table.
-    /// Returns a dictionary mapping `accountId -> CreditCardConfig`.
-    func fetchCreditCardConfigs() async throws -> [String: CreditCardConfig] {
+    /// Preference key prefix for synced loan configurations.
+    static let loanPreferenceKeyPrefix = "actuali:loan:"
+
+    /// Preference key for a specific account's loan config.
+    static func loanPreferenceKey(for accountId: String) -> String {
+        "\(loanPreferenceKeyPrefix)\(accountId)"
+    }
+
+    /// Preference key prefix for synced deposit configurations.
+    static let depositPreferenceKeyPrefix = "actuali:deposit:"
+
+    /// Preference key for a specific account's deposit config.
+    static func depositPreferenceKey(for accountId: String) -> String {
+        "\(depositPreferenceKeyPrefix)\(accountId)"
+    }
+
+    /// Decodes every `preferences` row stored under `prefix` into `T`, keyed by
+    /// the account id the key ends with. A row that no longer decodes is skipped
+    /// rather than failing the load, so one bad value can't cost the others.
+    private func fetchAccountConfigs<T: Decodable & Sendable>(prefix: String) async throws -> [String: T] {
         try await dbQueue.read { db in
             guard try db.tableExists("preferences") else { return [:] }
-            let prefix = Self.creditCardPreferenceKeyPrefix
             let rows = try Row.fetchAll(
                 db,
                 sql: "SELECT id, value FROM preferences WHERE id LIKE ? AND value IS NOT NULL",
                 arguments: ["\(prefix)%"]
             )
-            return rows.reduce(into: [:]) { result, row in
+            return rows.reduce(into: [String: T]()) { result, row in
                 guard let id: String = row["id"], id.hasPrefix(prefix),
                       let value: String = row["value"],
-                      let config = try? JSONDecoder().decode(CreditCardConfig.self, from: Data(value.utf8)) else { return }
+                      let config = try? JSONDecoder().decode(T.self, from: Data(value.utf8)) else { return }
                 result[String(id.dropFirst(prefix.count))] = config
             }
+        }
+    }
+
+    /// Fetches all synced credit card configurations stored in the `preferences` table.
+    /// Returns a dictionary mapping `accountId -> CreditCardConfig`.
+    func fetchCreditCardConfigs() async throws -> [String: CreditCardConfig] {
+        try await fetchAccountConfigs(prefix: Self.creditCardPreferenceKeyPrefix)
+    }
+
+    /// Fetches all synced loan configurations stored in the `preferences` table.
+    /// Returns a dictionary mapping `accountId -> LoanConfig`.
+    func fetchLoanConfigs() async throws -> [String: LoanConfig] {
+        try await fetchAccountConfigs(prefix: Self.loanPreferenceKeyPrefix)
+    }
+
+    /// Fetches all synced deposit configurations stored in the `preferences` table.
+    /// Returns a dictionary mapping `accountId -> DepositConfig`.
+    func fetchDepositConfigs() async throws -> [String: DepositConfig] {
+        try await fetchAccountConfigs(prefix: Self.depositPreferenceKeyPrefix)
+    }
+
+    /// Everything ever paid into a loan account, in cents.
+    ///
+    /// On a loan the money only moves one way: payments arrive as inflows
+    /// while the opening balance and the lender's interest and escrow charges
+    /// are outflows, so summing the inflows is the total paid — the figure
+    /// YNAB's Activity tab shows, against the principal-only progress on
+    /// Overview. Split parents are skipped in favour of their children so a
+    /// split payment isn't counted twice.
+    func totalPaidIntoAccount(accountId: String) async throws -> Int {
+        try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(amount), 0)
+                FROM transactions
+                WHERE acct = ?
+                  AND (tombstone = 0 OR tombstone IS NULL)
+                  AND (isParent = 0 OR isParent IS NULL)
+                  AND amount > 0
+            """, arguments: [accountId]) ?? 0
         }
     }
 

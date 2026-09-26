@@ -196,13 +196,40 @@ struct DemoDataSeederTests {
         let transactions = try await database.fetchTransactions()
 
         let startingBalances = transactions.filter { $0.payeeName == "Starting Balance" }
-        #expect(startingBalances.count == 3)
+        #expect(startingBalances.count == 5)
         for transaction in startingBalances {
             let account = try #require(accounts.first { $0.id == transaction.accountId })
             #expect((transaction.categoryId == nil) == account.offBudget,
                     "\(account.name) starting balance miscategorized")
         }
         #expect(try await database.fetchUncategorizedCount() == 0)
+    }
+
+    /// The demo tracks a loan and a deposit so both features show in demo
+    /// mode. The loan must be off-budget (Record Payment refuses otherwise),
+    /// paid down by paired transfers, and the CD must have earned interest.
+    @Test func seedsATrackedLoanAndDeposit() async throws {
+        let database = try seedAndOpen()
+        let accounts = try await database.fetchAccounts()
+        let transactions = try await database.fetchTransactions()
+
+        let (loanId, loan) = try #require(try await database.fetchLoanConfigs().first)
+        let loanAccount = try #require(accounts.first { $0.id == loanId })
+        #expect(loanAccount.offBudget)
+        #expect(loanAccount.balance > -loan.originalBalance)
+        #expect(loan.categoryId != nil)
+
+        let payments = transactions.filter { $0.accountId == loanId && $0.transferId != nil }
+        #expect(!payments.isEmpty)
+        for payment in payments {
+            let partner = try #require(transactions.first { $0.id == payment.transferId })
+            #expect(partner.transferId == payment.id)
+            #expect(partner.categoryId == loan.categoryId)
+        }
+
+        let (depositId, deposit) = try #require(try await database.fetchDepositConfigs().first)
+        let depositAccount = try #require(accounts.first { $0.id == depositId })
+        #expect(depositAccount.balance > deposit.amount)
     }
 
     /// The demo budget must support notes and ship one, or the category note

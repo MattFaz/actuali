@@ -46,8 +46,17 @@ struct DayDate: Comparable, Hashable {
         return utcCalendar.range(of: .day, in: .month, for: date)!.count
     }
 
-    private var utcDate: Date {
+    /// This calendar day as a `Date`, pinned to midday UTC so a timezone shift
+    /// can't slide it into the neighbouring day. Exposed for Swift Charts,
+    /// whose axes plot `Date` — the schedule math all stays on `DayDate`.
+    var utcDate: Date {
         DayDate.utcCalendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+    }
+
+    /// "Sep 26, 2026" in the user's locale. Formatted in UTC to match
+    /// `utcDate`, so the day shown is the day stored in any timezone.
+    var displayText: String {
+        utcDate.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: .gmt))
     }
 
     func adding(days: Int) -> DayDate {

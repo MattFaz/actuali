@@ -12,6 +12,20 @@ struct AccountDetailView: View {
     @State private var breakdown: AccountBalanceBreakdown?
     @State private var showingBreakdown = false
     @State private var showingBillingCycle = false
+    @State private var showingLoanDetails = false
+    @State private var showingLoanEditor = false
+    @State private var showingLoanPlanner = false
+    @State private var showingLoanPayment = false
+    @State private var pairingLoanCategory = false
+    @State private var showingLoanAutomations = false
+    @State private var showingDepositDetails = false
+    @State private var showingDepositEditor = false
+    /// The paired category's estimated monthly contribution, read through
+    /// the automations editor's own dry run so the two agree.
+    @State private var loanTarget: Int?
+    /// Everything paid into the loan, read from the database rather than the
+    /// paged transaction list, which only holds a window of the history.
+    @State private var loanTotalPaid: Int?
     @State private var searchText = ""
     @State private var showingAddTransaction = false
     @State private var showingReconcile = false
@@ -241,6 +255,204 @@ struct AccountDetailView: View {
         }
     }
 
+    /// The loan's numbers, once its section is expanded.
+    @ViewBuilder private func loanBreakdownRows(config: LoanConfig) -> some View {
+        breakdownRow(String(localized: "Original Balance"), amount: config.originalBalance)
+        breakdownRow(String(localized: "Interest Rate"), value: LoanSummaryRow.percentText(config.annualRatePercent / 100))
+        breakdownRow(String(localized: "Monthly Payment"), amount: config.minimumPayment)
+        if let escrow = config.escrowOrFees {
+            breakdownRow(String(localized: "Escrow or Fees"), amount: escrow)
+        }
+        if let schedule = config.schedule(accountBalance: currentBalance) {
+            breakdownRow(String(localized: "Payments Remaining"), value: "\(schedule.paymentCount)")
+            breakdownRow(String(localized: "Interest Remaining"), amount: schedule.totalInterest)
+        }
+        // The progress ring above counts principal alone; this is the same
+        // loan measured the other way, every cent that has gone to it. YNAB
+        // splits the two across its Overview and Activity tabs — one
+        // scrolling screen shows both.
+        if let paid = loanTotalPaid, paid > 0 {
+            breakdownRow(String(localized: "Total Paid"), amount: paid)
+        }
+        breakdownRow(
+            String(localized: "Category"),
+            value: budgetStore.pairedLoanCategory(for: account.id)?.name
+                ?? String(localized: "Not paired")
+        )
+        if budgetStore.pairedLoanCategory(for: account.id) != nil {
+            breakdownRow(
+                String(localized: "Payment Target"),
+                value: config.targetIsSnoozed(in: BudgetMonthMath.currentMonth())
+                    ? String(localized: "Skipped this month")
+                    : loanTarget.map { budgetStore.displayBalance($0) }
+                    ?? String(localized: "No target set")
+            )
+        }
+    }
+
+    /// Read live: the account can be moved on budget after the loan was set up,
+    /// and `recordLoanPayment` refuses it there.
+    private var loanIsOnBudget: Bool {
+        !budgetStore.offBudgetAccountIds.contains(account.id)
+    }
+
+    /// What the loan section lets you do, once expanded.
+    @ViewBuilder private func loanActions(config: LoanConfig) -> some View {
+        Button {
+            showingLoanPayment = true
+        } label: {
+            Label(String(localized: "Record Payment"), systemImage: "plus.circle")
+                .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
+        .disabled(budgetStore.syncDetachedByRestore || loanIsOnBudget)
+        .accessibilityIdentifier("accountLoan.recordPayment")
+
+        if loanIsOnBudget {
+            Text(BudgetStoreError.loanAccountOnBudget.localizedDescription)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("accountLoan.onBudgetNote")
+        }
+
+        Button {
+            pairingLoanCategory = true
+        } label: {
+            Label(
+                budgetStore.pairedLoanCategory(for: account.id) == nil
+                    ? String(localized: "Pair With a Category")
+                    : String(localized: "Change Paired Category"),
+                systemImage: "tag"
+            )
+            .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
+        .disabled(budgetStore.syncDetachedByRestore)
+        .accessibilityIdentifier("accountLoan.pairCategory")
+
+        if budgetStore.pairedLoanCategory(for: account.id) != nil {
+            loanTargetActions(config: config)
+        }
+
+        // The terms are most often questioned while looking at the loan
+        // itself, so the editor opens from here rather than sending the user
+        // back out to the Loans screen.
+        Button {
+            showingLoanPlanner = true
+        } label: {
+            Label(String(localized: "Payoff Simulator"), systemImage: "chart.line.downtrend.xyaxis")
+                .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("accountLoan.planner")
+
+        Button {
+            showingLoanEditor = true
+        } label: {
+            Label(String(localized: "Edit Loan"), systemImage: "pencil")
+                .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
+        .disabled(budgetStore.syncDetachedByRestore)
+        .accessibilityIdentifier("accountLoan.edit")
+    }
+
+    /// Setting and skipping the paired category's payment target.
+    ///
+    /// Actual creates automations in one place, and turning a notes-managed
+    /// category into a UI-managed one takes the editor's own warning and an
+    /// explicit Save (with "Save & Un-migrate" as the way back). So this
+    /// opens that editor rather than writing a target behind it.
+    @ViewBuilder private func loanTargetActions(config: LoanConfig) -> some View {
+        Button {
+            showingLoanAutomations = true
+        } label: {
+            Label(
+                loanTarget == nil
+                    ? String(localized: "Set Payment Target")
+                    : String(localized: "Edit Payment Target"),
+                systemImage: "target"
+            )
+            .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
+        .disabled(budgetStore.syncDetachedByRestore)
+        .accessibilityIdentifier("accountLoan.target")
+
+        if loanTarget != nil {
+            let month = BudgetMonthMath.currentMonth()
+            let isSnoozed = config.targetIsSnoozed(in: month)
+            Button {
+                Task {
+                    await budgetStore.snoozeLoanTarget(
+                        accountId: account.id,
+                        month: isSnoozed ? nil : month
+                    )
+                }
+            } label: {
+                Label(
+                    isSnoozed
+                        ? String(localized: "Stop Skipping This Month")
+                        : String(localized: "Skip This Month"),
+                    systemImage: isSnoozed ? "arrow.uturn.backward" : "moon.zzz"
+                )
+                .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.plain)
+            .disabled(budgetStore.syncDetachedByRestore)
+            .accessibilityIdentifier("accountLoan.snooze")
+        }
+    }
+
+    /// The deposit's terms and where it has got to, once its section is
+    /// expanded.
+    @ViewBuilder private func depositBreakdownRows(config: DepositConfig) -> some View {
+        breakdownRow(
+            String(localized: "Type"),
+            value: config.kind == .recurring
+                ? String(localized: "Recurring Deposit")
+                : String(localized: "Fixed Deposit")
+        )
+        breakdownRow(
+            config.kind == .recurring
+                ? String(localized: "Monthly Instalment")
+                : String(localized: "Deposit Amount"),
+            amount: config.amount
+        )
+        breakdownRow(String(localized: "Interest Rate"), value: LoanSummaryRow.percentText(config.annualRatePercent / 100))
+        breakdownRow(String(localized: "Compounding"), value: DepositEditorView.compoundingLabel(config.compounding))
+        breakdownRow(String(localized: "Opened"), value: config.openedOn.displayText)
+        breakdownRow(String(localized: "Matures"), value: config.maturityDate.displayText)
+        breakdownRow(String(localized: "Deposited"), amount: config.deposited())
+        breakdownRow(String(localized: "Interest Earned"), amount: config.interestEarned())
+        breakdownRow(String(localized: "Value at Maturity"), amount: config.maturityValue)
+    }
+
+    /// The growth chart and the way back to the terms. Split out of the
+    /// breakdown so neither overruns ViewBuilder's ten-child limit.
+    @ViewBuilder private func depositActions(config: DepositConfig) -> some View {
+        DepositGrowthChart(config: config)
+            .environmentObject(budgetStore)
+            .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+
+        Button {
+            showingDepositEditor = true
+        } label: {
+            Label(String(localized: "Edit Deposit"), systemImage: "pencil")
+                .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
+        .disabled(budgetStore.syncDetachedByRestore)
+        .accessibilityIdentifier("accountDeposit.edit")
+    }
+
+    private func refreshLoanTarget() async {
+        loanTarget = await budgetStore.loanTargetMonthly(
+            accountId: account.id,
+            month: BudgetMonthMath.currentMonth()
+        )
+    }
+
     private func breakdownRow(_ title: String, amount: Int) -> some View {
         breakdownRow(title, value: budgetStore.displayBalance(amount))
     }
@@ -455,6 +667,118 @@ struct AccountDetailView: View {
         }
     }
 
+    /// Payoff tracking for an account marked as a loan. Collapsed by default
+    /// like the billing cycle above, with the payoff date riding on the header
+    /// row — that's the part worth acting on. Read-only: the terms are edited
+    /// on the Loans screen.
+    @ViewBuilder private var loanSection: some View {
+        if let config = budgetStore.activeLoanConfig(for: account.id), searchQuery == nil {
+            Section {
+                let summary = config.payoffSummary(accountBalance: currentBalance)
+                let fraction = config.fractionPaidOff(accountBalance: currentBalance)
+
+                Button {
+                    withAnimation(AppAnimation.disclosure) { showingLoanDetails.toggle() }
+                } label: {
+                    VStack(spacing: 6) {
+                        HStack {
+                            Text(String(localized: "Loan"))
+                            Spacer()
+                            Text(summary)
+                                .fontWeight(.semibold)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(showingLoanDetails ? 180 : 0))
+                        }
+                        ProgressView(value: fraction)
+                            .tint(.accentColor)
+                        HStack {
+                            Text(LoanSummaryRow.progressText(fraction))
+                            Spacer()
+                            Text(String(format: String(localized: "of %@"), budgetStore.displayBalance(config.originalBalance)))
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("accountLoan.toggle")
+                .accessibilityLabel(String(format: String(localized: "Loan, %1$@, %2$@"), LoanSummaryRow.progressText(fraction), summary))
+                .accessibilityHint(showingLoanDetails
+                    ? String(localized: "Hides the loan details")
+                    : String(localized: "Shows the loan's rate, payment and remaining interest"))
+
+                if showingLoanDetails {
+                    // Split in two so neither overruns ViewBuilder's ten-child
+                    // limit as the loan grows more to say.
+                    loanBreakdownRows(config: config)
+                    loanActions(config: config)
+                }
+            }
+            // Keyed on the store's data version so recording a payment
+            // refreshes the total without the screen having to know it was
+            // the cause — even one that leaves the balance where it was.
+            .task(id: budgetStore.dataVersion) {
+                loanTotalPaid = await budgetStore.totalPaidIntoLoan(accountId: account.id)
+                await refreshLoanTarget()
+            }
+        }
+    }
+
+    /// Growth tracking for an account marked as a deposit. Same collapsed
+    /// shape as the loan section above, measuring the other direction: the
+    /// progress bar runs through the term rather than down the balance, and
+    /// the header carries what the deposit is worth today.
+    @ViewBuilder private var depositSection: some View {
+        if let config = budgetStore.activeDepositConfig(for: account.id), searchQuery == nil {
+            Section {
+                let today = DayDate.today()
+                let summary = DepositSummaryRow.maturitySummary(config, on: today)
+                let value = budgetStore.displayBalance(config.value(on: today))
+
+                Button {
+                    withAnimation(AppAnimation.disclosure) { showingDepositDetails.toggle() }
+                } label: {
+                    VStack(spacing: 6) {
+                        HStack {
+                            Text(String(localized: "Deposit"))
+                            Spacer()
+                            Text(value)
+                                .fontWeight(.semibold)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(showingDepositDetails ? 180 : 0))
+                        }
+                        ProgressView(value: config.fractionElapsed(on: today))
+                            .tint(.accentColor)
+                        HStack {
+                            Text(summary)
+                            Spacer()
+                            Text(String(format: String(localized: "%@ interest"), budgetStore.displayBalance(config.interestEarned(on: today))))
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("accountDeposit.toggle")
+                .accessibilityLabel(String(format: String(localized: "Deposit, %1$@, %2$@"), value, summary))
+                .accessibilityHint(showingDepositDetails
+                    ? String(localized: "Hides the deposit details")
+                    : String(localized: "Shows the deposit's rate, term and growth"))
+
+                if showingDepositDetails {
+                    depositBreakdownRows(config: config)
+                    depositActions(config: config)
+                }
+            }
+        }
+    }
+
     @ViewBuilder private var notesSection: some View {
         if Self.showsNote(
             supported: note.supported,
@@ -614,6 +938,8 @@ struct AccountDetailView: View {
         List {
             balanceSection
             billingCycleSection
+            loanSection
+            depositSection
             notesSection.animation(AppAnimation.disclosure, value: hideNotes)
             transactionSection
         }
@@ -640,6 +966,50 @@ struct AccountDetailView: View {
             }
         }
         .toolbar(isSelecting ? .hidden : .visible, for: .tabBar)
+        .sheet(isPresented: $showingLoanPlanner) {
+            if let config = budgetStore.activeLoanConfig(for: account.id) {
+                LoanPayoffPlannerView(account: account, config: config)
+                    .environmentObject(budgetStore)
+            }
+        }
+        .sheet(isPresented: $showingLoanPayment) {
+            if let config = budgetStore.activeLoanConfig(for: account.id) {
+                LoanPaymentView(account: account, config: config, balance: currentBalance)
+                    .environmentObject(budgetStore)
+            }
+        }
+        .sheet(isPresented: $pairingLoanCategory, onDismiss: {
+            Task { await refreshLoanTarget() }
+        }) {
+            LoanCategoryPairingView(accountId: account.id)
+                .environmentObject(budgetStore)
+        }
+        .sheet(isPresented: $showingLoanAutomations, onDismiss: {
+            Task { await refreshLoanTarget() }
+        }) {
+            if let category = budgetStore.pairedLoanCategory(for: account.id) {
+                BudgetAutomationsSheet(
+                    categoryId: category.id,
+                    month: BudgetMonthMath.currentMonth()
+                )
+                .environmentObject(budgetStore)
+            }
+        }
+        .sheet(isPresented: $showingDepositEditor) {
+            if let config = budgetStore.activeDepositConfig(for: account.id) {
+                DepositEditorView(mode: .edit(accountId: account.id, config: config))
+                    .environmentObject(budgetStore)
+            }
+        }
+        .sheet(isPresented: $showingLoanEditor) {
+            // Read at presentation rather than captured with the button, so
+            // the editor opens on the current terms even if a sync landed
+            // between the tap and the sheet.
+            if let config = budgetStore.activeLoanConfig(for: account.id) {
+                LoanEditorView(mode: .edit(accountId: account.id, config: config))
+                    .environmentObject(budgetStore)
+            }
+        }
         .sheet(isPresented: $showingReconcile) {
             ReconcileView(account: account)
                 .environmentObject(budgetStore)

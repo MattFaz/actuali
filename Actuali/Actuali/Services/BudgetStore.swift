@@ -43,6 +43,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case tagAlreadyExists
     case tagCreationFailed(String)
     case tagUpdateFailed(String)
+    case loanAccountOnBudget
 
     var errorDescription: String? {
         message(locale: .autoupdatingCurrent)
@@ -145,6 +146,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             ReportStrings.text("error.ruleNotSerializable", locale: locale, bundle: bundle)
         case .bankSyncNotConfigured:
             ReportStrings.text("error.bankSyncNotConfigured", locale: locale, bundle: bundle)
+        case .loanAccountOnBudget:
+            ReportStrings.text("error.loanAccountOnBudget", locale: locale, bundle: bundle)
         case .invalidTagName:
             ReportStrings.text("error.invalidTagName", locale: locale, bundle: bundle)
         case .tagAlreadyExists:
@@ -260,6 +263,8 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
             if currentBudgetId != oldValue {
                 creditCardConfigs = [:]
+                loanConfigs = [:]
+                depositConfigs = [:]
                 cardAccountMappings = [:]
             }
         }
@@ -334,6 +339,10 @@ final class BudgetStore: ObservableObject {
     /// Synced credit card configurations loaded from the preferences table (accountId -> CreditCardConfig).
     @Published var creditCardConfigs: [String: CreditCardConfig] = [:]
 
+    /// Synced loan configurations loaded from the preferences table (accountId -> LoanConfig).
+    @Published var loanConfigs: [String: LoanConfig] = [:]
+    /// Synced deposit configurations loaded from the preferences table (accountId -> DepositConfig).
+    @Published var depositConfigs: [String: DepositConfig] = [:]
     /// Synced card-to-account mappings loaded from the preferences table (keyword -> accountId).
     @Published var cardAccountMappings: [String: String] = [:]
 
@@ -1003,6 +1012,102 @@ final class BudgetStore: ObservableObject {
         }
         await loadCreditCardStatementDues()
         await scheduleCreditCardDueNotifications()
+    }
+
+    /// Loans whose account still exists and is open — what the Loans screen
+    /// lists. Closed and deleted accounts keep their stored config (reopening
+    /// restores the loan) but drop out, mirroring `activeCreditCardStatementDays`.
+    var activeLoanConfigs: [String: LoanConfig] {
+        let openAccountIds = Set(accounts.filter { !$0.closed }.map(\.id))
+        return loanConfigs.filter { openAccountIds.contains($0.key) }
+    }
+
+    /// The config to *display* for an account: nil unless it is a tracked loan
+    /// whose account still exists and is open. Every surface hides a closed
+    /// loan through this one predicate rather than each re-deciding, the same
+    /// contract `activeCreditCardCycle` holds for cards.
+    func activeLoanConfig(for accountId: String) -> LoanConfig? {
+        guard let account = accounts.first(where: { $0.id == accountId }), !account.closed else { return nil }
+        return loanConfigs[accountId]
+    }
+
+    /// Accounts already tracked as a card, loan or deposit. One account is one
+    /// instrument, so the loan and deposit editors offer only what's left.
+    var trackedAccountIds: Set<String> {
+        Set(creditCardConfigs.keys).union(loanConfigs.keys).union(depositConfigs.keys)
+    }
+
+    /// Writes a loan's config and persists it through SyncClient.
+    /// A nil `config` stops tracking the account and clears everything stored for it.
+    func setLoan(accountId: String, config: LoanConfig?) async {
+        guard currentBudgetId != nil else { return }
+        let previous = loanConfigs[accountId]
+        loanConfigs[accountId] = config
+        guard let syncClient else {
+            loanConfigs[accountId] = previous
+            error = String(localized: "Loan settings need sync configured for this budget.")
+            return
+        }
+        do {
+            try await syncClient.setLoanConfig(accountId: accountId, config: config)
+        } catch {
+            loanConfigs[accountId] = previous
+            self.error = error.localizedDescription
+        }
+    }
+
+    // MARK: - Deposits
+
+    /// Deposits whose account still exists and is open — what the Deposits
+    /// screen lists. Closed and deleted accounts keep their stored config
+    /// (reopening restores the deposit) but drop out, the same predicate
+    /// `activeLoanConfigs` holds for loans.
+    var activeDepositConfigs: [String: DepositConfig] {
+        let openAccountIds = Set(accounts.filter { !$0.closed }.map(\.id))
+        return depositConfigs.filter { openAccountIds.contains($0.key) }
+    }
+
+    /// The config to *display* for an account: nil unless it is a tracked
+    /// deposit whose account still exists and is open. Every surface hides a
+    /// closed deposit through this one predicate rather than each re-deciding.
+    ///
+    /// Note that a *matured* deposit is still active — it has a final value
+    /// worth showing until the account itself is closed.
+    func activeDepositConfig(for accountId: String) -> DepositConfig? {
+        guard let account = accounts.first(where: { $0.id == accountId }), !account.closed else { return nil }
+        return depositConfigs[accountId]
+    }
+
+    /// Writes a deposit's config and persists it through SyncClient.
+    /// A nil `config` stops tracking the account and clears everything stored
+    /// for it. Optimistic with rollback, mirroring `setLoan`.
+    func setDeposit(accountId: String, config: DepositConfig?) async {
+        guard currentBudgetId != nil else { return }
+        let previous = depositConfigs[accountId]
+        depositConfigs[accountId] = config
+        guard let syncClient else {
+            depositConfigs[accountId] = previous
+            error = String(localized: "Deposit settings need sync configured for this budget.")
+            return
+        }
+        do {
+            try await syncClient.setDepositConfig(accountId: accountId, config: config)
+        } catch {
+            depositConfigs[accountId] = previous
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Everything paid into the loan so far, interest and fees included —
+    /// the Activity figure, against the principal-only progress the payoff
+    /// ring shows. nil when it can't be read rather than 0, so the row hides
+    /// instead of claiming nothing has been paid.
+    ///
+    /// Lives here rather than in `BudgetStore+Loans` because `database` is
+    /// file-private to this one.
+    func totalPaidIntoLoan(accountId: String) async -> Int? {
+        guard let database else { return nil }
+        return try? await database.totalPaidIntoAccount(accountId: accountId)
     }
 
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
@@ -2355,6 +2460,8 @@ final class BudgetStore: ObservableObject {
             let fetchedNumberFormat = try await openedDb.fetchPreference(id: "numberFormat")
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await openedDb.fetchCreditCardConfigs()
+            let fetchedLoans = try await openedDb.fetchLoanConfigs()
+            let fetchedDeposits = try await openedDb.fetchDepositConfigs()
             let fetchedCardMappings = try await openedDb.fetchCardAccountMappings()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
@@ -2421,6 +2528,8 @@ final class BudgetStore: ObservableObject {
                 )
             }
             creditCardConfigs = fetchedCreditCards.merging(legacyConfigs) { synced, _ in synced }
+            loanConfigs = fetchedLoans
+            depositConfigs = fetchedDeposits
 
             var legacyCardMappings: [String: String] = [:]
             let savedCardMappings = UserDefaults.standard.dictionary(forKey: "cardAccountMappings_\(budgetId)") as? [String: String] ?? [:]
@@ -2644,6 +2753,8 @@ final class BudgetStore: ObservableObject {
         let currencyCodeBefore = currencyCode
         let numberFormatBefore = numberFormat
         let creditCardsBefore = creditCardConfigs
+        let loansBefore = loanConfigs
+        let depositsBefore = depositConfigs
         let cardMappingsBefore = cardAccountMappings
         do {
             // Fetch into locals, then publish in one batch (no suspension
@@ -2672,6 +2783,8 @@ final class BudgetStore: ObservableObject {
             // upcoming window, and the status badges below are computed from it.
             let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await database.fetchCreditCardConfigs()
+            let fetchedLoans = try await database.fetchLoanConfigs()
+            let fetchedDeposits = try await database.fetchDepositConfigs()
             let fetchedCardMappings = try await database.fetchCardAccountMappings()
             // Re-read here too: a sync can bring in a currency set on another
             // client, and nothing else republishes it (GH #297).
@@ -2694,6 +2807,12 @@ final class BudgetStore: ObservableObject {
             // this snapshot; its write comes back on the next refresh.
             if creditCardConfigs == creditCardsBefore {
                 creditCardConfigs = fetchedCreditCards
+            }
+            if loanConfigs == loansBefore {
+                loanConfigs = fetchedLoans
+            }
+            if depositConfigs == depositsBefore {
+                depositConfigs = fetchedDeposits
             }
             if cardAccountMappings == cardMappingsBefore {
                 cardAccountMappings = fetchedCardMappings
@@ -4425,32 +4544,38 @@ final class BudgetStore: ObservableObject {
     ///   - date: YYYYMMDD
     ///   - notes: shared notes (applied to both legs)
     ///   - cleared: applied to both legs
+    /// `categoryId` is applied to whichever leg may carry one — Actual allows
+    /// a category only on an on-budget leg whose partner account is
+    /// off-budget, the same rule `updateTransfer` enforces — and dropped
+    /// otherwise. That is the shape a loan payment takes: budgeted money
+    /// leaving a checking account for an off-budget loan.
     func createTransfer(
         fromAccountId: String,
         toAccountId: String,
         amountCents: Int,
         date: Int,
         notes: String?,
-        cleared: Bool
+        cleared: Bool,
+        categoryId: String? = nil
     ) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
-        guard fromAccountId != toAccountId else {
-            throw BudgetStoreError.transferAccountsMatch
-        }
-        guard amountCents > 0 else {
-            throw BudgetStoreError.transferAmountNotPositive
-        }
-
-        let fromTransferPayee = transferPayee(forAccountId: fromAccountId)
-        let toTransferPayee = transferPayee(forAccountId: toAccountId)
-        guard let fromTransferPayee, let toTransferPayee else {
-            throw BudgetStoreError.transferPayeeMissing
-        }
+        let (fromTransferPayee, toTransferPayee) = try transferPayees(
+            fromAccountId: fromAccountId,
+            toAccountId: toAccountId,
+            amountCents: amountCents
+        )
 
         let sourceId = UUID().uuidString
         let targetId = UUID().uuidString
+
+        let offBudgetIds = offBudgetAccountIds
+        func categorizable(_ accountId: String, partner: String) -> String? {
+            guard !offBudgetIds.contains(accountId),
+                  offBudgetIds.contains(partner) else { return nil }
+            return categoryId
+        }
 
         let source = Transaction(
             id: sourceId,
@@ -4459,7 +4584,7 @@ final class BudgetStore: ObservableObject {
             amount: -amountCents,
             payeeId: toTransferPayee.id,
             payeeName: toTransferPayee.name,
-            categoryId: nil,
+            categoryId: categorizable(fromAccountId, partner: toAccountId),
             categoryName: nil,
             notes: notes,
             cleared: cleared,
@@ -4479,7 +4604,7 @@ final class BudgetStore: ObservableObject {
             amount: amountCents,
             payeeId: fromTransferPayee.id,
             payeeName: fromTransferPayee.name,
-            categoryId: nil,
+            categoryId: categorizable(toAccountId, partner: fromAccountId),
             categoryName: nil,
             notes: notes,
             cleared: cleared,
@@ -4495,6 +4620,30 @@ final class BudgetStore: ObservableObject {
         try await syncClient.createTransfer(source: source, target: target)
         await publishTransactionsImmediately([sourceId, targetId])
         await refreshDataOnly()
+    }
+
+    /// Everything that can refuse a `createTransfer`, checked without writing
+    /// anything — so a caller posting other rows alongside one
+    /// (`recordLoanPayment`) can fail before the first of them lands.
+    func transferPayees(
+        fromAccountId: String,
+        toAccountId: String,
+        amountCents: Int
+    ) throws -> (from: Payee, to: Payee) {
+        guard syncClient != nil else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard fromAccountId != toAccountId else {
+            throw BudgetStoreError.transferAccountsMatch
+        }
+        guard amountCents > 0 else {
+            throw BudgetStoreError.transferAmountNotPositive
+        }
+        guard let from = transferPayee(forAccountId: fromAccountId),
+              let to = transferPayee(forAccountId: toAccountId) else {
+            throw BudgetStoreError.transferPayeeMissing
+        }
+        return (from, to)
     }
 
     private func transferPayee(forAccountId accountId: String) -> Payee? {
@@ -6919,6 +7068,15 @@ final class BudgetStore: ObservableObject {
             }
             if let categoryId {
                 categoryTemplates = categoryTemplates.filter { $0.key == categoryId }
+            }
+
+            // A loan whose target is snoozed contributes nothing this month:
+            // YNAB's "skip a payment" without tearing the target down and
+            // rebuilding it next month. A snooze is a whole-budget skip; a
+            // run for one category is an explicit request, so it goes through.
+            let snoozed = categoryId == nil ? snoozedLoanCategoryIds(inMonth: month) : []
+            if !snoozed.isEmpty {
+                categoryTemplates = categoryTemplates.filter { !snoozed.contains($0.key) }
             }
 
             let sheet = try await database.fetchGoalTemplateSheet(month: month)
