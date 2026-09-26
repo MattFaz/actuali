@@ -7072,8 +7072,9 @@ final class BudgetStore: ObservableObject {
 
             // A loan whose target is snoozed contributes nothing this month:
             // YNAB's "skip a payment" without tearing the target down and
-            // rebuilding it next month.
-            let snoozed = snoozedLoanCategoryIds(inMonth: month)
+            // rebuilding it next month. A snooze is a whole-budget skip; a
+            // run for one category is an explicit request, so it goes through.
+            let snoozed = categoryId == nil ? snoozedLoanCategoryIds(inMonth: month) : []
             if !snoozed.isEmpty {
                 categoryTemplates = categoryTemplates.filter { !snoozed.contains($0.key) }
             }

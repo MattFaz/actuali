@@ -53,10 +53,6 @@ struct LoanPaymentView: View {
         Self.fundingAccounts(budgetStore.accounts, loanAccountId: account.id)
     }
 
-    private var balance: Int {
-        budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
-    }
-
     private var payment: Int {
         LoanEditorView.cents(from: paymentText) ?? 0
     }

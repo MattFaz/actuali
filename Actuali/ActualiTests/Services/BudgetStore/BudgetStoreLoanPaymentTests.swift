@@ -422,6 +422,7 @@ struct BudgetStoreLoanPaymentTests {
 
         #expect(await fixture.store.runGoalTemplates(month: "2026-09", action: .apply) == .upToDate)
         #expect(await fixture.store.runGoalTemplates(month: "2026-10", action: .apply) == .applied(1))
+        #expect(await fixture.store.runGoalTemplates(month: "2026-09", action: .apply, categoryId: "cat_car") == .applied(1))
     }
 
     @Test func clearingTheSnoozeLetsTheTargetRunAgain() async throws {

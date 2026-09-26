@@ -136,6 +136,28 @@ struct LoanEditorViewTests {
         #expect(config.annualRatePercent == 6.125)
     }
 
+    /// The form doesn't show the pairing or the snooze, so saving an edit
+    /// must keep them rather than rebuild the config without them.
+    @Test func anEditKeepsThePairedCategoryAndSnooze() throws {
+        let existing = LoanConfig(
+            originalBalance: 2_200_000,
+            annualRatePercent: 6,
+            minimumPayment: 36500,
+            categoryId: "cat_car",
+            targetSnoozedMonth: "2026-09"
+        )
+        let config = try #require(LoanEditorView.config(
+            originalBalance: "22000",
+            rate: "6",
+            payment: "400",
+            escrow: "",
+            existing: existing
+        ))
+        #expect(config.minimumPayment == 40000)
+        #expect(config.categoryId == "cat_car")
+        #expect(config.targetSnoozedMonth == "2026-09")
+    }
+
     @Test func aRateThatIsntANumberIsNil() {
         #expect(LoanEditorView.rate(from: "") == nil)
         #expect(LoanEditorView.rate(from: "abc") == nil)

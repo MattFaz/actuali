@@ -107,7 +107,14 @@ struct LoanEditorView: View {
             originalBalance: originalBalanceText,
             rate: rateText,
             payment: paymentText,
-            escrow: escrowText
+            escrow: escrowText,
+            existing: {
+                if case .edit(_, let config) = mode {
+                    config
+                } else {
+                    nil
+                }
+            }()
         )
     }
 
@@ -122,7 +129,8 @@ struct LoanEditorView: View {
         originalBalance: String,
         rate: String,
         payment: String,
-        escrow: String
+        escrow: String,
+        existing: LoanConfig? = nil
     ) -> LoanConfig? {
         guard let balance = cents(from: originalBalance), balance > 0,
               let monthly = cents(from: payment), monthly > 0 else { return nil }
@@ -130,7 +138,11 @@ struct LoanEditorView: View {
             originalBalance: balance,
             annualRatePercent: max(0, Self.rate(from: rate) ?? 0),
             minimumPayment: monthly,
-            escrowOrFees: cents(from: escrow).flatMap { $0 > 0 ? $0 : nil }
+            escrowOrFees: cents(from: escrow).flatMap { $0 > 0 ? $0 : nil },
+            // The form never shows these, so an edit carries them through
+            // rather than silently unpairing the loan or clearing its snooze.
+            categoryId: existing?.categoryId,
+            targetSnoozedMonth: existing?.targetSnoozedMonth
         )
     }
 
