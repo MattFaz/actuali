@@ -10,8 +10,12 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct DemoDataSeederTests {
-    private func seedAndOpen(tracking: Bool = false, now: Date = Date()) throws -> BudgetDatabase {
-        try DemoDataSeeder.seed(tracking: tracking, now: now)
+    private func seedAndOpen(
+        tracking: Bool = false,
+        seedUncategorized: Bool = false,
+        now: Date = Date()
+    ) throws -> BudgetDatabase {
+        try DemoDataSeeder.seed(tracking: tracking, seedUncategorized: seedUncategorized, now: now)
         let dbPath = BudgetFileManager.shared.databasePath(for: DemoDataSeeder.budgetId)
         return try BudgetDatabase(path: dbPath)
     }
@@ -34,6 +38,17 @@ struct DemoDataSeederTests {
         // Tracking budgets can budget income; the seeder does, so the summary
         // has a budgeted-income figure to work with.
         #expect(month.incomeCategories.contains { $0.budgeted > 0 })
+    }
+
+    /// The Budget screen's uncategorized bar renders only when an on-budget
+    /// transaction lacks a category, and the default demo seed has none — the
+    /// `seedUncategorized` hook exists so UI tests can render the bar.
+    @Test func seedUncategorizedAddsExactlyOneUncategorizedTransaction() async throws {
+        let defaultSeed = try seedAndOpen()
+        #expect(try await defaultSeed.fetchUncategorizedCount() == 0)
+
+        let seeded = try seedAndOpen(seedUncategorized: true)
+        #expect(try await seeded.fetchUncategorizedCount() == 1)
     }
 
     /// The default (envelope) demo keeps its "To Budget" unallocated-funds
