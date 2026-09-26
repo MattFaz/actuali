@@ -676,7 +676,7 @@ struct BudgetView: View {
     /// stays within the compiler's type-check budget.
     private func loadedBudgetContent(_ budget: BudgetMonth) -> some View {
         VStack(spacing: 0) {
-            if isCompact, budgetStore.showBudgetCheckInStrip {
+            if budgetStore.showBudgetCheckInStrip {
                 BudgetCheckInStrip(
                     budget: budget,
                     selection: $categoryFilter
@@ -746,14 +746,6 @@ struct BudgetView: View {
                 }
                 .accessibilityIdentifier("budgetUncategorized")
                 .padding(.horizontal, isCompact ? 0 : 4)
-                .padding(.bottom, 8)
-            }
-
-            if !isCompact, budgetStore.showBudgetCheckInStrip {
-                BudgetCheckInStrip(
-                    budget: budget,
-                    selection: $categoryFilter
-                )
                 .padding(.bottom, 8)
             }
 
