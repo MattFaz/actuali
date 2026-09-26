@@ -106,10 +106,117 @@ struct HistoryObserverTests {
         try? FileManager.default.removeItem(at: fixture.url)
     }
 
-    @Test func marksRefreshRemoteOnlyWhenSyncTransitionsToIdle() {
-        #expect(HistoryObserver.shouldMarkRemoteRefresh(wasSyncing: true, state: .idle))
-        #expect(!HistoryObserver.shouldMarkRemoteRefresh(wasSyncing: false, state: .idle))
-        #expect(!HistoryObserver.shouldMarkRemoteRefresh(wasSyncing: true, state: .syncing))
+    @Test func payeeCategoryAndDateEditsProduceHistoryActions() async throws {
+        let fixture = try await makeFixture(rows: ["edited"])
+        defer { cleanUp(fixture) }
+        let store = fixture.store
+        let observer = HistoryObserver(store: store)
+        await observer.drainForTesting()
+
+        try await execute(
+            "UPDATE transactions SET description = 'payee-2' WHERE id = 'edited'",
+            in: fixture
+        )
+        store.transactions = await page(["edited"], in: fixture)
+        await observer.drainForTesting()
+
+        try await execute(
+            "UPDATE transactions SET category = 'category-2' WHERE id = 'edited'",
+            in: fixture
+        )
+        store.transactions = await page(["edited"], in: fixture)
+        await observer.drainForTesting()
+
+        try await execute(
+            "UPDATE transactions SET date = 20260909 WHERE id = 'edited'",
+            in: fixture
+        )
+        store.transactions = await page(["edited"], in: fixture)
+        await observer.drainForTesting()
+
+        #expect(HistoryStore.shared.actions.count == 3)
+        #expect(HistoryStore.shared.actions[2].before.first?.payeeId == "payee")
+        #expect(HistoryStore.shared.actions[2].after.first?.payeeId == "payee-2")
+        #expect(HistoryStore.shared.actions[1].before.first?.categoryId == nil)
+        #expect(HistoryStore.shared.actions[1].after.first?.categoryId == "category-2")
+        #expect(HistoryStore.shared.actions[0].before.first?.date == 20_260_906)
+        #expect(HistoryStore.shared.actions[0].after.first?.date == 20_260_909)
+    }
+
+    @Test func splitCreationProducesOneHistoryActionWithChildren() async throws {
+        let fixture = try await makeFixture(rows: ["existing"])
+        defer { cleanUp(fixture) }
+
+        try await execute("""
+        INSERT INTO transactions (
+            id, isParent, isChild, acct, amount, description, date, sort_order, parent_id
+        ) VALUES
+            ('split-parent', 1, 0, 'account', -1000, 'payee', 20260906, 20, NULL),
+            ('split-child-1', 0, 1, 'account', -600, 'payee', 20260906, 19, 'split-parent'),
+            ('split-child-2', 0, 1, 'account', -400, 'payee', 20260906, 18, 'split-parent')
+        """, in: fixture)
+
+        let store = fixture.store
+        store.transactions = await page(["existing"], in: fixture)
+        let observer = HistoryObserver(store: store)
+        await observer.drainForTesting()
+
+        try await insert("later", date: 20_260_907, into: fixture)
+        try await execute(
+            "UPDATE transactions SET isParent = 1 WHERE id = 'later'",
+            in: fixture
+        )
+        try await execute("""
+        INSERT INTO transactions (
+            id, isParent, isChild, acct, amount, description, date, sort_order, parent_id
+        ) VALUES
+            ('later-child-1', 0, 1, 'account', -700, 'payee', 20260907, 1, 'later'),
+            ('later-child-2', 0, 1, 'account', -300, 'payee', 20260907, 0, 'later')
+        """, in: fixture)
+
+        store.transactions = await page(["later", "existing"], in: fixture)
+        await observer.drainForTesting()
+
+        #expect(HistoryStore.shared.actions.count == 1)
+        let action = try #require(HistoryStore.shared.actions.first)
+        #expect(action.kind == .created)
+        #expect(action.after.map(\.id).contains("later"))
+        #expect(action.after.map(\.id).contains("later-child-1"))
+        #expect(action.after.map(\.id).contains("later-child-2"))
+        #expect(action.title == "Added split transaction")
+    }
+
+    @Test func splitChildEditProducesOneEditedHistoryAction() async throws {
+        let fixture = try await makeFixture(rows: [])
+        defer { cleanUp(fixture) }
+
+        try await execute("""
+        INSERT INTO transactions (
+            id, isParent, isChild, acct, amount, description, date, sort_order, parent_id
+        ) VALUES
+            ('split-parent', 1, 0, 'account', -1000, 'payee', 20260906, 20, NULL),
+            ('split-child-1', 0, 1, 'account', -600, 'payee', 20260906, 19, 'split-parent'),
+            ('split-child-2', 0, 1, 'account', -400, 'payee', 20260906, 18, 'split-parent')
+        """, in: fixture)
+
+        let store = fixture.store
+        store.transactions = await page(["split-parent"], in: fixture)
+        let observer = HistoryObserver(store: store)
+        await observer.drainForTesting()
+
+        try await execute(
+            "UPDATE transactions SET amount = -700 WHERE id = 'split-child-1'",
+            in: fixture
+        )
+        store.transactions = await page(["split-parent"], in: fixture)
+        await observer.drainForTesting()
+
+        #expect(HistoryStore.shared.actions.count == 1)
+        let action = try #require(HistoryStore.shared.actions.first)
+        #expect(action.kind == .edited)
+        #expect(action.before.contains { $0.id == "split-child-1" && $0.amount == -600 })
+        #expect(action.after.contains { $0.id == "split-child-1" && $0.amount == -700 })
+        #expect(action.title == "Edited split transaction")
     }
 
     @Test func reloadOfSameBudgetResetsBaseline() async throws {
@@ -181,8 +288,10 @@ struct HistoryObserverTests {
         #expect(HistoryStore.shared.actions.first?.after.first?.tombstone == true)
     }
 
-    @Test func publicationDuringSyncRefreshProducesNoHistoryAction() async throws {
-        let fixture = try await makeFixture(rows: ["remote"])
+    /// A sync finishing is not a remote write: remote rows are identified by
+    /// their messages_crdt node suffix, so the next local edit still records.
+    @Test func localEditAfterSyncCompletesIsRecorded() async throws {
+        let fixture = try await makeFixture(rows: ["local"])
         defer { cleanUp(fixture) }
         let store = fixture.store
         let observer = HistoryObserver(store: store)
@@ -190,11 +299,12 @@ struct HistoryObserverTests {
 
         store.syncState = .syncing
         store.syncState = .idle
-        try await execute("UPDATE transactions SET amount = -1800 WHERE id = 'remote'", in: fixture)
-        store.transactions = await page(["remote"], in: fixture)
+        try await execute("UPDATE transactions SET amount = -1200 WHERE id = 'local'", in: fixture)
+        store.transactions = await page(["local"], in: fixture)
         await observer.drainForTesting()
 
-        #expect(HistoryStore.shared.actions.isEmpty)
+        #expect(HistoryStore.shared.actions.count == 1)
+        #expect(HistoryStore.shared.actions.first?.after.first?.amount == -1200)
     }
 
     /// The reported bug: adding a transaction to a full page pushes the

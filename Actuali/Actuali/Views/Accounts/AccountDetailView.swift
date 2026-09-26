@@ -53,13 +53,21 @@ struct AccountDetailView: View {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
     }
 
-    /// Running balances are shown only when the register is unfiltered (no search,
-    /// status chip, and not hiding cleared/reconciled rows). Filtered/search results
-    /// omit rows that would otherwise contribute to the balance, so showing a running
-    /// balance in those states would make it look like the account balance changed when
-    /// the user only changed the visible filter.
+    /// Running balances are shown only when the loaded page is the unfiltered
+    /// register (no search, no status chip, and not hiding cleared/reconciled
+    /// rows). The flag snapshots the state that the loaded page was fetched under.
     private var shouldShowRunningBalance: Bool {
         showRunningBalance && loadedFullHistory
+    }
+
+    /// Pure so the visibility rule can be covered without constructing a view.
+    nonisolated static func allowsRunningBalance(
+        isSearching: Bool,
+        statusFilter: TransactionStatusFilter,
+        hideCleared: Bool,
+        hideReconciled: Bool
+    ) -> Bool {
+        !isSearching && statusFilter == .all && !hideCleared && !hideReconciled
     }
 
     private var transactionsForDisplay: [Transaction] {
@@ -156,15 +164,20 @@ struct AccountDetailView: View {
     }
 
     private func reload() async {
-        let fullHistory = searchQuery == nil
-            && budgetStore.transactionStatusFilter == .all
-            && !budgetStore.hideClearedTransactions
-            && !budgetStore.hideReconciledTransactions
-        loadedFullHistory = false
         breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
         await reloadNote()
         await reloadCycleSpend()
         await reloadRecentStatements()
+        // Captured right before the fetch, which reads the same store flags,
+        // so a filter flipped mid-fetch can't label that page unfiltered.
+        // Assigned only after the page lands: resetting it up front is what
+        // made the column flicker on every reload.
+        let fullHistory = Self.allowsRunningBalance(
+            isSearching: searchQuery != nil,
+            statusFilter: budgetStore.transactionStatusFilter,
+            hideCleared: budgetStore.hideClearedTransactions,
+            hideReconciled: budgetStore.hideReconciledTransactions
+        )
         await currentPager().loadFirstPage(search: searchQuery)
         loadedFullHistory = fullHistory
     }
@@ -1023,7 +1036,6 @@ struct AccountDetailView: View {
         // account in the key nothing would reload — the previous account's
         // rows would sit under the new one's name and balance.
         .task(id: [account.id, searchText]) {
-            loadedFullHistory = false
             if pagerAccountId != account.id {
                 // Drop the previous account's page and balance split rather
                 // than showing them while the new ones load — and its
@@ -1056,11 +1068,9 @@ struct AccountDetailView: View {
         .onChange(of: budgetStore.hideClearedTransactions) {
             // The pager's fetch closure reads the flag, so a reload is all a
             // toggle flip needs.
-            loadedFullHistory = false
             Task { await reload() }
         }
         .onChange(of: budgetStore.hideReconciledTransactions) {
-            loadedFullHistory = false
             Task { await reload() }
         }
         .onChange(of: budgetStore.transactionStatusFilter) {

@@ -676,43 +676,12 @@ struct BudgetView: View {
     /// stays within the compiler's type-check budget.
     private func loadedBudgetContent(_ budget: BudgetMonth) -> some View {
         VStack(spacing: 0) {
-            if isCompact, budgetStore.showBudgetCheckInStrip {
+            if budgetStore.showBudgetCheckInStrip {
                 BudgetCheckInStrip(
                     budget: budget,
                     selection: $categoryFilter
                 )
                 .padding(.bottom, 8)
-            }
-
-            // Keep the summary above the List so it stays pinned while the
-            // table scrolls (GH #155).
-            if !isCompact
-                || budgetStore.showCompactBudgetOverview {
-                Group {
-                    switch budgetStore.budgetDisplayStyle {
-                    case .clean:
-                        CleanBudgetSummary(budget: budget)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 24)
-                                    .fill(Color(.secondarySystemGroupedBackground))
-                            )
-                            .accessibilityElement(children: .contain)
-                            .accessibilityIdentifier("budget.topBox")
-                    case .compact:
-                        CompactBudgetSummary(
-                            budget: budget,
-                            showsSpent: budgetStore.showCompactSpentColumn
-                        )
-                    }
-                }
-                .padding(
-                    .horizontal,
-                    isCompact ? 0 : TopBoxLayout.horizontalContentMargin
-                )
-                .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
-                .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }
 
             // The strip filters categories, so it can't express uncategorized
@@ -745,16 +714,43 @@ struct BudgetView: View {
                     )
                 }
                 .accessibilityIdentifier("budgetUncategorized")
+                // Clean style makes the bar the top surface, so it carries the
+                // standardized top gutter (GH #542); the summary's own padding
+                // supplies the gap below it. Compact rows stay edge-to-edge.
+                .padding(.top, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
                 .padding(.horizontal, isCompact ? 0 : 4)
-                .padding(.bottom, 8)
+                .padding(.bottom, isCompact ? 8 : 0)
             }
 
-            if !isCompact, budgetStore.showBudgetCheckInStrip {
-                BudgetCheckInStrip(
-                    budget: budget,
-                    selection: $categoryFilter
+            // Keep the summary above the List so it stays pinned while the
+            // table scrolls (GH #155).
+            if !isCompact
+                || budgetStore.showCompactBudgetOverview {
+                Group {
+                    switch budgetStore.budgetDisplayStyle {
+                    case .clean:
+                        CleanBudgetSummary(budget: budget)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 24)
+                                    .fill(Color(.secondarySystemGroupedBackground))
+                            )
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("budget.topBox")
+                    case .compact:
+                        CompactBudgetSummary(
+                            budget: budget,
+                            showsSpent: budgetStore.showCompactSpentColumn
+                        )
+                    }
+                }
+                .padding(
+                    .horizontal,
+                    isCompact ? 0 : TopBoxLayout.horizontalContentMargin
                 )
-                .padding(.bottom, 8)
+                .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
+                .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }
 
             List {

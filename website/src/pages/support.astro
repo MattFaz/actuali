@@ -77,11 +77,56 @@ import Layout from "../layouts/Layout.astro";
           <strong>"Couldn't make a secure connection" / "TLS error"</strong> —
           iPhones only connect to servers with a security certificate they
           trust, and won't let an app skip that check. If your server uses a
-          certificate it generated itself, iOS blocks the connection. Most
-          self-hosting setups can issue a free trusted certificate
-          automatically — tools like Caddy, Nginx Proxy Manager and Cloudflare
-          Tunnel all do this for you. Once Safari loads your server without a
-          warning, Actuali will connect.
+          certificate it generated itself, iOS blocks the connection.<br />
+          There are two ways to fix this:
+          <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+            <li>
+              Most self-hosting setups can issue a free trusted certificate
+              automatically — tools like Caddy, Nginx Proxy Manager and
+              Cloudflare Tunnel all do this for you.
+            </li>
+            <li>
+              You can import the certificate to your device to have it trusted.
+              To do this, check in your server <code>config.json</code> what
+              certificate file is used. It should contain these entries:
+              <pre class="text-xs bg-gray-200"><code>{`{
+  "https": {
+    "key": "/path/to/key.pem",
+    "cert": "/path/to/cert.pem"
+  }
+}`}</code></pre>
+              If your server uses a certificate from your own certificate
+              authority, don't import the file in <code>cert</code> — import the
+              authority certificate instead. Your certificate must also list your
+              server address under Subject Alternative Name. Without it, iOS
+              rejects the certificate even after you trust it. If your certificate
+              doesn't appear under Certificate Trust Settings, it isn't a root
+              (CA) certificate — generate the self-signed certificate as a CA (for
+              example with <code>openssl req -x509</code>), or install the
+              certificate of the CA that signed it instead.
+              <ol class="list-decimal space-y-1 pl-6">
+                <li>Copy the public certificate file (the <code>cert</code> entry) to
+                  your iPhone. Do not copy the key file.
+                  This is a <code>.pem</code> or <code>.crt</code> file.</li>
+                <li>Open the certificate on the iPhone. iOS then reports a new
+                  profile.</li>
+                <li>Open <strong>Settings &rarr; General &rarr; VPN &amp; Device
+                  Management</strong>, select the profile, and choose Install.</li>
+                <li>A manually installed certificate is not trusted for TLS yet.
+                  Open <strong>Settings &rarr; General &rarr; About &rarr;
+                  Certificate Trust Settings</strong>.</li>
+                <li>Under Enable Full Trust for Root Certificates, enable your
+                  certificate and confirm. <br />
+                  <strong>Note:</strong> a fully trusted root CA can validate
+                  certificates for any site on that iPhone. Only install a CA
+                  certificate you control; hostname matching still applies.
+                  If the private key leaks, revoke and reissue every certificate
+                  it signed, and remove the profile under <strong>Settings &rarr;
+                  General &rarr; VPN &amp; Device Management</strong>.</li>
+              </ol>
+            </li>
+          </ul>
+          Once Safari loads your server without a warning, Actuali will connect.
         </li>
         <li>
           <strong>"Your server's security certificate has expired"</strong> —
@@ -111,7 +156,7 @@ import Layout from "../layouts/Layout.astro";
       <p class="text-neutral-700">
         Still stuck? Email
         <a href="mailto:actuali@mfazz.com" class="underline hover:text-neutral-900"
-          >actuali@mfazz.com</a
+          > actuali@mfazz.com</a
         > with the exact message the app shows and we'll help.
       </p>
     </section>

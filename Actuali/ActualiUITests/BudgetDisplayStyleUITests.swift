@@ -37,8 +37,18 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         let groceries = app.buttons["Details for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
-        XCTAssertTrue(app.buttons["budgetFilter-all"].exists,
-                      "the fixed check-in strip should stay visible above the category groups")
+
+        let checkInStrip = app.buttons["budgetFilter-all"]
+        XCTAssertTrue(checkInStrip.waitForExistence(timeout: 5),
+                      "the check-in strip should be visible in Clean")
+        let overview = app.descendants(matching: .any)["budget.topBox"]
+        XCTAssertTrue(overview.waitForExistence(timeout: 5),
+                      "the Clean overview should be visible")
+        XCTAssertLessThan(
+            checkInStrip.frame.maxY,
+            overview.frame.minY,
+            "the check-in strip should sit above the Clean overview"
+        )
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 10),
                       "clean rows carry a 'Budgeted:' caption")
     }
