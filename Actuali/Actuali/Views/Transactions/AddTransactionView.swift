@@ -19,6 +19,15 @@ struct AddTransactionView: View {
     /// existing blank-form autofocus behavior.
     private let autofocusAmount: Bool?
 
+    /// Width of the sign glyph beside the amount, scaled with the glyph's own
+    /// text style so it never clips at accessibility sizes. The same width is
+    /// reserved on the opposite side so the amount itself stays centered.
+    @ScaledMetric(relativeTo: .title2) private var amountSignWidth: CGFloat = 24
+    /// Floor for the content-sized amount field: keeps an empty field wide
+    /// enough to stay tappable and keep its placeholder visible at every
+    /// text size.
+    @ScaledMetric(relativeTo: .largeTitle) private var amountMinWidth: CGFloat = 88
+
     @State private var selectedAccountId: String
     @State private var amount: String
     @State private var txType: TransactionType
@@ -212,6 +221,12 @@ struct AddTransactionView: View {
         !splitLines.isEmpty && !unsplitRequested
     }
 
+    /// Whether the split entry section is on screen. Shared by the body and
+    /// the save gate so the two can't disagree about when split rules apply.
+    private var showsSplitEntry: Bool {
+        isSplitting && !isTransfer && showsStandardCategoryFields
+    }
+
     /// Whether the form can offer the split option: a plain transaction in
     /// either flow, or an existing parent mid-"Remove Split" (as an undo).
     /// Transfers are excluded — they pair two accounts through `transferId`
@@ -370,36 +385,54 @@ struct AddTransactionView: View {
         NavigationStack {
             Form {
                 Section {
-                    HStack {
-                        Picker("Type", selection: $txType) {
-                            Text("Expense").tag(TransactionType.expense)
-                            Text("Income").tag(TransactionType.income)
-                            if !isPendingImportReview, !isEditing || isEditingTransfer || canConvertToTransfer {
-                                Text("Transfer").tag(TransactionType.transfer)
-                            }
+                    // Full-bleed: zeroed row insets let the segmented control
+                    // span the row edge to edge instead of negative padding
+                    // that assumes the default 16pt inset.
+                    Picker("Type", selection: $txType) {
+                        Text("Expense").tag(TransactionType.expense)
+                        Text("Income").tag(TransactionType.income)
+                        if !isPendingImportReview, !isEditing || isEditingTransfer || canConvertToTransfer {
+                            Text("Transfer").tag(TransactionType.transfer)
                         }
-                        .pickerStyle(.segmented)
-                        // A split parent's sign is the children's; flipping
-                        // it would have to flip every line, so it stays fixed.
-                        // A transfer stays a transfer: converting one back
-                        // would orphan the partner leg (the store refuses it).
-                        .disabled(isEditingSplitParent || isEditingTransfer)
                     }
+                    .pickerStyle(.segmented)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                    // A split parent's sign is the children's; flipping
+                    // it would have to flip every line, so it stays fixed.
+                    // A transfer stays a transfer: converting one back
+                    // would orphan the partner leg (the store refuses it).
+                    .disabled(isEditingSplitParent || isEditingTransfer)
 
-                    HStack {
+                    // The amount is the first thing entered in a fresh form,
+                    // so the add flow opens with the keyboard ready. Edits and
+                    // prefilled amounts already have one and start with the
+                    // keyboard down. The field is fixed to its text width, so
+                    // the sign hugs it; an equal spacer on the far side keeps
+                    // the amount itself on the row's center line.
+                    HStack(alignment: .center, spacing: 12) {
                         Text(amountSignSymbol)
+                            .font(.title2.weight(.semibold))
                             .foregroundStyle(amountSignColor)
-                        // The amount is the first thing entered in a fresh
-                        // form, so the add flow opens with the keyboard ready.
-                        // Edits and prefilled amounts already have one and
-                        // start with the keyboard down.
+                            .frame(width: amountSignWidth, alignment: .trailing)
                         AmountInputField(
                             text: $amount,
                             conventionalAmountEntry: budgetStore.conventionalAmountEntry,
+                            alignment: .center,
+                            textStyle: .extraLargeTitle,
+                            weight: .bold,
                             autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty)
                         )
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: amountMinWidth)
+                        Color.clear
+                            .frame(width: amountSignWidth, height: 1)
+                            .accessibilityHidden(true)
                     }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
                 }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden, edges: .all)
 
                 Section {
                     Picker(accountPickerLabel, selection: $selectedAccountId) {
@@ -515,14 +548,24 @@ struct AddTransactionView: View {
                         }
                     }
 
+                    // Split lines grow the same pill in place, right where the
+                    // category row was, instead of opening a section of their own.
+                    if showsSplitEntry {
+                        splitEntryRows
+                        // Right under the lines it counts, so a disabled Save
+                        // button is never a mystery.
+                        if let remaining = splitRemainingCents, remaining != 0 {
+                            Text("\(budgetStore.formatCurrency(remaining)) left to assign")
+                                .foregroundStyle(.red)
+                        } else if splitRemainingCents == 0, hasBlankSplitLine {
+                            // Nothing left to assign but a line is still blank.
+                            Text("Fill in or remove the empty line")
+                                .foregroundStyle(.red)
+                        }
+                    }
+
                     DatePicker("Date", selection: $date, displayedComponents: .date)
-                }
 
-                if isSplitting, !isTransfer, showsStandardCategoryFields {
-                    splitEntrySection
-                }
-
-                Section {
                     // One line while the note is short — an empty three-line
                     // box only pushes Cleared and the save button off screen —
                     // growing as the text needs it, up to six.
@@ -533,9 +576,7 @@ struct AddTransactionView: View {
                     // TextField (GH #190) — this form doubles as the only
                     // full view of a transaction's note.
                     NoteLinkRows(text: notes)
-                }
 
-                Section {
                     Toggle("Cleared", isOn: $cleared)
                     // Only the paths that record locations (adds and split
                     // edits) get the per-save opt-out; standard edits never
@@ -682,75 +723,62 @@ struct AddTransactionView: View {
         }
     }
 
-    /// Editable split lines for the add flow: one category + amount per
-    /// line, with the unassigned remainder in the footer.
-    private var splitEntrySection: some View {
-        Section {
-            ForEach($splitLines) { $line in
-                SplitLineRow(
-                    line: $line,
-                    accountId: selectedAccountId,
-                    txType: txType,
-                    remainingCents: splitRemainingCents,
-                    nearbyPayees: $nearbyPayees,
-                    onOpenPayeePicker: loadNearbyPayees,
-                    onDeleteNearby: deleteNearbySuggestion
-                )
-            }
-            .onDelete { offsets in
-                if isEditingSplitParent {
-                    // Swiping away every line on an existing parent is the
-                    // same intent as "Remove Split": switch to
-                    // single-transaction mode and seed the collapse category
-                    // from a removed line (the parent carries none). The
-                    // lines are gone from memory, so undoing via the split
-                    // button reloads them from the database.
-                    let removed = offsets.compactMap { splitLines[$0] }
-                    splitLines.remove(atOffsets: offsets)
-                    if splitLines.isEmpty {
-                        unsplitRequested = true
-                        if let category = removed.first(where: { $0.categoryId != nil })?.categoryId {
-                            selectedCategoryId = category
-                        }
-                    }
-                } else {
-                    splitLines.remove(atOffsets: offsets)
-                }
-            }
-            Button {
-                splitLines.append(.init())
-            } label: {
-                Label("Add Line", systemImage: "plus")
-            }
-            // Tapping "Remove Split" on an existing parent switches the form
-            // to single-transaction mode: keep the lines in memory for an
-            // instant undo and seed the collapse category from the first
-            // line that has one (the parent itself carries none). In the add
-            // flow it just clears the lines, as before.
-            Button(role: .destructive) {
-                if isEditingSplitParent {
+    /// Editable split lines, rendered inline in the main section so the pill
+    /// simply grows: one category + amount per line.
+    @ViewBuilder
+    private var splitEntryRows: some View {
+        ForEach($splitLines) { $line in
+            SplitLineRow(
+                line: $line,
+                accountId: selectedAccountId,
+                txType: txType,
+                remainingCents: splitRemainingCents,
+                nearbyPayees: $nearbyPayees,
+                onOpenPayeePicker: loadNearbyPayees,
+                onDeleteNearby: deleteNearbySuggestion
+            )
+        }
+        .onDelete { offsets in
+            if isEditingSplitParent {
+                // Swiping away every line on an existing parent is the
+                // same intent as "Remove Split": switch to
+                // single-transaction mode and seed the collapse category
+                // from a removed line (the parent carries none). The
+                // lines are gone from memory, so undoing via the split
+                // button reloads them from the database.
+                let removed = offsets.compactMap { splitLines[$0] }
+                splitLines.remove(atOffsets: offsets)
+                if splitLines.isEmpty {
                     unsplitRequested = true
-                    if let first = splitLines.first(where: { $0.categoryId != nil }) {
-                        selectedCategoryId = first.categoryId
+                    if let category = removed.first(where: { $0.categoryId != nil })?.categoryId {
+                        selectedCategoryId = category
                     }
-                } else {
-                    splitLines = []
                 }
-            } label: {
-                Text("Remove Split")
+            } else {
+                splitLines.remove(atOffsets: offsets)
             }
-        } header: {
-            Text("Split")
-        } footer: {
-            if let remaining = splitRemainingCents, remaining != 0 {
-                Text("\(budgetStore.formatCurrency(remaining)) left to assign")
-                    .foregroundStyle(.red)
-            } else if splitRemainingCents == 0, hasBlankSplitLine {
-                // Nothing left to assign but a line is still blank — say why
-                // Save stays disabled instead of leaving it a mystery.
-                Text("Fill in or remove the empty line")
-                    .foregroundStyle(.red)
+        }
+        Button {
+            splitLines.append(.init())
+        } label: {
+            Label("Add Line", systemImage: "plus")
+        }
+        // Tapping "Remove Split" on an existing parent switches the form
+        // to single-transaction mode: keep the lines in memory for an
+        // instant undo and seed the collapse category from the first
+        // line that has one (the parent itself carries none). In the add
+        // flow it just clears the lines, as before.
+        Button(role: .destructive) {
+            if isEditingSplitParent {
+                unsplitRequested = true
+                if let first = splitLines.first(where: { $0.categoryId != nil }) {
+                    selectedCategoryId = first.categoryId
+                }
+            } else {
+                splitLines = []
             }
+        } label: {
+            Text("Remove Split")
         }
     }
 
@@ -819,7 +847,7 @@ struct AddTransactionView: View {
         }
         // A blank line reads as zero for the remainder display, but the store
         // rejects zero-amount children — keep save blocked until it's filled.
-        if isSplitting, !isTransfer, showsStandardCategoryFields,
+        if showsSplitEntry,
            splitRemainingCents != 0 || hasBlankSplitLine {
             return true
         }
@@ -1101,6 +1129,8 @@ private struct SplitLineRow: View {
 /// lives outside the field (a split line's direction flip) and the text stays unsigned.
 /// Neither set means sign is handled elsewhere entirely (e.g. the expense/income toggle).
 ///
+/// `textStyle` picks the Dynamic Type text style the font scales from.
+///
 /// The toolbar also carries +, −, × and ÷ for quick math: typing 12.50, then
 /// +, then 6.00 shows "12.50 + 6.00" in the field and collapses to "18.50"
 /// when editing ends. Evaluation is strictly left-to-right with no operator
@@ -1115,6 +1145,7 @@ struct AmountInputField: UIViewRepresentable {
     /// of shifting into cents.
     var conventionalAmountEntry = false
     var alignment: NSTextAlignment = .natural
+    var textStyle: UIFont.TextStyle = .body
     var allowsNegative = false
     var weight: UIFont.Weight = .regular
     /// Bring up the keyboard as soon as the field lands on screen. For
@@ -1160,11 +1191,11 @@ struct AmountInputField: UIViewRepresentable {
         field.delegate = context.coordinator
         field.text = text
         if weight == .regular {
-            field.font = .preferredFont(forTextStyle: .body)
+            field.font = .preferredFont(forTextStyle: textStyle)
         } else {
-            // Weighted variant of the body style so Dynamic Type still scales.
+            // Weighted variant of the selected text style so Dynamic Type still scales.
             let descriptor = UIFontDescriptor
-                .preferredFontDescriptor(withTextStyle: .body)
+                .preferredFontDescriptor(withTextStyle: textStyle)
                 .addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
             field.font = UIFont(descriptor: descriptor, size: 0)
         }
@@ -1637,10 +1668,15 @@ struct AmountInputField: UIViewRepresentable {
         /// must not publish state while SwiftUI is updating the view hierarchy.
         fileprivate func renderDisplay(to textField: UITextField) {
             textField.text = computeFieldText()
+            // The display can grow or shrink without the binding changing
+            // (arming an operator shows "12.50 + " while the binding still
+            // reads 12.50), so a field sized to its text must be told to
+            // re-measure rather than wait for a SwiftUI update.
+            textField.invalidateIntrinsicContentSize()
         }
 
         fileprivate func applyDisplay(to textField: UITextField) {
-            textField.text = computeFieldText()
+            renderDisplay(to: textField)
             let bound = computeBoundText()
             lastPublishedText = bound
             if parent.text != bound {

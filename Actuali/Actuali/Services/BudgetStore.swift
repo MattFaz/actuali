@@ -2615,13 +2615,13 @@ final class BudgetStore: ObservableObject {
     /// Populate a local "demo" budget with curated data, for screenshots and for
     /// letting users (and App Review) explore the app without configuring a server.
     /// Logs out any active server session so sync cannot fire against a real server.
-    func loadDemoData(tracking: Bool = false) async {
+    func loadDemoData(tracking: Bool = false, seedUncategorized: Bool = false) async {
         // Log out any active session so sync doesn't try to fire against a
         // real server — but keep local budget files: trying the demo must
         // never destroy a user's synced data.
         logout(clearLocalData: false)
         do {
-            try DemoDataSeeder.seed(tracking: tracking)
+            try DemoDataSeeder.seed(tracking: tracking, seedUncategorized: seedUncategorized)
             currentBudgetId = DemoDataSeeder.budgetId
             // Reseeding rebuilds the budget directory, but history persists in
             // UserDefaults keyed by budget id and survives it. Clear it so a
