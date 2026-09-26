@@ -53,7 +53,8 @@ struct ActualiApp: App {
                 #if DEBUG
                 if CommandLine.arguments.contains("-loadDemoData") {
                     await budgetStore.loadDemoData(
-                        tracking: CommandLine.arguments.contains("-loadTrackingDemoData")
+                        tracking: CommandLine.arguments.contains("-loadTrackingDemoData"),
+                        seedUncategorized: CommandLine.arguments.contains("-seedUncategorized")
                     )
                 }
                 if CommandLine.arguments.contains("-resetStatusFilterState") {

@@ -714,8 +714,12 @@ struct BudgetView: View {
                     )
                 }
                 .accessibilityIdentifier("budgetUncategorized")
+                // Clean style makes the bar the top surface, so it carries the
+                // standardized top gutter (GH #542); the summary's own padding
+                // supplies the gap below it. Compact rows stay edge-to-edge.
+                .padding(.top, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
                 .padding(.horizontal, isCompact ? 0 : 4)
-                .padding(.bottom, 8)
+                .padding(.bottom, isCompact ? 8 : 0)
             }
 
             // Keep the summary above the List so it stays pinned while the

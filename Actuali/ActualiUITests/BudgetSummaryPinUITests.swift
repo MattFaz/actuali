@@ -120,4 +120,37 @@ final class BudgetSummaryPinUITests: XCTestCase {
                        budgetTrailingInset, accuracy: 2,
                        "the summary boxes should share a trailing inset")
     }
+
+    /// The uncategorized bar sits above the pinned summary and keeps the
+    /// standardized 8 pt top gutter. Demo data is fully categorized on-budget,
+    /// so `-seedUncategorized` seeds the transaction that makes the bar
+    /// render — no other test in the suite can see it.
+    @MainActor
+    func testUncategorizedBarSitsAboveTheSummary() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-budgetDisplayStyle", "clean",
+            "-seedUncategorized",
+        ]
+        app.launch()
+
+        app.tabBars.buttons["Budget"].tap()
+
+        let bar = app.descendants(matching: .any)
+            .matching(identifier: "budgetUncategorized").firstMatch
+        XCTAssertTrue(bar.waitForExistence(timeout: 10),
+                      "the seeded uncategorized transaction should render the bar")
+        let box = app.descendants(matching: .any)
+            .matching(identifier: "budget.topBox").firstMatch
+        XCTAssertTrue(box.waitForExistence(timeout: 10),
+                      "the clean summary should render below the bar")
+
+        XCTAssertLessThanOrEqual(bar.frame.maxY, box.frame.minY,
+                                 "the uncategorized bar must stay above the pinned summary")
+        let navBar = app.navigationBars.firstMatch
+        XCTAssertTrue(navBar.exists)
+        XCTAssertEqual(bar.frame.minY - navBar.frame.maxY, 8, accuracy: 2,
+                       "the bar must keep the standardized top gutter (TopBoxLayout.verticalContentMargin)")
+    }
 }

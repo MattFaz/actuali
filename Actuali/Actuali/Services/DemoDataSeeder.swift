@@ -13,8 +13,15 @@ enum DemoDataSeeder {
     /// Creates a local "demo" budget directory with a populated SQLite DB.
     /// Overwrites any existing demo budget. Does NOT connect to a server or
     /// start sync. `tracking` seeds a tracking (`reflect_budgets`) budget rather
-    /// than the default envelope (`zero_budgets`) one.
-    static func seed(tracking: Bool = false, now: Date = Date()) throws {
+    /// than the default envelope (`zero_budgets`) one. `seedUncategorized` adds
+    /// one on-budget uncategorized transaction — demo data is otherwise fully
+    /// categorized on-budget, so the Budget screen's uncategorized bar never
+    /// renders (UI tests use this to see the bar).
+    static func seed(
+        tracking: Bool = false,
+        seedUncategorized: Bool = false,
+        now: Date = Date()
+    ) throws {
         let fileManager = BudgetFileManager.shared
         let budgetDir = fileManager.budgetDirectory(for: budgetId)
 
@@ -43,7 +50,7 @@ enum DemoDataSeeder {
 
         try dbQueue.write { db in
             try createSchema(db, tracking: tracking)
-            try insertSeedData(db, tracking: tracking, now: now)
+            try insertSeedData(db, tracking: tracking, seedUncategorized: seedUncategorized, now: now)
         }
 
         logger.info("Demo data seeded successfully at \(dbPath.path, privacy: .public)")
@@ -279,7 +286,12 @@ enum DemoDataSeeder {
 
     // MARK: - Seed Data
 
-    private static func insertSeedData(_ db: Database, tracking: Bool, now: Date) throws {
+    private static func insertSeedData(
+        _ db: Database,
+        tracking: Bool,
+        seedUncategorized: Bool,
+        now: Date
+    ) throws {
         let cal = Calendar(identifier: .gregorian)
         let comps = cal.dateComponents([.year, .month, .day], from: now)
         let year = comps.year ?? 2026
@@ -523,6 +535,15 @@ enum DemoDataSeeder {
                 transactions.append((marketId, nil, 95000 + 5000 * (historyMonths - monthsAgo),
                                      ymd(monthsAgo: monthsAgo, day: 28), vanguardId, true, false, nil))
             }
+        }
+
+        // An on-budget expense with no category — the off-budget brokerage
+        // rows don't count (uncategorizedAccountConditions), so without this
+        // the demo budget's uncategorized count is always 0.
+        if seedUncategorized {
+            transactions.append(
+                (wholeFoodsId, nil, -2500, ymd(monthsAgo: 0, day: today), chaseId, false, false, nil)
+            )
         }
 
         // Newest first, so sort_order (descending) matches date order.
