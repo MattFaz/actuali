@@ -23,8 +23,9 @@ struct AddTransactionView: View {
     /// text style so it never clips at accessibility sizes. The same width is
     /// reserved on the opposite side so the amount itself stays centered.
     @ScaledMetric(relativeTo: .title2) private var amountSignWidth: CGFloat = 24
-    /// Floor for the content-sized amount field: an empty field's placeholder
-    /// isn't part of its intrinsic width, so without this "0.00" would clip.
+    /// Floor for the content-sized amount field: keeps an empty field wide
+    /// enough to stay tappable and keep its placeholder visible at every
+    /// text size.
     @ScaledMetric(relativeTo: .largeTitle) private var amountMinWidth: CGFloat = 88
 
     @State private var selectedAccountId: String
@@ -1667,16 +1668,15 @@ struct AmountInputField: UIViewRepresentable {
         /// must not publish state while SwiftUI is updating the view hierarchy.
         fileprivate func renderDisplay(to textField: UITextField) {
             textField.text = computeFieldText()
-            textField.invalidateIntrinsicContentSize()
-        }
-
-        fileprivate func applyDisplay(to textField: UITextField) {
-            textField.text = computeFieldText()
             // The display can grow or shrink without the binding changing
             // (arming an operator shows "12.50 + " while the binding still
             // reads 12.50), so a field sized to its text must be told to
             // re-measure rather than wait for a SwiftUI update.
             textField.invalidateIntrinsicContentSize()
+        }
+
+        fileprivate func applyDisplay(to textField: UITextField) {
+            renderDisplay(to: textField)
             let bound = computeBoundText()
             lastPublishedText = bound
             if parent.text != bound {
