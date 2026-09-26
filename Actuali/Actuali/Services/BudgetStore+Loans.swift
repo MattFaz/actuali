@@ -61,6 +61,12 @@ extension BudgetStore {
         // mid-flight shouldn't move the payment to a different category than
         // the one the sheet showed.
         let categoryId = loanConfigs[accountId]?.categoryId
+        // The editor only offers off-budget accounts, but an account can be
+        // moved on budget later. There the charges would land uncategorized
+        // and the transfer couldn't carry the category, so refuse outright.
+        guard offBudgetAccountIds.contains(accountId) else {
+            throw BudgetStoreError.loanAccountOnBudget
+        }
         // Everything the transfer could refuse is checked before the charges
         // post, so a refusal can't leave charges behind for a retry to double.
         _ = try transferPayees(fromAccountId: fromAccountId, toAccountId: accountId, amountCents: payment)

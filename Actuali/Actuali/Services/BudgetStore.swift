@@ -43,6 +43,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case tagAlreadyExists
     case tagCreationFailed(String)
     case tagUpdateFailed(String)
+    case loanAccountOnBudget
 
     var errorDescription: String? {
         message(locale: .autoupdatingCurrent)
@@ -145,6 +146,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             ReportStrings.text("error.ruleNotSerializable", locale: locale, bundle: bundle)
         case .bankSyncNotConfigured:
             ReportStrings.text("error.bankSyncNotConfigured", locale: locale, bundle: bundle)
+        case .loanAccountOnBudget:
+            ReportStrings.text("error.loanAccountOnBudget", locale: locale, bundle: bundle)
         case .invalidTagName:
             ReportStrings.text("error.invalidTagName", locale: locale, bundle: bundle)
         case .tagAlreadyExists:

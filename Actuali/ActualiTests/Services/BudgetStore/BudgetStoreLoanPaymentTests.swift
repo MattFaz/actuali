@@ -37,6 +37,7 @@ struct BudgetStoreLoanPaymentTests {
     private func makeFixture(
         startingCash: Int = 500_000,
         owing: Int = -2_200_000,
+        loanOffBudget: Bool = true,
         seedSQL: String = ""
     ) async throws -> (Fixture, URL) {
         let root = FileManager.default.temporaryDirectory
@@ -69,7 +70,7 @@ struct BudgetStoreLoanPaymentTests {
             name: "Checking", offBudget: false, startingBalanceCents: startingCash
         )
         let loan = try await store.createAccount(
-            name: "Car Loan", offBudget: true, startingBalanceCents: owing
+            name: "Car Loan", offBudget: loanOffBudget, startingBalanceCents: owing
         )
         await store.setLoan(accountId: loan.id, config: config)
         // Fail here rather than as a scatter of downstream expectations: a
@@ -306,6 +307,27 @@ struct BudgetStoreLoanPaymentTests {
                 payment: 36500,
                 interest: 11000,
                 escrow: 500,
+                date: 20_260_901,
+                notes: nil
+            )
+        }
+        #expect(try await posted(in: fixture.databasePath).isEmpty)
+    }
+
+    /// An account moved on budget after the loan was set up can't take a
+    /// payment: the charges would land uncategorized and the transfer couldn't
+    /// carry the category. Refused before anything posts.
+    @Test func aLoanOnAnOnBudgetAccountRefusesPayments() async throws {
+        let (fixture, root) = try await makeFixture(loanOffBudget: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        await #expect(throws: BudgetStoreError.loanAccountOnBudget) {
+            try await fixture.store.recordLoanPayment(
+                accountId: fixture.loan.id,
+                fromAccountId: fixture.checking.id,
+                payment: 36500,
+                interest: 11000,
+                escrow: 0,
                 date: 20_260_901,
                 notes: nil
             )

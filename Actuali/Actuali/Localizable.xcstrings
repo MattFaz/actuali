@@ -4588,6 +4588,53 @@
         }
       }
     },
+    "error.loanAccountOnBudget" : {
+      "comment" : "BudgetStore error: a loan payment was attempted on an on-budget account",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zahlungen können nur für Kredite auf budgetfremden Konten erfasst werden. Markiere dieses Konto als budgetfremd, um Zahlungen zu erfassen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Payments can only be recorded for loans on off-budget accounts. Mark this account off-budget to record payments."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo se pueden registrar pagos de préstamos en cuentas fuera del presupuesto. Marca esta cuenta como fuera del presupuesto para registrar pagos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les paiements ne peuvent être enregistrés que pour les prêts sur des comptes hors budget. Marquez ce compte comme hors budget pour enregistrer des paiements."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I pagamenti si possono registrare solo per prestiti su conti fuori budget. Segna questo conto come fuori budget per registrare i pagamenti."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Betalingen kunnen alleen worden vastgelegd voor leningen op rekeningen buiten het budget. Markeer deze rekening als buiten het budget om betalingen vast te leggen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Só é possível registrar pagamentos de empréstimos em contas fora do orçamento. Marque esta conta como fora do orçamento para registrar pagamentos."
+          }
+        }
+      }
+    },
     "of %@" : {
       "extractionState" : "stale",
       "localizations" : {

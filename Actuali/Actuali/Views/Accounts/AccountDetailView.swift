@@ -290,6 +290,12 @@ struct AccountDetailView: View {
         }
     }
 
+    /// Read live: the account can be moved on budget after the loan was set up,
+    /// and `recordLoanPayment` refuses it there.
+    private var loanIsOnBudget: Bool {
+        !budgetStore.offBudgetAccountIds.contains(account.id)
+    }
+
     /// What the loan section lets you do, once expanded.
     @ViewBuilder private func loanActions(config: LoanConfig) -> some View {
         Button {
@@ -299,8 +305,15 @@ struct AccountDetailView: View {
                 .foregroundStyle(Color.accentColor)
         }
         .buttonStyle(.plain)
-        .disabled(budgetStore.syncDetachedByRestore)
+        .disabled(budgetStore.syncDetachedByRestore || loanIsOnBudget)
         .accessibilityIdentifier("accountLoan.recordPayment")
+
+        if loanIsOnBudget {
+            Text(BudgetStoreError.loanAccountOnBudget.localizedDescription)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("accountLoan.onBudgetNote")
+        }
 
         Button {
             pairingLoanCategory = true
