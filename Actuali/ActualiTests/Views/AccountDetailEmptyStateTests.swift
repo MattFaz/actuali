@@ -35,6 +35,31 @@ struct AccountDetailEmptyStateTests {
         ) == "No transactions")
     }
 
+    @Test func runningBalanceNeedsAnUnfilteredLoad() {
+        #expect(AccountDetailView.allowsRunningBalance(
+            isSearching: false, statusFilter: .all,
+            hideCleared: false, hideReconciled: false
+        ))
+        #expect(!AccountDetailView.allowsRunningBalance(
+            isSearching: true, statusFilter: .all,
+            hideCleared: false, hideReconciled: false
+        ))
+        for filter in TransactionStatusFilter.allCases where filter != .all {
+            #expect(!AccountDetailView.allowsRunningBalance(
+                isSearching: false, statusFilter: filter,
+                hideCleared: false, hideReconciled: false
+            ))
+        }
+        #expect(!AccountDetailView.allowsRunningBalance(
+            isSearching: false, statusFilter: .all,
+            hideCleared: true, hideReconciled: false
+        ))
+        #expect(!AccountDetailView.allowsRunningBalance(
+            isSearching: false, statusFilter: .all,
+            hideCleared: false, hideReconciled: true
+        ))
+    }
+
     @Test func noteSectionHidesWhenHiddenOrSearching() {
         #expect(AccountDetailView.showsNote(
             supported: true, hidden: false, isSearching: false
