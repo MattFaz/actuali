@@ -99,7 +99,6 @@ struct LoanAmortizationTests {
 
         #expect(schedule.paymentCount == 12)
         #expect(schedule.totalInterest == 0)
-        #expect(schedule.totalPaid == 120_000)
     }
 
     @Test func clearedBalanceHasNothingToSchedule() throws {

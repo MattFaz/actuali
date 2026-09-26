@@ -133,4 +133,30 @@ struct DepositEditorViewTests {
 
         #expect(DepositSummaryRow.maturitySummary(config, on: DayDate(year: 2027, month: 6, day: 1)) == String(localized: "Matured"))
     }
+
+    // MARK: - Rate entry
+
+    @Test func aThreeDecimalRateStaysARate() throws {
+        let config = try #require(DepositEditorView.config(
+            kind: .fixed, amount: "100000", rate: "7.125",
+            compounding: .quarterly, openedOn: opened, term: "60"
+        ))
+        #expect(config.annualRatePercent == 7.125)
+    }
+
+    // MARK: - Which accounts can be a deposit
+
+    /// Any open account can hold a deposit, on-budget or not, but not one
+    /// already tracked as a card, loan or deposit.
+    @Test func onlyOpenUntrackedAccountsCanBeADeposit() {
+        let accounts = [
+            Account(id: "savings", name: "Savings", type: .savings, offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "closed", name: "Closed", type: .savings, offBudget: false, closed: true, sortOrder: 0, balance: 0),
+            Account(id: "aLoan", name: "Loan", type: .debt, offBudget: true, closed: false, sortOrder: 0, balance: 0),
+        ]
+
+        let eligible = DepositEditorView.eligibleAccounts(accounts, tracked: ["aLoan"])
+
+        #expect(eligible.map(\.id) == ["savings"])
+    }
 }

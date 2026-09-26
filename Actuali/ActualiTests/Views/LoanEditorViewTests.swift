@@ -119,4 +119,52 @@ struct LoanEditorViewTests {
         #expect(LoanSummaryRow.percentText(0.5, locale: en) == "50%")
         #expect(LoanSummaryRow.percentText(0.125, locale: en) == "12.5%")
     }
+
+    // MARK: - Rate entry
+
+    /// Three-decimal mortgage rates are common, and a grouping heuristic
+    /// would read "6.125" as six thousand; a rate is never grouped.
+    @Test func aThreeDecimalRateStaysARate() throws {
+        #expect(LoanEditorView.rate(from: "6.125") == 6.125)
+        #expect(LoanEditorView.rate(from: "6,125") == 6.125)
+        let config = try #require(LoanEditorView.config(
+            originalBalance: "22000",
+            rate: "6.125",
+            payment: "365",
+            escrow: ""
+        ))
+        #expect(config.annualRatePercent == 6.125)
+    }
+
+    @Test func aRateThatIsntANumberIsNil() {
+        #expect(LoanEditorView.rate(from: "") == nil)
+        #expect(LoanEditorView.rate(from: "abc") == nil)
+        #expect(LoanEditorView.rate(from: "inf") == nil)
+        #expect(LoanEditorView.rate(from: "nan") == nil)
+    }
+
+    // MARK: - Which accounts can be a loan
+
+    private func account(_ id: String, offBudget: Bool = true, closed: Bool = false) -> Account {
+        Account(
+            id: id, name: id, type: .debt, offBudget: offBudget,
+            closed: closed, sortOrder: 0, balance: 0
+        )
+    }
+
+    /// Off-budget only: a payment's category rides the on-budget leg of a
+    /// transfer into an off-budget account, so an on-budget loan could
+    /// never carry one. And one account is one instrument.
+    @Test func onlyOpenUntrackedOffBudgetAccountsCanBeALoan() {
+        let accounts = [
+            account("loan"),
+            account("onBudget", offBudget: false),
+            account("closed", closed: true),
+            account("aDeposit"),
+        ]
+
+        let eligible = LoanEditorView.eligibleAccounts(accounts, tracked: ["aDeposit"])
+
+        #expect(eligible.map(\.id) == ["loan"])
+    }
 }

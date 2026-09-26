@@ -11,9 +11,9 @@ import Foundation
 /// quarter closes, then steps up. Modelling it as smooth growth would read
 /// nicer on a chart and disagree with the bank statement, so it steps.
 enum DepositGrowth {
-    /// Fifty years. Matches `LoanAmortization.maxMonths`; nothing a bank sells
-    /// comes close, and it stops a corrupt term from looping forever.
-    static let maxTermMonths = 600
+    /// Fifty years, the loan engine's bound too; nothing a bank sells comes
+    /// close, and it stops a corrupt term from looping forever.
+    static let maxTermMonths = LoanAmortization.maxMonths
 
     /// Compounding periods completed after `months` have elapsed.
     static func completedPeriods(afterMonths months: Int, compounding: DepositConfig.Compounding) -> Int {

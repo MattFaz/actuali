@@ -58,12 +58,7 @@ struct DepositConfig: Codable, Equatable, Hashable, Sendable {
     /// How long the deposit runs, in months.
     var termMonths: Int
 
-    /// Declared rather than synthesized: Swift only synthesizes `CodingKeys`
-    /// when it also synthesizes one of `init(from:)`/`encode(to:)`, and this
-    /// type hand-writes both — `init(from:)` for the compounding fallback,
-    /// `encode(to:)` to put the opening day on the wire as `YYYYMMDD`.
-    /// `LoanConfig` and `CreditCardConfig` only customise decoding, which is
-    /// why they still get theirs for free.
+    /// Declared because both `init(from:)` and `encode(to:)` are hand-written.
     private enum CodingKeys: String, CodingKey {
         case kind, amount, annualRatePercent, compounding, openedOn, termMonths
     }

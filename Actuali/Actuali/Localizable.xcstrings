@@ -1487,53 +1487,6 @@
         }
       }
     },
-    "Escrow" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Treuhand"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Escrow"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Depósito en garantía"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Séquestre"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deposito a garanzia"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Escrow"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Custódia"
-          }
-        }
-      }
-    },
     "Escrow or Fees" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2188,6 +2141,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Empréstimos"
+          }
+        }
+      }
+    },
+    "Loans are tracked on open, off-budget accounts. Add one, or mark your loan's account off-budget, to track it here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kredite werden auf offenen, budgetfremden Konten verfolgt. Füge eines hinzu oder markiere das Konto deines Kredits als budgetfremd, um ihn hier zu verfolgen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loans are tracked on open, off-budget accounts. Add one, or mark your loan's account off-budget, to track it here."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los préstamos se siguen en cuentas abiertas y fuera del presupuesto. Añade una o marca la cuenta de tu préstamo como fuera del presupuesto para seguirlo aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les prêts sont suivis sur des comptes ouverts et hors budget. Ajoutez-en un ou marquez le compte de votre prêt comme hors budget pour le suivre ici."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I prestiti si monitorano su conti aperti e fuori budget. Aggiungine uno o segna il conto del prestito come fuori budget per monitorarlo qui."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leningen worden gevolgd op open rekeningen buiten het budget. Voeg er een toe of markeer de rekening van je lening als buiten het budget om die hier te volgen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empréstimos são acompanhados em contas abertas e fora do orçamento. Adicione uma ou marque a conta do seu empréstimo como fora do orçamento para acompanhá-lo aqui."
           }
         }
       }
@@ -33516,18 +33515,53 @@
         }
       }
     },
-    "Show Running Balance": {
-  "extractionState": "manual",
-  "localizations": {
-    "de": { "stringUnit": { "state": "translated", "value": "Laufenden Kontostand anzeigen" } },
-    "en": { "stringUnit": { "state": "translated", "value": "Show Running Balance" } },
-    "es": { "stringUnit": { "state": "translated", "value": "Mostrar saldo acumulado" } },
-    "fr": { "stringUnit": { "state": "translated", "value": "Afficher le solde courant" } },
-    "it": { "stringUnit": { "state": "translated", "value": "Mostra saldo progressivo" } },
-    "nl": { "stringUnit": { "state": "translated", "value": "Voortschrijdend saldo tonen" } },
-    "pt-BR": { "stringUnit": { "state": "translated", "value": "Mostrar saldo acumulado" } }
-  }
-},
+    "Show Running Balance" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laufenden Kontostand anzeigen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Running Balance"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar saldo acumulado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher le solde courant"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra saldo progressivo"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voortschrijdend saldo tonen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar saldo acumulado"
+          }
+        }
+      }
+    },
     "Edit Automations" : {
       "extractionState" : "stale",
       "localizations" : {

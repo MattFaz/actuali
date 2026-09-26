@@ -61,25 +61,22 @@ extension BudgetStore {
         // mid-flight shouldn't move the payment to a different category than
         // the one the sheet showed.
         let categoryId = loanConfigs[accountId]?.categoryId
-        guard accountId != fromAccountId else {
-            throw BudgetStoreError.transferAccountsMatch
-        }
-        guard payment > 0 else {
-            throw BudgetStoreError.transferAmountNotPositive
-        }
+        // Everything the transfer could refuse is checked before the charges
+        // post, so a refusal can't leave charges behind for a retry to double.
+        _ = try transferPayees(fromAccountId: fromAccountId, toAccountId: accountId, amountCents: payment)
 
         // Charges first, payment last: the transfer's refresh is then the one
         // that settles the published state.
         if interest != 0 {
             try await postLoanCharge(
                 accountId: accountId, amount: -interest, date: date,
-                payeeName: String(localized: "Interest"), notes: notes, cleared: cleared
+                payeeName: Self.loanInterestPayeeName, notes: notes, cleared: cleared
             )
         }
         if escrow != 0 {
             try await postLoanCharge(
                 accountId: accountId, amount: -escrow, date: date,
-                payeeName: String(localized: "Escrow"), notes: notes, cleared: cleared
+                payeeName: Self.loanEscrowPayeeName, notes: notes, cleared: cleared
             )
         }
 
@@ -93,6 +90,12 @@ extension BudgetStore {
             categoryId: categoryId
         )
     }
+
+    /// Fixed rather than localized, like "Starting Balance": `findOrCreatePayee`
+    /// matches by name, so a translated name would fork the payee per device
+    /// language.
+    static let loanInterestPayeeName = "Interest"
+    static let loanEscrowPayeeName = "Escrow"
 
     /// One lender charge on the loan account. Off-budget, so it carries no
     /// category — `preserveCategory` keeps a rule from attaching one.

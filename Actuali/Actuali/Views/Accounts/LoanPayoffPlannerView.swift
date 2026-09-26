@@ -70,10 +70,12 @@ struct LoanPayoffPlannerView: View {
     }
 
     /// Payoff terms the date picker can offer: anything from next month up to
-    /// what the lender's minimum already achieves. Paying less than the
-    /// minimum isn't the user's to choose, so it isn't offered.
+    /// what the lender's minimum already achieves — or further, when the typed
+    /// payment is below the minimum, so the picker still shows that plan's
+    /// real date instead of a selection it has no row for.
     private var payoffMonthOptions: [Int] {
-        guard let count = minimumSchedule?.paymentCount, count > 0 else { return [] }
+        let count = max(minimumSchedule?.paymentCount ?? 0, chosenSchedule?.paymentCount ?? 0)
+        guard count > 0 else { return [] }
         return Array(1...count)
     }
 
@@ -91,6 +93,7 @@ struct LoanPayoffPlannerView: View {
                     Button(String(localized: "common.done")) {
                         dismiss()
                     }
+                    .accessibilityIdentifier("loanPlanner.done")
                 }
             }
         }
@@ -224,8 +227,11 @@ struct LoanPayoffPlannerView: View {
                     value: Self.durationText(months: chosen.paymentCount)
                 )
 
-                if let minimum = minimumSchedule, !isAtMinimum {
-                    let savings = LoanAmortization.savings(minimum: minimum, target: chosen)
+                // A plan slower than the minimum saves nothing, and "Saves
+                // $0.00 … 0 mos sooner" would say so badly.
+                if let minimum = minimumSchedule, !isAtMinimum,
+                   case let savings = LoanAmortization.savings(minimum: minimum, target: chosen),
+                   savings.interest > 0 || savings.months > 0 {
                     Text(Self.savingsText(
                         interest: budgetStore.displayBalance(savings.interest),
                         months: savings.months

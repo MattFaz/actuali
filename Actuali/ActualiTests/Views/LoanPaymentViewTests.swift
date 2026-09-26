@@ -52,17 +52,4 @@ struct LoanPaymentViewTests {
 
         #expect(funding.map(\.name) == ["Beta", "Zebra", "Alpha"])
     }
-
-    // MARK: - The breakdown
-
-    @Test func principalIsWhatSurvivesInterestAndEscrow() {
-        #expect(LoanPaymentView.principal(payment: 36500, interest: 11000, escrow: 0) == 25500)
-        #expect(LoanPaymentView.principal(payment: 36500, interest: 11000, escrow: 20000) == 5500)
-    }
-
-    /// The view leans on this staying signed: a negative principal is what
-    /// switches the footer to the warning that the balance will grow.
-    @Test func principalGoesNegativeWhenThePaymentFallsShort() {
-        #expect(LoanPaymentView.principal(payment: 5000, interest: 11000, escrow: 0) == -6000)
-    }
 }

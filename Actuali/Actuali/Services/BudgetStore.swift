@@ -1028,6 +1028,12 @@ final class BudgetStore: ObservableObject {
         return loanConfigs[accountId]
     }
 
+    /// Accounts already tracked as a card, loan or deposit. One account is one
+    /// instrument, so the loan and deposit editors offer only what's left.
+    var trackedAccountIds: Set<String> {
+        Set(creditCardConfigs.keys).union(loanConfigs.keys).union(depositConfigs.keys)
+    }
+
     /// Writes a loan's config and persists it through SyncClient.
     /// A nil `config` stops tracking the account and clears everything stored for it.
     func setLoan(accountId: String, config: LoanConfig?) async {
@@ -4552,18 +4558,11 @@ final class BudgetStore: ObservableObject {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
-        guard fromAccountId != toAccountId else {
-            throw BudgetStoreError.transferAccountsMatch
-        }
-        guard amountCents > 0 else {
-            throw BudgetStoreError.transferAmountNotPositive
-        }
-
-        let fromTransferPayee = transferPayee(forAccountId: fromAccountId)
-        let toTransferPayee = transferPayee(forAccountId: toAccountId)
-        guard let fromTransferPayee, let toTransferPayee else {
-            throw BudgetStoreError.transferPayeeMissing
-        }
+        let (fromTransferPayee, toTransferPayee) = try transferPayees(
+            fromAccountId: fromAccountId,
+            toAccountId: toAccountId,
+            amountCents: amountCents
+        )
 
         let sourceId = UUID().uuidString
         let targetId = UUID().uuidString
@@ -4618,6 +4617,30 @@ final class BudgetStore: ObservableObject {
         try await syncClient.createTransfer(source: source, target: target)
         await publishTransactionsImmediately([sourceId, targetId])
         await refreshDataOnly()
+    }
+
+    /// Everything that can refuse a `createTransfer`, checked without writing
+    /// anything — so a caller posting other rows alongside one
+    /// (`recordLoanPayment`) can fail before the first of them lands.
+    func transferPayees(
+        fromAccountId: String,
+        toAccountId: String,
+        amountCents: Int
+    ) throws -> (from: Payee, to: Payee) {
+        guard syncClient != nil else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard fromAccountId != toAccountId else {
+            throw BudgetStoreError.transferAccountsMatch
+        }
+        guard amountCents > 0 else {
+            throw BudgetStoreError.transferAmountNotPositive
+        }
+        guard let from = transferPayee(forAccountId: fromAccountId),
+              let to = transferPayee(forAccountId: toAccountId) else {
+            throw BudgetStoreError.transferPayeeMissing
+        }
+        return (from, to)
     }
 
     private func transferPayee(forAccountId accountId: String) -> Payee? {

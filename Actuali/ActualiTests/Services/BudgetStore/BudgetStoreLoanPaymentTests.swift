@@ -32,9 +32,12 @@ struct BudgetStoreLoanPaymentTests {
         let databasePath: URL
     }
 
+    /// `seedSQL` runs alongside the schema, before the store opens the file —
+    /// writing through a second connection afterwards races the store's own.
     private func makeFixture(
         startingCash: Int = 500_000,
-        owing: Int = -2_200_000
+        owing: Int = -2_200_000,
+        seedSQL: String = ""
     ) async throws -> (Fixture, URL) {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loan-payment-\(UUID().uuidString)", isDirectory: true)
@@ -46,6 +49,7 @@ struct BudgetStoreLoanPaymentTests {
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: budgetId).path)
         try await dbQueue.write { db in
             try db.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema)
+            try db.execute(sql: seedSQL)
         }
         try JSONEncoder().encode(BudgetMetadata(
             id: budgetId, budgetName: "Seed", cloudFileId: "cf-1", groupId: "group-1",
@@ -288,6 +292,48 @@ struct BudgetStoreLoanPaymentTests {
         }
     }
 
+    /// A transfer that would be refused is refused before the charges post,
+    /// so a retry after the error can't double the interest.
+    @Test func aRefusedTransferLeavesNoChargesBehind() async throws {
+        let (fixture, root) = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        fixture.store.payees.removeAll { $0.transferAccountId == fixture.loan.id }
+
+        await #expect(throws: BudgetStoreError.transferPayeeMissing) {
+            try await fixture.store.recordLoanPayment(
+                accountId: fixture.loan.id,
+                fromAccountId: fixture.checking.id,
+                payment: 36500,
+                interest: 11000,
+                escrow: 500,
+                date: 20_260_901,
+                notes: nil
+            )
+        }
+        #expect(try await posted(in: fixture.databasePath).isEmpty)
+    }
+
+    /// The charge payees keep one name whatever the device language, so two
+    /// devices in different locales share them rather than forking them.
+    @Test func chargesUseFixedPayeeNames() async throws {
+        let (fixture, root) = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try await fixture.store.recordLoanPayment(
+            accountId: fixture.loan.id,
+            fromAccountId: fixture.checking.id,
+            payment: 36500,
+            interest: 11000,
+            escrow: 500,
+            date: 20_260_901,
+            notes: nil
+        )
+
+        let names = Set(fixture.store.payees.map(\.name))
+        #expect(names.contains(BudgetStore.loanInterestPayeeName))
+        #expect(names.contains(BudgetStore.loanEscrowPayeeName))
+    }
+
     // MARK: - Pairing
 
     @Test func pairingSurvivesAndCanBeUndone() async throws {
@@ -336,6 +382,24 @@ struct BudgetStoreLoanPaymentTests {
 
         #expect(fixture.store.snoozedLoanCategoryIds(inMonth: "2026-09") == [categoryId])
         #expect(fixture.store.snoozedLoanCategoryIds(inMonth: "2026-10").isEmpty)
+    }
+
+    /// The snooze reaches the template run itself, not just the lookup: the
+    /// snoozed month has nothing to apply, the next month applies as usual.
+    @Test func aSnoozedTargetIsSkippedByTheTemplateRun() async throws {
+        let (fixture, root) = try await makeFixture(seedSQL: """
+            CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, note TEXT);
+            INSERT INTO category_groups (id, name) VALUES ('grp_loans', 'Loans');
+            INSERT INTO categories (id, name, cat_group) VALUES ('cat_car', 'Car Loan', 'grp_loans');
+            INSERT INTO category_mapping (id, transferId) VALUES ('cat_car', 'cat_car');
+            INSERT INTO notes (id, note) VALUES ('cat_car', '#template 365');
+        """)
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = await pairedLoan(fixture)
+        await fixture.store.snoozeLoanTarget(accountId: fixture.loan.id, month: "2026-09")
+
+        #expect(await fixture.store.runGoalTemplates(month: "2026-09", action: .apply) == .upToDate)
+        #expect(await fixture.store.runGoalTemplates(month: "2026-10", action: .apply) == .applied(1))
     }
 
     @Test func clearingTheSnoozeLetsTheTargetRunAgain() async throws {

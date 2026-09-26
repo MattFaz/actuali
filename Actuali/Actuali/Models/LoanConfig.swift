@@ -6,10 +6,9 @@ import Foundation
 ///
 /// The fields are the ones YNAB collects when a loan account is created: the
 /// balance owed, the interest rate, the payment the lender requires, and —
-/// on a mortgage — whether that payment bundles escrow or fees. A payment
-/// target and a paired category come later and decode with `decodeIfPresent`
-/// the way `CreditCardConfig` already handles its own later additions, so a
-/// client that predates them still reads the rest of the config.
+/// on a mortgage — whether that payment bundles escrow or fees. Everything
+/// added later is optional, so the synthesized decoder reads it as nil when
+/// absent and a client that predates it still reads the rest of the config.
 struct LoanConfig: Codable, Equatable, Hashable, Sendable {
     /// What was owed when the loan was added, in cents and always positive.
     /// Payoff progress is measured against this, and the current balance alone
@@ -46,18 +45,6 @@ struct LoanConfig: Codable, Equatable, Hashable, Sendable {
     /// payment and expires on its own, so storing the month means a stale
     /// snooze can never suppress a later one.
     var targetSnoozedMonth: String?
-}
-
-extension LoanConfig {
-    init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        originalBalance = try container.decode(Int.self, forKey: .originalBalance)
-        annualRatePercent = try container.decode(Double.self, forKey: .annualRatePercent)
-        minimumPayment = try container.decode(Int.self, forKey: .minimumPayment)
-        escrowOrFees = try container.decodeIfPresent(Int.self, forKey: .escrowOrFees)
-        categoryId = try container.decodeIfPresent(String.self, forKey: .categoryId)
-        targetSnoozedMonth = try container.decodeIfPresent(String.self, forKey: .targetSnoozedMonth)
-    }
 }
 
 // MARK: - Payoff progress

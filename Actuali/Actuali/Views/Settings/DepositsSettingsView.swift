@@ -22,10 +22,9 @@ struct DepositsSettingsView: View {
     }
 
     /// Whether there is any account left to track, which is what decides if
-    /// the Add row shows. The editor owns the list itself.
+    /// the Add row shows. Same predicate as the editor's picker.
     private var canAddDeposit: Bool {
-        let configuredIds = Set(budgetStore.depositConfigs.keys)
-        return budgetStore.accounts.contains { !$0.closed && !configuredIds.contains($0.id) }
+        !DepositEditorView.eligibleAccounts(budgetStore.accounts, tracked: budgetStore.trackedAccountIds).isEmpty
     }
 
     var body: some View {
@@ -135,7 +134,7 @@ struct DepositSummaryRow: View {
         guard !config.hasMatured(on: today) else { return String(localized: "Matured") }
         return String(
             format: String(localized: "Matures %@"),
-            config.maturityDate.utcDate.formatted(date: .abbreviated, time: .omitted)
+            config.maturityDate.displayText
         )
     }
 }

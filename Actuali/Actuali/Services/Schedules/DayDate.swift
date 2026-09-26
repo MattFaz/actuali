@@ -53,6 +53,12 @@ struct DayDate: Comparable, Hashable {
         DayDate.utcCalendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
     }
 
+    /// "Sep 26, 2026" in the user's locale. Formatted in UTC to match
+    /// `utcDate`, so the day shown is the day stored in any timezone.
+    var displayText: String {
+        utcDate.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: .gmt))
+    }
+
     func adding(days: Int) -> DayDate {
         let d = DayDate.utcCalendar.date(byAdding: .day, value: days, to: utcDate)!
         let c = DayDate.utcCalendar.dateComponents([.year, .month, .day], from: d)

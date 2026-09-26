@@ -408,8 +408,8 @@ struct AccountDetailView: View {
         )
         breakdownRow(String(localized: "Interest Rate"), value: LoanSummaryRow.percentText(config.annualRatePercent / 100))
         breakdownRow(String(localized: "Compounding"), value: DepositEditorView.compoundingLabel(config.compounding))
-        breakdownRow(String(localized: "Opened"), value: config.openedOn.utcDate.formatted(date: .abbreviated, time: .omitted))
-        breakdownRow(String(localized: "Matures"), value: config.maturityDate.utcDate.formatted(date: .abbreviated, time: .omitted))
+        breakdownRow(String(localized: "Opened"), value: config.openedOn.displayText)
+        breakdownRow(String(localized: "Matures"), value: config.maturityDate.displayText)
         breakdownRow(String(localized: "Deposited"), amount: config.deposited())
         breakdownRow(String(localized: "Interest Earned"), amount: config.interestEarned())
         breakdownRow(String(localized: "Value at Maturity"), amount: config.maturityValue)
@@ -704,9 +704,10 @@ struct AccountDetailView: View {
                     loanActions(config: config)
                 }
             }
-            // Keyed on the balance so recording a payment refreshes the
-            // total without the screen having to know it was the cause.
-            .task(id: currentBalance) {
+            // Keyed on the store's data version so recording a payment
+            // refreshes the total without the screen having to know it was
+            // the cause — even one that leaves the balance where it was.
+            .task(id: budgetStore.dataVersion) {
                 loanTotalPaid = await budgetStore.totalPaidIntoLoan(accountId: account.id)
                 await refreshLoanTarget()
             }

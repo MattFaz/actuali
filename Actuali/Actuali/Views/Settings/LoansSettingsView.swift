@@ -22,10 +22,9 @@ struct LoansSettingsView: View {
     }
 
     /// Whether there is any account left to track, which is what decides if
-    /// the Add row shows. The editor owns the list itself.
+    /// the Add row shows. Same predicate as the editor's picker.
     private var canAddLoan: Bool {
-        let configuredIds = Set(budgetStore.loanConfigs.keys)
-        return budgetStore.accounts.contains { !$0.closed && !configuredIds.contains($0.id) }
+        !LoanEditorView.eligibleAccounts(budgetStore.accounts, tracked: budgetStore.trackedAccountIds).isEmpty
     }
 
     var body: some View {
@@ -71,6 +70,14 @@ struct LoansSettingsView: View {
                         Label(String(localized: "Add Loan"), systemImage: "plus")
                     }
                     .accessibilityIdentifier("loanSettings.add")
+                }
+            } else {
+                // Without this the Add row just vanishes, and an on-budget
+                // loan account gives no hint why it can't be picked.
+                Section {
+                    Text(String(localized: "Loans are tracked on open, off-budget accounts. Add one, or mark your loan's account off-budget, to track it here."))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
         }

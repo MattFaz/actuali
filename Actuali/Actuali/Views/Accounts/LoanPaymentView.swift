@@ -72,12 +72,8 @@ struct LoanPaymentView: View {
     /// What actually comes off the balance. Can go negative, and says so
     /// rather than clamping: a payment that doesn't cover the lender's
     /// charges grows the loan, which is the case most worth surfacing.
-    nonisolated static func principal(payment: Int, interest: Int, escrow: Int) -> Int {
-        payment - interest - escrow
-    }
-
     private var principal: Int {
-        Self.principal(payment: payment, interest: interest, escrow: escrow)
+        payment - interest - escrow
     }
 
     private var canRecord: Bool {

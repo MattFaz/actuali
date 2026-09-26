@@ -22,8 +22,8 @@ struct LoanEditorView: View {
     @State private var paymentText: String
     /// Empty means "no escrow", the same way an empty credit limit means "no limit".
     @State private var escrowText: String
-    /// Annual rate as typed, e.g. "6.25". Parsed with `AmountParser` so a
-    /// comma decimal separator works in the locales that use one.
+    /// Annual rate as typed, e.g. "6.25". A comma decimal separator works in
+    /// the locales that use one — see `rate(from:)`.
     @State private var rateText: String
 
     /// State is primed here rather than in `onAppear` so the fields never
@@ -53,12 +53,19 @@ struct LoanEditorView: View {
         return false
     }
 
-    /// Accounts with no loan config yet, loan-ish types first.
-    var unconfiguredAccounts: [Account] {
-        let configuredIds = Set(budgetStore.loanConfigs.keys)
-        return budgetStore.accounts
-            .filter { !$0.closed && !configuredIds.contains($0.id) }
-            .sorted { (Self.typeRank($0.type), $0.name) < (Self.typeRank($1.type), $1.name) }
+    /// Open, off-budget accounts not yet tracked as anything, loan-ish types
+    /// first. Off-budget because a payment's category rides the on-budget leg
+    /// of a transfer into an off-budget account; on an on-budget loan the
+    /// lender's charges would land uncategorized and the category would never
+    /// see the payment.
+    nonisolated static func eligibleAccounts(_ accounts: [Account], tracked: Set<String>) -> [Account] {
+        accounts
+            .filter { !$0.closed && $0.offBudget && !tracked.contains($0.id) }
+            .sorted { (typeRank($0.type), $0.name) < (typeRank($1.type), $1.name) }
+    }
+
+    private var unconfiguredAccounts: [Account] {
+        Self.eligibleAccounts(budgetStore.accounts, tracked: budgetStore.trackedAccountIds)
     }
 
     /// Mortgage and debt accounts sort to the top of the picker: they are what
@@ -80,6 +87,14 @@ struct LoanEditorView: View {
     /// Trailing zeros trimmed so a whole-number rate reads "6", not "6.00".
     nonisolated static func rateText(_ percent: Double) -> String {
         percent == percent.rounded() ? String(Int(percent)) : String(percent)
+    }
+
+    /// A rate is a plain decimal, never grouped, so it skips `AmountParser`,
+    /// whose grouping heuristic reads "6.125" as six thousand. `Double` also
+    /// accepts "inf" and "nan", which the interest math can't round to cents.
+    nonisolated static func rate(from text: String) -> Double? {
+        Double(text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: "."))
+            .flatMap { $0.isFinite ? $0 : nil }
     }
 
     nonisolated static func cents(from text: String) -> Int? {
@@ -113,7 +128,7 @@ struct LoanEditorView: View {
               let monthly = cents(from: payment), monthly > 0 else { return nil }
         return LoanConfig(
             originalBalance: balance,
-            annualRatePercent: max(0, AmountParser.parse(rate) ?? 0),
+            annualRatePercent: max(0, Self.rate(from: rate) ?? 0),
             minimumPayment: monthly,
             escrowOrFees: cents(from: escrow).flatMap { $0 > 0 ? $0 : nil }
         )
@@ -133,6 +148,7 @@ struct LoanEditorView: View {
                                 Text(account.name).tag(account.id)
                             }
                         }
+                        .accessibilityIdentifier("loanEditor.account")
                     }
 
                     HStack {

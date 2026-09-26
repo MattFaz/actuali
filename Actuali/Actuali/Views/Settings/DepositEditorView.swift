@@ -19,8 +19,8 @@ struct DepositEditorView: View {
     @State private var kind: DepositConfig.Kind
     /// Dot-decimal amounts as typed, the format `AmountInputField` binds to.
     @State private var amountText: String
-    /// Annual rate as typed, e.g. "7.1". Parsed with `AmountParser` so a comma
-    /// decimal separator works in the locales that use one.
+    /// Annual rate as typed, e.g. "7.1". A comma decimal separator works in
+    /// the locales that use one — see `LoanEditorView.rate(from:)`.
     @State private var rateText: String
     @State private var compounding: DepositConfig.Compounding
     @State private var openedOn: Date
@@ -45,7 +45,10 @@ struct DepositEditorView: View {
             _amountText = State(initialValue: LoanEditorView.amountText(config.amount))
             _rateText = State(initialValue: LoanEditorView.rateText(config.annualRatePercent))
             _compounding = State(initialValue: config.compounding)
-            _openedOn = State(initialValue: config.openedOn.utcDate)
+            // Local midnight, not `utcDate`: `enteredConfig` reads the day
+            // back in the local calendar, and noon UTC is already tomorrow
+            // east of UTC+12.
+            _openedOn = State(initialValue: Transaction.date(fromYYYYMMDD: config.openedOn.yyyymmdd))
             _termText = State(initialValue: String(config.termMonths))
         }
     }
@@ -57,12 +60,15 @@ struct DepositEditorView: View {
         return false
     }
 
-    /// Accounts with no deposit config yet, savings-ish types first.
-    var unconfiguredAccounts: [Account] {
-        let configuredIds = Set(budgetStore.depositConfigs.keys)
-        return budgetStore.accounts
-            .filter { !$0.closed && !configuredIds.contains($0.id) }
-            .sorted { (Self.typeRank($0.type), $0.name) < (Self.typeRank($1.type), $1.name) }
+    /// Open accounts not yet tracked as anything, savings-ish types first.
+    nonisolated static func eligibleAccounts(_ accounts: [Account], tracked: Set<String>) -> [Account] {
+        accounts
+            .filter { !$0.closed && !tracked.contains($0.id) }
+            .sorted { (typeRank($0.type), $0.name) < (typeRank($1.type), $1.name) }
+    }
+
+    private var unconfiguredAccounts: [Account] {
+        Self.eligibleAccounts(budgetStore.accounts, tracked: budgetStore.trackedAccountIds)
     }
 
     /// Savings and investment accounts sort to the top: a deposit is money put
@@ -111,7 +117,7 @@ struct DepositEditorView: View {
         return DepositConfig(
             kind: kind,
             amount: amount,
-            annualRatePercent: max(0, AmountParser.parse(rate) ?? 0),
+            annualRatePercent: max(0, LoanEditorView.rate(from: rate) ?? 0),
             compounding: compounding,
             openedOn: openedOn,
             termMonths: termMonths
@@ -173,6 +179,7 @@ struct DepositEditorView: View {
                         Text(account.name).tag(account.id)
                     }
                 }
+                .accessibilityIdentifier("depositEditor.account")
             }
 
             Picker(String(localized: "Type"), selection: $kind) {
@@ -224,6 +231,13 @@ struct DepositEditorView: View {
                     .keyboardType(.numberPad)
                     .multilineTextAlignment(.trailing)
                     .accessibilityIdentifier("depositEditor.term")
+                    // Snap an over-long term back where it shows, rather than
+                    // clamping it unseen at save.
+                    .onChange(of: termText) {
+                        if let months = Int(termText), months > DepositGrowth.maxTermMonths {
+                            termText = String(DepositGrowth.maxTermMonths)
+                        }
+                    }
                 Text(String(localized: "months"))
                     .foregroundStyle(.secondary)
             }
@@ -233,7 +247,7 @@ struct DepositEditorView: View {
             if let config = enteredConfig {
                 LabeledContent(
                     String(localized: "Matures"),
-                    value: config.maturityDate.utcDate.formatted(date: .abbreviated, time: .omitted)
+                    value: config.maturityDate.displayText
                 )
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("depositEditor.matures")

@@ -43,10 +43,6 @@ enum LoanAmortization {
         var totalInterest: Int {
             entries.reduce(0) { $0 + $1.interest }
         }
-
-        var totalPaid: Int {
-            entries.reduce(0) { $0 + $1.payment }
-        }
     }
 
     /// What paying more than the minimum buys — the headline the loan overview
