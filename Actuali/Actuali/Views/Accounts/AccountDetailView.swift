@@ -26,8 +26,8 @@ struct AccountDetailView: View {
     @State private var selectedTransactionIds: Set<String> = []
     @State private var cycleSpend: Int = 0
     @AppStorage("showAccountRunningBalance") private var showRunningBalance = true
-    @State private var recentStatements: [CreditCardCycle.StatementRecord] = []
     @State private var loadedFullHistory = false
+    @State private var recentStatements: [CreditCardCycle.StatementRecord] = []
     @State private var selectedStatement: CreditCardCycle.StatementRecord? = nil
 
     private var statementDue: CreditCardCycle.StatementDue? {
@@ -154,16 +154,18 @@ struct AccountDetailView: View {
         await reloadNote()
         await reloadCycleSpend()
         await reloadRecentStatements()
-        await currentPager().loadFirstPage(search: searchQuery)
-        // Snapshot the state of the page that just loaded. Updating this only
-        // after the page lands keeps stale rows and the running-balance column
-        // in sync during reloads.
-        loadedFullHistory = Self.allowsRunningBalance(
+        // Captured right before the fetch, which reads the same store flags,
+        // so a filter flipped mid-fetch can't label that page unfiltered.
+        // Assigned only after the page lands: resetting it up front is what
+        // made the column flicker on every reload.
+        let fullHistory = Self.allowsRunningBalance(
             isSearching: searchQuery != nil,
             statusFilter: budgetStore.transactionStatusFilter,
             hideCleared: budgetStore.hideClearedTransactions,
             hideReconciled: budgetStore.hideReconciledTransactions
         )
+        await currentPager().loadFirstPage(search: searchQuery)
+        loadedFullHistory = fullHistory
     }
 
     private func reloadRecentStatements() async {
