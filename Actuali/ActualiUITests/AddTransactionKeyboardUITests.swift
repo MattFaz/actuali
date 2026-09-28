@@ -149,6 +149,63 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                       "amount keyboard reopened after leaving category picker")
     }
 
+    /// GH #558: with the amount still focused, opening a picker left UIKit
+    /// holding the amount field as the responder to restore, so coming back
+    /// brought the decimal pad up again with the amount selected.
+    @MainActor
+    func testPickingPayeeWithAmountFocusedLeavesKeyboardDown() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "amount keyboard did not appear")
+        app.keys["5"].tap()
+
+        let payeeRow = app.buttons["addTransaction.payee"]
+        XCTAssertTrue(payeeRow.waitForExistence(timeout: 5), "payee row not found")
+        payeeRow.tap()
+
+        let blueBottle = app.buttons.matching(
+            NSPredicate(format: "label == 'Blue Bottle Coffee'")
+        ).firstMatch
+        XCTAssertTrue(blueBottle.waitForExistence(timeout: 5), "Blue Bottle Coffee row not found")
+        blueBottle.tap()
+        XCTAssertTrue(blueBottle.waitForNonExistence(timeout: 5), "picker sheet did not close")
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                      "amount keyboard reopened after picking a payee")
+    }
+
+    @MainActor
+    func testPickingCategoryWithAmountFocusedLeavesKeyboardDown() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "amount keyboard did not appear")
+        app.keys["5"].tap()
+
+        let categoryRow = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Category'")
+        ).firstMatch
+        XCTAssertTrue(categoryRow.waitForExistence(timeout: 5), "category row not found")
+        categoryRow.tap()
+
+        let searchField = app.textFields["categoryPicker.search"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5),
+                      "category search field not found")
+        let back = app.navigationBars.buttons.firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "category picker back button not found")
+        back.tap()
+        XCTAssertTrue(searchField.waitForNonExistence(timeout: 5),
+                      "category picker did not dismiss")
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                      "amount keyboard reopened after leaving category picker")
+    }
+
     @MainActor
     func testSheetPresentedAddFlowShowsCancel() {
         let app = XCUIApplication()
