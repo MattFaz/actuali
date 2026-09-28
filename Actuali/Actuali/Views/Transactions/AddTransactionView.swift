@@ -1360,6 +1360,10 @@ struct AmountInputField: UIViewRepresentable {
 
         var parent: AmountInputField
         weak var textField: UITextField?
+        /// Select the amount only when the field was created for the initial
+        /// autofocus. Focus restored after opening a picker must keep the
+        /// existing caret/selection instead of selecting the whole amount.
+        private var selectAllOnNextBeginEditing: Bool
         /// The last value written to the binding, so `updateUIView` can tell
         /// an outside change from the field's own echo.
         private(set) var lastPublishedText: String?
@@ -1374,6 +1378,7 @@ struct AmountInputField: UIViewRepresentable {
 
         init(_ parent: AmountInputField) {
             self.parent = parent
+            self.selectAllOnNextBeginEditing = parent.autofocus
         }
 
         /// True once the current operand has any content of its own, so a
@@ -1453,6 +1458,8 @@ struct AmountInputField: UIViewRepresentable {
         }
 
         func textFieldDidBeginEditing(_ textField: UITextField) {
+            guard selectAllOnNextBeginEditing else { return }
+            selectAllOnNextBeginEditing = false
             DispatchQueue.main.async {
                 textField.selectAll(nil)
             }
