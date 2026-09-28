@@ -801,6 +801,13 @@ enum DemoDataSeeder {
             BudgetDatabase.depositPreferenceKey(for: cdId),
             String(decoding: JSONEncoder().encode(depositConfig), as: UTF8.self),
         ])
+        // Card mappings, one row per keyword as SyncClient writes them. Apple
+        // Card gets two so the grouped, multi-keyword row shows in the demo.
+        for (keyword, accountId) in [("4417", appleCardId), ("Goldman Sachs", appleCardId), ("8830", chaseId)] {
+            try db.execute(sql: "INSERT INTO preferences (id, value) VALUES (?, ?)", arguments: [
+                BudgetDatabase.cardMappingPreferenceKey(for: keyword), accountId,
+            ])
+        }
 
         // --- Reports dashboards ---
         // Two pages so the demo exercises the dashboard switcher (GH #120);

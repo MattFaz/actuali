@@ -232,6 +232,18 @@ struct DemoDataSeederTests {
         #expect(depositAccount.balance > deposit.amount)
     }
 
+    @Test func seedsCardMappingsToOpenAccounts() async throws {
+        let database = try seedAndOpen()
+        let accountsByName = try await Dictionary(uniqueKeysWithValues: database.fetchAccounts().map { ($0.name, $0.id) })
+        let mappings = try await database.fetchCardAccountMappings()
+
+        #expect(mappings == [
+            "4417": accountsByName["Apple Card"],
+            "Goldman Sachs": accountsByName["Apple Card"],
+            "8830": accountsByName["Chase Checking"],
+        ])
+    }
+
     /// The demo budget must support notes and ship one, or the category note
     /// section (GH #131) hides itself as unsupported and the feature is
     /// invisible in demo mode — including in App Store screenshots.

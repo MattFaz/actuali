@@ -11,7 +11,8 @@ final class CardMappingEditUITests: XCTestCase {
                       "Transactions & Automation row not found")
         automationRow.tap()
 
-        let mappingsRow = app.buttons["Card & Account Mappings"]
+        // The label carries a count badge ("…, 3") for the seeded mappings.
+        let mappingsRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Card & Account Mappings'")).firstMatch
         XCTAssertTrue(mappingsRow.waitForExistence(timeout: 5),
                       "Card & Account Mappings row not found")
         mappingsRow.tap()
@@ -98,6 +99,27 @@ final class CardMappingEditUITests: XCTestCase {
         XCTAssertTrue(updatedRow.waitForExistence(timeout: 5), "mapping row not found after save")
         XCTAssertTrue(updatedRow.staticTexts["Ally Savings"].exists,
                       "saving the edit did not retarget the mapping")
+    }
+
+    /// Issue #534: the first sheet presented on the screen opened empty, so
+    /// editing a seeded mapping straight away must still come up pre-filled.
+    @MainActor
+    func testFirstEditOnScreenIsPrefilled() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        app.launch()
+        openCardMappings(in: app)
+
+        let row = app.buttons["cardMappings.row.4417"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "seeded Apple Card mapping row not found")
+        row.tap()
+        XCTAssertTrue(app.navigationBars["Edit Mapping"].waitForExistence(timeout: 5),
+                      "first tap did not open the sheet in edit mode")
+        let field = app.textFields["cardMappings.keywordField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "edit sheet has no keyword field")
+        XCTAssertEqual(field.value as? String, "4417", "first edit did not pre-fill the keyword")
+        XCTAssertEqual(app.textFields["cardMappings.keywordField.1"].value as? String, "Goldman Sachs",
+                       "first edit did not pre-fill the second keyword")
     }
 
     @MainActor
