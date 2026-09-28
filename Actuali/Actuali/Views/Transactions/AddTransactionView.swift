@@ -44,6 +44,7 @@ struct AddTransactionView: View {
     @State private var automaticCategoryPreview: BudgetStore.AutomaticCategoryPreview?
     @State private var nearbyPayees: [NearbyPayee] = []
     @State private var showPayeePicker = false
+    @State private var showCategoryPicker = false
     @State private var saveLocation = true
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
     /// True while the edit form's "Remove Split" is toggled on an existing
@@ -395,6 +396,29 @@ struct AddTransactionView: View {
         return String(localized: AddTransactionLocalization.none, locale: locale)
     }
 
+    /// A button rather than a NavigationLink: the keyboard has to go down
+    /// before the push starts, and a List row's link gives no hook for that.
+    private var categoryRow: some View {
+        Button {
+            dismissKeyboard()
+            showCategoryPicker = true
+        } label: {
+            HStack {
+                Text("Category")
+                Spacer()
+                Text(selectedCategoryName)
+                    .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("addTransaction.category")
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -468,27 +492,14 @@ struct AddTransactionView: View {
                             }
                         }
                         if editedTransferLegIsCategorizable {
-                            NavigationLink {
-                                CategoryPickerView(
-                                    selectedCategoryId: $selectedCategoryId,
-                                    autofocusSearch: true
-                                ) {
-                                    userPickedCategory = true
-                                }
-                            } label: {
-                                HStack {
-                                    Text("Category")
-                                    Spacer()
-                                    Text(selectedCategoryName)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
+                            categoryRow
                         }
                     }
 
                     if !isTransfer {
                         Button {
                             loadNearbyPayees()
+                            dismissKeyboard()
                             showPayeePicker = true
                         } label: {
                             HStack {
@@ -538,21 +549,7 @@ struct AddTransactionView: View {
                                 .foregroundStyle(.secondary)
                         }
                     } else if showsStandardCategoryFields, !isSplitting {
-                        NavigationLink {
-                            CategoryPickerView(
-                                selectedCategoryId: $selectedCategoryId,
-                                autofocusSearch: true
-                            ) {
-                                userPickedCategory = true
-                            }
-                        } label: {
-                            HStack {
-                                Text("Category")
-                                Spacer()
-                                Text(selectedCategoryName)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+                        categoryRow
                         if canSplitIntoCategories, !isPendingImportReview {
                             Button {
                                 startSplit()
@@ -674,6 +671,14 @@ struct AddTransactionView: View {
             .contentMargins(.top, canDismiss ? nil : 8, for: .scrollContent)
             // Presented flows keep their sheet titles; the tab root shows no
             // header, matching the Accounts and Budget tabs.
+            .navigationDestination(isPresented: $showCategoryPicker) {
+                CategoryPickerView(
+                    selectedCategoryId: $selectedCategoryId,
+                    autofocusSearch: true
+                ) {
+                    userPickedCategory = true
+                }
+            }
             .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
             .navigationBarTitleDisplayMode(canDismiss ? .automatic : .inline)
             .listSectionSpacing(.compact)
@@ -947,13 +952,18 @@ struct AddTransactionView: View {
         // keep the old keyboard up.
         dismissKeyboard()
     }
+}
 
-    private func dismissKeyboard() {
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder),
-            to: nil, from: nil, for: nil
-        )
-    }
+/// Resign whatever field is focused. Pickers call this before they open: UIKit
+/// remembers the first responder across a sheet or push and restores it on the
+/// way back, which would bring the amount keypad up again with its text
+/// selected (GH #558).
+@MainActor
+private func dismissKeyboard() {
+    UIApplication.shared.sendAction(
+        #selector(UIResponder.resignFirstResponder),
+        to: nil, from: nil, for: nil
+    )
 }
 
 /// Math for the split entry section, kept off the view for testability.
@@ -1020,12 +1030,14 @@ private struct SplitLineRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Button {
+                    dismissKeyboard()
                     showCategoryPicker = true
                 } label: {
                     Text(categoryName)
                         .foregroundStyle(line.categoryId == nil ? Color.secondary : Color.primary)
                 }
                 .buttonStyle(.borderless)
+                .accessibilityIdentifier("addTransaction.splitLine.category")
                 Spacer()
                 // Every line carries a sign like the total's, so direction is
                 // never implicit; tapping it flips the line — how a refund
@@ -1071,6 +1083,7 @@ private struct SplitLineRow: View {
             // Empty payee inherits the transaction's payee.
             Button {
                 onOpenPayeePicker()
+                dismissKeyboard()
                 showPayeePicker = true
             } label: {
                 Text(line.payeeName.isEmpty
@@ -1081,6 +1094,7 @@ private struct SplitLineRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("addTransaction.splitLine.payee")
             .font(.subheadline)
             .sheet(isPresented: $showPayeePicker) {
                 PayeePickerView(

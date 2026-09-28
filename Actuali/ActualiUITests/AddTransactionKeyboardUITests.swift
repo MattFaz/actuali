@@ -101,9 +101,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
                       "amount keyboard did not dismiss")
 
-        let categoryRow = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Category'")
-        ).firstMatch
+        let categoryRow = app.buttons["addTransaction.category"]
         XCTAssertTrue(categoryRow.waitForExistence(timeout: 5), "category row not found")
         categoryRow.tap()
 
@@ -128,9 +126,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
                       "amount keyboard did not dismiss")
 
-        let categoryRow = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Category'")
-        ).firstMatch
+        let categoryRow = app.buttons["addTransaction.category"]
         XCTAssertTrue(categoryRow.waitForExistence(timeout: 5), "category row not found")
         categoryRow.tap()
 
@@ -147,6 +143,131 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                       "category picker did not dismiss")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
                       "amount keyboard reopened after leaving category picker")
+    }
+
+    /// GH #558: with the amount still focused, opening a picker left UIKit
+    /// holding the amount field as the responder to restore, so coming back
+    /// brought the decimal pad up again with the amount selected.
+    @MainActor
+    func testPickingPayeeWithAmountFocusedLeavesKeyboardDown() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "amount keyboard did not appear")
+        app.keys["5"].tap()
+
+        let payeeRow = app.buttons["addTransaction.payee"]
+        XCTAssertTrue(payeeRow.waitForExistence(timeout: 5), "payee row not found")
+        payeeRow.tap()
+
+        let blueBottle = app.buttons.matching(
+            NSPredicate(format: "label == 'Blue Bottle Coffee'")
+        ).firstMatch
+        XCTAssertTrue(blueBottle.waitForExistence(timeout: 5), "Blue Bottle Coffee row not found")
+        blueBottle.tap()
+        XCTAssertTrue(blueBottle.waitForNonExistence(timeout: 5), "picker sheet did not close")
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                      "amount keyboard reopened after picking a payee")
+    }
+
+    @MainActor
+    func testPickingCategoryWithAmountFocusedLeavesKeyboardDown() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "amount keyboard did not appear")
+        app.keys["5"].tap()
+
+        let categoryRow = app.buttons["addTransaction.category"]
+        XCTAssertTrue(categoryRow.waitForExistence(timeout: 5), "category row not found")
+        categoryRow.tap()
+
+        let searchField = app.textFields["categoryPicker.search"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5),
+                      "category search field not found")
+        let back = app.navigationBars.buttons.firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "category picker back button not found")
+        back.tap()
+        XCTAssertTrue(searchField.waitForNonExistence(timeout: 5),
+                      "category picker did not dismiss")
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                      "amount keyboard reopened after leaving category picker")
+    }
+
+    /// Split lines open their category picker as a sheet from a separate
+    /// row view, so they need their own coverage.
+    @MainActor
+    func testPickingSplitLineCategoryWithAmountFocusedLeavesKeyboardDown() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "amount keyboard did not appear")
+        app.keys["5"].tap()
+
+        let split = app.buttons["Split into multiple categories"]
+        XCTAssertTrue(split.waitForExistence(timeout: 5), "split button not found")
+        split.tap()
+
+        let lineCategory = app.buttons["addTransaction.splitLine.category"].firstMatch
+        XCTAssertTrue(lineCategory.waitForExistence(timeout: 5), "split line category not found")
+        XCTAssertTrue(app.keyboards.firstMatch.exists,
+                      "amount should still be focused when the split line picker opens")
+        lineCategory.tap()
+
+        let groceries = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Groceries'")
+        ).firstMatch
+        XCTAssertTrue(groceries.waitForExistence(timeout: 5), "Groceries row not found")
+        groceries.tap()
+        XCTAssertTrue(app.textFields["categoryPicker.search"].waitForNonExistence(timeout: 5),
+                      "split line category picker did not dismiss")
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                      "amount keyboard reopened after picking a split line category")
+    }
+
+    @MainActor
+    func testPickingSplitLinePayeeWithAmountFocusedLeavesKeyboardDown() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "amount keyboard did not appear")
+        app.keys["5"].tap()
+
+        let split = app.buttons["Split into multiple categories"]
+        XCTAssertTrue(split.waitForExistence(timeout: 5), "split button not found")
+        split.tap()
+
+        let linePayee = app.buttons["addTransaction.splitLine.payee"].firstMatch
+        XCTAssertTrue(linePayee.waitForExistence(timeout: 5), "split line payee not found")
+        XCTAssertTrue(app.keyboards.firstMatch.exists,
+                      "amount should still be focused when the split line picker opens")
+        linePayee.tap()
+
+        let blueBottle = app.buttons.matching(
+            NSPredicate(format: "label == 'Blue Bottle Coffee'")
+        ).firstMatch
+        XCTAssertTrue(blueBottle.waitForExistence(timeout: 5), "Blue Bottle Coffee row not found")
+        blueBottle.tap()
+        // The line's own button now reads "Blue Bottle Coffee", so wait on
+        // the picker's search field instead.
+        let search = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == 'Search payees'")
+        ).firstMatch
+        XCTAssertTrue(search.waitForNonExistence(timeout: 5), "picker sheet did not close")
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                      "amount keyboard reopened after picking a split line payee")
     }
 
     @MainActor
