@@ -231,9 +231,23 @@ struct AddTransactionView: View {
     /// either flow, or an existing parent mid-"Remove Split" (as an undo).
     /// Transfers are excluded — they pair two accounts through `transferId`
     /// and splitting would orphan the partner leg (the store refuses it), so
-    /// the button stays hidden rather than failing on save.
+    /// the button stays hidden rather than failing on save. Gated on the live
+    /// type toggle, which also covers a saved transfer (its type is locked to
+    /// Transfer), so switching a new transaction to Transfer hides it (GH #556).
     private var canSplitIntoCategories: Bool {
-        editing?.transferId == nil && (!isEditingSplitParent || unsplitRequested)
+        Self.canSplitIntoCategories(
+            isTransfer: isTransfer,
+            isEditingSplitParent: isEditingSplitParent,
+            unsplitRequested: unsplitRequested
+        )
+    }
+
+    nonisolated static func canSplitIntoCategories(
+        isTransfer: Bool,
+        isEditingSplitParent: Bool,
+        unsplitRequested: Bool
+    ) -> Bool {
+        !isTransfer && (!isEditingSplitParent || unsplitRequested)
     }
 
     /// Cents still unassigned across the split lines, nil while the total
