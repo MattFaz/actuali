@@ -1311,81 +1311,58 @@ extension View {
 
 /// Clean-style summary card: a 2x2 grid whose reading order follows the
 /// money — came in, allocated, went out, left over. Two rows because four
-/// currency amounts don't fit across narrow devices; with Budgeted hidden
-/// (GH #562) the remaining three fit on one row.
+/// currency amounts don't fit across narrow devices.
 struct CleanBudgetSummary: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let budget: BudgetMonth
 
     var body: some View {
-        Group {
-            if budgetStore.showBudgetedAmounts {
-                VStack(spacing: 12) {
-                    HStack(alignment: .top) {
-                        incomeStat
-                        Spacer()
-                        SummaryStat(
-                            label: "Budgeted",
-                            value: budgetStore.displayBalance(budget.totalBudgeted),
-                            alignment: .trailing
-                        )
-                    }
-                    HStack(alignment: .top) {
-                        spentStat()
-                        Spacer()
-                        resultStat
-                    }
+        VStack(spacing: 12) {
+            HStack(alignment: .top) {
+                SummaryStat(
+                    label: "Income",
+                    value: budgetStore.displayBalance(budget.totalIncome)
+                )
+                Spacer()
+                // GH #562: Income stands alone when Budgeted is hidden, so
+                // no row ever carries more than two amounts.
+                if budgetStore.showBudgetedAmounts {
+                    SummaryStat(
+                        label: "Budgeted",
+                        value: budgetStore.displayBalance(budget.totalBudgeted),
+                        alignment: .trailing
+                    )
                 }
-            } else {
-                HStack(alignment: .top) {
-                    incomeStat
-                    Spacer()
-                    spentStat(alignment: .center)
-                    Spacer()
-                    resultStat
+            }
+            HStack(alignment: .top) {
+                SummaryStat(
+                    label: "Spent",
+                    value: budgetStore.displayBalance(-budget.totalSpent)
+                )
+                Spacer()
+                // Envelope budgets lead with unallocated funds; tracking
+                // budgets report savings instead — actual for a finished month,
+                // projected for the current/future month.
+                if let toBudget = budget.toBudget {
+                    SummaryStat(
+                        label: "To Budget",
+                        value: budgetStore.displayBalance(toBudget),
+                        budget: budget,
+                        valueColor: toBudget >= 0 ? .green : .red,
+                        alignment: .trailing
+                    )
+                } else {
+                    let value = trackingSavings(budget)
+                    SummaryStat(
+                        label: trackingSavingsLabel(budget),
+                        value: budgetStore.displayBalance(value),
+                        valueColor: value >= 0 ? .green : .red,
+                        alignment: .trailing
+                    )
                 }
             }
         }
         .padding(.vertical, 4)
-    }
-
-    private var incomeStat: some View {
-        SummaryStat(
-            label: "Income",
-            value: budgetStore.displayBalance(budget.totalIncome)
-        )
-    }
-
-    private func spentStat(alignment: HorizontalAlignment = .leading) -> some View {
-        SummaryStat(
-            label: "Spent",
-            value: budgetStore.displayBalance(-budget.totalSpent),
-            alignment: alignment
-        )
-    }
-
-    /// Envelope budgets lead with unallocated funds; tracking budgets report
-    /// savings instead — actual for a finished month, projected for the
-    /// current/future month.
-    @ViewBuilder
-    private var resultStat: some View {
-        if let toBudget = budget.toBudget {
-            SummaryStat(
-                label: "To Budget",
-                value: budgetStore.displayBalance(toBudget),
-                budget: budget,
-                valueColor: toBudget >= 0 ? .green : .red,
-                alignment: .trailing
-            )
-        } else {
-            let value = trackingSavings(budget)
-            SummaryStat(
-                label: trackingSavingsLabel(budget),
-                value: budgetStore.displayBalance(value),
-                valueColor: value >= 0 ? .green : .red,
-                alignment: .trailing
-            )
-        }
     }
 }
 
