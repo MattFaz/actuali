@@ -6,7 +6,7 @@ struct CompactBudgetSummary: View {
 
     let budget: BudgetMonth
     let showsSpent: Bool
-    var showsBudgeted = true
+    let showsBudgeted: Bool
 
     private var overview: CompactBudgetOverview {
         CompactBudgetOverview(
@@ -189,7 +189,7 @@ struct CompactBudgetGroupHeader: View {
     var onRename: (() -> Void)?
     let totals: CategoryGroupTotals?
     let showsSpent: Bool
-    var showsBudgeted = true
+    let showsBudgeted: Bool
     let onToggleCollapse: () -> Void
 
     private var presentation: CompactBudgetGroupHeaderPresentation {
@@ -342,7 +342,7 @@ struct CompactCategoryBudgetRow: View {
     var isDimmed = false
     var onSetHidden: ((Bool) -> Void)?
     let showsSpent: Bool
-    var showsBudgeted = true
+    let showsBudgeted: Bool
     let showsProgressBars: Bool
     let showsStatusDots: Bool
     var onShowDetails: (CategoryBudget) -> Void = { _ in }
@@ -575,11 +575,9 @@ struct CompactIncomeGroupHeader: View {
     var onRename: (() -> Void)?
     let totalBudgeted: Int
     let totalReceived: Int
-    /// Only a tracking budget carries a budgeted figure on income.
     let isTrackingBudget: Bool
     let showsSpent: Bool
-    /// The user's Budgeted-amounts preference, as on the expense rows.
-    var showsBudgeted = true
+    let showsBudgeted: Bool
     var onToggleCollapse: () -> Void = {}
 
     private var layout: CompactBudgetTableLayout {
@@ -726,11 +724,9 @@ struct CompactIncomeCategoryRow: View {
     var isHidden = false
     var isDimmed = false
     var onSetHidden: ((Bool) -> Void)?
-    /// Only a tracking budget carries a budgeted figure on income.
     let isTrackingBudget: Bool
     let showsSpent: Bool
-    /// The user's Budgeted-amounts preference, as on the expense rows.
-    var showsBudgeted = true
+    let showsBudgeted: Bool
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
     private var layout: CompactBudgetTableLayout {

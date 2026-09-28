@@ -133,12 +133,14 @@ struct CompactBudgetTableLayout: Equatable {
     let expenseColumns: [CompactBudgetColumn]
     let incomeColumns: [CompactBudgetColumn?]
 
+    /// `isTrackingBudget` gates income's Budgeted column (only tracking
+    /// budgets budget income); `showsBudgeted` is the user's preference.
     init(isTrackingBudget: Bool, showsSpent: Bool, showsBudgeted: Bool = true) {
-        var expenseColumns: [CompactBudgetColumn] = showsBudgeted ? [.budgeted] : []
-        if showsSpent {
-            expenseColumns.append(.spent)
-        }
-        expenseColumns.append(.balance)
+        let expenseColumns: [CompactBudgetColumn] = [
+            showsBudgeted ? .budgeted : nil,
+            showsSpent ? .spent : nil,
+            .balance,
+        ].compactMap(\.self)
         self.expenseColumns = expenseColumns
         incomeColumns = expenseColumns.map { column in
             switch column {

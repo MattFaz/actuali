@@ -21,6 +21,7 @@ struct CompactBudgetPresentationTests {
                 onSetHidden: { _ in },
                 totals: totals,
                 showsSpent: showsSpent,
+                showsBudgeted: true,
                 onToggleCollapse: {}
             )
             .environmentObject(store)
@@ -31,6 +32,7 @@ struct CompactBudgetPresentationTests {
                 onSetHidden: { _ in },
                 totals: nil,
                 showsSpent: showsSpent,
+                showsBudgeted: true,
                 onToggleCollapse: {}
             )
             .environmentObject(store)
@@ -130,7 +132,7 @@ struct CompactBudgetPresentationTests {
     }
 
     /// GH #562: the Clean summary drops the Budgeted cell but keeps both rows,
-    /// so the card doesn't change height when the preference goes off.
+    /// so the card changes content, not height, when the preference goes off.
     @Test @MainActor func cleanSummaryKeepsBothRowsWithoutBudgeted() throws {
         let budget = BudgetMonth(
             month: "2026-08",
@@ -141,15 +143,18 @@ struct CompactBudgetPresentationTests {
         )
         let store = BudgetStore.previewInstance()
 
-        let heights = try [true, false].map { showsBudgeted in
-            try renderedHeight(
+        let images = try [true, false].map { showsBudgeted in
+            try renderedImage(
                 CleanBudgetSummary(budget: budget, showsBudgeted: showsBudgeted)
                     .environmentObject(store)
                     .frame(width: 390)
             )
         }
 
-        #expect(heights[0] == heights[1])
+        #expect(images[0].height == images[1].height)
+        // Same height alone would pass if the flag were ignored; the pixels
+        // must differ too.
+        #expect(images[0].dataProvider?.data as Data? != images[1].dataProvider?.data as Data?)
     }
 
     @Test func groupHeaderAccessibilityOmitsHiddenAmounts() {

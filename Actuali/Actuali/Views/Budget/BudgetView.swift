@@ -1318,7 +1318,7 @@ extension View {
 struct CleanBudgetSummary: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let budget: BudgetMonth
-    var showsBudgeted = true
+    let showsBudgeted: Bool
 
     var body: some View {
         VStack(spacing: 12) {
