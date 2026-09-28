@@ -4,16 +4,7 @@ import SwiftUI
 struct CardAccountMappingsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @ObservedObject var pendingImportStore: PendingImportStore = .shared
-    @State private var showingSheet = false
-    @State private var keywords: [KeywordEntry] = [KeywordEntry()]
-    @State private var keywordTexts: [UUID: String] = [:]
-    @State private var originalKeywords: [String] = []
-    @State private var selectedAccountId = ""
-    @State private var isEditing = false
-
-    private struct KeywordEntry: Identifiable {
-        let id = UUID()
-    }
+    @State private var draft: CardMappingDraft?
 
     struct CardMappingSuggestion: Identifiable, Equatable {
         var id: String {
@@ -100,23 +91,6 @@ struct CardAccountMappingsView: View {
                 ? $0.count > $1.count
                 : $0.keyword.localizedCaseInsensitiveCompare($1.keyword) == .orderedAscending
         }
-    }
-
-    private var cleanedKeywords: [String] {
-        keywords.compactMap { keywordTexts[$0.id]?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-
-    private var effectiveAccountId: String {
-        if !selectedAccountId.isEmpty {
-            return selectedAccountId
-        }
-        return PendingImportApprover.seedAccountId(
-            cardHint: nil,
-            accounts: budgetStore.accounts,
-            cardMappings: budgetStore.cardAccountMappings,
-            defaultAccountId: budgetStore.defaultAccountId
-        ) ?? budgetStore.accounts.first(where: { !$0.closed })?.id ?? ""
     }
 
     var body: some View {
@@ -208,88 +182,8 @@ struct CardAccountMappingsView: View {
         }
         .navigationTitle(String(localized: "cardMappings.title"))
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showingSheet) {
-            NavigationStack {
-                Form {
-                    Section {
-                        Picker(
-                            String(localized: "cardMappings.targetAccount"),
-                            selection: Binding(
-                                get: { effectiveAccountId },
-                                set: { selectedAccountId = $0 }
-                            )
-                        ) {
-                            ForEach(budgetStore.accounts.filter { !$0.closed || $0.id == effectiveAccountId }) { account in
-                                Text(account.name).tag(account.id)
-                            }
-                        }
-                        .accessibilityIdentifier("cardMappings.accountPicker")
-                    } header: {
-                        Text(String(localized: "cardMappings.targetAccount"))
-                    }
-
-                    Section {
-                        ForEach(keywords) { entry in
-                            let entryID = entry.id
-                            let index = keywords.firstIndex(where: { $0.id == entryID }) ?? 0
-                            HStack {
-                                TextField(
-                                    String(localized: "cardMappings.keywordPrompt"),
-                                    text: Binding(
-                                        get: { keywordTexts[entryID, default: ""] },
-                                        set: { keywordTexts[entryID] = $0 }
-                                    )
-                                )
-                                .accessibilityIdentifier(index == 0 ? "cardMappings.keywordField" : "cardMappings.keywordField.\(index)")
-                                .autocorrectionDisabled()
-
-                                if keywords.count > 1 {
-                                    Button(role: .destructive) {
-                                        keywords.removeAll { $0.id == entryID }
-                                        keywordTexts.removeValue(forKey: entryID)
-                                    } label: {
-                                        Image(systemName: "minus.circle.fill")
-                                            .foregroundStyle(.red)
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .accessibilityLabel(String(localized: "cardMappings.removeKeyword"))
-                                    .accessibilityIdentifier("cardMappings.removeKeyword.\(index)")
-                                }
-                            }
-                            .id(entryID)
-                        }
-
-                        Button {
-                            let entry = KeywordEntry()
-                            keywords.append(entry)
-                            keywordTexts[entry.id] = ""
-                        } label: {
-                            Label(String(localized: "cardMappings.addKeyword"), systemImage: "plus")
-                        }
-                        .accessibilityIdentifier("cardMappings.addKeywordButton")
-                    } header: {
-                        Text(String(localized: "cardMappings.keywordsSection"))
-                    } footer: {
-                        Text(String(localized: "cardMappings.footer"))
-                    }
-                }
-                .navigationTitle(isEditing
-                    ? String(localized: "Edit Mapping")
-                    : String(localized: "cardMappings.addTitle"))
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(String(localized: "Cancel")) { showingSheet = false }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(String(localized: "Save")) {
-                            saveMapping()
-                            showingSheet = false
-                        }
-                        .disabled(cleanedKeywords.isEmpty || effectiveAccountId.isEmpty)
-                    }
-                }
-            }
+        .sheet(item: $draft) { draft in
+            CardMappingEditor(draft: draft)
         }
     }
 
@@ -301,28 +195,24 @@ struct CardAccountMappingsView: View {
     }
 
     private func prepareAndShowAddSheet(keyword: String) {
-        selectedAccountId = PendingImportApprover.seedAccountId(
-            cardHint: keyword.isEmpty ? nil : keyword,
-            accounts: budgetStore.accounts,
-            cardMappings: budgetStore.cardAccountMappings,
-            defaultAccountId: budgetStore.defaultAccountId
-        ) ?? ""
-        let entry = KeywordEntry()
-        keywords = [entry]
-        keywordTexts = [entry.id: keyword]
-        originalKeywords = []
-        isEditing = false
-        showingSheet = true
+        draft = CardMappingDraft(
+            accountId: PendingImportApprover.seedAccountId(
+                cardHint: keyword.isEmpty ? nil : keyword,
+                accounts: budgetStore.accounts,
+                cardMappings: budgetStore.cardAccountMappings,
+                defaultAccountId: budgetStore.defaultAccountId
+            ) ?? "",
+            keywords: [keyword],
+            originalKeywords: []
+        )
     }
 
     private func prepareAndShowEditSheet(accountId: String, existingKeywords: [String]) {
-        selectedAccountId = accountId
-        let entries = existingKeywords.isEmpty ? [KeywordEntry()] : existingKeywords.map { _ in KeywordEntry() }
-        keywords = entries
-        keywordTexts = Dictionary(uniqueKeysWithValues: zip(entries.map(\.id), existingKeywords.isEmpty ? [""] : existingKeywords))
-        originalKeywords = existingKeywords
-        isEditing = true
-        showingSheet = true
+        draft = CardMappingDraft(
+            accountId: accountId,
+            keywords: existingKeywords.isEmpty ? [""] : existingKeywords,
+            originalKeywords: existingKeywords
+        )
     }
 
     private func deleteAccountMapping(at offsets: IndexSet) {
@@ -331,12 +221,150 @@ struct CardAccountMappingsView: View {
             await budgetStore.deleteCardAccountMappings(keywords: keysToDelete)
         }
     }
+}
+
+/// The values the add/edit sheet opens with. Presenting via `.sheet(item:)`
+/// hands these to the sheet directly: seeding parent `@State` and flipping an
+/// `isPresented` flag in the same update showed the stale (empty) values on
+/// the first presentation (issue #534).
+private struct CardMappingDraft: Identifiable {
+    let id = UUID()
+    let accountId: String
+    let keywords: [String]
+    /// Keywords already saved for the account; empty when adding.
+    let originalKeywords: [String]
+
+    var isEditing: Bool {
+        !originalKeywords.isEmpty
+    }
+}
+
+private struct CardMappingEditor: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+    let draft: CardMappingDraft
+    @State private var keywords: [KeywordEntry]
+    @State private var keywordTexts: [UUID: String]
+    @State private var selectedAccountId: String
+
+    private struct KeywordEntry: Identifiable {
+        let id = UUID()
+    }
+
+    init(draft: CardMappingDraft) {
+        self.draft = draft
+        let entries = draft.keywords.map { _ in KeywordEntry() }
+        _keywords = State(initialValue: entries)
+        _keywordTexts = State(initialValue: Dictionary(uniqueKeysWithValues: zip(entries.map(\.id), draft.keywords)))
+        _selectedAccountId = State(initialValue: draft.accountId)
+    }
+
+    private var cleanedKeywords: [String] {
+        keywords.compactMap { keywordTexts[$0.id]?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private var effectiveAccountId: String {
+        if !selectedAccountId.isEmpty {
+            return selectedAccountId
+        }
+        return PendingImportApprover.seedAccountId(
+            cardHint: nil,
+            accounts: budgetStore.accounts,
+            cardMappings: budgetStore.cardAccountMappings,
+            defaultAccountId: budgetStore.defaultAccountId
+        ) ?? budgetStore.accounts.first(where: { !$0.closed })?.id ?? ""
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker(
+                        String(localized: "cardMappings.targetAccount"),
+                        selection: Binding(
+                            get: { effectiveAccountId },
+                            set: { selectedAccountId = $0 }
+                        )
+                    ) {
+                        ForEach(budgetStore.accounts.filter { !$0.closed || $0.id == effectiveAccountId }) { account in
+                            Text(account.name).tag(account.id)
+                        }
+                    }
+                    .accessibilityIdentifier("cardMappings.accountPicker")
+                } header: {
+                    Text(String(localized: "cardMappings.targetAccount"))
+                }
+
+                Section {
+                    ForEach(keywords) { entry in
+                        let entryID = entry.id
+                        let index = keywords.firstIndex(where: { $0.id == entryID }) ?? 0
+                        HStack {
+                            TextField(
+                                String(localized: "cardMappings.keywordPrompt"),
+                                text: Binding(
+                                    get: { keywordTexts[entryID, default: ""] },
+                                    set: { keywordTexts[entryID] = $0 }
+                                )
+                            )
+                            .accessibilityIdentifier(index == 0 ? "cardMappings.keywordField" : "cardMappings.keywordField.\(index)")
+                            .autocorrectionDisabled()
+
+                            if keywords.count > 1 {
+                                Button(role: .destructive) {
+                                    keywords.removeAll { $0.id == entryID }
+                                    keywordTexts.removeValue(forKey: entryID)
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(String(localized: "cardMappings.removeKeyword"))
+                                .accessibilityIdentifier("cardMappings.removeKeyword.\(index)")
+                            }
+                        }
+                        .id(entryID)
+                    }
+
+                    Button {
+                        let entry = KeywordEntry()
+                        keywords.append(entry)
+                        keywordTexts[entry.id] = ""
+                    } label: {
+                        Label(String(localized: "cardMappings.addKeyword"), systemImage: "plus")
+                    }
+                    .accessibilityIdentifier("cardMappings.addKeywordButton")
+                } header: {
+                    Text(String(localized: "cardMappings.keywordsSection"))
+                } footer: {
+                    Text(String(localized: "cardMappings.footer"))
+                }
+            }
+            .navigationTitle(draft.isEditing
+                ? String(localized: "Edit Mapping")
+                : String(localized: "cardMappings.addTitle"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "Cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "Save")) {
+                        saveMapping()
+                        dismiss()
+                    }
+                    .disabled(cleanedKeywords.isEmpty || effectiveAccountId.isEmpty)
+                }
+            }
+        }
+    }
 
     private func saveMapping() {
         let cleaned = cleanedKeywords
         let accountId = effectiveAccountId
         guard !cleaned.isEmpty, !accountId.isEmpty else { return }
-        let removed = Self.keywordsRemovedBySave(originalKeywords: originalKeywords, cleanedKeywords: cleaned)
+        let removed = CardAccountMappingsView.keywordsRemovedBySave(originalKeywords: draft.originalKeywords, cleanedKeywords: cleaned)
         Task {
             await budgetStore.setCardAccountMappings(accountId: accountId, keywords: cleaned, removingKeywords: removed)
         }

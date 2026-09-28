@@ -100,6 +100,34 @@ final class CardMappingEditUITests: XCTestCase {
                       "saving the edit did not retarget the mapping")
     }
 
+    /// Issue #534: the first edit after entering the screen opened an empty
+    /// sheet, because nothing had presented it yet on this view instance.
+    @MainActor
+    func testFirstEditAfterReopeningScreenIsPrefilled() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        app.launch()
+        openCardMappings(in: app)
+        addMapping("1234", in: app)
+
+        let backButton = app.navigationBars.buttons.firstMatch
+        XCTAssertTrue(backButton.waitForExistence(timeout: 10), "back button not found")
+        backButton.tap()
+        // The row label gains a count badge once a mapping exists.
+        let mappingsRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Card & Account Mappings'")).firstMatch
+        XCTAssertTrue(mappingsRow.waitForExistence(timeout: 5), "did not return to automation settings")
+        mappingsRow.tap()
+
+        let row = app.buttons["cardMappings.row.1234"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "mapping row not found after reopening")
+        row.tap()
+        XCTAssertTrue(app.navigationBars["Edit Mapping"].waitForExistence(timeout: 5),
+                      "first tap did not open the sheet in edit mode")
+        let field = app.textFields["cardMappings.keywordField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "edit sheet has no keyword field")
+        XCTAssertEqual(field.value as? String, "1234", "first edit did not pre-fill the keyword")
+    }
+
     @MainActor
     func testAddingAndRemovingMultipleKeywords() {
         let app = XCUIApplication()
