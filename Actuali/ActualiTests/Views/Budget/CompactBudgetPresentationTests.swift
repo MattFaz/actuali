@@ -129,6 +129,29 @@ struct CompactBudgetPresentationTests {
         ])
     }
 
+    /// GH #562: the Clean summary drops the Budgeted cell but keeps both rows,
+    /// so the card doesn't change height when the preference goes off.
+    @Test @MainActor func cleanSummaryKeepsBothRowsWithoutBudgeted() throws {
+        let budget = BudgetMonth(
+            month: "2026-08",
+            categoryBudgets: [
+                category(budgeted: 50000, spent: -31500, available: 18500),
+            ],
+            toBudget: 12500
+        )
+        let store = BudgetStore.previewInstance()
+
+        let heights = try [true, false].map { showsBudgeted in
+            try renderedHeight(
+                CleanBudgetSummary(budget: budget, showsBudgeted: showsBudgeted)
+                    .environmentObject(store)
+                    .frame(width: 390)
+            )
+        }
+
+        #expect(heights[0] == heights[1])
+    }
+
     @Test func groupHeaderAccessibilityOmitsHiddenAmounts() {
         let locale = Locale(identifier: "fr_FR")
         #expect(CompactBudgetAccessibility.groupHeader(

@@ -455,9 +455,9 @@ struct BudgetView: View {
                             onSetHidden: {
                                 setCategoryHidden(income.categoryId, hidden: $0)
                             },
-                            showsBudgeted: budget.isTrackingBudget,
+                            isTrackingBudget: budget.isTrackingBudget,
                             showsSpent: budgetStore.showCompactSpentColumn,
-                            showsBudgetedColumn: budgetStore.showBudgetedAmounts,
+                            showsBudgeted: budgetStore.showBudgetedAmounts,
                             onShowTransactions: showTransactions
                         )
                     }
@@ -471,9 +471,9 @@ struct BudgetView: View {
                     onRename: onRename,
                     totalBudgeted: budget.totalBudgetedIncome,
                     totalReceived: budget.totalIncome,
-                    showsBudgeted: budget.isTrackingBudget,
+                    isTrackingBudget: budget.isTrackingBudget,
                     showsSpent: budgetStore.showCompactSpentColumn,
-                    showsBudgetedColumn: budgetStore.showBudgetedAmounts,
+                    showsBudgeted: budgetStore.showBudgetedAmounts,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
                     }
@@ -733,15 +733,18 @@ struct BudgetView: View {
                 Group {
                     switch budgetStore.budgetDisplayStyle {
                     case .clean:
-                        CleanBudgetSummary(budget: budget)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 24)
-                                    .fill(Color(.secondarySystemGroupedBackground))
-                            )
-                            .accessibilityElement(children: .contain)
-                            .accessibilityIdentifier("budget.topBox")
+                        CleanBudgetSummary(
+                            budget: budget,
+                            showsBudgeted: budgetStore.showBudgetedAmounts
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 24)
+                                .fill(Color(.secondarySystemGroupedBackground))
+                        )
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("budget.topBox")
                     case .compact:
                         CompactBudgetSummary(
                             budget: budget,
@@ -1315,6 +1318,7 @@ extension View {
 struct CleanBudgetSummary: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let budget: BudgetMonth
+    var showsBudgeted = true
 
     var body: some View {
         VStack(spacing: 12) {
@@ -1326,7 +1330,7 @@ struct CleanBudgetSummary: View {
                 Spacer()
                 // GH #562: Income stands alone when Budgeted is hidden, so
                 // no row ever carries more than two amounts.
-                if budgetStore.showBudgetedAmounts {
+                if showsBudgeted {
                     SummaryStat(
                         label: "Budgeted",
                         value: budgetStore.displayBalance(budget.totalBudgeted),

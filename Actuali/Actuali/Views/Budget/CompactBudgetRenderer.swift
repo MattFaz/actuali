@@ -575,16 +575,15 @@ struct CompactIncomeGroupHeader: View {
     var onRename: (() -> Void)?
     let totalBudgeted: Int
     let totalReceived: Int
-    let showsBudgeted: Bool
+    /// Only a tracking budget carries a budgeted figure on income.
+    let isTrackingBudget: Bool
     let showsSpent: Bool
-    /// The user's Budgeted-amounts preference, separate from `showsBudgeted`
-    /// (tracking budgets only) so income columns stay aligned with the
-    /// expense rows above them.
-    var showsBudgetedColumn = true
+    /// The user's Budgeted-amounts preference, as on the expense rows.
+    var showsBudgeted = true
     var onToggleCollapse: () -> Void = {}
 
     private var layout: CompactBudgetTableLayout {
-        CompactBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: showsSpent, showsBudgeted: showsBudgetedColumn)
+        CompactBudgetTableLayout(isTrackingBudget: isTrackingBudget, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
     }
 
     private var columns: [(CompactBudgetColumn, Int)] {
@@ -727,14 +726,15 @@ struct CompactIncomeCategoryRow: View {
     var isHidden = false
     var isDimmed = false
     var onSetHidden: ((Bool) -> Void)?
-    let showsBudgeted: Bool
+    /// Only a tracking budget carries a budgeted figure on income.
+    let isTrackingBudget: Bool
     let showsSpent: Bool
-    /// See `CompactIncomeGroupHeader.showsBudgetedColumn`.
-    var showsBudgetedColumn = true
+    /// The user's Budgeted-amounts preference, as on the expense rows.
+    var showsBudgeted = true
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
     private var layout: CompactBudgetTableLayout {
-        CompactBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: showsSpent, showsBudgeted: showsBudgetedColumn)
+        CompactBudgetTableLayout(isTrackingBudget: isTrackingBudget, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
     }
 
     var body: some View {
