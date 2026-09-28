@@ -21,6 +21,7 @@ struct BudgetViewSettingsView: View {
                 Toggle(String(localized: "Group Totals"), isOn: $budgetStore.showGroupTotals)
                     .disabled(budgetStore.budgetDisplayStyle == .clean)
 
+                Toggle(String(localized: "Budgeted Amounts"), isOn: $budgetStore.showBudgetedAmounts)
                 Toggle(String(localized: "Status Filters"), isOn: $budgetStore.showBudgetCheckInStrip)
                 Toggle(String(localized: "Hide Spent Categories"), isOn: $budgetStore.hideZeroBudgetCategories)
                 Toggle(String(localized: "Category Status Dots"), isOn: $budgetStore.showCategoryStatusDots)

@@ -364,6 +364,7 @@ struct BudgetView: View {
                                 setCategoryHidden(category.categoryId, hidden: $0)
                             },
                             showsSpent: budgetStore.showCompactSpentColumn,
+                            showsBudgeted: budgetStore.showBudgetedAmounts,
                             showsProgressBars: budgetStore.showBudgetProgressBars,
                             showsStatusDots: budgetStore.showCategoryStatusDots,
                             onShowDetails: { selectedCategory = $0 },
@@ -384,6 +385,7 @@ struct BudgetView: View {
                     onRename: { editCategoryGroup(group.id) },
                     totals: budgetStore.showGroupTotals ? group.totals : nil,
                     showsSpent: budgetStore.showCompactSpentColumn,
+                    showsBudgeted: budgetStore.showBudgetedAmounts,
                     onToggleCollapse: { toggleCollapsed(group.id) }
                 )
             }
@@ -419,7 +421,7 @@ struct BudgetView: View {
                             onSetHidden: {
                                 setCategoryHidden(income.categoryId, hidden: $0)
                             },
-                            showsBudgeted: budget.toBudget == nil,
+                            showsBudgeted: budget.toBudget == nil && budgetStore.showBudgetedAmounts,
                             onShowTransactions: showTransactions
                         )
                     }
@@ -455,6 +457,7 @@ struct BudgetView: View {
                             },
                             showsBudgeted: budget.isTrackingBudget,
                             showsSpent: budgetStore.showCompactSpentColumn,
+                            showsBudgetedColumn: budgetStore.showBudgetedAmounts,
                             onShowTransactions: showTransactions
                         )
                     }
@@ -470,6 +473,7 @@ struct BudgetView: View {
                     totalReceived: budget.totalIncome,
                     showsBudgeted: budget.isTrackingBudget,
                     showsSpent: budgetStore.showCompactSpentColumn,
+                    showsBudgetedColumn: budgetStore.showBudgetedAmounts,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
                     }
@@ -741,7 +745,8 @@ struct BudgetView: View {
                     case .compact:
                         CompactBudgetSummary(
                             budget: budget,
-                            showsSpent: budgetStore.showCompactSpentColumn
+                            showsSpent: budgetStore.showCompactSpentColumn,
+                            showsBudgeted: budgetStore.showBudgetedAmounts
                         )
                     }
                 }
@@ -1149,20 +1154,22 @@ struct CleanCategoryBudgetRow: View {
                 )
             }
             HStack {
-                Button {
-                    onEditBudget(category)
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("Budgeted: \(budgetStore.displayBalance(category.budgeted))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "pencil")
-                            .font(.caption2)
-                            .foregroundStyle(.tint)
+                if budgetStore.showBudgetedAmounts {
+                    Button {
+                        onEditBudget(category)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Budgeted: \(budgetStore.displayBalance(category.budgeted))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "pencil")
+                                .font(.caption2)
+                                .foregroundStyle(.tint)
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(BudgetCategoryAccessibility.editBudget(category: category.categoryName, locale: locale))
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(BudgetCategoryAccessibility.editBudget(category: category.categoryName, locale: locale))
                 Spacer()
                 Button {
                     onShowTransactions(category, category.month)
@@ -1304,54 +1311,81 @@ extension View {
 
 /// Clean-style summary card: a 2x2 grid whose reading order follows the
 /// money — came in, allocated, went out, left over. Two rows because four
-/// currency amounts don't fit across narrow devices.
+/// currency amounts don't fit across narrow devices; with Budgeted hidden
+/// (GH #562) the remaining three fit on one row.
 struct CleanBudgetSummary: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let budget: BudgetMonth
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(alignment: .top) {
-                SummaryStat(
-                    label: "Income",
-                    value: budgetStore.displayBalance(budget.totalIncome)
-                )
-                Spacer()
-                SummaryStat(
-                    label: "Budgeted",
-                    value: budgetStore.displayBalance(budget.totalBudgeted),
-                    alignment: .trailing
-                )
-            }
-            HStack(alignment: .top) {
-                SummaryStat(
-                    label: "Spent",
-                    value: budgetStore.displayBalance(-budget.totalSpent)
-                )
-                Spacer()
-                // Envelope budgets lead with unallocated funds; tracking
-                // budgets report savings instead — actual for a finished month,
-                // projected for the current/future month.
-                if let toBudget = budget.toBudget {
-                    SummaryStat(
-                        label: "To Budget",
-                        value: budgetStore.displayBalance(toBudget),
-                        budget: budget,
-                        valueColor: toBudget >= 0 ? .green : .red,
-                        alignment: .trailing
-                    )
-                } else {
-                    let value = trackingSavings(budget)
-                    SummaryStat(
-                        label: trackingSavingsLabel(budget),
-                        value: budgetStore.displayBalance(value),
-                        valueColor: value >= 0 ? .green : .red,
-                        alignment: .trailing
-                    )
+        Group {
+            if budgetStore.showBudgetedAmounts {
+                VStack(spacing: 12) {
+                    HStack(alignment: .top) {
+                        incomeStat
+                        Spacer()
+                        SummaryStat(
+                            label: "Budgeted",
+                            value: budgetStore.displayBalance(budget.totalBudgeted),
+                            alignment: .trailing
+                        )
+                    }
+                    HStack(alignment: .top) {
+                        spentStat()
+                        Spacer()
+                        resultStat
+                    }
+                }
+            } else {
+                HStack(alignment: .top) {
+                    incomeStat
+                    Spacer()
+                    spentStat(alignment: .center)
+                    Spacer()
+                    resultStat
                 }
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var incomeStat: some View {
+        SummaryStat(
+            label: "Income",
+            value: budgetStore.displayBalance(budget.totalIncome)
+        )
+    }
+
+    private func spentStat(alignment: HorizontalAlignment = .leading) -> some View {
+        SummaryStat(
+            label: "Spent",
+            value: budgetStore.displayBalance(-budget.totalSpent),
+            alignment: alignment
+        )
+    }
+
+    /// Envelope budgets lead with unallocated funds; tracking budgets report
+    /// savings instead — actual for a finished month, projected for the
+    /// current/future month.
+    @ViewBuilder
+    private var resultStat: some View {
+        if let toBudget = budget.toBudget {
+            SummaryStat(
+                label: "To Budget",
+                value: budgetStore.displayBalance(toBudget),
+                budget: budget,
+                valueColor: toBudget >= 0 ? .green : .red,
+                alignment: .trailing
+            )
+        } else {
+            let value = trackingSavings(budget)
+            SummaryStat(
+                label: trackingSavingsLabel(budget),
+                value: budgetStore.displayBalance(value),
+                valueColor: value >= 0 ? .green : .red,
+                alignment: .trailing
+            )
+        }
     }
 }
 

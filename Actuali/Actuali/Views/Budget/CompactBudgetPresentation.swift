@@ -29,18 +29,19 @@ enum CompactBudgetAccessibility {
     static func groupHeader(
         name: String,
         state: String,
-        budgeted: String,
+        budgeted: String?,
         spent: String?,
         balance: String,
         locale: Locale,
         bundle: Bundle = .main
     ) -> String {
-        let key = spent == nil
-            ? "%@, %@, budgeted %@, balance %@"
-            : "%@, %@, budgeted %@, spent %@, balance %@"
-        let arguments: [any CVarArg] = spent == nil
-            ? [name, state, budgeted, balance]
-            : [name, state, budgeted, spent!, balance]
+        let key = switch (budgeted, spent) {
+        case (nil, nil): "%@, %@, balance %@"
+        case (nil, _?): "%@, %@, spent %@, balance %@"
+        case (_?, nil): "%@, %@, budgeted %@, balance %@"
+        case (_?, _?): "%@, %@, budgeted %@, spent %@, balance %@"
+        }
+        let arguments: [String] = [name, state] + [budgeted, spent].compactMap(\.self) + [balance]
         return ReportStrings.format(key, arguments: arguments, locale: locale, bundle: bundle)
     }
 
@@ -132,10 +133,13 @@ struct CompactBudgetTableLayout: Equatable {
     let expenseColumns: [CompactBudgetColumn]
     let incomeColumns: [CompactBudgetColumn?]
 
-    init(isTrackingBudget: Bool, showsSpent: Bool) {
-        expenseColumns = showsSpent
-            ? [.budgeted, .spent, .balance]
-            : [.budgeted, .balance]
+    init(isTrackingBudget: Bool, showsSpent: Bool, showsBudgeted: Bool = true) {
+        var expenseColumns: [CompactBudgetColumn] = showsBudgeted ? [.budgeted] : []
+        if showsSpent {
+            expenseColumns.append(.spent)
+        }
+        expenseColumns.append(.balance)
+        self.expenseColumns = expenseColumns
         incomeColumns = expenseColumns.map { column in
             switch column {
             case .budgeted: isTrackingBudget ? .budgeted : nil
@@ -155,13 +159,13 @@ struct CompactBudgetGroupHeaderPresentation: Equatable {
 
     let columns: [Column]
 
-    init(totals: CategoryGroupTotals?, showsSpent: Bool) {
+    init(totals: CategoryGroupTotals?, showsSpent: Bool, showsBudgeted: Bool = true) {
         guard let totals else {
             columns = []
             return
         }
 
-        let layout = CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
+        let layout = CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
         columns = layout.expenseColumns.compactMap { column in
             switch column {
             case .budgeted: Column(type: column, amount: totals.budgeted)
@@ -208,14 +212,17 @@ struct CompactBudgetOverview: Equatable {
     let leading: Stat
     let columns: [Stat]
 
-    init(budget: BudgetMonth, showsSpent: Bool, currentMonth: String) {
+    init(budget: BudgetMonth, showsSpent: Bool, showsBudgeted: Bool = true, currentMonth: String) {
         if let toBudget = budget.toBudget {
             leading = Stat(kind: .toBudget, amount: toBudget)
         } else {
             leading = Stat(kind: .income, amount: budget.totalIncome)
         }
 
-        var columns = [Stat(kind: .budgeted, amount: budget.totalBudgeted)]
+        var columns: [Stat] = []
+        if showsBudgeted {
+            columns.append(Stat(kind: .budgeted, amount: budget.totalBudgeted))
+        }
         if showsSpent {
             columns.append(Stat(kind: .spent, amount: budget.totalSpent))
         }
