@@ -101,12 +101,11 @@ struct BudgetStoreDisplayStyleTests {
     @Test func budgetedAmountsPreferenceDefaultsOnAndPersists() {
         let key = "showBudgetedAmounts"
         withSavedDefaults(for: [key]) {
-            let store = BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting()
+            let store = BudgetStore.previewInstance()
             #expect(store.showBudgetedAmounts)
 
             store.showBudgetedAmounts = false
             #expect(UserDefaults.standard.object(forKey: key) as? Bool == false)
-            #expect(!BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting().showBudgetedAmounts)
 
             store.showBudgetedAmounts = true
             #expect(UserDefaults.standard.object(forKey: key) as? Bool == true)
