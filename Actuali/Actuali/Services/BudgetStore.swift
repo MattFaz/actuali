@@ -464,6 +464,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether the Budget tab shows budgeted amounts (row captions/columns,
+    /// group totals, summary). Display-only, for people who use Actual to
+    /// track spending rather than to budget (GH #562). Defaults on.
+    @Published var showBudgetedAmounts: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showBudgetedAmounts, forKey: "showBudgetedAmounts")
+        }
+    }
+
     /// Whether the Compact Budget view style includes the Spent column.
     /// The narrower two-amount layout is the default.
     @Published var showCompactSpentColumn: Bool = false {
@@ -1675,6 +1684,9 @@ final class BudgetStore: ObservableObject {
         )
         _showCompactSpentColumn = Published(
             initialValue: persistedBool("showCompactSpentColumn", default: false)
+        )
+        _showBudgetedAmounts = Published(
+            initialValue: persistedBool("showBudgetedAmounts", default: true)
         )
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)

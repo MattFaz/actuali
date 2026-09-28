@@ -96,6 +96,22 @@ struct BudgetStoreDisplayStyleTests {
         }
     }
 
+    /// GH #562: hiding budgeted amounts is a per-device display preference
+    /// that defaults on so existing users see no change.
+    @Test func budgetedAmountsPreferenceDefaultsOnAndPersists() {
+        let key = "showBudgetedAmounts"
+        withSavedDefaults(for: [key]) {
+            let store = BudgetStore.previewInstance()
+            #expect(store.showBudgetedAmounts)
+
+            store.showBudgetedAmounts = false
+            #expect(UserDefaults.standard.object(forKey: key) as? Bool == false)
+
+            store.showBudgetedAmounts = true
+            #expect(UserDefaults.standard.object(forKey: key) as? Bool == true)
+        }
+    }
+
     /// Raw values round-trip, and unknown raw values (from a future build)
     /// decode to nil so init falls back to the default rather than crashing.
     @Test func rawValueRoundTrip() {
