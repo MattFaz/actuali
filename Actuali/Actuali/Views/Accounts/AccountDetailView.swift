@@ -779,6 +779,14 @@ struct AccountDetailView: View {
         }
     }
 
+    /// Real-time stock portfolio for off-budget investment accounts.
+    @ViewBuilder private var equitySection: some View {
+        if account.type == .investment, searchQuery == nil {
+            EquityPortfolioCard(account: account)
+                .environmentObject(budgetStore)
+        }
+    }
+
     @ViewBuilder private var notesSection: some View {
         if Self.showsNote(
             supported: note.supported,
@@ -940,6 +948,7 @@ struct AccountDetailView: View {
             billingCycleSection
             loanSection
             depositSection
+            equitySection
             notesSection.animation(AppAnimation.disclosure, value: hideNotes)
             transactionSection
         }

@@ -418,6 +418,9 @@ enum DemoDataSeeder {
         let paycheckId = UUID().uuidString
         let startingBalanceId = UUID().uuidString
         let vanguardPayeeId = UUID().uuidString
+        let vooPayeeId = UUID().uuidString
+        let aaplPayeeId = UUID().uuidString
+        let msftPayeeId = UUID().uuidString
         let marketId = UUID().uuidString
         let interestId = UUID().uuidString
 
@@ -437,6 +440,9 @@ enum DemoDataSeeder {
         try insertPayee(db, id: paycheckId, name: "Paycheck")
         try insertPayee(db, id: startingBalanceId, name: "Starting Balance")
         try insertPayee(db, id: vanguardPayeeId, name: "Vanguard")
+        try insertPayee(db, id: vooPayeeId, name: "Vanguard S&P 500 ETF (VOO)")
+        try insertPayee(db, id: aaplPayeeId, name: "Apple Inc. (AAPL)")
+        try insertPayee(db, id: msftPayeeId, name: "Microsoft Corp. (MSFT)")
         try insertPayee(db, id: marketId, name: "Market Gain")
         try insertPayee(db, id: interestId, name: BudgetStore.loanInterestPayeeName)
 
@@ -501,7 +507,15 @@ enum DemoDataSeeder {
         )
         transactions.append((startingBalanceId, startingBalancesCategoryId, 1_050_000, openDate, allyId, true, true, nil, UUID().uuidString, nil))
         transactions.append((startingBalanceId, startingBalancesCategoryId, 280_000, openDate, chaseId, true, true, nil, UUID().uuidString, nil))
-        transactions.append((startingBalanceId, nil, 4_200_000, openDate, vanguardId, true, true, nil, UUID().uuidString, nil))
+        // Stock positions for Vanguard Brokerage (total $42,000.00 matches original opening balance):
+        // VOO: 50 shares @ $480.00 = $24,000.00
+        transactions.append((vooPayeeId, nil, 2_400_000, openDate, vanguardId, true, false, "50 shares @ 480.00", UUID().uuidString, nil))
+        // AAPL: 40 shares @ $180.00 = $7,200.00
+        transactions.append((aaplPayeeId, nil, 720_000, openDate, vanguardId, true, false, "40 shares @ 180.00", UUID().uuidString, nil))
+        // MSFT: 25 shares @ $400.00 = $10,000.00
+        transactions.append((msftPayeeId, nil, 1_000_000, openDate, vanguardId, true, false, "25 shares @ 400.00", UUID().uuidString, nil))
+        // Cash sweep balance: $800.00
+        transactions.append((startingBalanceId, nil, 80000, openDate, vanguardId, true, true, nil, UUID().uuidString, nil))
         transactions.append((startingBalanceId, nil, -loanConfig.originalBalance, openDate, carLoanId, true, true, nil, UUID().uuidString, nil))
         transactions.append((startingBalanceId, nil, depositConfig.amount, openDate, cdId, true, true, nil, UUID().uuidString, nil))
 
