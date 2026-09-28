@@ -402,6 +402,7 @@ struct AddTransactionView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("addTransaction.category")
     }
 
     var body: some View {
@@ -1022,6 +1023,7 @@ private struct SplitLineRow: View {
                         .foregroundStyle(line.categoryId == nil ? Color.secondary : Color.primary)
                 }
                 .buttonStyle(.borderless)
+                .accessibilityIdentifier("addTransaction.splitLine.category")
                 Spacer()
                 // Every line carries a sign like the total's, so direction is
                 // never implicit; tapping it flips the line — how a refund
@@ -1078,6 +1080,7 @@ private struct SplitLineRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("addTransaction.splitLine.payee")
             .font(.subheadline)
             .sheet(isPresented: $showPayeePicker) {
                 PayeePickerView(
