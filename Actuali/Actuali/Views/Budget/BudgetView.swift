@@ -335,7 +335,8 @@ struct BudgetView: View {
                             // Name shows all time, Spent shows
                             // the displayed month (GH #56).
                             onShowTransactions: showTransactions,
-                            onMoveMoney: moveMoney
+                            onMoveMoney: moveMoney,
+                            onApplyTemplate: applyCategoryTemplate
                         )
                     }
                 }
@@ -370,7 +371,8 @@ struct BudgetView: View {
                             onShowDetails: { selectedCategory = $0 },
                             onEditBudget: { editingCategory = $0 },
                             onShowTransactions: showTransactions,
-                            onMoveMoney: moveMoney
+                            onMoveMoney: moveMoney,
+                            onApplyTemplate: applyCategoryTemplate
                         )
                     }
                 }
@@ -599,33 +601,51 @@ struct BudgetView: View {
         Task {
             let outcome = await budgetStore.runGoalTemplates(month: selectedMonth, action: action)
             isRunningBudgetAction = false
-            switch outcome {
-            case .applied(let count):
-                templateResult = .init(
-                    title: ReportStrings.text("Templates Applied", locale: locale, bundle: .main),
-                    message: String(localized: "Successfully applied templates to \(count) categories.", bundle: .main, locale: locale)
-                )
-            case .upToDate:
-                templateResult = .init(
-                    title: ReportStrings.text("Templates Applied", locale: locale, bundle: .main),
-                    message: ReportStrings.text("All templates are up to date.", locale: locale, bundle: .main)
-                )
-            case .checkPassed:
-                templateResult = .init(
-                    title: ReportStrings.text("Check Passed", locale: locale, bundle: .main),
-                    message: ReportStrings.text("All templates passed the check.", locale: locale, bundle: .main)
-                )
-            case .errors(let errors):
-                templateResult = .init(
-                    title: ReportStrings.text("Template Errors", locale: locale, bundle: .main),
-                    message: errors.joined(separator: "\n\n")
-                )
-            case .failed(let message):
-                templateResult = .init(
-                    title: ReportStrings.text("Template Error", locale: locale, bundle: .main),
-                    message: message
-                )
-            }
+            templateResult = templateAlert(outcome)
+        }
+    }
+
+    /// Apply one category's templates only (GH #495) — the row context-menu
+    /// variant of the detail sheet's Apply Template button.
+    private func applyCategoryTemplate(_ category: CategoryBudget) {
+        guard !isRunningBudgetAction else { return }
+        isRunningBudgetAction = true
+        Task {
+            let outcome = await budgetStore.runGoalTemplates(
+                month: category.month, action: .apply, categoryId: category.categoryId
+            )
+            isRunningBudgetAction = false
+            templateResult = templateAlert(outcome)
+        }
+    }
+
+    private func templateAlert(_ outcome: BudgetStore.GoalTemplateOutcome) -> GoalTemplateResultAlert {
+        switch outcome {
+        case .applied(let count):
+            .init(
+                title: ReportStrings.text("Templates Applied", locale: locale, bundle: .main),
+                message: String(localized: "Successfully applied templates to \(count) categories.", bundle: .main, locale: locale)
+            )
+        case .upToDate:
+            .init(
+                title: ReportStrings.text("Templates Applied", locale: locale, bundle: .main),
+                message: ReportStrings.text("All templates are up to date.", locale: locale, bundle: .main)
+            )
+        case .checkPassed:
+            .init(
+                title: ReportStrings.text("Check Passed", locale: locale, bundle: .main),
+                message: ReportStrings.text("All templates passed the check.", locale: locale, bundle: .main)
+            )
+        case .errors(let errors):
+            .init(
+                title: ReportStrings.text("Template Errors", locale: locale, bundle: .main),
+                message: errors.joined(separator: "\n\n")
+            )
+        case .failed(let message):
+            .init(
+                title: ReportStrings.text("Template Error", locale: locale, bundle: .main),
+                message: message
+            )
         }
     }
 
@@ -1115,6 +1135,9 @@ struct CleanCategoryBudgetRow: View {
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
     /// Open the move-money sheet for this category's balance (GH #128).
     var onMoveMoney: (CategoryBudget) -> Void = { _ in }
+    /// Apply this category's own templates (GH #495); shown only when goal
+    /// templates are enabled — the menu itself checks that flag.
+    var onApplyTemplate: (CategoryBudget) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1207,7 +1230,8 @@ struct CleanCategoryBudgetRow: View {
             onShowDetails: onShowDetails,
             onEditBudget: onEditBudget,
             onShowTransactions: onShowTransactions,
-            onMoveMoney: onMoveMoney
+            onMoveMoney: onMoveMoney,
+            onApplyTemplate: onApplyTemplate
         ))
     }
 
@@ -1220,6 +1244,7 @@ struct CleanCategoryBudgetRow: View {
 /// actions as the row's tappable cells plus hide/show. Nothing here is a swipe
 /// action: a row swipe would swallow the table's month navigation (GH #425).
 struct CategoryRowContextMenu: ViewModifier {
+    @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     let category: CategoryBudget
     let isHidden: Bool
@@ -1228,6 +1253,7 @@ struct CategoryRowContextMenu: ViewModifier {
     let onEditBudget: (CategoryBudget) -> Void
     let onShowTransactions: (CategoryBudget, String?) -> Void
     let onMoveMoney: (CategoryBudget) -> Void
+    let onApplyTemplate: (CategoryBudget) -> Void
 
     func body(content: Content) -> some View {
         content.contextMenu {
@@ -1236,6 +1262,13 @@ struct CategoryRowContextMenu: ViewModifier {
             }
             Button { onEditBudget(category) } label: {
                 Label("Edit Budgeted Amount", systemImage: "pencil")
+            }
+            // Same gate as the detail sheet's Apply Template button: the
+            // synced goalTemplatesEnabled flag.
+            if budgetStore.goalTemplatesEnabled {
+                Button { onApplyTemplate(category) } label: {
+                    Label("Apply Budget Template", systemImage: "wand.and.stars")
+                }
             }
             Button { onShowTransactions(category, category.month) } label: {
                 Label("Transactions This Month", systemImage: "list.bullet")
