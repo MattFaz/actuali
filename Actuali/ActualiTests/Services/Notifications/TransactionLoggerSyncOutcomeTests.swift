@@ -143,8 +143,20 @@ struct TransactionLoggerSyncOutcomeTests {
             try db.execute(sql: """
             CREATE TABLE categories (
                 id TEXT PRIMARY KEY, name TEXT, cat_group TEXT,
-                tombstone INTEGER DEFAULT 0
+                is_income INTEGER DEFAULT 0, sort_order REAL,
+                hidden INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0
             )
+            """)
+            try db.execute(sql: """
+            CREATE TABLE category_groups (
+                id TEXT PRIMARY KEY, name TEXT, is_income INTEGER DEFAULT 0,
+                sort_order REAL, hidden INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0
+            )
+            """)
+            try db.execute(sql: """
+            INSERT INTO category_groups (id, name) VALUES ('grp-1', 'Daily');
+            INSERT INTO categories (id, name, cat_group) VALUES
+                ('cat-coffee', 'Coffee', 'grp-1'), ('cat-treats', 'Treats', 'grp-1');
             """)
             try db.execute(sql: """
             CREATE TABLE rules (
@@ -183,13 +195,14 @@ struct TransactionLoggerSyncOutcomeTests {
         return store
     }
 
-    private func log(to store: BudgetStore) async throws -> TransactionLogger.Result {
+    private func log(to store: BudgetStore, categoryId: String? = nil) async throws -> TransactionLogger.Result {
         try await TransactionLogger(store: store).logTransaction(
             accountId: "acct-1",
             amountCents: -820,
             rawMerchant: "BLUE BOTTLE COFFEE",
             notes: nil,
-            date: Date(timeIntervalSince1970: 1_750_000_000)
+            date: Date(timeIntervalSince1970: 1_750_000_000),
+            categoryId: categoryId
         )
     }
 
@@ -285,6 +298,52 @@ struct TransactionLoggerSyncOutcomeTests {
             try String.fetchOne(db, sql: "SELECT category FROM transactions WHERE id = ?", arguments: [result.transaction.id])
         }
         #expect(persistedCategory == "cat-rule")
+    }
+
+    /// #283: a category pinned on the Shortcut is the user's choice, so it
+    /// beats a category-setting rule, same as picking one in the add form.
+    @Test func explicitCategoryWinsOverRules() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+            VALUES ('set-category', NULL, 'and',
+                '[{"op":"contains","field":"imported_description","value":"BLUE"}]',
+                '[{"op":"set","field":"category","value":"cat-rule","type":"id"}]', 0)
+            """)
+        }
+
+        let result = try await log(to: store, categoryId: "cat-treats")
+
+        #expect(result.transaction.categoryId == "cat-treats")
+    }
+
+    @Test func explicitCategoryWinsOverPayeeHistoryAndNilKeepsTheAutoPick() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+
+        _ = try await log(to: store, categoryId: "cat-coffee")
+        let pinned = try await log(to: store, categoryId: "cat-treats")
+        let unpinned = try await log(to: store)
+
+        #expect(pinned.transaction.categoryId == "cat-treats")
+        #expect(unpinned.transaction.categoryId == "cat-treats")
+    }
+
+    /// A category deleted since the Shortcut was built must not be written as
+    /// a dangling id; the payee auto-pick takes over instead.
+    @Test func unknownCategoryFallsBackToTheAutoPick() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+
+        _ = try await log(to: store, categoryId: "cat-coffee")
+        let result = try await log(to: store, categoryId: "cat-deleted")
+
+        #expect(result.transaction.categoryId == "cat-coffee")
     }
 
     /// Unreachable server: the row is still written (nothing is lost), but the

@@ -27,6 +27,10 @@ struct LogTransactionIntent: AppIntent {
     @Parameter(title: LocalizedStringResource("Notes"), default: "")
     var notes: String
 
+    /// Optional so existing shortcuts keep the payee-based auto-pick (#283).
+    @Parameter(title: LocalizedStringResource("Category"))
+    var category: CategoryEntity?
+
     @Parameter(title: LocalizedStringResource("Date"))
     var date: Date?
 
@@ -54,6 +58,7 @@ struct LogTransactionIntent: AppIntent {
         Summary("Log \(\.$amount) at \(\.$payee) in \(\.$account)") {
             \.$cardHint
             \.$notes
+            \.$category
             \.$date
             \.$isIncome
             \.$cleared
@@ -139,7 +144,9 @@ struct LogTransactionIntent: AppIntent {
                 rawMerchant: payee,
                 notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
                 date: resolvedDate,
-                cleared: cleared
+                cleared: cleared,
+                // Off-budget accounts carry no category, matching the add form.
+                categoryId: activeAccount.offBudget ? nil : category?.id
             )
 
             // The row is safely on disk either way, but an unreachable server
@@ -198,6 +205,7 @@ struct LogTransactionIntent: AppIntent {
                 amountCents: amountCents,
                 date: date ?? Date(),
                 notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+                categoryId: category?.id,
                 isIncome: isIncome,
                 cleared: cleared
             ),

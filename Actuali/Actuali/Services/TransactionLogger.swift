@@ -69,6 +69,8 @@ final class TransactionLogger {
     ///   - notes: optional notes from the caller
     ///   - date: transaction date
     ///   - cleared: whether the transaction is marked cleared in Actual
+    ///   - categoryId: category pinned by the caller; wins over the payee
+    ///     auto-pick and over rules. Ignored if it no longer exists.
     /// - Returns: the written transaction and whether it reached the server
     func logTransaction(
         accountId: String,
@@ -77,6 +79,7 @@ final class TransactionLogger {
         notes: String?,
         date: Date,
         cleared: Bool = true,
+        categoryId explicitCategoryId: String? = nil,
         financialId: String? = nil,
         transactionId: String? = nil
     ) async throws -> Result {
@@ -87,7 +90,17 @@ final class TransactionLogger {
         let payeeName = normalized.isEmpty ? rawMerchant : normalized
         let payee = try await store.findOrCreatePayee(name: payeeName)
 
-        let categoryId = try await database.mostRecentCategoryId(forPayeeId: payee.id)
+        // Drop a category deleted since the shortcut was configured rather
+        // than writing a dangling id, same as AddTransactionWithReviewIntent.
+        var pinnedCategoryId = explicitCategoryId
+        if let id = pinnedCategoryId, await !store.categoriesForIntent().contains(where: { $0.id == id }) {
+            pinnedCategoryId = nil
+        }
+        let categoryId = if let pinnedCategoryId {
+            pinnedCategoryId
+        } else {
+            try await database.mostRecentCategoryId(forPayeeId: payee.id)
+        }
 
         // Use the un-normalized merchant string as imported_payee so user rules
         // like "imported_payee CONTAINS X" can match the original bank text.
@@ -116,7 +129,9 @@ final class TransactionLogger {
 
         let persistedTransactionId: String
         do {
-            switch try await store.createTransaction(transaction) {
+            // A pinned category is a user choice, so keep rules from replacing
+            // it — the add form does the same for a picked category.
+            switch try await store.createTransaction(transaction, preserveCategory: pinnedCategoryId != nil) {
             case .inserted(let id):
                 persistedTransactionId = id
             case .duplicate:
