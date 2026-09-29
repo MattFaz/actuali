@@ -704,23 +704,6 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether transaction lists show only uncleared transactions, so long
-    /// histories don't bury the items that still need attention (GH #133).
-    /// Persisted to UserDefaults, defaults to off.
-    @Published var hideClearedTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(hideClearedTransactions, forKey: "hideClearedTransactions")
-        }
-    }
-
-    /// Whether transaction lists hide transactions locked by reconciliation.
-    /// Persisted to UserDefaults, defaults to off (GH #355).
-    @Published var hideReconciledTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(hideReconciledTransactions, forKey: "hideReconciledTransactions")
-        }
-    }
-
     /// The status preset selected by the transaction lists' chip strip
     /// (GH #439). Persisted so the choice survives a relaunch, and shared so
     /// the All Accounts list and every account list agree.
@@ -1736,10 +1719,6 @@ final class BudgetStore: ObservableObject {
             .bool(forKey: "hideZeroBudgetCategories"))
         _showHiddenCategories = Published(initialValue: defaults
             .bool(forKey: "showHiddenCategories"))
-        _hideClearedTransactions = Published(initialValue: defaults
-            .bool(forKey: "hideClearedTransactions"))
-        _hideReconciledTransactions = Published(initialValue: defaults
-            .bool(forKey: "hideReconciledTransactions"))
         _hideClosedAccounts = Published(initialValue: defaults
             .bool(forKey: "hideClosedAccounts"))
 
@@ -3365,15 +3344,12 @@ final class BudgetStore: ObservableObject {
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
-        statusFilter: TransactionStatusFilter = .all,
-        unclearedOnly: Bool = false,
-        hideReconciled: Bool = false
+        statusFilter: TransactionStatusFilter = .all
     ) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
-                statusFilter: statusFilter,
-                unclearedOnly: unclearedOnly, hideReconciled: hideReconciled
+                statusFilter: statusFilter
             ) ?? []
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a superseded .task(id:)

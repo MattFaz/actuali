@@ -6,7 +6,6 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-hideClearedTransactions", "NO",
             "-transactionDisplayMode", "flat",
         ]
         app.launch()

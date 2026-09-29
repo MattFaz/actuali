@@ -43,9 +43,7 @@ struct TransactionsListView: View {
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
                 limit: limit, offset: offset, search: search,
-                statusFilter: store.transactionStatusFilter,
-                unclearedOnly: store.hideClearedTransactions,
-                hideReconciled: store.hideReconciledTransactions
+                statusFilter: store.transactionStatusFilter
             )
         }
         pager = created
@@ -71,18 +69,6 @@ struct TransactionsListView: View {
                             budgetStore.transactionStatusFilter = .all
                         }
                     }
-                } else if budgetStore.hideClearedTransactions {
-                    ContentUnavailableView(
-                        "No Uncleared Transactions",
-                        systemImage: "checkmark.circle",
-                        description: Text("Everything is cleared. Turn off Hide Cleared Transactions to see the rest.")
-                    )
-                } else if budgetStore.hideReconciledTransactions {
-                    ContentUnavailableView(
-                        "No Unreconciled Transactions",
-                        systemImage: "lock.fill",
-                        description: Text("Everything is reconciled. Turn off Hide Reconciled Transactions to see the rest.")
-                    )
                 } else {
                     ContentUnavailableView(
                         "No Transactions",
@@ -154,22 +140,6 @@ struct TransactionsListView: View {
             ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
             }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideClearedTransactions) {
-                    Label(
-                        "Hide Cleared Transactions",
-                        systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
-                    )
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideReconciledTransactions) {
-                    Label(
-                        "Hide Reconciled Transactions",
-                        systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
-                    )
-                }
-            }
         }
         .safeAreaInset(edge: .bottom) {
             if isSelecting, let pager {
@@ -197,14 +167,6 @@ struct TransactionsListView: View {
             // deletes, sheet edits, sync, scheduled posts), so those sites
             // carry no reload calls of their own. Concurrent reloads are
             // safe: the pager's generation counter keeps the newest.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.hideClearedTransactions) {
-            // The pager's fetch closure reads the flag, so a reload is all a
-            // toggle flip needs.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.hideReconciledTransactions) {
             Task { await reload() }
         }
         .onChange(of: budgetStore.transactionStatusFilter) {
@@ -341,7 +303,7 @@ struct TransactionPagingSentinel: View {
 ///
 /// A Toggle rather than the Picker Settings uses: `.secondaryAction` silently
 /// drops a Picker when it collapses into the `…` menu (inline or not), while a
-/// Toggle renders — same as the "Hide Cleared Transactions" switch beside it.
+/// Toggle renders — same as the "Status Filters" switch beside it.
 /// The mode only has two cases, so nothing is lost.
 struct TransactionGroupingToggle: View {
     @EnvironmentObject private var budgetStore: BudgetStore

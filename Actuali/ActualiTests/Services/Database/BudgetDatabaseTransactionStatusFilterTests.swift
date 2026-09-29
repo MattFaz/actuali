@@ -6,9 +6,9 @@ import Testing
 /// Pins the status-filter chips on the transaction lists (GH #439):
 /// All / Uncategorized / Uncleared / Cleared / Reconciled. The filter runs in
 /// SQL so pages stay full-sized and cover full history, composes with the
-/// account scope, search, and paging, and takes precedence over the legacy
-/// hide-cleared / hide-reconciled toggles — an explicit filter is its own
-/// visibility rule, the same precedent as the Budget tab. `cleared` means
+/// account scope, search, and paging. `.all` hides nothing: the legacy
+/// hide-cleared / hide-reconciled toggles that used to narrow it were removed
+/// (GH #573) because the chips cover both. `cleared` means
 /// cleared-but-not-reconciled: with `uncleared` and `reconciled` the three
 /// status chips partition the list, matching the row status dot.
 @MainActor
@@ -129,6 +129,10 @@ struct BudgetDatabaseTransactionStatusFilterTests {
 
         let all = try await db.fetchTransactions(statusFilter: .all)
         #expect(all.map(\.id) == ["t-pending", "t-cleared", "t-reconciled"])
+
+        // The account register takes the same path (GH #573).
+        let account = try await db.fetchTransactions(accountId: "acct-1", statusFilter: .all)
+        #expect(account.map(\.id) == ["t-pending", "t-cleared", "t-reconciled"])
     }
 
     @Test func unclearedKeepsOnlyUnclearedRows() async throws {
@@ -159,32 +163,6 @@ struct BudgetDatabaseTransactionStatusFilterTests {
 
         let reconciled = try await db.fetchTransactions(statusFilter: .reconciled)
         #expect(reconciled.map(\.id) == ["t-reconciled"])
-    }
-
-    @Test func explicitStatusFilterOverridesLegacyHideToggles() async throws {
-        let (db, url) = try makeDatabase()
-        defer { cleanup(url) }
-        try await seedLookups(db)
-        try await seedStatuses(db)
-
-        // Uncleared chip with "hide cleared" already on (a no-op on an
-        // uncleared-only list) still shows the uncleared row.
-        let uncleared = try await db.fetchTransactions(
-            statusFilter: .uncleared, unclearedOnly: true, hideReconciled: true
-        )
-        #expect(uncleared.map(\.id) == ["t-pending"])
-
-        // Reconciled chip beats both legacy hide flags.
-        let reconciled = try await db.fetchTransactions(
-            statusFilter: .reconciled, unclearedOnly: true, hideReconciled: true
-        )
-        #expect(reconciled.map(\.id) == ["t-reconciled"])
-
-        // Cleared chip beats hide-reconciled and does not drag reconciled in.
-        let cleared = try await db.fetchTransactions(
-            statusFilter: .cleared, unclearedOnly: true, hideReconciled: true
-        )
-        #expect(cleared.map(\.id) == ["t-cleared"])
     }
 
     @Test func uncategorizedMatchesTheUncategorizedListFilter() async throws {

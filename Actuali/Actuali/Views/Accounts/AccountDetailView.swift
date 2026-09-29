@@ -54,8 +54,8 @@ struct AccountDetailView: View {
     }
 
     /// Running balances are shown only when the loaded page is the unfiltered
-    /// register (no search, no status chip, and not hiding cleared/reconciled
-    /// rows). The flag snapshots the state that the loaded page was fetched under.
+    /// register (no search, no status chip). The flag snapshots the state
+    /// that the loaded page was fetched under.
     private var shouldShowRunningBalance: Bool {
         showRunningBalance && loadedFullHistory
     }
@@ -63,11 +63,9 @@ struct AccountDetailView: View {
     /// Pure so the visibility rule can be covered without constructing a view.
     nonisolated static func allowsRunningBalance(
         isSearching: Bool,
-        statusFilter: TransactionStatusFilter,
-        hideCleared: Bool,
-        hideReconciled: Bool
+        statusFilter: TransactionStatusFilter
     ) -> Bool {
-        !isSearching && statusFilter == .all && !hideCleared && !hideReconciled
+        !isSearching && statusFilter == .all
     }
 
     private var transactionsForDisplay: [Transaction] {
@@ -89,14 +87,11 @@ struct AccountDetailView: View {
     }
 
     /// What the Recent Transactions section says when it has no rows. A
-    /// search or a status chip gets the neutral message; the hide toggles
-    /// name themselves so the user knows which menu item to flip back.
+    /// search or a status chip gets the neutral message.
     private var emptyTransactionsText: LocalizedStringKey {
         Self.emptyTransactionsText(
             isSearching: searchQuery != nil,
-            statusFilter: budgetStore.transactionStatusFilter,
-            hideCleared: budgetStore.hideClearedTransactions,
-            hideReconciled: budgetStore.hideReconciledTransactions
+            statusFilter: budgetStore.transactionStatusFilter
         )
     }
 
@@ -104,20 +99,9 @@ struct AccountDetailView: View {
     /// `MonthPicker.title`).
     nonisolated static func emptyTransactionsText(
         isSearching: Bool,
-        statusFilter: TransactionStatusFilter,
-        hideCleared: Bool,
-        hideReconciled: Bool
+        statusFilter: TransactionStatusFilter
     ) -> LocalizedStringKey {
-        if isSearching || statusFilter != .all {
-            return "No matching transactions"
-        }
-        if hideCleared {
-            return "No uncleared transactions"
-        }
-        if hideReconciled {
-            return "No unreconciled transactions"
-        }
-        return "No transactions"
+        isSearching || statusFilter != .all ? "No matching transactions" : "No transactions"
     }
 
     /// Pure so the note visibility rule can be covered without constructing a
@@ -153,9 +137,7 @@ struct AccountDetailView: View {
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
-                statusFilter: store.transactionStatusFilter,
-                unclearedOnly: store.hideClearedTransactions,
-                hideReconciled: store.hideReconciledTransactions
+                statusFilter: store.transactionStatusFilter
             )
         }
         pager = created
@@ -174,9 +156,7 @@ struct AccountDetailView: View {
         // made the column flicker on every reload.
         let fullHistory = Self.allowsRunningBalance(
             isSearching: searchQuery != nil,
-            statusFilter: budgetStore.transactionStatusFilter,
-            hideCleared: budgetStore.hideClearedTransactions,
-            hideReconciled: budgetStore.hideReconciledTransactions
+            statusFilter: budgetStore.transactionStatusFilter
         )
         await currentPager().loadFirstPage(search: searchQuery)
         loadedFullHistory = fullHistory
@@ -896,22 +876,6 @@ struct AccountDetailView: View {
         ToolbarItem(placement: .secondaryAction) {
             TransactionGroupingToggle()
         }
-        ToolbarItem(placement: .secondaryAction) {
-            Toggle(isOn: $budgetStore.hideClearedTransactions) {
-                Label(
-                    "Hide Cleared Transactions",
-                    systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
-                )
-            }
-        }
-        ToolbarItem(placement: .secondaryAction) {
-            Toggle(isOn: $budgetStore.hideReconciledTransactions) {
-                Label(
-                    "Hide Reconciled Transactions",
-                    systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
-                )
-            }
-        }
 
         if note.supported {
             ToolbarItem(placement: .secondaryAction) {
@@ -1077,14 +1041,6 @@ struct AccountDetailView: View {
             // deletes, sheet edits, sync, scheduled posts), so those sites
             // carry no reload calls of their own. Concurrent reloads are
             // safe: the pager's generation counter keeps the newest.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.hideClearedTransactions) {
-            // The pager's fetch closure reads the flag, so a reload is all a
-            // toggle flip needs.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.hideReconciledTransactions) {
             Task { await reload() }
         }
         .onChange(of: budgetStore.transactionStatusFilter) {
