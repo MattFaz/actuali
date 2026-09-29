@@ -349,9 +349,9 @@ struct CompactCategoryBudgetRow: View {
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
     var onMoveMoney: (CategoryBudget) -> Void = { _ in }
-    /// Apply this category's own templates (GH #495); shown only when goal
-    /// templates are enabled — the shared menu itself checks that flag.
-    var onApplyTemplate: (CategoryBudget) -> Void = { _ in }
+    /// Apply this category's own templates (GH #495); nil hides the item —
+    /// callers gate it on the goalTemplatesEnabled flag.
+    var onApplyTemplate: ((CategoryBudget) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
