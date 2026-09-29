@@ -41,4 +41,12 @@ struct EntityNote: Equatable {
     static func accountNoteId(_ accountId: String) -> String {
         "account-\(accountId)"
     }
+
+    /// The `notes.id` a budget month's note lives at (GH #567), for a
+    /// `YYYY-MM` month. Same prefix Actual uses: `budget-${month}` in
+    /// desktop-client's envelope/tracking BudgetSummary and mobile BudgetPage,
+    /// with `month` in loot-core's `yyyy-MM` form.
+    static func monthNoteId(_ month: String) -> String {
+        "budget-\(month)"
+    }
 }
