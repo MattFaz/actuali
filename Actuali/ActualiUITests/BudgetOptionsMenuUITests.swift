@@ -47,7 +47,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompactControlsAreConditionalAndCorrectlyDefaulted() {
+    func testCompactControlsAreConditionalAndCorrectlySeeded() {
         let app = XCUIApplication()
         launchBudgetTab(app)
 
@@ -63,7 +63,8 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(spent.exists)
         XCTAssertTrue(overview.isSelected, "Show Overview defaults on")
         XCTAssertTrue(app.buttons["Group Totals"].exists)
-        XCTAssertFalse(spent.isSelected, "Show Spent Column defaults off")
+        XCTAssertFalse(spent.isSelected,
+                       "the launch argument seeds Show Spent Column off")
         XCTAssertFalse(app.buttons["Progress Indicators"].exists,
                        "Compact uses the shared Budget Progress Bars setting")
 

@@ -61,6 +61,10 @@ struct BudgetStoreDisplayStyleTests {
         }
     }
 
+    /// GH #452: the compact Spent column defaults on, and turning it off
+    /// persists. `previewInstance()` reads no UserDefaults (see
+    /// BudgetStoreAmountEntryPreferenceTests), so the restore-from-defaults
+    /// read half stays covered by the shared property default.
     @Test func compactOptionsAndSharedProgressPreferencePersist() {
         let existingStyleKeys = [
             "showBudgetProgressBars",
@@ -93,20 +97,6 @@ struct BudgetStoreDisplayStyleTests {
             #expect(UserDefaults.standard.object(forKey: compactOptionKeys[0]) as? Bool == true)
             #expect(UserDefaults.standard.object(forKey: compactOptionKeys[1]) as? Bool == false)
             #expect(UserDefaults.standard.object(forKey: existingStyleKeys[0]) as? Bool == true)
-        }
-    }
-
-    /// GH #452: the compact Spent column defaults on, and turning it off
-    /// persists. Only the write half covers restore: `previewInstance()`
-    /// reads no UserDefaults (see BudgetStoreAmountEntryPreferenceTests),
-    /// and the real init reads the same key with the same default.
-    @Test func compactSpentColumnDefaultsOnAndPersists() {
-        let key = "showCompactSpentColumn"
-        withSavedDefaults(for: [key]) {
-            #expect(BudgetStore.previewInstance().showCompactSpentColumn)
-
-            BudgetStore.previewInstance().showCompactSpentColumn = false
-            #expect(UserDefaults.standard.object(forKey: key) as? Bool == false)
         }
     }
 

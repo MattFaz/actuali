@@ -78,7 +78,7 @@ struct BudgetViewSettingsView: View {
                 Text(String(localized: "Presentation"))
             } footer: {
                 if budgetStore.budgetDisplayStyle == .clean {
-                    Text(String(localized: "Group Totals are available in Compact view."))
+                    Text(String(localized: "Group Totals and Show Spent are available in Compact view."))
                 }
             }
 
