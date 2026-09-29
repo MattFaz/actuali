@@ -5474,7 +5474,8 @@ final class BudgetStore: ObservableObject {
                 amountCents: amountCents,
                 date: date,
                 notes: notes,
-                cleared: form.cleared
+                cleared: form.cleared,
+                categoryId: form.categoryId
             )
             return nil
 

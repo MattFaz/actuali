@@ -421,6 +421,44 @@ struct BudgetStoreSaveTransactionTests {
         #expect(row["isParent"] == 0)
     }
 
+    /// A new transfer's category survives only on the on-budget leg of an
+    /// on/off-budget pair, as Actual's `clearCategory` does (GH #561).
+    private func saveNewTransfer(toOffBudget: Bool) async throws -> [Row] {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.accounts = [
+            Account(id: "acct-1", name: "Checking", type: .checking,
+                    offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "acct-2", name: "Other", type: .investment,
+                    offBudget: toOffBudget, closed: false, sortOrder: 1, balance: 0),
+        ]
+        store.payees = [
+            Payee(id: "payee-1", name: "", transferAccountId: "acct-1", tombstone: false),
+            Payee(id: "payee-2", name: "", transferAccountId: "acct-2", tombstone: false),
+        ]
+
+        try await store.saveTransaction(
+            form(type: .transfer, amount: "25.00", transferToAccountId: "acct-2", categoryId: "cat-food")
+        )
+        return try transactionRows(path: path)
+    }
+
+    @Test func newOnBudgetTransferDropsCategory() async throws {
+        let rows = try await saveNewTransfer(toOffBudget: false)
+        #expect(rows.count == 2)
+        #expect(rows.allSatisfy { $0["category"] as String? == nil })
+    }
+
+    @Test func newTransferOffBudgetKeepsCategoryOnOnBudgetLeg() async throws {
+        let rows = try await saveNewTransfer(toOffBudget: true)
+        #expect(rows.count == 2)
+        let source = try #require(rows.first { $0["acct"] as String == "acct-1" })
+        let target = try #require(rows.first { $0["acct"] as String == "acct-2" })
+        #expect(source["category"] == "cat-food")
+        #expect(target["category"] as String? == nil)
+    }
+
     @Test func editingATransactionPreservesImportedPayeeAndCarriedFields() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
