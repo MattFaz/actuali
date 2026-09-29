@@ -126,15 +126,15 @@ struct BudgetStoreBankSyncTests {
         #expect(BudgetStore.BankSyncResult.unsupportedSourceMessage(
             for: [account(source: "goCardless")],
             locale: Locale(identifier: "en_US"), bundle: appBundle
-        ) == "These accounts sync through GoCardless, which Actuali can't refresh yet. Refresh them from the Actual web app.")
+        ) == "Actuali can't refresh GoCardless accounts yet. Refresh them from the Actual web app.")
         #expect(BudgetStore.BankSyncResult.unsupportedSourceMessage(
             for: [account(source: "pluggyai")],
             locale: Locale(identifier: "en_US"), bundle: appBundle
-        ) == "These accounts sync through a bank provider Actuali can't refresh yet. Refresh them from the Actual web app.")
+        ) == "Actuali can't refresh accounts from this bank provider yet. Refresh them from the Actual web app.")
         #expect(BudgetStore.BankSyncResult.unsupportedSourceMessage(
             for: [account(source: "goCardless"), account(source: "futureProvider")],
             locale: Locale(identifier: "en_US"), bundle: appBundle
-        ) == "These accounts sync through a bank provider Actuali can't refresh yet. Refresh them from the Actual web app.")
+        ) == "Actuali can't refresh accounts from this bank provider yet. Refresh them from the Actual web app.")
     }
 
     @Test func syncingOnlyGoCardlessAccountsExplainsInsteadOfNothingLinked() async throws {
@@ -153,8 +153,26 @@ struct BudgetStoreBankSyncTests {
 
         let result = try await store.syncBankAccounts()
         #expect(result.accountsSynced == 0)
-        #expect(result.summary(locale: Locale(identifier: "en_US"), bundle: appBundle)
-            == "These accounts sync through GoCardless, which Actuali can't refresh yet. Refresh them from the Actual web app.")
+        // Expected built through the same helper the sync uses, so the
+        // assertion tracks the catalog rather than a hard-coded string.
+        let goCardlessAccount = BankSyncAccount(
+            id: "acct-1",
+            name: "Checking",
+            externalAccountId: "ext-1",
+            syncSource: "goCardless",
+            offBudget: false,
+            closed: false
+        )
+        let expectedMessage = BudgetStore.BankSyncResult.unsupportedSourceMessage(
+            for: [goCardlessAccount],
+            locale: .autoupdatingCurrent, bundle: appBundle
+        )
+        #expect(result.problems == [expectedMessage])
+        // A non-English locale proves the catalog entry really resolves.
+        #expect(BudgetStore.BankSyncResult.unsupportedSourceMessage(
+            for: [goCardlessAccount],
+            locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == "Actuali ne peut pas encore actualiser les comptes GoCardless. Actualisez-les depuis l'application web Actual.")
     }
 
     /// Timestamps relative to now, so the download always lands inside the

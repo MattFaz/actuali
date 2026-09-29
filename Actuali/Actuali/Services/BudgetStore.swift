@@ -3708,13 +3708,13 @@ final class BudgetStore: ObservableObject {
             // stay generic rather than guess a provider name.
             if Set(accounts.map(\.syncSource)) == ["goCardless"] {
                 return ReportStrings.text(
-                    "These accounts sync through GoCardless, which Actuali can't refresh yet. Refresh them from the Actual web app.",
+                    "Actuali can't refresh GoCardless accounts yet. Refresh them from the Actual web app.",
                     locale: locale,
                     bundle: bundle
                 )
             }
             return ReportStrings.text(
-                "These accounts sync through a bank provider Actuali can't refresh yet. Refresh them from the Actual web app.",
+                "Actuali can't refresh accounts from this bank provider yet. Refresh them from the Actual web app.",
                 locale: locale,
                 bundle: bundle
             )
