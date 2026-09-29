@@ -119,6 +119,9 @@ struct BudgetView: View {
     @State private var templateResult: GoalTemplateResultAlert?
     @State private var isRunningBudgetAction = false
     @State private var monthNote: EntityNote = .unsupported
+    /// The month `monthNote` was read for; nil until a read lands for the
+    /// open budget file.
+    @State private var monthNoteMonth: String?
     @State private var editingMonthNote = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -224,6 +227,9 @@ struct BudgetView: View {
                 selectedMonth = budgetStore.lastViewedBudgetMonth ?? selectedMonth
             }
             .onChange(of: budgetStore.currentBudgetId) { _, _ in
+                // The last file's note for the same month string isn't this
+                // file's note.
+                monthNoteMonth = nil
                 selectedMonth = budgetStore.lastViewedBudgetMonth ?? Self.currentMonthString()
             }
             .onChange(of: selectedMonth) { _, newMonth in
@@ -250,7 +256,7 @@ struct BudgetView: View {
                 NoteEditorView(
                     noteId: EntityNote.monthNoteId(selectedMonth),
                     title: MonthPicker.title(for: selectedMonth, locale: locale),
-                    note: monthNote.text
+                    note: displayedMonthNote.text
                 )
             }
             .sheet(item: $editingCategory) { category in
@@ -536,7 +542,7 @@ struct BudgetView: View {
 
                 MonthPicker(
                     selectedMonth: $selectedMonth,
-                    note: monthNote,
+                    note: displayedMonthNote,
                     onEditNote: { editingMonthNote = true }
                 )
 
@@ -579,13 +585,31 @@ struct BudgetView: View {
         }
     }
 
+    private var displayedMonthNote: EntityNote {
+        Self.monthNote(monthNote, loadedFor: monthNoteMonth, selectedMonth: selectedMonth)
+    }
+
+    /// The note to offer for `selectedMonth`. Until that month's own read
+    /// lands, the previous month's text is still in state; offering it would
+    /// seed the editor with it under the new month's id and a save would
+    /// overwrite the new month's note. `.unsupported` hides the item instead.
+    nonisolated static func monthNote(
+        _ note: EntityNote,
+        loadedFor loadedMonth: String?,
+        selectedMonth: String
+    ) -> EntityNote {
+        loadedMonth == selectedMonth ? note : .unsupported
+    }
+
     private func reloadMonthNote() async {
         let month = selectedMonth
+        let budgetId = budgetStore.currentBudgetId
         let note = await budgetStore.fetchNote(id: EntityNote.monthNoteId(month))
-        // A slower read for a month already swiped away mustn't overwrite the
-        // one now on screen.
-        if month == selectedMonth {
+        // A slower read for a month already swiped away, or for a file since
+        // closed, mustn't overwrite the one now on screen.
+        if month == selectedMonth, budgetId == budgetStore.currentBudgetId {
             monthNote = note
+            monthNoteMonth = month
         }
     }
 
