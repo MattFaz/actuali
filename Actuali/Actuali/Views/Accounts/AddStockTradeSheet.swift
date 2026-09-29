@@ -17,9 +17,13 @@ struct AddStockTradeSheet: View {
     @State private var isSaving = false
     @State private var searchResults: [StockSearchResult] = []
     @State private var searchTask: Task<Void, Never>?
+    /// Set to true while programmatically assigning `symbol` to prevent the
+    /// onChange handler from re-triggering a search after result selection.
+    @State private var suppressNextSearch = false
 
     private var shares: Double? {
-        Double(sharesText.trimmingCharacters(in: .whitespacesAndNewlines))
+        // AmountParser handles locale decimal separators (comma vs period).
+        AmountParser.parse(sharesText)
     }
 
     private var pricePerShare: Double? {
@@ -56,6 +60,10 @@ struct AddStockTradeSheet: View {
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("stockTrade.symbolField")
                             .onChange(of: symbol) { _, newValue in
+                                if suppressNextSearch {
+                                    suppressNextSearch = false
+                                    return
+                                }
                                 debounceSearch(newValue)
                             }
 
@@ -192,9 +200,11 @@ struct AddStockTradeSheet: View {
     }
 
     private func selectSearchResult(_ result: StockSearchResult) {
+        searchTask?.cancel()
+        searchResults = []
+        suppressNextSearch = true
         symbol = result.symbol
         companyName = result.name ?? ""
-        searchResults = []
 
         // Try prefilling price from live quote
         Task {
@@ -223,7 +233,7 @@ struct AddStockTradeSheet: View {
                 date: tradeDate,
                 isBuy: isBuy
             )
-            // Fetch quote for the newly added symbol
+            // Refresh quotes for the newly added symbol
             await budgetStore.refreshEquityQuotes(for: accountId, forceRefresh: true)
             dismiss()
         } catch {

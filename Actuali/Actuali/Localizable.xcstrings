@@ -86850,6 +86850,53 @@
         }
       }
     },
+    "Live price unavailable (currency mismatch)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Preis nicht verfügbar (Währungskonflikt)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live price unavailable (currency mismatch)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Precio en vivo no disponible (moneda diferente)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prix en direct indisponible (devise différente)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prezzo in tempo reale non disponibile (valuta diversa)"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live koers niet beschikbaar (valutaconflict)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preço ao vivo indisponível (moeda incompatível)"
+          }
+        }
+      }
+    },
     "Log First Trade" : {
       "extractionState" : "manual",
       "localizations" : {

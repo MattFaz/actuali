@@ -25,14 +25,13 @@ enum EquityTransactionParser {
         pattern: #"^[A-Za-z0-9\.\-\^]{1,12}$"#
     )
 
-    /// Precompiled regexes for trade notes.
-    /// Handles "10 shares @ 150.00", "10 @ $150", "qty: 10", "Sold 5 shares @ 200", etc.
-    private static let noteQuantityAndPriceRegex = try? NSRegularExpression(
-        pattern: #"(?i)(?:buy\s+|sold\s+|sell\s+)?([+-]?\d+(?:\.\d+)?)\s*(?:shares?|units?|qty|@)\s*(?:@\s*[\$€£₹]?\s*(\d+(?:\.\d+)?))?"#
-    )
-
-    private static let noteExplicitQtyRegex = try? NSRegularExpression(
-        pattern: #"(?i)(?:qty|shares?|units?)\s*[:=]\s*([+-]?\d+(?:\.\d+)?)"#
+    /// Trade note regex. Requires the unit word (shares/units) to prevent ordinary payees with
+    /// a price note from generating phantom holdings. Handles:
+    ///   "10 shares @ 150.00", "1.254 shares @ $220.50", "Buy 25 units @ ₹2900",
+    ///   "Sold 5 shares @ 160", "50 shares" (no price).
+    /// ponytail: requires "shares" or "units" as a guard; bare "10 @ price" no longer matches.
+    private static let noteRegex = try? NSRegularExpression(
+        pattern: #"(?i)(?:(?:buy|sold?|sell)\s+)?([+-]?\d+(?:\.\d+)?)\s+(?:shares?|units?)\s*(?:@\s*[\$€£₹]?\s*(\d+(?:\.\d+)?))?"#
     )
 
     // MARK: - Symbol Extraction
@@ -62,13 +61,12 @@ enum EquityTransactionParser {
             return ExtractedSymbol(symbol: symbol, name: name.isEmpty ? nil : name)
         }
 
-        // Case 2: Plain symbol: "AAPL", "VOO", "RELIANCE.NS"
+        // Case 2: Plain symbol — must be all-uppercase (or contain . / - / ^) to avoid
+        // ordinary mixed-case payee names ("T-Mobile" still has lowercase letters so it fails).
         if let regex = plainSymbolRegex,
            regex.firstMatch(in: raw, options: [], range: range) != nil {
-            // Must have at least one uppercase letter or digit, not purely punctuation
             let trimmed = raw.uppercased()
-            // Avoid matching common non-ticker single words if they are lowercase in user notes
-            if raw == raw.uppercased() || raw.contains(".") || raw.contains("-") {
+            if raw == raw.uppercased() || raw.contains(".") || raw.contains("^") {
                 return ExtractedSymbol(symbol: trimmed, name: nil)
             }
         }
@@ -87,30 +85,20 @@ enum EquityTransactionParser {
         let nsNote = note as NSString
         let range = NSRange(location: 0, length: nsNote.length)
 
-        // Try standard format: "10 shares @ 150.00" or "10 @ 150"
-        if let regex = noteQuantityAndPriceRegex,
-           let match = regex.firstMatch(in: note, options: [], range: range) {
-            let qtyStr = nsNote.substring(with: match.range(at: 1))
-            guard let qty = Double(qtyStr), qty != 0 else { return nil }
-
-            var price: Double? = nil
-            if match.numberOfRanges > 2, match.range(at: 2).location != NSNotFound {
-                let priceStr = nsNote.substring(with: match.range(at: 2))
-                price = Double(priceStr)
-            }
-            return ParsedTrade(shares: qty, price: price)
+        guard let regex = noteRegex,
+              let match = regex.firstMatch(in: note, options: [], range: range) else {
+            return nil
         }
 
-        // Try key-value format: "qty: 10"
-        if let regex = noteExplicitQtyRegex,
-           let match = regex.firstMatch(in: note, options: [], range: range) {
-            let qtyStr = nsNote.substring(with: match.range(at: 1))
-            if let qty = Double(qtyStr), qty != 0 {
-                return ParsedTrade(shares: qty, price: nil)
-            }
-        }
+        let qtyStr = nsNote.substring(with: match.range(at: 1))
+        guard let qty = Double(qtyStr), qty != 0 else { return nil }
 
-        return nil
+        var price: Double? = nil
+        if match.numberOfRanges > 2, match.range(at: 2).location != NSNotFound {
+            let priceStr = nsNote.substring(with: match.range(at: 2))
+            price = Double(priceStr)
+        }
+        return ParsedTrade(shares: qty, price: price)
     }
 
     // MARK: - Holdings Aggregation
@@ -148,13 +136,12 @@ enum EquityTransactionParser {
             let tradeShares = abs(trade.shares)
 
             if !isOutflow {
-                // Buy Trade (Inflow to asset account):
-                // Adds shares and adds invested capital.
+                // Buy: adds shares and cost basis.
                 acc.shares += tradeShares
                 acc.totalInvestedCents += abs(tx.amount)
             } else {
-                // Sell Trade (Outflow from asset account):
-                // Deducts shares and proportionally reduces cost basis.
+                // Sell: deducts shares and proportionally reduces cost basis.
+                // The transaction amount is the cost basis of the shares sold (not proceeds).
                 let sharesToDeduct = min(acc.shares, tradeShares)
                 if acc.shares > 0 {
                     let costReduction = Int(round(Double(acc.totalInvestedCents) * (sharesToDeduct / acc.shares)))

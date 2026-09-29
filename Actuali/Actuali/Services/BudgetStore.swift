@@ -352,10 +352,6 @@ final class BudgetStore: ObservableObject {
     /// Client for querying live Yahoo Finance quotes and symbol searches.
     var yahooFinanceClient = YahooFinanceClient()
 
-    /// Memoized equity holdings by account ID.
-    var memoizedHoldings: [String: [EquityHolding]] = [:]
-    var memoizedHoldingsDataVersion: Int = -1
-
     /// Currency code for formatting (e.g., "USD", "EUR", "GBP")
     /// Persisted to UserDefaults, defaults to "USD"
     @Published var currencyCode: String = "USD" {

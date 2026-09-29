@@ -7,20 +7,17 @@ struct EquityPortfolioCard: View {
 
     let account: Account
 
+    @State private var holdings: [EquityHolding] = []
     @State private var showingTradeSheet = false
     @State private var isRefreshing = false
     @State private var isReconciling = false
 
-    private var holdings: [EquityHolding] {
-        budgetStore.equityHoldings(for: account.id)
-    }
-
     private var totalInvestedCents: Int {
-        budgetStore.totalEquityInvestedCents(for: account.id)
+        budgetStore.totalEquityInvestedCents(holdings: holdings)
     }
 
     private var totalMarketValueCents: Int {
-        budgetStore.totalEquityMarketValueCents(for: account.id)
+        budgetStore.totalEquityMarketValueCents(holdings: holdings)
     }
 
     private var totalGainCents: Int {
@@ -30,10 +27,6 @@ struct EquityPortfolioCard: View {
     private var totalReturnPercent: Double {
         guard totalInvestedCents > 0 else { return 0 }
         return (Double(totalGainCents) / Double(totalInvestedCents)) * 100.0
-    }
-
-    private var balanceDiscrepancyCents: Int {
-        totalMarketValueCents - account.balance
     }
 
     var body: some View {
@@ -55,6 +48,7 @@ struct EquityPortfolioCard: View {
                             Task {
                                 isRefreshing = true
                                 await budgetStore.refreshEquityQuotes(for: account.id, forceRefresh: true)
+                                holdings = await budgetStore.equityHoldings(for: account.id)
                                 isRefreshing = false
                             }
                         } label: {
@@ -117,59 +111,26 @@ struct EquityPortfolioCard: View {
                         }
                     }
 
-                    // Balance Reconciliation Banner (if ledger balance differs from market value)
-                    if balanceDiscrepancyCents != 0 {
-                        HStack(spacing: 8) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(String(localized: "Ledger out of sync with market"))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.orange)
-                                Text(String(format: String(localized: "Difference: %@"), budgetStore.formatCurrency(balanceDiscrepancyCents)))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            Button {
-                                Task {
-                                    isReconciling = true
-                                    await budgetStore.reconcileEquityToMarketValue(accountId: account.id)
-                                    isReconciling = false
-                                }
-                            } label: {
-                                if isReconciling {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    Text(String(localized: "Sync Balance"))
-                                        .font(.caption.weight(.semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(Color.accentColor)
-                                        .foregroundStyle(.white)
-                                        .clipShape(Capsule())
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(isReconciling)
-                            .accessibilityIdentifier("accountEquity.reconcileButton")
-                        }
-                        .padding(8)
-                        .background(Color.orange.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
-
                     Divider()
 
                     // Holdings List
                     VStack(spacing: 12) {
                         ForEach(holdings) { holding in
                             let quote = budgetStore.stockQuotes[holding.symbol]
-                            let price = quote?.price ?? (Double(holding.averageCostCents) / 100.0)
+                            // Skip currencies that don't match the budget currency to avoid silent mixing.
+                            // ponytail: no FX conversion — show cost basis for mismatched quotes instead.
+                            let priceInBudgetCurrency: Double? = {
+                                guard let q = quote else { return nil }
+                                guard q.currency == nil || q.currency == budgetStore.currencyCode else { return nil }
+                                return q.price
+                            }()
+                            let price = priceInBudgetCurrency ?? (Double(holding.averageCostCents) / 100.0)
+                            let usingFallback = priceInBudgetCurrency == nil && quote != nil
                             let marketVal = holding.marketValueCents(currentPrice: price)
                             let gain = holding.unrealizedGainCents(currentPrice: price)
                             let returnPct = holding.returnPercentage(currentPrice: price)
+                            let sharesStr = holding.shares
+                                .formatted(.number.precision(.fractionLength(0...4)))
 
                             HStack(alignment: .top) {
                                 VStack(alignment: .leading, spacing: 3) {
@@ -184,10 +145,15 @@ struct EquityPortfolioCard: View {
                                         }
                                     }
 
-                                    let sharesStr = holding.shares.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", holding.shares) : String(format: "%g", holding.shares)
                                     Text(String(format: String(localized: "%@ shares @ %@"), sharesStr, budgetStore.formatCurrency(holding.averageCostCents)))
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
+
+                                    if usingFallback {
+                                        Text(String(localized: "Live price unavailable (currency mismatch)"))
+                                            .font(.caption2)
+                                            .foregroundStyle(.orange)
+                                    }
                                 }
 
                                 Spacer()
@@ -196,18 +162,16 @@ struct EquityPortfolioCard: View {
                                     Text(budgetStore.formatCurrency(marketVal))
                                         .font(.subheadline.weight(.semibold))
 
-                                    HStack(spacing: 2) {
-                                        Text(String(format: "%@%.1f%%", gain >= 0 ? "+" : "", returnPct))
-                                            .font(.caption2.weight(.medium))
-                                            .foregroundStyle(gain >= 0 ? Color.green : Color.red)
-                                    }
+                                    Text(String(format: "%@%.1f%%", gain >= 0 ? "+" : "", returnPct))
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(gain >= 0 ? Color.green : Color.red)
                                 }
                             }
                             .accessibilityIdentifier("accountEquity.holding.\(holding.symbol)")
                         }
                     }
                 } else {
-                    // Empty State: No holdings detected yet
+                    // Empty State
                     VStack(alignment: .center, spacing: 8) {
                         Text(String(localized: "No stock holdings logged yet."))
                             .font(.subheadline)
@@ -234,7 +198,13 @@ struct EquityPortfolioCard: View {
             .padding(.vertical, 4)
         }
         .task {
+            holdings = await budgetStore.equityHoldings(for: account.id)
             await budgetStore.refreshEquityQuotes(for: account.id)
+        }
+        .onChange(of: budgetStore.dataVersion) {
+            Task {
+                holdings = await budgetStore.equityHoldings(for: account.id)
+            }
         }
         .sheet(isPresented: $showingTradeSheet) {
             AddStockTradeSheet(accountId: account.id)

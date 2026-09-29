@@ -163,7 +163,6 @@ actor YahooFinanceClient {
                 let shortname: String?
                 let longname: String?
                 let exchange: String?
-                let quoteType: String?
             }
 
             let quotes: [SearchQuote]?
@@ -180,8 +179,7 @@ actor YahooFinanceClient {
             return StockSearchResult(
                 symbol: sym,
                 name: q.shortname ?? q.longname,
-                exchange: q.exchange,
-                quoteType: q.quoteType
+                exchange: q.exchange
             )
         }
     }

@@ -15,6 +15,8 @@ struct EquityTransactionParserTests {
         #expect(nse?.symbol == "RELIANCE.NS")
 
         let btc = EquityTransactionParser.extractSymbol(from: "BTC-USD")
+        // BTC-USD has a hyphen but mixed case in the first part — only matches plain branch
+        // if all uppercase. "BTC-USD" IS all uppercase so it matches.
         #expect(btc?.symbol == "BTC-USD")
 
         let index = EquityTransactionParser.extractSymbol(from: "^NSEI")
@@ -40,6 +42,14 @@ struct EquityTransactionParserTests {
         #expect(EquityTransactionParser.extractSymbol(from: "Transfer") == nil)
     }
 
+    @Test func rejectsMixedCaseOrdinaryPayees() {
+        // "T-Mobile" has lowercase letters — must not match plain ticker branch.
+        #expect(EquityTransactionParser.extractSymbol(from: "T-Mobile") == nil)
+        // Mixed case in parenthesized form can't produce a false positive because
+        // the parenthesized branch requires a parenthesized ticker suffix.
+        #expect(EquityTransactionParser.extractSymbol(from: "Amazon (Prime)") == nil)
+    }
+
     // MARK: - Trade Note Parsing
 
     @Test func parsesStandardQuantityAndPrice() {
@@ -55,16 +65,23 @@ struct EquityTransactionParserTests {
     }
 
     @Test func parsesAlternatePhrasing() {
-        let t1 = EquityTransactionParser.parseTradeDetails(from: "10 @ 150")
-        #expect(t1?.shares == 10.0)
-        #expect(t1?.price == 150.0)
+        let t1 = EquityTransactionParser.parseTradeDetails(from: "Buy 25 shares @ ₹2900")
+        #expect(t1?.shares == 25.0)
 
-        let t2 = EquityTransactionParser.parseTradeDetails(from: "Buy 25 shares @ ₹2,900")
-        #expect(t2?.shares == 25.0)
+        let t2 = EquityTransactionParser.parseTradeDetails(from: "Sold 5 shares @ 160")
+        #expect(t2?.shares == 5.0)
+        #expect(t2?.price == 160.0)
 
-        let t3 = EquityTransactionParser.parseTradeDetails(from: "qty: 50")
+        // Shares with no price — quantity still parsed
+        let t3 = EquityTransactionParser.parseTradeDetails(from: "50 shares")
         #expect(t3?.shares == 50.0)
         #expect(t3?.price == nil)
+    }
+
+    @Test func rejectsPlainPriceNoteWithoutUnitKeyword() {
+        // Bare "50 @ 10" must NOT create a trade — no "shares/units" keyword.
+        let t = EquityTransactionParser.parseTradeDetails(from: "50 @ 10")
+        #expect(t == nil)
     }
 
     // MARK: - Position Resolution & DCA
@@ -83,11 +100,19 @@ struct EquityTransactionParserTests {
             accountId: "acct-demat",
             date: date,
             amount: amount,
+            payeeId: nil,
             payeeName: payee,
+            categoryId: nil,
+            categoryName: nil,
             notes: notes,
             cleared: true,
             reconciled: false,
+            transferId: nil,
+            isParent: false,
+            parentId: nil,
             tombstone: tombstone,
+            sortOrder: nil,
+            importedPayee: nil,
             startingBalanceFlag: startingBalanceFlag
         )
     }
@@ -144,14 +169,14 @@ struct EquityTransactionParserTests {
             id: "tx-2",
             date: 20_260_301,
             payee: "AAPL",
-            amount: -80000, // Sold 5 shares
+            amount: -50000, // cost basis of 5 shares @ $100
             notes: "Sold 5 shares @ 160"
         )
 
         let holdings = EquityTransactionParser.resolveHoldings(from: [buy, sell])
         #expect(holdings.count == 1)
         #expect(holdings[0].shares == 15.0)
-        // 25% of shares sold, so cost basis drops from $2,000 by 25% ($500) to $1,500
+        // 25% of shares sold, cost basis drops from $2,000 by 25% ($500) to $1,500
         #expect(holdings[0].totalInvestedCents == 150_000)
         #expect(holdings[0].averageCostCents == 10000) // still $100/share
     }
@@ -168,7 +193,7 @@ struct EquityTransactionParserTests {
             id: "tx-2",
             date: 20_260_301,
             payee: "AAPL",
-            amount: -120_000,
+            amount: -100_000, // cost basis of all shares
             notes: "Sold 10 shares @ 120"
         )
 

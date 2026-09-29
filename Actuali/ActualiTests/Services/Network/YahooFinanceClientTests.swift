@@ -126,14 +126,12 @@ struct YahooFinanceClientTests {
             {
               "symbol": "AAPL",
               "shortname": "Apple Inc.",
-              "exchange": "NMS",
-              "quoteType": "EQUITY"
+              "exchange": "NMS"
             },
             {
               "symbol": "AAPL.MX",
               "shortname": "APPLE INC",
-              "exchange": "MEX",
-              "quoteType": "EQUITY"
+              "exchange": "MEX"
             }
           ]
         }
