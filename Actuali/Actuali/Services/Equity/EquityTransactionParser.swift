@@ -16,8 +16,9 @@ enum EquityTransactionParser {
     }
 
     /// Precompiled regex for parsing tickers formatted as "Apple Inc. (AAPL)" or "AAPL".
+    /// Requires the parenthesized part to be uppercase-only — real tickers are always uppercase.
     private static let parenthesizedSymbolRegex = try? NSRegularExpression(
-        pattern: #"^(.*?)\s*\(([A-Za-z0-9\.\-\^]{1,12})\)$"#
+        pattern: #"^(.*?)\s*\(([A-Z0-9\.\-\^]{1,12})\)$"#
     )
 
     /// Precompiled regex for plain symbols: 1-12 alphanumeric characters, dots, hyphens, or carets.

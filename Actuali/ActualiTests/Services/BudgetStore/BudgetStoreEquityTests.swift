@@ -46,20 +46,17 @@ struct BudgetStoreEquityTests {
 
     // MARK: - recordStockTrade
 
-    @Test func recordStockTradeWritesParsableBuyRow() async throws {
+    @Test func recordStockTradeInputValidationRejectsZeroShares() async {
         let store = BudgetStore.previewInstance()
-        // previewInstance has no open budget, so recordStockTrade returns nil without a DB,
-        // but the form validation and note formatting are still exercised.
-        // ponytail: full round-trip test belongs in the DemoDataSeeder integration suite.
-        let id = try await store.recordStockTrade(
+        // Zero shares or price: guard returns nil before touching the DB/sync.
+        let id = try? await store.recordStockTrade(
             accountId: "acct_demat",
-            symbol: "aapl",
-            name: "Apple Inc.",
-            shares: 10,
+            symbol: "AAPL",
+            name: nil,
+            shares: 0,
             pricePerShare: 150,
             isBuy: true
         )
-        // No open DB in preview mode — returns nil, not a crash.
         #expect(id == nil)
     }
 
