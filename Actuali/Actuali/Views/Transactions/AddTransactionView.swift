@@ -204,41 +204,27 @@ struct AddTransactionView: View {
     /// immediately.
     private var transferTakesCategory: Bool {
         guard isTransfer else { return false }
-        func offBudget(_ id: String?) -> Bool? {
-            budgetStore.accounts.first { $0.id == id }?.offBudget
+        let offBudgetIds = budgetStore.offBudgetAccountIds
+        func takes(leg: String?, partner: String?) -> Bool {
+            BudgetStore.transferLegTakesCategory(leg: leg, partner: partner, offBudgetAccountIds: offBudgetIds)
         }
-        // The edited row's own account is the one in the account picker,
-        // except on an existing transfer opened from its receiving leg —
-        // there the form shows the pair as From/To and the opened row is To.
-        let editedLegAccountId = editing.map { editing in
-            editing.transferId != nil && editing.amount >= 0 ? transferToAccountId : selectedAccountId
+        guard let editing else {
+            // `createTransfer` puts it on whichever leg is on-budget.
+            return takes(leg: selectedAccountId, partner: transferToAccountId)
+                || takes(leg: transferToAccountId, partner: selectedAccountId)
         }
-        return Self.transferTakesCategory(
-            fromOffBudget: offBudget(selectedAccountId),
-            toOffBudget: offBudget(transferToAccountId),
-            editedLegOffBudget: editedLegAccountId.flatMap(offBudget)
-        )
+        // An edit writes the form's category to the opened row alone. That
+        // row's account is the one in the account picker, except on an
+        // existing transfer opened from its receiving leg — there the form
+        // shows the pair as From/To and the opened row is To.
+        return editing.transferId != nil && editing.amount >= 0
+            ? takes(leg: transferToAccountId, partner: selectedAccountId)
+            : takes(leg: selectedAccountId, partner: transferToAccountId)
     }
 
-    /// Actual's rule: a transfer takes a category only between an on-budget
-    /// and an off-budget account — money entering or leaving the budget —
-    /// and only on the on-budget leg. Two on-budget (or two off-budget)
-    /// accounts never do (`clearCategory` in loot-core's transfer.ts). An
-    /// edit writes the form's category to the opened row alone
-    /// (`updateTransfer`), so `editedLegOffBudget` is that row's account; a
-    /// new transfer passes nil and `createTransfer` puts it on whichever leg
-    /// is on-budget. An unpicked or unknown account (nil) takes none.
-    nonisolated static func transferTakesCategory(
-        fromOffBudget: Bool?,
-        toOffBudget: Bool?,
-        editedLegOffBudget: Bool?
-    ) -> Bool {
-        guard let fromOffBudget, let toOffBudget, fromOffBudget != toOffBudget else { return false }
-        return editedLegOffBudget != true
-    }
-
-    /// Whether the single-category row belongs on the form. Clearing the
-    /// category when this turns false keeps a hidden pick from being saved.
+    /// Whether the single-category row belongs on the form. A hidden pick is
+    /// kept (so it reappears with the row) but never saved: every save path
+    /// drops a category the row hides (GH #561).
     private var showsCategoryRow: Bool {
         isTransfer ? transferTakesCategory : showsStandardCategoryFields
     }
@@ -721,15 +707,6 @@ struct AddTransactionView: View {
             }
             .task(id: automaticCategoryInput) {
                 await applyAutomaticCategory(for: automaticCategoryInput)
-            }
-            // A hidden category can't be seen or changed, so it mustn't be
-            // saved either — switching to an on-budget transfer drops the
-            // pick, and switching back suggests one afresh (GH #561).
-            .onChange(of: showsCategoryRow) { _, shows in
-                guard !shows else { return }
-                selectedCategoryId = nil
-                automaticCategoryPreview = nil
-                userPickedCategory = false
             }
         }
     }

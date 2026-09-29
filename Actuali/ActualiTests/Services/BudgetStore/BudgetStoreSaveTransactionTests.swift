@@ -459,6 +459,25 @@ struct BudgetStoreSaveTransactionTests {
         #expect(target["category"] as String? == nil)
     }
 
+    @Test func categoryHiddenByATransferRoundTripSurvivesTheEdit() async throws {
+        // The form keeps a pick while an on-budget transfer hides it, so
+        // Expense → Transfer → Expense on an edit still carries the category
+        // and must not write null over it (GH #561). The same form saved as
+        // an on-budget transfer drops it — newOnBudgetTransferDropsCategory.
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        var original = transaction(payeeId: nil, payeeName: nil)
+        original.categoryId = "cat-food"
+        try database.insertTransaction(original)
+
+        try await store.saveTransaction(form(amount: "7.25", categoryId: "cat-food"), editing: original)
+
+        let row = try #require(try transactionRows(path: path).first)
+        #expect(row["amount"] == -725)
+        #expect(row["category"] == "cat-food")
+    }
+
     @Test func editingATransactionPreservesImportedPayeeAndCarriedFields() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
