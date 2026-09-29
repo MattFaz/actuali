@@ -33,6 +33,12 @@ struct DisplaySettingsViewTests {
         ))
     }
 
+    @Test func currencyOptionsIncludeVND() {
+        #expect(currencyOptions.first { $0.code == "VND" }?.symbol == "₫")
+        #expect(currencyOptions.map(\.code) == currencyOptions.map(\.code).sorted())
+        #expect(Set(currencyOptions.map(\.code)).count == currencyOptions.count)
+    }
+
     @Test func publishesResultsForCurrentBudgetAndDatabase() {
         let database = NSObject()
         let request = DisplaySettingsLoadRequest(
