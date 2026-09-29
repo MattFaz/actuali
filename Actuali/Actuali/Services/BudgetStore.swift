@@ -474,8 +474,8 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Whether the Compact Budget view style includes the Spent column.
-    /// The narrower two-amount layout is the default.
-    @Published var showCompactSpentColumn: Bool = false {
+    /// Defaults on (GH #452); the narrower two-amount layout is opt-out.
+    @Published var showCompactSpentColumn: Bool = true {
         didSet {
             UserDefaults.standard.set(
                 showCompactSpentColumn,
@@ -1683,7 +1683,7 @@ final class BudgetStore: ObservableObject {
             initialValue: persistedBool("showCompactBudgetOverview", default: true)
         )
         _showCompactSpentColumn = Published(
-            initialValue: persistedBool("showCompactSpentColumn", default: false)
+            initialValue: persistedBool("showCompactSpentColumn", default: true)
         )
         _showBudgetedAmounts = Published(
             initialValue: persistedBool("showBudgetedAmounts", default: true)
