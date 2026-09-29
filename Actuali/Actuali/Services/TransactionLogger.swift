@@ -90,13 +90,8 @@ final class TransactionLogger {
         let payeeName = normalized.isEmpty ? rawMerchant : normalized
         let payee = try await store.findOrCreatePayee(name: payeeName)
 
-        // Drop a category deleted since the shortcut was configured rather
-        // than writing a dangling id, same as AddTransactionWithReviewIntent.
-        var pinnedCategoryId = explicitCategoryId
-        if let id = pinnedCategoryId, await !store.categoriesForIntent().contains(where: { $0.id == id }) {
-            pinnedCategoryId = nil
-        }
-        let categoryId = if let pinnedCategoryId {
+        let pinnedCategoryId = await store.existingCategoryId(explicitCategoryId)
+        let categoryId: String? = if let pinnedCategoryId {
             pinnedCategoryId
         } else {
             try await database.mostRecentCategoryId(forPayeeId: payee.id)

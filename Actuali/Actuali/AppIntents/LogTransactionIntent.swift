@@ -191,6 +191,9 @@ struct LogTransactionIntent: AppIntent {
         let store = BudgetStore.shared
         await store.ensureBudgetReady()
         let amountCents = AmountParser.parse(amount).flatMap { Transaction.cents(fromDollars: $0) }
+        // The form marks a prefilled category as user-picked and would save a
+        // deleted one, so check it exists first.
+        let categoryId = await store.existingCategoryId(category?.id)
         await TransactionLogNotifier.notifyFailure(
             message: LogTransactionError.localizedString(
                 for: error, locale: .autoupdatingCurrent, bundle: .main
@@ -205,7 +208,7 @@ struct LogTransactionIntent: AppIntent {
                 amountCents: amountCents,
                 date: date ?? Date(),
                 notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
-                categoryId: category?.id,
+                categoryId: categoryId,
                 isIncome: isIncome,
                 cleared: cleared
             ),
