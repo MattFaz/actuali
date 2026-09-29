@@ -869,6 +869,8 @@ final class BudgetDatabase: Sendable {
                 sql += " AND t.cleared = 1 AND (t.reconciled = 0 OR t.reconciled IS NULL)"
             case .reconciled:
                 sql += " AND t.reconciled = 1"
+            case .unreconciled:
+                sql += " AND (t.reconciled = 0 OR t.reconciled IS NULL)"
             }
 
             if let search {

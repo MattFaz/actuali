@@ -165,6 +165,16 @@ struct BudgetDatabaseTransactionStatusFilterTests {
         #expect(reconciled.map(\.id) == ["t-reconciled"])
     }
 
+    @Test func unreconciledKeepsUnclearedAndClearedRows() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedLookups(db)
+        try await seedStatuses(db)
+
+        let unreconciled = try await db.fetchTransactions(statusFilter: .unreconciled)
+        #expect(unreconciled.map(\.id) == ["t-pending", "t-cleared"])
+    }
+
     @Test func uncategorizedMatchesTheUncategorizedListFilter() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }

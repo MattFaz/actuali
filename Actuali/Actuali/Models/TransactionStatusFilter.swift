@@ -3,14 +3,17 @@ import Foundation
 /// Presets for the transaction lists' status filter strip (GH #439), modeled
 /// on the Budget tab's category chips. `cleared` means cleared-but-not-
 /// reconciled on purpose: with `uncleared` and `reconciled` the three status
-/// chips partition the list, matching the row's status dot. `uncategorized`
-/// is the same pseudo-account filter the Uncategorized list uses.
+/// chips partition the list, matching the row's status dot. `unreconciled`
+/// is uncleared + cleared together — the old Hide Reconciled view (GH #355,
+/// #573). `uncategorized` is the same pseudo-account filter the
+/// Uncategorized list uses.
 enum TransactionStatusFilter: String, CaseIterable, Identifiable {
     case all
     case uncategorized
     case uncleared
     case cleared
     case reconciled
+    case unreconciled
 
     var id: String {
         rawValue
@@ -29,6 +32,7 @@ enum TransactionStatusFilter: String, CaseIterable, Identifiable {
         case .uncleared: "Uncleared"
         case .cleared: "Cleared"
         case .reconciled: "Reconciled"
+        case .unreconciled: "Unreconciled"
         }
     }
 
