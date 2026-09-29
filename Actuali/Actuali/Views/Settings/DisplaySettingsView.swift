@@ -14,7 +14,7 @@ struct CurrencyOption: Identifiable, Sendable {
 }
 
 /// Every currency in Actual's loot-core currencies list, plus a few
-/// user-requested extras Actual lacks (AMD, BDT, NOK, NZD, ZAR). Sorted by
+/// user-requested extras Actual lacks (AMD, BDT, NOK, NZD, VND, ZAR). Sorted by
 /// code. Display-only — all budget math is currency-agnostic integer
 /// cents, and rendering uses the system formatter for the ISO code.
 let currencyOptions = [
