@@ -21,6 +21,7 @@ struct CompactBudgetPresentationTests {
                 onSetHidden: { _ in },
                 totals: totals,
                 showsSpent: showsSpent,
+                showsBudgeted: true,
                 onToggleCollapse: {}
             )
             .environmentObject(store)
@@ -31,6 +32,7 @@ struct CompactBudgetPresentationTests {
                 onSetHidden: { _ in },
                 totals: nil,
                 showsSpent: showsSpent,
+                showsBudgeted: true,
                 onToggleCollapse: {}
             )
             .environmentObject(store)
@@ -85,6 +87,105 @@ struct CompactBudgetPresentationTests {
             .init(type: .spent, amount: -31500),
             .init(type: .balance, amount: 18500),
         ])
+    }
+
+    /// GH #562: hiding budgeted amounts drops the Budgeted column everywhere,
+    /// income included, so income columns stay aligned with expense rows.
+    @Test func hidingBudgetedDropsTheColumnFromLayoutOverviewAndGroupTotals() {
+        #expect(CompactBudgetTableLayout(isTrackingBudget: true, showsSpent: true, showsBudgeted: false).expenseColumns == [
+            .spent,
+            .balance,
+        ])
+        #expect(CompactBudgetTableLayout(isTrackingBudget: true, showsSpent: true, showsBudgeted: false).incomeColumns == [
+            nil,
+            .received,
+        ])
+        #expect(CompactBudgetTableLayout(isTrackingBudget: true, showsSpent: false, showsBudgeted: false).incomeColumns == [
+            .received,
+        ])
+
+        let totals = CategoryGroupTotals([
+            category(budgeted: 50000, spent: -31500, available: 18500),
+        ])
+        #expect(CompactBudgetGroupHeaderPresentation(totals: totals, showsSpent: false, showsBudgeted: false).columns == [
+            .init(type: .balance, amount: 18500),
+        ])
+
+        let budget = BudgetMonth(
+            month: "2026-08",
+            categoryBudgets: [
+                category(budgeted: 50000, spent: -31500, available: 18500),
+            ],
+            toBudget: 12500
+        )
+        let overview = CompactBudgetOverview(
+            budget: budget,
+            showsSpent: true,
+            showsBudgeted: false,
+            currentMonth: "2026-08"
+        )
+        #expect(overview.leading == .init(kind: .toBudget, amount: 12500))
+        #expect(overview.columns == [
+            .init(kind: .spent, amount: -31500),
+            .init(kind: .balance, amount: 18500),
+        ])
+    }
+
+    /// GH #562: the Clean summary drops the Budgeted cell but keeps both rows,
+    /// so the card changes content, not height, when the preference goes off.
+    @Test @MainActor func cleanSummaryKeepsBothRowsWithoutBudgeted() throws {
+        let budget = BudgetMonth(
+            month: "2026-08",
+            categoryBudgets: [
+                category(budgeted: 50000, spent: -31500, available: 18500),
+            ],
+            toBudget: 12500
+        )
+        let store = BudgetStore.previewInstance()
+
+        let images = try [true, false].map { showsBudgeted in
+            try renderedImage(
+                CleanBudgetSummary(budget: budget, showsBudgeted: showsBudgeted)
+                    .environmentObject(store)
+                    .frame(width: 390)
+            )
+        }
+
+        #expect(images[0].height == images[1].height)
+        // Same height alone would pass if the flag were ignored; the pixels
+        // must differ too.
+        #expect(images[0].dataProvider?.data as Data? != images[1].dataProvider?.data as Data?)
+    }
+
+    @Test func groupHeaderAccessibilityOmitsHiddenAmounts() {
+        let locale = Locale(identifier: "fr_FR")
+        #expect(CompactBudgetAccessibility.groupHeader(
+            name: "Courses",
+            state: "développé",
+            budgeted: nil,
+            spent: nil,
+            balance: "5,00 €",
+            locale: locale,
+            bundle: actualiBundle
+        ) == "Courses, développé, solde 5,00 €")
+        #expect(CompactBudgetAccessibility.groupHeader(
+            name: "Courses",
+            state: "développé",
+            budgeted: nil,
+            spent: "3,00 €",
+            balance: "5,00 €",
+            locale: locale,
+            bundle: actualiBundle
+        ) == "Courses, développé, dépensé 3,00 €, solde 5,00 €")
+        #expect(CompactBudgetAccessibility.groupHeader(
+            name: "Courses",
+            state: "développé",
+            budgeted: "8,00 €",
+            spent: "3,00 €",
+            balance: "5,00 €",
+            locale: locale,
+            bundle: actualiBundle
+        ) == "Courses, développé, budgété 8,00 €, dépensé 3,00 €, solde 5,00 €")
     }
 
     @Test func trackingOverviewUsesIncomeAndProjectedSavingsForCurrentMonth() {

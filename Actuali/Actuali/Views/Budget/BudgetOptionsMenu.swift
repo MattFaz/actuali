@@ -165,6 +165,10 @@ struct BudgetOptionsMenu: View {
                         Label("Group Totals", systemImage: "sum")
                     }
                 }
+                Toggle(isOn: $budgetStore.showBudgetedAmounts) {
+                    Label("Budgeted Amounts", systemImage: "banknote")
+                }
+                .accessibilityIdentifier("budgetOptions.showBudgetedAmounts")
                 Toggle(isOn: $budgetStore.showBudgetCheckInStrip) {
                     Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
                 }

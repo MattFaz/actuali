@@ -6,11 +6,13 @@ struct CompactBudgetSummary: View {
 
     let budget: BudgetMonth
     let showsSpent: Bool
+    let showsBudgeted: Bool
 
     private var overview: CompactBudgetOverview {
         CompactBudgetOverview(
             budget: budget,
             showsSpent: showsSpent,
+            showsBudgeted: showsBudgeted,
             currentMonth: BudgetView.currentMonthString()
         )
     }
@@ -187,17 +189,18 @@ struct CompactBudgetGroupHeader: View {
     var onRename: (() -> Void)?
     let totals: CategoryGroupTotals?
     let showsSpent: Bool
+    let showsBudgeted: Bool
     let onToggleCollapse: () -> Void
 
     private var presentation: CompactBudgetGroupHeaderPresentation {
-        CompactBudgetGroupHeaderPresentation(totals: totals, showsSpent: showsSpent)
+        CompactBudgetGroupHeaderPresentation(totals: totals, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
     }
 
     /// Keep the same column geometry when totals are hidden so toggling the
     /// preference only changes the content, not the header's dimensions.
     private var columnsForLayout: [CompactBudgetGroupHeaderPresentation.Column] {
         guard totals == nil else { return presentation.columns }
-        return CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
+        return CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
             .expenseColumns
             .map { .init(type: $0, amount: 0) }
     }
@@ -320,7 +323,7 @@ struct CompactBudgetGroupHeader: View {
         return CompactBudgetAccessibility.groupHeader(
             name: name,
             state: state,
-            budgeted: budgetStore.displayBalance(totals.budgeted),
+            budgeted: showsBudgeted ? budgetStore.displayBalance(totals.budgeted) : nil,
             spent: showsSpent ? budgetStore.displayBalance(totals.spent) : nil,
             balance: budgetStore.displayBalance(totals.balance),
             locale: locale,
@@ -339,6 +342,7 @@ struct CompactCategoryBudgetRow: View {
     var isDimmed = false
     var onSetHidden: ((Bool) -> Void)?
     let showsSpent: Bool
+    let showsBudgeted: Bool
     let showsProgressBars: Bool
     let showsStatusDots: Bool
     var onShowDetails: (CategoryBudget) -> Void = { _ in }
@@ -386,14 +390,16 @@ struct CompactCategoryBudgetRow: View {
                 )
 
             HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
-                Button {
-                    onEditBudget(category)
-                } label: {
-                    CompactAmountText(amount: category.budgeted)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                if showsBudgeted {
+                    Button {
+                        onEditBudget(category)
+                    } label: {
+                        CompactAmountText(amount: category.budgeted)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(editBudgetAccessibilityLabel)
                 }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(editBudgetAccessibilityLabel)
 
                 if showsSpent {
                     Button {
@@ -429,16 +435,18 @@ struct CompactCategoryBudgetRow: View {
     private var stackedContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             detailButton
-            Button {
-                onEditBudget(category)
-            } label: {
-                stackedAmount(
-                    label: CompactBudgetColumn.budgeted.label(locale: locale, bundle: .main),
-                    amount: category.budgeted
-                )
+            if showsBudgeted {
+                Button {
+                    onEditBudget(category)
+                } label: {
+                    stackedAmount(
+                        label: CompactBudgetColumn.budgeted.label(locale: locale, bundle: .main),
+                        amount: category.budgeted
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(editBudgetAccessibilityLabel)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(editBudgetAccessibilityLabel)
 
             if showsSpent {
                 Button {
@@ -567,12 +575,13 @@ struct CompactIncomeGroupHeader: View {
     var onRename: (() -> Void)?
     let totalBudgeted: Int
     let totalReceived: Int
-    let showsBudgeted: Bool
+    let isTrackingBudget: Bool
     let showsSpent: Bool
+    let showsBudgeted: Bool
     var onToggleCollapse: () -> Void = {}
 
     private var layout: CompactBudgetTableLayout {
-        CompactBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: showsSpent)
+        CompactBudgetTableLayout(isTrackingBudget: isTrackingBudget, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
     }
 
     private var columns: [(CompactBudgetColumn, Int)] {
@@ -694,7 +703,7 @@ struct CompactIncomeGroupHeader: View {
         CompactBudgetAccessibility.incomeHeader(
             name: name,
             state: isCollapsed ? String(localized: "collapsed", bundle: .main, locale: locale) : String(localized: "expanded", bundle: .main, locale: locale),
-            budgeted: showsBudgeted ? budgetStore.displayBalance(totalBudgeted) : nil,
+            budgeted: layout.incomeColumns.contains(.budgeted) ? budgetStore.displayBalance(totalBudgeted) : nil,
             received: budgetStore.displayBalance(totalReceived),
             locale: locale,
             bundle: .main
@@ -715,12 +724,13 @@ struct CompactIncomeCategoryRow: View {
     var isHidden = false
     var isDimmed = false
     var onSetHidden: ((Bool) -> Void)?
-    let showsBudgeted: Bool
+    let isTrackingBudget: Bool
     let showsSpent: Bool
+    let showsBudgeted: Bool
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
     private var layout: CompactBudgetTableLayout {
-        CompactBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: showsSpent)
+        CompactBudgetTableLayout(isTrackingBudget: isTrackingBudget, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
     }
 
     var body: some View {
@@ -728,7 +738,7 @@ struct CompactIncomeCategoryRow: View {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 8) {
                     nameButton
-                    if showsBudgeted {
+                    if layout.incomeColumns.contains(.budgeted) {
                         stackedReadOnlyAmount(label: CompactBudgetColumn.budgeted.label(locale: locale, bundle: .main), amount: income.budgeted)
                     }
                     Button {
