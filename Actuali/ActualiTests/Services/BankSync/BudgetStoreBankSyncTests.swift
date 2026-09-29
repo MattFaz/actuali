@@ -99,6 +99,64 @@ struct BudgetStoreBankSyncTests {
             == "Matched 2 transactions you already had.")
     }
 
+    /// The message choice for linked accounts this app can't refresh: only
+    /// kick in when nothing supported is linked, name GoCardless when it's
+    /// the sole source, and stay generic for anything else upstream writes
+    /// (pluggyai, akahu, enableBanking, or a source from the future).
+    @Test func unsupportedSourceMessageExplainsOnlyUnrefreshableProviders() {
+        func account(source: String) -> BankSyncAccount {
+            BankSyncAccount(
+                id: "acct-1",
+                name: "Checking",
+                externalAccountId: "ext-1",
+                syncSource: source,
+                offBudget: false,
+                closed: false
+            )
+        }
+
+        #expect(BudgetStore.BankSyncResult.unsupportedSourceMessage(
+            for: [account(source: "goCardless"), account(source: "simpleFin")],
+            locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == nil)
+        #expect(BudgetStore.BankSyncResult.unsupportedSourceMessage(
+            for: [],
+            locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == nil)
+        #expect(BudgetStore.BankSyncResult.unsupportedSourceMessage(
+            for: [account(source: "goCardless")],
+            locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == "These accounts sync through GoCardless, which Actuali can't refresh yet. Refresh them from the Actual web app.")
+        #expect(BudgetStore.BankSyncResult.unsupportedSourceMessage(
+            for: [account(source: "pluggyai")],
+            locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == "These accounts sync through a bank provider Actuali can't refresh yet. Refresh them from the Actual web app.")
+        #expect(BudgetStore.BankSyncResult.unsupportedSourceMessage(
+            for: [account(source: "goCardless"), account(source: "futureProvider")],
+            locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == "These accounts sync through a bank provider Actuali can't refresh yet. Refresh them from the Actual web app.")
+    }
+
+    @Test func syncingOnlyGoCardlessAccountsExplainsInsteadOfNothingLinked() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        let queue = try DatabaseQueue(path: url.path)
+        let accountId = Self.accountId
+        try await queue.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET account_sync_source = 'goCardless' WHERE id = ?",
+                arguments: [accountId]
+            )
+        }
+        await store.loadBankSyncAccounts()
+
+        let result = try await store.syncBankAccounts()
+        #expect(result.accountsSynced == 0)
+        #expect(result.summary(locale: Locale(identifier: "en_US"), bundle: appBundle)
+            == "These accounts sync through GoCardless, which Actuali can't refresh yet. Refresh them from the Actual web app.")
+    }
+
     /// Timestamps relative to now, so the download always lands inside the
     /// 90-day sync window however long this test lives.
     private static func daysAgo(_ days: Int) -> Int {

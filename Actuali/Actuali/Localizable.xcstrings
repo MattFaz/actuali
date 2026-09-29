@@ -4305,6 +4305,98 @@
         }
       }
     },
+    "These accounts sync through GoCardless, which Actuali can't refresh yet. Refresh them from the Actual web app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Konten werden über GoCardless synchronisiert, was Actuali noch nicht aktualisieren kann. Aktualisieren Sie sie in der Actual-Webapp."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "These accounts sync through GoCardless, which Actuali can't refresh yet. Refresh them from the Actual web app."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas cuentas se sincronizan a través de GoCardless, que Actuali aún no puede actualizar. Actualícelas desde la aplicación web de Actual."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ces comptes se synchronisent via GoCardless, qu'Actuali ne peut pas encore actualiser. Actualisez-les depuis l'application web Actual."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questi conti si sincronizzano tramite GoCardless, che Actuali non può ancora aggiornare. Aggiornali dalla webapp di Actual."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze accounts worden gesynchroniseerd via GoCardless, wat Actuali nog niet kan vernieuwen. Vernieuw ze in de Actual webapp."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas contas sincronizam pelo GoCardless, que o Actuali ainda não consegue atualizar. Atualize-as pelo app web do Actual."
+          }
+        }
+      }
+    },
+    "These accounts sync through a bank provider Actuali can't refresh yet. Refresh them from the Actual web app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Konten werden über einen Bankanbieter synchronisiert, den Actuali noch nicht aktualisieren kann. Aktualisieren Sie sie in der Actual-Webapp."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "These accounts sync through a bank provider Actuali can't refresh yet. Refresh them from the Actual web app."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas cuentas se sincronizan a través de un proveedor bancario que Actuali aún no puede actualizar. Actualícelas desde la aplicación web de Actual."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ces comptes se synchronisent via un fournisseur bancaire qu'Actuali ne peut pas encore actualiser. Actualisez-les depuis l'application web Actual."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questi conti si sincronizzano tramite un provider bancario che Actuali non può ancora aggiornare. Aggiornali dalla webapp di Actual."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze accounts worden gesynchroniseerd via een bankprovider die Actuali nog niet kan vernieuwen. Vernieuw ze in de Actual webapp."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas contas sincronizam por um provedor bancário que o Actuali ainda não consegue atualizar. Atualize-as pelo app web do Actual."
+          }
+        }
+      }
+    },
     "This payment doesn't cover the interest and fees, so the balance will grow this month." : {
       "extractionState" : "stale",
       "localizations" : {

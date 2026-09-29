@@ -3693,6 +3693,33 @@ final class BudgetStore: ObservableObject {
             )
         }
 
+        /// The message for linked accounts Actuali can't refresh — a run that
+        /// finds only those should explain why instead of claiming nothing is
+        /// linked. `nil` when a supported account is present (the run syncs it)
+        /// or nothing is linked, leaving the usual messages in charge.
+        static func unsupportedSourceMessage(
+            for accounts: [BankSyncAccount],
+            locale: Locale = .autoupdatingCurrent,
+            bundle: Bundle = .main
+        ) -> String? {
+            guard !accounts.isEmpty, accounts.allSatisfy({ $0.source == nil }) else { return nil }
+            // Upstream writes exactly 'goCardless' into account_sync_source
+            // (app.ts); pluggyai, akahu, enableBanking and future sources
+            // stay generic rather than guess a provider name.
+            if Set(accounts.map(\.syncSource)) == ["goCardless"] {
+                return ReportStrings.text(
+                    "These accounts sync through GoCardless, which Actuali can't refresh yet. Refresh them from the Actual web app.",
+                    locale: locale,
+                    bundle: bundle
+                )
+            }
+            return ReportStrings.text(
+                "These accounts sync through a bank provider Actuali can't refresh yet. Refresh them from the Actual web app.",
+                locale: locale,
+                bundle: bundle
+            )
+        }
+
         /// What to show when the run finishes. Problems come last so the
         /// counts above them still read as what did work.
         var summary: String {
@@ -4112,7 +4139,12 @@ final class BudgetStore: ObservableObject {
         }
         let simpleFinTargets = linked.filter { $0.source == .simpleFin }
         var walletTargets = linked.filter { $0.source == .financeKit }
-        guard !(simpleFinTargets.isEmpty && walletTargets.isEmpty) else { return BankSyncResult() }
+        guard !(simpleFinTargets.isEmpty && walletTargets.isEmpty) else {
+            if let message = BankSyncResult.unsupportedSourceMessage(for: linked) {
+                return BankSyncResult(problems: [message])
+            }
+            return BankSyncResult()
+        }
 
         // Nothing may suspend between the isBankSyncing guard above and this
         // write — an await in that window would let a second call slip past
