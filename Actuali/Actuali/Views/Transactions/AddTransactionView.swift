@@ -1796,6 +1796,7 @@ struct CategoryPickerView: View {
             }
         }
         .navigationTitle("Category")
+        .tint(.primary)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top, spacing: 0) {
             PickerSearchBar(text: $searchText, clearButtonIdentifier: "categoryPicker.clearSearch") {
