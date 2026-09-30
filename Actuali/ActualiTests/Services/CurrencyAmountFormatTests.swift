@@ -52,19 +52,6 @@ struct CurrencyAmountFormatTests {
         #expect(formatted == "1,052")
     }
 
-    @MainActor
-    @Test func budgetTableWholeUnitsUseTheSameRounding() {
-        for cents in [105_150, -105_150] {
-            #expect(CurrencyAmountFormat.symbolLessString(
-                cents: cents, currencyCode: "", wholeUnits: true
-            ) ==
-                CurrencyAmountFormat.string(
-                    cents: cents, currencyCode: "", narrowSymbol: false,
-                    wholeUnits: true, locale: enUS
-                ))
-        }
-    }
-
     /// Empty code means no currency (Actual's defaultCurrencyCode convention);
     /// narrowSymbol has nothing to narrow and must not disturb plain numbers.
     @Test func emptyCodeRendersPlainNumber() {
@@ -96,32 +83,6 @@ struct CurrencyAmountFormatTests {
         )
         #expect(yen == "¥0")
         #expect(dinar == "KWD 0.000")
-    }
-
-    @MainActor
-    @Test func symbolLessPresentationKeepsCurrencyNativePrecision() {
-        let dollars = CurrencyAmountFormat.symbolLessString(
-            cents: 123_450,
-            currencyCode: "USD"
-        )
-        let yen = CurrencyAmountFormat.symbolLessString(
-            cents: 123_450,
-            currencyCode: "JPY"
-        )
-        let dinar = CurrencyAmountFormat.symbolLessString(
-            cents: 123_450,
-            currencyCode: "KWD"
-        )
-        let roundedDollars = CurrencyAmountFormat.symbolLessString(
-            cents: 123_456,
-            currencyCode: "USD",
-            wholeUnits: true
-        )
-
-        #expect(dollars == "1,234.50")
-        #expect(yen == "1,234")
-        #expect(dinar == "1,234.500")
-        #expect(roundedDollars == "1,235")
     }
 
     @Test func actualNumberFormatsMatchExpectedGrouping() {

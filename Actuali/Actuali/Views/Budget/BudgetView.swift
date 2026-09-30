@@ -74,22 +74,6 @@ private struct BudgetListMetrics {
     }
 }
 
-extension BudgetStore {
-    /// Plain grouped cell text using the budget currency's native precision.
-    /// The table headers supply the currency context, leaving more room for
-    /// category names than repeating the symbol in every cell.
-    func displayBudgetCell(_ cents: Int) -> String {
-        hideBalances
-            ? Self.hiddenBalanceText
-            : CurrencyAmountFormat.symbolLessString(
-                cents: cents,
-                currencyCode: currencyCode,
-                wholeUnits: hideDecimalPlaces,
-                numberFormat: numberFormat
-            )
-    }
-}
-
 struct BudgetView: View {
     nonisolated static let incomeGroupCollapseID = "__income_group__"
 
