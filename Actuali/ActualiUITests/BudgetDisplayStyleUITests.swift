@@ -162,7 +162,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH 'Transactions for Groceries in '")
         ).firstMatch
         XCTAssertFalse(groceriesSpent.exists,
-                       "the Spent column defaults to absent, not an empty placeholder")
+                       "the launch argument seeds the Spent column off, so it is absent rather than an empty placeholder")
 
         let optionsMenu = app.buttons["Budget options"]
         optionsMenu.tap()
