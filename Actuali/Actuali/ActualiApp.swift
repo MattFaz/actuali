@@ -54,7 +54,8 @@ struct ActualiApp: App {
                 if CommandLine.arguments.contains("-loadDemoData") {
                     await budgetStore.loadDemoData(
                         tracking: CommandLine.arguments.contains("-loadTrackingDemoData"),
-                        seedUncategorized: CommandLine.arguments.contains("-seedUncategorized")
+                        seedUncategorized: CommandLine.arguments.contains("-seedUncategorized"),
+                        seedUnsupportedBankSync: CommandLine.arguments.contains("-seedUnsupportedBankSync")
                     )
                 }
                 if CommandLine.arguments.contains("-resetStatusFilterState") {
