@@ -81,7 +81,18 @@ final class PendingImportStore: ObservableObject {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
         do {
             let data = try Data(contentsOf: fileURL)
-            imports = try JSONDecoder().decode([PendingImport].self, from: data)
+            var decoded = try JSONDecoder().decode([PendingImport].self, from: data)
+            var repaired = false
+            for i in decoded.indices {
+                if let effective = decoded[i].effectiveCardHint, decoded[i].cardHint != effective {
+                    decoded[i].cardHint = effective
+                    repaired = true
+                }
+            }
+            imports = decoded
+            if repaired {
+                try? save(decoded)
+            }
         } catch {
             logger.error("Failed to load pending imports: \(error.localizedDescription, privacy: .public)")
             do {

@@ -383,7 +383,7 @@ struct PendingImportsView: View {
 
     private func resolveAccountId(for item: PendingImport) -> String? {
         PendingImportApprover.seedAccountId(
-            cardHint: item.cardHint,
+            cardHint: item.effectiveCardHint,
             accounts: budgetStore.accounts,
             cardMappings: budgetStore.cardAccountMappings,
             defaultAccountId: budgetStore.defaultAccountId
@@ -427,7 +427,7 @@ private struct PendingImportRow: View {
             }
 
             HStack {
-                if let hint = item.cardHint {
+                if let hint = item.effectiveCardHint {
                     Text(PendingImportsView.cardLabel(hint, locale: locale))
                         .font(.caption)
                         .foregroundStyle(.secondary)

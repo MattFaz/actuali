@@ -135,4 +135,19 @@ struct PendingImportStoreTests {
         let reloaded = PendingImportStore(fileURL: url)
         #expect(reloaded.imports.first?.payee == "After Recovery")
     }
+
+    @Test @MainActor func healsScrambledCardHintOnLoad() throws {
+        let directory = FileManager.default.temporaryDirectory
+        let url = directory.appendingPathComponent("test_pending_imports_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let text = "Rs 1,234.00 spent on Sample Bank Card XX6419 on 01-01-2026 at Coffee Shop."
+        let scrambled = PendingImport(cardHint: "1964", rawText: text)
+        let data = try JSONEncoder().encode([scrambled])
+        try data.write(to: url)
+
+        let loaded = PendingImportStore(fileURL: url)
+        #expect(loaded.imports.count == 1)
+        #expect(loaded.imports[0].cardHint == "6419")
+    }
 }

@@ -100,11 +100,12 @@ enum TransactionTextParser {
         let extracted = response.content
         let date = extractDate(from: text)
         let payee = resolvePayee(extracted.payee, in: text, isIncome: extracted.isIncome)
+        let cardHint = resolveCardHint(extracted.cardHint, in: text)
         return ParsedMessage(
             amount: extracted.amount,
             sourceCurrencyCode: normalizeCurrencyCode(extracted.sourceCurrencyCode),
             payee: payee,
-            cardHint: extracted.cardHint,
+            cardHint: cardHint,
             date: date,
             isIncome: extracted.isIncome,
             rawText: text
@@ -235,16 +236,32 @@ enum TransactionTextParser {
     }
 
     /// Extract the last 4 digits of a card / account number.
-    private static func extractCardHint(from text: String) -> String? {
+    static func extractCardHint(from text: String) -> String? {
         // ponytail: simple pattern covering "card ending 1234", "XX9876",
-        // "A/C ...4321", "a/c no 1234".
-        let pattern = #"(?:card|a/c|ending|acct|xx|x{2,})[^\d]*(\d{4})"#
+        // "A/C ...4321", "account ending 1234", "a/c no 1234".
+        let pattern = #"(?:card|account|a/c|ending|acct|xx|x{2,})[^\d]*(\d{4})"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
               let range = Range(match.range(at: 1), in: text) else {
             return nil
         }
         return String(text[range])
+    }
+
+    /// Grounded resolution for card hint: prioritizes deterministic regex match
+    /// from the raw text to prevent LLM digit transposition / hallucination (e.g. 6419 -> 1964).
+    /// If regex does not find a match, only accepts the candidate if its digits
+    /// actually exist in the original text.
+    // ponytail: on-device SLMs frequently transpose multi-token digits. A regex
+    // match directly in the text avoids tokenization scramble entirely.
+    static func resolveCardHint(_ candidate: String?, in text: String) -> String? {
+        if let deterministic = extractCardHint(from: text) {
+            return deterministic
+        }
+        guard let candidate else { return nil }
+        let digits = candidate.filter(\.isNumber)
+        guard digits.count == 4, text.contains(digits) else { return nil }
+        return digits
     }
 
     /// Extract the first date found via NSDataDetector.
