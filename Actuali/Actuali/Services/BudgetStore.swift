@@ -1453,6 +1453,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// `id` if that category still exists, else nil — so a category deleted
+    /// since a shortcut was configured is dropped instead of written as a
+    /// dangling id.
+    func existingCategoryId(_ id: String?) async -> String? {
+        guard let id else { return nil }
+        return await categoriesForIntent().contains { $0.id == id } ? id : nil
+    }
+
     func categoryBudgetForIntent(categoryId: String) async -> CategoryBudget? {
         let currentMonth = currentMonthString()
         if let currentBudgetMonth, currentBudgetMonth.month == currentMonth {
