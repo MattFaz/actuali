@@ -29,6 +29,27 @@ struct BudgetViewTests {
         #expect(ids == ["essentials", "lifestyle"])
     }
 
+    // MARK: - Month note (GH #567)
+
+    @Test func monthNoteOffersTheNoteReadForTheSelectedMonth() {
+        let note = EntityNote(supported: true, text: "Holiday month")
+
+        #expect(BudgetView.monthNote(note, loadedFor: "2026-09", selectedMonth: "2026-09") == note)
+    }
+
+    /// Right after a month change the previous month's note is still in
+    /// state; offering it would let a save overwrite the new month's note.
+    @Test func monthNoteHidesAnotherMonthsNote() {
+        let note = EntityNote(supported: true, text: "Holiday month")
+
+        #expect(BudgetView.monthNote(note, loadedFor: "2026-08", selectedMonth: "2026-09") == .unsupported)
+        #expect(BudgetView.monthNote(note, loadedFor: nil, selectedMonth: "2026-09") == .unsupported)
+    }
+
+    @Test func monthNoteStaysUnsupportedWithoutANotesTable() {
+        #expect(BudgetView.monthNote(.unsupported, loadedFor: "2026-09", selectedMonth: "2026-09") == .unsupported)
+    }
+
     @Test func monthPickerTitleUsesRequestedLocale() {
         #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "en_US")) == "September 2026")
         #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "fr_FR")) == "septembre 2026")
