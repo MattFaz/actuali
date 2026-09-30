@@ -171,22 +171,19 @@ struct CategoryBudget: Identifiable, Hashable {
     /// category actually had to spend this month (spent + remaining
     /// available), so the bar agrees with the displayed Available amount
     /// even when carryover makes it diverge from the budgeted figure.
-    var progressFraction: Double {
-        let spentAmount = Double(abs(spent))
-        let capacity = spentAmount + Double(max(available, 0))
-        guard capacity > 0 else { return 0 }
-        return min(spentAmount / capacity, 1)
+    /// Shared denominator keeps normal and inverse presentations in sync.
+    var progressCapacity: Int {
+        abs(spent) + max(available, 0)
     }
 
-    /// Remaining fraction for the inverse progress-bar presentation. A
-    /// zero-capacity category is empty rather than full: there is no money
-    /// remaining to represent even when the normal fraction has no denominator.
-    var inverseProgressFraction: Double {
-        let spentAmount = Double(abs(spent))
-        let availableAmount = Double(max(available, 0))
-        let capacity = spentAmount + availableAmount
-        guard capacity > 0 else { return 0 }
-        return availableAmount / capacity
+    var progressFraction: Double {
+        guard progressCapacity > 0 else { return 0 }
+        return Double(abs(spent)) / Double(progressCapacity)
+    }
+
+    func progressFraction(inverted: Bool) -> Double {
+        guard inverted, progressCapacity > 0 else { return progressFraction }
+        return 1 - progressFraction
     }
 
     /// Healthy but close to running out: at least 80% of what this category

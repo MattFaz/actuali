@@ -2040,9 +2040,7 @@ struct CategoryProgressBar: View {
     let category: CategoryBudget
 
     private var fraction: Double {
-        budgetStore.showInverseBudgetProgressBars
-            ? category.inverseProgressFraction
-            : category.progressFraction
+        category.progressFraction(inverted: budgetStore.showInverseBudgetProgressBars)
     }
 
     private var statusColor: Color {
@@ -2050,7 +2048,10 @@ struct CategoryProgressBar: View {
     }
 
     private var trackTint: Color {
-        category.progressState == .funded ? statusColor.opacity(0.25) : Color(.systemFill)
+        if budgetStore.showInverseBudgetProgressBars || category.progressState == .funded {
+            return statusColor.opacity(0.25)
+        }
+        return Color(.systemFill)
     }
 
     var body: some View {
