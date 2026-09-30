@@ -96,6 +96,14 @@ struct AccountsListView: View {
             }
         }
         .initialSyncBanner()
+        // Outside both navigation containers, not on the list root: a pushed
+        // account screen (where Sync from Bank lives) covers the root, and an
+        // alert there waits until the user backs out to present.
+        .alert("Bank Sync", isPresented: bankSyncAlertBinding) {
+            Button(String(localized: "common.ok"), role: .cancel) { budgetStore.bankSyncSummary = nil }
+        } message: {
+            Text(budgetStore.bankSyncSummary ?? "")
+        }
     }
 
     /// The phone layout: tap an account, push its transactions.
@@ -411,14 +419,6 @@ struct AccountsListView: View {
             .sheet(isPresented: $showingAddAccount) {
                 AddAccountView()
                     .environmentObject(budgetStore)
-            }
-            // Attached here, not on the menu item that starts the sync: the
-            // menu is long gone by the time the download finishes, and this
-            // stack's pushed account views sit above this alert anyway.
-            .alert("Bank Sync", isPresented: bankSyncAlertBinding) {
-                Button(String(localized: "common.ok"), role: .cancel) { budgetStore.bankSyncSummary = nil }
-            } message: {
-                Text(budgetStore.bankSyncSummary ?? "")
             }
             .sheet(isPresented: $showingPendingImports) {
                 PendingImportsView()
