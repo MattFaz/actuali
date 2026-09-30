@@ -349,6 +349,9 @@ struct CompactCategoryBudgetRow: View {
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
     var onMoveMoney: (CategoryBudget) -> Void = { _ in }
+    /// Apply this category's own templates (GH #495); nil hides the item —
+    /// callers gate it on the goalTemplatesEnabled flag.
+    var onApplyTemplate: ((CategoryBudget) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -377,7 +380,8 @@ struct CompactCategoryBudgetRow: View {
             onShowDetails: onShowDetails,
             onEditBudget: onEditBudget,
             onShowTransactions: onShowTransactions,
-            onMoveMoney: onMoveMoney
+            onMoveMoney: onMoveMoney,
+            onApplyTemplate: onApplyTemplate
         ))
     }
 

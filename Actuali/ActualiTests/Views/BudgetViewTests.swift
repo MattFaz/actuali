@@ -126,4 +126,48 @@ struct BudgetViewTests {
             #expect(BudgetTransferLocalization.candidateLabel(categoryName: categoryName, amount: amount, isRecommended: false, locale: locale, bundle: actualiBundle) == ordinary)
         }
     }
+
+    @Test func templateAlertMonthRunReportsUpToDateAsSuccess() {
+        let alert = BudgetView.templateAlert(
+            .upToDate,
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+
+        #expect(alert.title == "Templates Applied")
+        #expect(alert.message == "All templates are up to date.")
+    }
+
+    /// A single-category run on a templateless category must not read as a
+    /// month-wide success — GH #577 review.
+    @Test func templateAlertSingleCategoryUpToDateNamesTheCategory() {
+        let alert = BudgetView.templateAlert(
+            .upToDate,
+            singleCategory: true,
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+
+        #expect(alert.title == "Apply Budget Template")
+        #expect(alert.message == "No templates to apply for this category.")
+    }
+
+    @Test func templateAlertAppliedAndFailureCases() {
+        let applied = BudgetView.templateAlert(
+            .applied(3),
+            singleCategory: true,
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+        #expect(applied.title == "Templates Applied")
+        #expect(applied.message == "Successfully applied templates to 3 categories.")
+
+        let failed = BudgetView.templateAlert(
+            .failed("sync unavailable"),
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+        #expect(failed.title == "Template Error")
+        #expect(failed.message == "sync unavailable")
+    }
 }
