@@ -66,7 +66,7 @@ struct BudgetStoreTransactionStatusFilterTests {
 
     @Test func rawValuesRoundTrip() {
         #expect(TransactionStatusFilter.allCases.map(\.rawValue)
-            == ["all", "uncategorized", "uncleared", "cleared", "reconciled"])
+            == ["all", "uncategorized", "uncleared", "cleared", "reconciled", "unreconciled"])
         for filter in TransactionStatusFilter.allCases {
             #expect(TransactionStatusFilter(rawValue: filter.rawValue) == filter)
         }

@@ -6,7 +6,6 @@ final class TransactionToolbarOptionsUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-hideClearedTransactions", "NO",
             "-transactionDisplayMode", "flat",
         ]
         app.launch()
@@ -18,20 +17,12 @@ final class TransactionToolbarOptionsUITests: XCTestCase {
 
         let moreButton = app.navigationBars.buttons["More"]
         XCTAssertTrue(moreButton.waitForExistence(timeout: 10))
-        let hideCleared = app.buttons["Hide Cleared Transactions"]
         let groupByDate = app.buttons["Group by Date"]
 
         moreButton.tap()
-        XCTAssertTrue(hideCleared.waitForExistence(timeout: 5))
-        XCTAssertFalse(hideCleared.isSelected)
+        XCTAssertTrue(groupByDate.waitForExistence(timeout: 5))
         XCTAssertFalse(groupByDate.isSelected)
 
-        hideCleared.tap()
-        moreButton.tap()
-        XCTAssertTrue(hideCleared.isSelected)
-        hideCleared.tap()
-
-        moreButton.tap()
         groupByDate.tap()
         moreButton.tap()
         XCTAssertTrue(groupByDate.isSelected)
