@@ -303,6 +303,7 @@ struct PayeePickerView: View {
                 )
             }
         }
+        .tint(.primary)
     }
 }
 
