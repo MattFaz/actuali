@@ -100,6 +100,30 @@ struct BudgetStoreDisplayStyleTests {
         }
     }
 
+    /// Per-category progress-bar overrides are device-local and independent,
+    /// so hiding one category never changes another.
+    @Test func categoryProgressBarVisibilityPersistsPerCategory() {
+        let key = "hiddenBudgetProgressCategoryIDs"
+        withSavedDefaults(for: [key]) {
+            let store = BudgetStore.previewInstance()
+            #expect(!store.isBudgetProgressBarHidden(for: "food"))
+            #expect(!store.isBudgetProgressBarHidden(for: "rent"))
+
+            store.setBudgetProgressBarHidden(true, for: "food")
+            #expect(store.isBudgetProgressBarHidden(for: "food"))
+            #expect(!store.isBudgetProgressBarHidden(for: "rent"))
+            #expect(UserDefaults.standard.stringArray(forKey: key) == ["food"])
+
+            store.setBudgetProgressBarHidden(true, for: "rent")
+            #expect(Set(UserDefaults.standard.stringArray(forKey: key) ?? []) == ["food", "rent"])
+
+            store.setBudgetProgressBarHidden(false, for: "food")
+            #expect(!store.isBudgetProgressBarHidden(for: "food"))
+            #expect(store.isBudgetProgressBarHidden(for: "rent"))
+            #expect(UserDefaults.standard.stringArray(forKey: key) == ["rent"])
+        }
+    }
+
     /// GH #562: hiding budgeted amounts is a per-device display preference
     /// that defaults on so existing users see no change.
     @Test func budgetedAmountsPreferenceDefaultsOnAndPersists() {

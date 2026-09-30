@@ -113,6 +113,24 @@ struct BudgetViewTests {
         #expect(BudgetCategoryAccessibility.contextVisibility(isHidden: false, locale: locale, bundle: actualiBundle) == "Hide Category")
     }
 
+    @Test func progressBarVisibilityUsesAllSupportedLocales() {
+        let expectations = [
+            ("en_US", "Show progress bar", "Hide progress bar"),
+            ("fr_FR", "Afficher la barre de progression", "Masquer la barre de progression"),
+            ("es_ES", "Mostrar barra de progreso", "Ocultar barra de progreso"),
+            ("pt_BR", "Mostrar barra de progresso", "Ocultar barra de progresso"),
+            ("de_DE", "Fortschrittsbalken anzeigen", "Fortschrittsbalken ausblenden"),
+            ("it_IT", "Mostra barra di avanzamento", "Nascondi barra di avanzamento"),
+            ("nl_NL", "Voortgangsbalk tonen", "Voortgangsbalk verbergen"),
+        ]
+
+        for (identifier, show, hide) in expectations {
+            let locale = Locale(identifier: identifier)
+            #expect(BudgetCategoryAccessibility.progressBarVisibility(isHidden: true, locale: locale, bundle: actualiBundle) == show)
+            #expect(BudgetCategoryAccessibility.progressBarVisibility(isHidden: false, locale: locale, bundle: actualiBundle) == hide)
+        }
+    }
+
     @Test func categoryAccessibilityHelpersUseFrenchBundleForEveryArgumentShape() {
         let locale = Locale(identifier: "fr_FR")
         #expect(BudgetCategoryAccessibility.details(category: "Courses", locale: locale, bundle: actualiBundle) == "Détails de Courses")
