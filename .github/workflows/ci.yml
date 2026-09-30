@@ -87,15 +87,21 @@ jobs:
   # IPHONEOS_DEPLOYMENT_TARGET is 18.0, so the floor needs a runtime of its
   # own: the compiler rejects an unavailable API, but a missing SF Symbol or
   # a behaviour difference only shows up when the tests actually run there.
-  # A separate job so the ~4-minute runtime download (the runner image ships
-  # iOS 26 only) and this leg's test run overlap the iOS 26 leg instead of
-  # serializing behind it.
+  # macos-15 rather than macos-26: its image ships iOS 18 runtimes and devices
+  # alongside Xcode 26, which saves the ~9 GB runtime download macos-26 needs
+  # (~4 min, plus a slower build while the fresh runtime settles). The
+  # download below stays as a fallback for when the image drops them.
   test-ios18:
     name: Unit Tests (iOS 18)
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+
+      # macos-15 defaults to Xcode 16, which lacks the iOS 26 SDK. Take the
+      # newest Xcode 26 on the image rather than pinning one the image may
+      # later prune; the iOS 26 leg still builds on the current toolchain.
+      - run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
 
       - name: Select iOS 18 simulator
         id: sim
