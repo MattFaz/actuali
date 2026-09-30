@@ -18,26 +18,9 @@ struct BudgetStoreAccountMappingTests {
         await body(store)
     }
 
-    private func makeStore() throws -> (BudgetStore, BudgetFileManager, String, URL) {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mapping-tests-\(UUID().uuidString)", isDirectory: true)
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
-        let store = BudgetStore.previewInstance()
-        store.setFileManagerForTesting(manager)
+    private func makeStore() -> (BudgetStore, BudgetFileManager, String, URL) {
+        let (store, manager, root) = makeFileBackedStore()
         return (store, manager, "budget-\(UUID().uuidString)", root)
-    }
-
-    private func seedBudget(id: String, in manager: BudgetFileManager) async throws {
-        let dir = manager.budgetDirectory(for: id)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
-        try await dbQueue.write { db in
-            try db.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema)
-        }
-        try JSONEncoder().encode(BudgetMetadata(
-            id: id, budgetName: "Seed", cloudFileId: "cf-1", groupId: "group-1",
-            resetClock: nil, lastUploaded: nil, encryptKeyId: nil
-        )).write(to: manager.metadataPath(for: id))
     }
 
     private func account(_ id: String, _ name: String, closed: Bool = false) -> Account {
@@ -46,13 +29,13 @@ struct BudgetStoreAccountMappingTests {
     }
 
     @Test func legacyDefaultsMigrateOnLoad() async throws {
-        let (store, manager, budgetId, root) = try makeStore()
+        let (store, manager, budgetId, root) = makeStore()
         defer {
             try? FileManager.default.removeItem(at: root)
             UserDefaults.standard.removeObject(forKey: "cardAccountMappings_\(budgetId)")
         }
 
-        try await seedBudget(id: budgetId, in: manager)
+        try seedBudget(id: budgetId, in: manager)
 
         UserDefaults.standard.set(
             ["1234": "acct_hsbc", "9876": "acct_hdfc", " 5678 ": "acct_chase", "  ": "acct_blank"],
@@ -84,8 +67,7 @@ struct BudgetStoreAccountMappingTests {
             """)
         }
         let database = try BudgetDatabase(path: tempURL)
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+        let syncClient = try await makeTestSyncClient(database: database)
 
         let store = BudgetStore.previewInstance()
         store.currentBudgetId = "test-budget"
@@ -118,8 +100,7 @@ struct BudgetStoreAccountMappingTests {
             """)
         }
         let database = try BudgetDatabase(path: tempURL)
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+        let syncClient = try await makeTestSyncClient(database: database)
 
         let store = BudgetStore.previewInstance()
         store.currentBudgetId = "test-budget"
@@ -152,8 +133,7 @@ struct BudgetStoreAccountMappingTests {
             """)
         }
         let database = try BudgetDatabase(path: tempURL)
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+        let syncClient = try await makeTestSyncClient(database: database)
 
         let store = BudgetStore.previewInstance()
         store.currentBudgetId = "test-budget"
@@ -185,8 +165,7 @@ struct BudgetStoreAccountMappingTests {
             """)
         }
         let database = try BudgetDatabase(path: tempURL)
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+        let syncClient = try await makeTestSyncClient(database: database)
 
         let store = BudgetStore.previewInstance()
         store.currentBudgetId = "test-budget"
@@ -224,12 +203,12 @@ struct BudgetStoreAccountMappingTests {
     }
 
     @Test func cardAccountMappingsScopedPerBudget() async throws {
-        let (store, manager, budgetA, root) = try makeStore()
+        let (store, manager, budgetA, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         let budgetB = "budget-\(UUID().uuidString)"
 
-        try await seedBudget(id: budgetA, in: manager)
-        try await seedBudget(id: budgetB, in: manager)
+        try seedBudget(id: budgetA, in: manager)
+        try seedBudget(id: budgetB, in: manager)
 
         let dbQueueA = try DatabaseQueue(path: manager.databasePath(for: budgetA).path)
         try await dbQueueA.write { db in
@@ -317,10 +296,10 @@ struct BudgetStoreAccountMappingTests {
     }
 
     @Test func resolveAccountIdFallsBackToDatabaseFileWhenDatabaseIsNil() async throws {
-        let (store, manager, budgetId, root) = try makeStore()
+        let (store, manager, budgetId, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
 
-        try await seedBudget(id: budgetId, in: manager)
+        try seedBudget(id: budgetId, in: manager)
 
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: budgetId).path)
         try await dbQueue.write { db in

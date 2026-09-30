@@ -5,17 +5,11 @@ import Testing
 
 @MainActor
 struct DashboardSchemaMigrationTests {
-    private func makeDatabasePath() -> URL {
-        FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-    }
-
-    @Test func createsDashboardTableOnFirstInit() throws {
-        let path = makeDatabasePath()
-        _ = try BudgetDatabase(path: path)
+    @Test func createsDashboardTableOnFirstInit() async throws {
+        let (_, path) = try await makeTestDatabase()
 
         let queue = try DatabaseQueue(path: path.path)
-        try queue.read { db in
+        try await queue.read { db in
             let dashboardExists = try db.tableExists("dashboard")
             let customReportsExists = try db.tableExists("custom_reports")
             #expect(dashboardExists)
@@ -23,24 +17,9 @@ struct DashboardSchemaMigrationTests {
         }
     }
 
-    @Test func crdtMessageForDashboardLandsInTable() throws {
-        let path = makeDatabasePath()
+    @Test func crdtMessageForDashboardLandsInTable() async throws {
         // messages_crdt normally arrives with the imported budget file zip.
-        // Create it explicitly for the test fixture.
-        let fixtureQueue = try DatabaseQueue(path: path.path)
-        try fixtureQueue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-            """)
-        }
-        let database = try BudgetDatabase(path: path)
+        let (database, path) = try await makeTestDatabase(TestSchema.messagesCrdt)
 
         let timestamp = HLCTimestamp(
             millis: 1_700_000_000_000,
@@ -68,7 +47,7 @@ struct DashboardSchemaMigrationTests {
         try database.applyMessages(messages)
 
         let queue = try DatabaseQueue(path: path.path)
-        try queue.read { db in
+        try await queue.read { db in
             let row = try Row.fetchOne(
                 db,
                 sql: "SELECT type, meta FROM dashboard WHERE id = ?",
@@ -80,12 +59,11 @@ struct DashboardSchemaMigrationTests {
         }
     }
 
-    @Test func createsDashboardPagesTableOnFirstInit() throws {
-        let path = makeDatabasePath()
-        _ = try BudgetDatabase(path: path)
+    @Test func createsDashboardPagesTableOnFirstInit() async throws {
+        let (_, path) = try await makeTestDatabase()
 
         let queue = try DatabaseQueue(path: path.path)
-        try queue.read { db in
+        try await queue.read { db in
             #expect(try db.tableExists("dashboard_pages"))
             let columns = try Set(db.columns(in: "dashboard_pages").map(\.name))
             #expect(columns.isSuperset(of: ["id", "name", "tombstone"]))
@@ -97,44 +75,37 @@ struct DashboardSchemaMigrationTests {
     /// so the column must arrive via the upstream ALTER migration — otherwise
     /// page-assignment CRDT messages are skipped and the local dashboard
     /// diverges from the server.
-    @Test func addsDashboardPageIdToLegacyDashboardTable() throws {
-        let path = makeDatabasePath()
-        let fixtureQueue = try DatabaseQueue(path: path.path)
-        try fixtureQueue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE dashboard (
-                    id TEXT PRIMARY KEY,
-                    type TEXT,
-                    x INTEGER DEFAULT 0,
-                    y INTEGER DEFAULT 0,
-                    width INTEGER DEFAULT 4,
-                    height INTEGER DEFAULT 2,
-                    meta TEXT,
-                    tombstone INTEGER NOT NULL DEFAULT 0
-                )
-            """)
-        }
-        _ = try BudgetDatabase(path: path)
+    @Test func addsDashboardPageIdToLegacyDashboardTable() async throws {
+        let (_, path) = try await makeTestDatabase("""
+        CREATE TABLE dashboard (
+            id TEXT PRIMARY KEY,
+            type TEXT,
+            x INTEGER DEFAULT 0,
+            y INTEGER DEFAULT 0,
+            width INTEGER DEFAULT 4,
+            height INTEGER DEFAULT 2,
+            meta TEXT,
+            tombstone INTEGER NOT NULL DEFAULT 0
+        )
+        """)
 
         let queue = try DatabaseQueue(path: path.path)
-        try queue.read { db in
+        try await queue.read { db in
             let columns = try Set(db.columns(in: "dashboard").map(\.name))
             #expect(columns.contains("dashboard_page_id"))
         }
     }
 
-    @Test func migrationIsIdempotent() throws {
-        let path = makeDatabasePath()
-        _ = try BudgetDatabase(path: path)
+    @Test func migrationIsIdempotent() async throws {
+        let (_, path) = try await makeTestDatabase()
         _ = try BudgetDatabase(path: path)
     }
 
-    @Test func createsCustomReportsTable() throws {
-        let path = makeDatabasePath()
-        _ = try BudgetDatabase(path: path)
+    @Test func createsCustomReportsTable() async throws {
+        let (_, path) = try await makeTestDatabase()
 
         let queue = try DatabaseQueue(path: path.path)
-        try queue.read { db in
+        try await queue.read { db in
             let exists = try db.tableExists("custom_reports")
             #expect(exists)
         }

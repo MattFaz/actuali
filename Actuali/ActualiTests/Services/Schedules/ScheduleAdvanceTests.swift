@@ -12,87 +12,21 @@ import Testing
 struct ScheduleAdvanceTests {
     // MARK: - Fixtures
 
-    /// Schema mirrors ScheduleFetchTests (schedules tables + the tables
-    /// fetchPostableSchedules reads) plus messages_crdt for the sync client.
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                offbudget INTEGER DEFAULT 0,
-                closed INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            );
-
-            CREATE TABLE payee_mapping (
-                id TEXT PRIMARY KEY,
-                targetId TEXT
-            );
-
-            CREATE TABLE rules (
-                id TEXT PRIMARY KEY,
-                stage TEXT,
-                conditions_op TEXT DEFAULT 'and',
-                conditions TEXT,
-                actions TEXT,
-                tombstone INTEGER DEFAULT 0
-            );
-
-            CREATE TABLE schedules (
-                id TEXT PRIMARY KEY,
-                rule TEXT,
-                active INTEGER DEFAULT 0,
-                completed INTEGER DEFAULT 0,
-                posts_transaction INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0,
-                name TEXT
-            );
-
-            CREATE TABLE schedules_next_date (
-                id TEXT PRIMARY KEY,
-                schedule_id TEXT,
-                local_next_date INTEGER,
-                local_next_date_ts INTEGER,
-                base_next_date INTEGER,
-                base_next_date_ts INTEGER
-            );
-
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        try database.dbQueueForTesting.write { db in
-            try db.execute(sql: "INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking')")
-            try db.execute(sql: "INSERT INTO payee_mapping (id, targetId) VALUES ('payee-1', 'payee-1')")
-        }
-        return (database, tempURL)
+    /// The schedules tables plus what fetchPostableSchedules reads, and
+    /// messages_crdt for the sync client.
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.accounts, TestSchema.payeeMapping, TestSchema.rules, TestSchema.schedules,
+            TestSchema.schedulesNextDate, TestSchema.messagesCrdt,
+            "INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking')",
+            "INSERT INTO payee_mapping (id, targetId) VALUES ('payee-1', 'payee-1')"
+        )
     }
 
-    /// Sync client wired to a real database. The server client is
-    /// unconfigured, so the post-write automatic sync fails fast and locally
-    /// without touching the network. (Same pattern as
-    /// SyncClientSetBudgetAmountTests.)
-    private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        return syncClient
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
+    // Sync client wired to a real database. The server client is
+    // unconfigured, so the post-write automatic sync fails fast and locally
+    // without touching the network. (Same pattern as
+    // SyncClientSetBudgetAmountTests.)
 
     /// Inserts a full postable schedule (rule + schedule + next-date row).
     private func insertSchedule(
@@ -133,20 +67,13 @@ struct ScheduleAdvanceTests {
         }
     }
 
-    private func messageRows(path: URL) throws -> [Row] {
-        let queue = try DatabaseQueue(path: path.path)
-        return try queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
-        }
-    }
-
     // MARK: - Message shape
 
     @Test func emitsExactlyTwoFieldMessagesWithNSerialization() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try insertSchedule(database)
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.advanceScheduleNextDate(
             nextDateRowId: "nd-sched-1", newNextDate: 20_260_901, baseNextDateTs: 1000
@@ -168,7 +95,7 @@ struct ScheduleAdvanceTests {
     // MARK: - Local row state
 
     @Test func updatesLocalColumnsAndLeavesBaseUntouched() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         // Local override currently stale (ts 500 != base ts 1000): the advance
         // must both move local_next_date AND re-validate it by copying the
@@ -178,7 +105,7 @@ struct ScheduleAdvanceTests {
             localNextDate: 20_260_701, localNextDateTs: 500,
             baseNextDate: 20_260_801, baseNextDateTs: 1000
         )
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.advanceScheduleNextDate(
             nextDateRowId: "nd-sched-1", newNextDate: 20_260_901, baseNextDateTs: 1000
@@ -195,10 +122,10 @@ struct ScheduleAdvanceTests {
     // MARK: - Integration with fetchPostableSchedules (v_schedules CASE)
 
     @Test func fetchPostableSchedulesSeesAdvancedDate() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try insertSchedule(database)
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         let before = try database.fetchPostableSchedules()
         #expect(before.first?.nextDate.yyyymmdd == 20_260_801)
@@ -220,7 +147,7 @@ struct ScheduleAdvanceTests {
     // MARK: - Guards
 
     @Test func unconfiguredClientThrowsWithoutWriting() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try insertSchedule(database)
         let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")

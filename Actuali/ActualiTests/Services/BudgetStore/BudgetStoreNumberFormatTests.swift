@@ -8,22 +8,9 @@ import Testing
 /// being overwritten by a stale refresh.
 @MainActor
 struct BudgetStoreNumberFormatTests {
-    private func makeStore() throws -> (BudgetStore, BudgetFileManager, String, URL) {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent(
-                "number-format-tests-\(UUID().uuidString)",
-                isDirectory: true
-            )
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
-        let store = BudgetStore.previewInstance()
-        store.setFileManagerForTesting(manager)
-
-        return (
-            store,
-            manager,
-            "budget-\(UUID().uuidString)",
-            root
-        )
+    private func makeStore() -> (BudgetStore, BudgetFileManager, String, URL) {
+        let (store, manager, root) = makeFileBackedStore()
+        return (store, manager, "budget-\(UUID().uuidString)", root)
     }
 
     private func seedBudget(
@@ -44,7 +31,7 @@ struct BudgetStoreNumberFormatTests {
 
         try dbQueue.write { db in
             try db.execute(
-                sql: BudgetStoreInitialSyncTests.upstreamSchema
+                sql: TestSchema.upstream
             )
 
             if let numberFormat {
@@ -74,7 +61,7 @@ struct BudgetStoreNumberFormatTests {
     }
 
     @Test func loadAppliesStoredNumberFormat() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer {
             try? FileManager.default.removeItem(at: root)
         }
@@ -91,7 +78,7 @@ struct BudgetStoreNumberFormatTests {
     }
 
     @Test func loadDefaultsToCommaDotWhenPreferenceIsAbsent() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer {
             try? FileManager.default.removeItem(at: root)
         }
@@ -108,7 +95,7 @@ struct BudgetStoreNumberFormatTests {
     }
 
     @Test func loadDefaultsToCommaDotForUnknownPreference() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer {
             try? FileManager.default.removeItem(at: root)
         }
@@ -161,7 +148,7 @@ struct BudgetStoreNumberFormatTests {
     }
 
     @Test func refreshAppliesFetchedNumberFormatWhenSelectionDidNotChange() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer {
             try? FileManager.default.removeItem(at: root)
         }
@@ -191,7 +178,7 @@ struct BudgetStoreNumberFormatTests {
     }
 
     @Test func refreshKeepsCurrentSelectionWhenPreferenceIsAbsent() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer {
             try? FileManager.default.removeItem(at: root)
         }

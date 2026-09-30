@@ -1,83 +1,27 @@
 import Foundation
 import GRDB
+import Synchronization
 import Testing
 @testable import Actuali
 
-/// Serves one canned SimpleFIN account set to every request.
-private final class BridgeTransport: URLProtocol {
-    nonisolated(unsafe) static var body = ""
-    nonisolated(unsafe) static var requestedURLs: [URL] = []
+/// The URLs one stubbed session was asked for.
+private final class RequestLog: Sendable {
+    let urls = Mutex<[URL]>([])
 
-    static func makeSession(body: String) -> URLSession {
-        Self.body = body
-        requestedURLs = []
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [BridgeTransport.self]
-        return URLSession(configuration: configuration)
+    var paths: [String] {
+        urls.withLock { $0.map(\.path) }
     }
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        Self.requestedURLs.append(request.url!)
-        let response = HTTPURLResponse(
-            url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil
-        )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(Self.body.utf8))
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
 }
 
-/// Answers the `/simplefin/*` routes by path.
-private final class ServerTransport: URLProtocol {
-    nonisolated(unsafe) static var bodies: [String: String] = [:]
-    nonisolated(unsafe) static var requestedPaths: [String] = []
-
-    static func makeSession(_ bodies: [String: String]) -> URLSession {
-        Self.bodies = bodies
-        requestedPaths = []
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [ServerTransport.self]
-        return URLSession(configuration: configuration)
+/// Serves one canned SimpleFIN account set to every request.
+private func bridgeSession(body: String, log: RequestLog? = nil) -> URLSession {
+    StubTransport.session { request in
+        log?.urls.withLock { $0.append(request.url!) }
+        return StubTransport.Response(body: Data(body.utf8))
     }
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        let path = request.url?.path ?? ""
-        Self.requestedPaths.append(path)
-        let body = Self.bodies[path]
-        let response = HTTPURLResponse(
-            url: request.url!,
-            statusCode: body == nil ? 404 : 200,
-            httpVersion: "HTTP/1.1",
-            headerFields: nil
-        )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data((body ?? "").utf8))
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
 }
 
 @MainActor
-@Suite(.serialized)
 struct BudgetStoreBankSyncTests {
     private static let accountId = "acct-1"
     private static let externalAccountId = "sf-acct-1"
@@ -138,7 +82,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func syncingOnlyGoCardlessAccountsExplainsInsteadOfNothingLinked() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
         let queue = try DatabaseQueue(path: url.path)
@@ -230,110 +174,19 @@ struct BudgetStoreBankSyncTests {
     private func makeDatabase(
         seedTransactions: Bool = false,
         accountId: String = Self.accountId
-    ) throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    type TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    account_id TEXT,
-                    account_sync_source TEXT,
-                    bank TEXT,
-                    balance_current INTEGER,
-                    balance_available INTEGER,
-                    balance_limit INTEGER
-                )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                starting_balance_flag INTEGER DEFAULT 0,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                acct TEXT,
-                category TEXT,
-                amount INTEGER,
-                description TEXT,
-                notes TEXT,
-                date INTEGER,
-                imported_description TEXT,
-                financial_id TEXT,
-                transferred_id TEXT,
-                schedule TEXT,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0,
-                parent_id TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payees (
-                id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)")
-            try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
-            try db.execute(sql: """
-            CREATE TABLE category_mapping (
-                id TEXT PRIMARY KEY,
-                transferId TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE categories (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                cat_group TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE rules (
-                id TEXT PRIMARY KEY,
-                stage TEXT,
-                conditions TEXT,
-                actions TEXT,
-                tombstone INTEGER DEFAULT 0,
-                conditions_op TEXT DEFAULT 'and'
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE banks (
-                id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-            try db.execute(sql: """
-            INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order,
-                                  account_id, account_sync_source)
-            VALUES (?, 'Checking', 'checking', 0, 0, 0, 1, ?, 'simpleFin')
-            """, arguments: [accountId, Self.externalAccountId])
-            if seedTransactions {
-                try db.execute(sql: """
-                INSERT INTO transactions (id, acct, date, amount, cleared, tombstone, sort_order)
-                VALUES ('tx-manual', ?, ?, -3345, 0, 0, 1)
-                """, arguments: [accountId, Self.expectedDay(6)])
-            }
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
+    ) async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.core + [TestSchema.preferences, TestSchema.rules, """
+        CREATE TABLE banks (
+            id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
+        )
+        """, """
+        INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order,
+                              account_id, account_sync_source)
+        VALUES ('\(accountId)', 'Checking', 'checking', 0, 0, 0, 1, '\(Self.externalAccountId)', 'simpleFin')
+        """, seedTransactions ? """
+        INSERT INTO transactions (id, acct, date, amount, cleared, tombstone, sort_order)
+        VALUES ('tx-manual', '\(accountId)', \(Self.expectedDay(6)), -3345, 0, 0, 1)
+        """ : ""])
     }
 
     private func seedDeletedTransaction(
@@ -361,21 +214,28 @@ struct BudgetStoreBankSyncTests {
         }
     }
 
+    /// One defaults suite per budget file, so Wallet links never leak between
+    /// tests and `cleanup` removes them along with the file.
+    private static func defaultsSuite(for url: URL) -> String {
+        "BudgetStoreBankSyncTests-\(url.lastPathComponent)"
+    }
+
+    private func walletDefaults(for url: URL) throws -> UserDefaults {
+        try #require(UserDefaults(suiteName: Self.defaultsSuite(for: url)))
+    }
+
     private func makeStore(
         database: BudgetDatabase,
         responseBody: String,
         walletStore: (any AppleWalletReading)? = nil,
-        hasAccessKey: Bool = true
+        hasAccessKey: Bool = true,
+        bridgeLog: RequestLog? = nil
     ) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
-        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreBankSyncTests"))
-        defaults.removePersistentDomain(forName: "BudgetStoreBankSyncTests")
+        let store = try await makeTestStore(database: database)
+        let defaults = try walletDefaults(for: URL(fileURLWithPath: database.dbQueueForTesting.path))
         store.configureAppleWalletLinksForTesting(defaults: defaults, budgetId: "bank-sync-tests")
         store.setSimpleFINClientForTesting(
-            SimpleFINClient(session: BridgeTransport.makeSession(body: responseBody))
+            SimpleFINClient(session: bridgeSession(body: responseBody, log: bridgeLog))
         )
         try store.setSimpleFINAccessKeyForTesting(hasAccessKey
             ? SimpleFINAccessKey.parse("https://demo:demo@bridge.example.com/simplefin")
@@ -425,13 +285,15 @@ struct BudgetStoreBankSyncTests {
     }
 
     private func cleanup(_ url: URL) {
+        UserDefaults(suiteName: Self.defaultsSuite(for: url))?
+            .removePersistentDomain(forName: Self.defaultsSuite(for: url))
         try? FileManager.default.removeItem(at: url)
     }
 
     // MARK: - Tests
 
     @Test func linkedAccountsAreDiscoveredFromTheBudgetFile() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
 
@@ -443,8 +305,8 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func staleBankSyncLoadCannotPublishOrDeleteTheCurrentBudgetsLinks() async throws {
-        let (oldDatabase, oldURL) = try makeDatabase(accountId: "shared-account")
-        let (newDatabase, newURL) = try makeDatabase(accountId: "new-account")
+        let (oldDatabase, oldURL) = try await makeDatabase(accountId: "shared-account")
+        let (newDatabase, newURL) = try await makeDatabase(accountId: "new-account")
         defer {
             cleanup(oldURL)
             cleanup(newURL)
@@ -460,7 +322,7 @@ struct BudgetStoreBankSyncTests {
             database: oldDatabase,
             responseBody: accountSet(transactions: "")
         )
-        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreBankSyncTests"))
+        let defaults = try walletDefaults(for: oldURL)
         store.configureAppleWalletLinksForTesting(defaults: defaults, budgetId: "old-budget")
         defaults.set(
             ["shared-account": "old-wallet-account"],
@@ -508,7 +370,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func unknownSynchronizedSourceRemainsUnsupportedButCanBeUnlinked() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
         let queue = try DatabaseQueue(path: url.path)
@@ -535,7 +397,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func firstSyncImportsTransactionsAndAnOpeningBalance() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
         {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45",
@@ -577,7 +439,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func bankSyncHookDoesNotLeakFromAnEarlyReturn() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
         var hookCalls = 0
@@ -587,7 +449,7 @@ struct BudgetStoreBankSyncTests {
         #expect(hookCalls == 0)
 
         store.setSimpleFINClientForTesting(
-            SimpleFINClient(session: BridgeTransport.makeSession(body: accountSet(transactions: """
+            SimpleFINClient(session: bridgeSession(body: accountSet(transactions: """
             {"id": "sf-hook-leak", "posted": \(Self.daysAgo(1)), "amount": "-10.00", "payee": "Hook Leak"}
             """)))
         )
@@ -596,7 +458,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func bankSyncRetriesOnceWithRulesChangedDuringPreparation() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -635,7 +497,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func firstSyncReusesOnePendingPayeeAcrossSameNameTransactions() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let body = accountSet(transactions: """
         {"id": "sf-shared-payee-1", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "New Merchant"},
@@ -674,7 +536,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func emptySimpleFINFirstSyncCreatesOpeningBalanceOnImportStartDay() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
         let importStart = 20_240_115
@@ -696,7 +558,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func emptySimpleFINFirstSyncSuppressesZeroOpeningBalance() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(balance: "0.00", transactions: ""))
         store.setBankSyncImportStartDay(20_240_115)
@@ -708,7 +570,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func firstBankSyncRollsBackTransactionsPayeesOpeningAndMessagesTogether() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let body = accountSet(transactions: """
         {"id": "sf-atomic-first", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Deferred Merchant"}
@@ -764,7 +626,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func backfillBankSyncRollsBackBackfillAndOpeningAdjustmentTogether() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let firstBody = accountSet(balance: "100.00", transactions: """
         {"id": "sf-atomic-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
@@ -782,7 +644,7 @@ struct BudgetStoreBankSyncTests {
         )?["count"] as Int? ?? 0
 
         store.setSimpleFINClientForTesting(
-            SimpleFINClient(session: BridgeTransport.makeSession(body: accountSet(balance: "100.00", transactions: """
+            SimpleFINClient(session: bridgeSession(body: accountSet(balance: "100.00", transactions: """
             {"id": "sf-atomic-old", "posted": \(Self.daysAgo(10)), "amount": "-7.00", "payee": "Older Merchant"},
             {"id": "sf-atomic-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
             """)))
@@ -836,7 +698,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func identicalProviderIdsImportTwiceAndStayIdempotent() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let body = accountSet(transactions: """
         {"id": "sf-identical", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
@@ -862,7 +724,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func conflictingProviderIdsAreReportedAndNotClaimedAsUpToDate() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
         {"id": "sf-conflict", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
@@ -897,7 +759,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func syncingAgainImportsNothingTwice() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let body = accountSet(transactions: """
         {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
@@ -914,7 +776,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func disabledReimportDeletedTransactionsKeepsDeletedRowsDeleted() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url)
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
@@ -941,7 +803,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func disabledReimportKeepsRepeatedSimpleFINRecordsAbsentAcrossSyncs() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url, importedId: "sf-duplicate")
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
@@ -967,7 +829,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func defaultReimportSettingStillReimportsDeletedTransactions() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url, disableReimport: false)
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
@@ -985,7 +847,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func disabledReimportDoesNotFuzzyMatchADeletedTransactionWithANewBankId() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url, importedId: "sf-old-id")
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
@@ -1005,7 +867,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func disabledReimportDoesNotLetDeletedRowsStealNearbyNewTransactions() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url)
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
@@ -1022,7 +884,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func disabledReimportMatchesExactIdOutsideTheFuzzyWindow() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seedDeletedTransaction(at: url, daysAgo: 13)
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
@@ -1040,7 +902,7 @@ struct BudgetStoreBankSyncTests {
     /// A transaction entered by hand before the bank posted it should be
     /// adopted, not duplicated.
     @Test func aMatchingLocalTransactionIsAdoptedRatherThanDuplicated() async throws {
-        let (database, url) = try makeDatabase(seedTransactions: true)
+        let (database, url) = try await makeDatabase(seedTransactions: true)
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
         {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
@@ -1065,7 +927,7 @@ struct BudgetStoreBankSyncTests {
     /// everywhere else — a bank that shouts "BLUE BOTTLE" still claims the row
     /// filed under "Blue Bottle", even when a vaguer row sits closer in time.
     @Test func payeeMatchingIgnoresCase() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let queue = try DatabaseQueue(path: url.path)
         let accountId = Self.accountId
@@ -1095,7 +957,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func importedTransactionsGenerateCRDTMessages() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
         {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
@@ -1114,7 +976,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func automaticBankSyncRuleSuppressionIsNeitherAddedNorImported() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -1144,7 +1006,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func automaticBankSyncReturnsPersistedRuleMutatedTransaction() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -1175,7 +1037,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func ruleMovingImportedTransactionDoesNotAffectSourceOpeningBalance() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let movedAccountId = "acct-2"
         try await database.dbQueueForTesting.write { db in
@@ -1215,7 +1077,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func syncingWithoutAnAccessKeyIsRefused() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
@@ -1250,7 +1112,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func operationalProviderFailurePreservesLastSyncAndRecordsFailure() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
@@ -1285,7 +1147,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func anAccountTheBridgeDoesntReturnIsReportedNotSilentlySkipped() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(
             database: database, responseBody: #"{"errors": [], "accounts": []}"#
@@ -1299,7 +1161,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func bridgeErrorsAreCarriedIntoTheResult() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
@@ -1340,7 +1202,7 @@ struct BudgetStoreBankSyncTests {
     // MARK: - Linking
 
     @Test func linkingWritesTheColumnsTheWebUIReads() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
         let remote = try JSONDecoder().decode(SimpleFINAccount.self, from: Data("""
@@ -1366,7 +1228,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func unlinkingClearsTheColumnsAndLeavesTransactionsBehind() async throws {
-        let (database, url) = try makeDatabase(seedTransactions: true)
+        let (database, url) = try await makeDatabase(seedTransactions: true)
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
 
@@ -1391,7 +1253,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func staleSimpleFINUnlinkPreservesRelinkedIdentityAndMessages() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
         let newer = ExpectedBankSyncLink(
@@ -1415,14 +1277,16 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func simpleFINWritesAfterAccountTombstoneMaterializeNothing() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
+        let bridgeLog = RequestLog()
         let store = try await makeStore(
             database: database,
             responseBody: accountSet(transactions: """
             {"id": "sf-tombstoned", "posted": \(Self.daysAgo(1)),
              "amount": "-10.00", "payee": "Tombstoned Merchant"}
-            """)
+            """),
+            bridgeLog: bridgeLog
         )
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
@@ -1431,7 +1295,7 @@ struct BudgetStoreBankSyncTests {
 
         let result = try await store.syncBankAccounts()
 
-        #expect(!BridgeTransport.requestedURLs.isEmpty)
+        #expect(!bridgeLog.urls.withLock { $0.isEmpty })
         #expect(result.problems.count == 1)
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").isEmpty)
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
@@ -1439,7 +1303,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func linkingSimpleFINAfterAccountTombstoneIsRejected() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
         let remote = try JSONDecoder().decode(SimpleFINAccount.self, from: Data("""
@@ -1463,7 +1327,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func aSyncStampsLastSyncAndStatusForTheWebUI() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
         {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
@@ -1487,17 +1351,20 @@ struct BudgetStoreBankSyncTests {
         DayDate.today().adding(days: -days).iso
     }
 
+    /// A store whose server answers the `/simplefin/*` routes by path.
     private func makeServerStore(
         database: BudgetDatabase,
-        bodies: [String: String]
+        bodies: [String: String],
+        serverLog: RequestLog? = nil
     ) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
+        let store = try await makeTestStore(database: database)
         store.setSimpleFINAccessKeyForTesting(nil)
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
 
-        let serverClient = ActualServerClient(session: ServerTransport.makeSession(bodies))
+        let serverClient = ActualServerClient(session: StubTransport.session { request in
+            serverLog?.urls.withLock { $0.append(request.url!) }
+            let body = bodies[request.url?.path ?? ""]
+            return StubTransport.Response(status: body == nil ? 404 : 200, body: Data((body ?? "").utf8))
+        })
         try await serverClient.configure(serverURL: "https://budget.example.com")
         await serverClient.setToken("session-token")
         store.setServerClientForTesting(serverClient)
@@ -1513,8 +1380,9 @@ struct BudgetStoreBankSyncTests {
     /// The point of the whole arrangement: a server that already has SimpleFIN
     /// needs no second setup token here.
     @Test func syncsThroughTheServerWithNoDeviceKey() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
+        let serverLog = RequestLog()
         let store = try await makeServerStore(database: database, bodies: [
             "/simplefin/status": #"{"status":"ok","data":{"configured":true}}"#,
             "/simplefin/transactions": """
@@ -1526,7 +1394,7 @@ struct BudgetStoreBankSyncTests {
                  "transactionAmount": {"amount": "-33.45", "currency": "USD"}}
               ]}}}}
             """,
-        ])
+        ], serverLog: serverLog)
 
         let result = try await store.syncBankAccounts()
 
@@ -1534,7 +1402,7 @@ struct BudgetStoreBankSyncTests {
         #expect(result.accountsSynced == 1)
         #expect(result.problems.isEmpty)
         #expect(store.serverProvidesBankSync)
-        #expect(ServerTransport.requestedPaths.contains("/simplefin/transactions"))
+        #expect(serverLog.paths.contains("/simplefin/transactions"))
 
         let imported = try rows(path: url, where: "financial_id = 'sf-1'")
         #expect(imported.count == 1)
@@ -1543,7 +1411,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func partialServerFailureImportsDataWithoutReplacingLastSuccessfulSync() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
@@ -1590,7 +1458,7 @@ struct BudgetStoreBankSyncTests {
     /// A server without its own connection, and no key here either, is the one
     /// case where there's genuinely nothing to sync with.
     @Test func refusesWhenNeitherTheServerNorTheDeviceHasAConnection() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeServerStore(database: database, bodies: [
             "/simplefin/status": #"{"status":"ok","data":{"configured":false}}"#,
@@ -1605,7 +1473,7 @@ struct BudgetStoreBankSyncTests {
     /// An Actual release that predates the routes 404s them, which must read as
     /// "this server can't do bank sync" rather than as a failure.
     @Test func treatsAMissingRouteAsNoServerConnection() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeServerStore(database: database, bodies: [:])
 
@@ -1615,7 +1483,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func reportsAnAccountTheServerCouldntFetch() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
@@ -1653,7 +1521,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func aRejectedServerKeyIsReportedNotSwallowed() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeServerStore(database: database, bodies: [
             "/simplefin/status": #"{"status":"ok","data":{"configured":true}}"#,
@@ -1671,7 +1539,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func linkingScreenListsTheServersAccounts() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeServerStore(database: database, bodies: [
             "/simplefin/status": #"{"status":"ok","data":{"configured":true}}"#,
@@ -1694,7 +1562,7 @@ struct BudgetStoreBankSyncTests {
     // MARK: - Mixed sources (SimpleFIN + Apple Wallet)
 
     @Test func mixedSourcesSyncInOneRun() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try seedWalletAccount(at: url)
         let store = try await makeStore(
@@ -1720,7 +1588,7 @@ struct BudgetStoreBankSyncTests {
     /// A broken SimpleFIN setup is that source's problem: the Wallet half of
     /// the run must still import, with the failure carried in the result.
     @Test func aSimpleFINFailureDoesntBlockTheWalletImport() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try seedWalletAccount(at: url)
         let store = try await makeStore(
@@ -1757,7 +1625,7 @@ struct BudgetStoreBankSyncTests {
     /// And the mirror image: a Wallet read blowing up must not cost the
     /// SimpleFIN accounts their sync.
     @Test func aWalletFailureDoesntBlockTheSimpleFINImport() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try seedWalletAccount(at: url)
         var wallet = appleCardStub()
@@ -1787,7 +1655,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func aWalletFailureDoesntMisclassifyAMissingSimpleFINAccount() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try seedWalletAccount(at: url)
         var wallet = appleCardStub()
@@ -1829,17 +1697,22 @@ struct BudgetStoreBankSyncTests {
     }
 
     @Test func concurrentLinksShareOneCanonicalBankAndAccountPointer() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let accountId = Self.accountId
         let source = BankSyncSource.simpleFin.rawValue
 
+        // Both proposals are taken before either apply, so each sees no bank
+        // yet — proposing inside the tasks let one link finish before the other
+        // proposed, and then both legitimately won.
+        let proposals = try (0..<2).map { index in
+            try database.proposeBankSyncLink(
+                proposedBank: Bank(id: "candidate-\(index)", bankId: "same-bank", name: "Same Bank")
+            )
+        }
         let results = try await withThrowingTaskGroup(of: Bool.self) { group in
-            for index in 0..<2 {
+            for (index, proposal) in proposals.enumerated() {
                 group.addTask {
-                    let proposal = try database.proposeBankSyncLink(
-                        proposedBank: Bank(id: "candidate-\(index)", bankId: "same-bank", name: "Same Bank")
-                    )
                     do {
                         _ = try database.applyBankSyncLink(
                             accountId: accountId,
@@ -1892,8 +1765,8 @@ struct BudgetStoreBankSyncTests {
         #expect(messageCount == 3)
     }
 
-    @Test func staleBankLinkProposalIsRejectedThenReproposalCommitsCanonicalPointer() throws {
-        let (database, url) = try makeDatabase()
+    @Test func staleBankLinkProposalIsRejectedThenReproposalCommitsCanonicalPointer() async throws {
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         let staleProposal = try database.proposeBankSyncLink(
@@ -1961,11 +1834,11 @@ struct BudgetStoreBankSyncTests {
         )?["count"] as Int? == 1)
     }
 
-    @Test func liveBankProposalIsRejectedIfBankIsTombstonedBeforeApply() throws {
-        let (database, url) = try makeDatabase()
+    @Test func liveBankProposalIsRejectedIfBankIsTombstonedBeforeApply() async throws {
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let queue = try DatabaseQueue(path: url.path)
-        try queue.write { db in
+        try await queue.write { db in
             try db.execute(sql: """
             INSERT INTO banks (id, bank_id, name, tombstone)
             VALUES ('existing-bank', 'same-bank', 'Same Bank', 0)
@@ -1975,7 +1848,7 @@ struct BudgetStoreBankSyncTests {
         let proposal = try database.proposeBankSyncLink(
             proposedBank: Bank(id: "unused-candidate", bankId: "same-bank", name: "Same Bank")
         )
-        try queue.write { db in
+        try await queue.write { db in
             try db.execute(sql: "UPDATE banks SET tombstone = 1 WHERE id = 'existing-bank'")
         }
 
@@ -2004,11 +1877,11 @@ struct BudgetStoreBankSyncTests {
         )?["count"] as Int? == 0)
     }
 
-    @Test func linkRevivesMatchingTombstonedBankId() throws {
-        let (database, url) = try makeDatabase()
+    @Test func linkRevivesMatchingTombstonedBankId() async throws {
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let queue = try DatabaseQueue(path: url.path)
-        try queue.write { db in
+        try await queue.write { db in
             try db.execute(sql: """
             INSERT INTO banks (id, bank_id, name, tombstone)
             VALUES ('deleted-bank', 'same-bank', 'Old Name', 1)
@@ -2057,11 +1930,11 @@ struct BudgetStoreBankSyncTests {
         #expect(accountBankValue == "deleted-bank")
     }
 
-    @Test func bankLinkRollsBackMaterializedRowsWhenMessageInsertAborts() throws {
-        let (database, url) = try makeDatabase()
+    @Test func bankLinkRollsBackMaterializedRowsWhenMessageInsertAborts() async throws {
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let queue = try DatabaseQueue(path: url.path)
-        try queue.write { db in
+        try await queue.write { db in
             try db.execute(sql: """
             CREATE TRIGGER reject_bank_link_messages
             BEFORE INSERT ON messages_crdt
@@ -2098,8 +1971,8 @@ struct BudgetStoreBankSyncTests {
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
     }
 
-    @Test func staleProviderReplacementCASLeavesRowsAndMessagesUnchanged() throws {
-        let (database, url) = try makeDatabase()
+    @Test func staleProviderReplacementCASLeavesRowsAndMessagesUnchanged() async throws {
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let before = try #require(try row(
             path: url,
@@ -2140,11 +2013,11 @@ struct BudgetStoreBankSyncTests {
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
     }
 
-    @Test func crossProviderLocalReplacementRollsBackWhenMessagesFail() throws {
-        let (database, url) = try makeDatabase()
+    @Test func crossProviderLocalReplacementRollsBackWhenMessagesFail() async throws {
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let queue = try DatabaseQueue(path: url.path)
-        try queue.write { db in
+        try await queue.write { db in
             try db.execute(sql: """
             CREATE TRIGGER reject_provider_replacement_messages
             BEFORE INSERT ON messages_crdt
@@ -2196,7 +2069,7 @@ extension BudgetStoreBankSyncTests {
     @Test(arguments: ["notes = 'Concurrent user edit'", "amount = 22000",
                       "tombstone = 1", "acct = 'other-account'", "reconciled = 1"])
     func backfillPreservesConcurrentOpeningEdit(change: String) async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let firstBody = accountSet(balance: "100.00", transactions: """
         {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
@@ -2205,7 +2078,7 @@ extension BudgetStoreBankSyncTests {
         store.setBankSyncImportStartDay(Self.expectedDay(30))
         _ = try await store.syncBankAccounts()
         store.setSimpleFINClientForTesting(
-            SimpleFINClient(session: BridgeTransport.makeSession(body: accountSet(balance: "100.00", transactions: """
+            SimpleFINClient(session: bridgeSession(body: accountSet(balance: "100.00", transactions: """
             {"id": "sf-review-old", "posted": \(Self.daysAgo(10)), "amount": "-7.00", "payee": "Older Merchant"},
             {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
             """)))

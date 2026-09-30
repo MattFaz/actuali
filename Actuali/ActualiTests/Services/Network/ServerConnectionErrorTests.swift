@@ -2,41 +2,16 @@ import Foundation
 import Testing
 @testable import Actuali
 
-/// Fails every request with a preset `URLError`, standing in for the transport
-/// layer so we can prove connection failures reach the user as plain-English
-/// guidance instead of CFNetwork's raw string.
-private final class FailingTransport: URLProtocol {
-    nonisolated(unsafe) static var failure = URLError(.secureConnectionFailed)
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        client?.urlProtocol(self, didFailWithError: Self.failure)
-    }
-
-    override func stopLoading() {}
-}
-
 /// A user whose server is unreachable only ever sees the message these tests
 /// pin down, so each case asserts the wording actually names the cause and
 /// points somewhere they can act on it.
-@Suite(.serialized)
 struct ServerConnectionErrorTests {
     private static let helpLink = "actuali.mfazz.com/support"
 
     /// Drives a real `login` through a transport that fails with `code`, and
     /// returns the error the app would see.
     private func loginFailure(_ code: URLError.Code) async -> (any Error)? {
-        FailingTransport.failure = URLError(code)
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [FailingTransport.self]
-        let client = ActualServerClient(session: URLSession(configuration: config))
+        let client = ActualServerClient(session: StubTransport.session { _ in throw URLError(code) })
 
         do {
             try await client.configure(serverURL: "https://budget.example.com")

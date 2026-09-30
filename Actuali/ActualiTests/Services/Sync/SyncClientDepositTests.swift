@@ -9,44 +9,8 @@ import Testing
 /// other synced preference.
 @MainActor
 struct SyncClientDepositTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE preferences (
-                id TEXT PRIMARY KEY,
-                value TEXT
-            );
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            );
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        return syncClient
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
-    private func messageRows(path: URL) throws -> [Row] {
-        let queue = try DatabaseQueue(path: path.path)
-        return try queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
-        }
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.preferences, TestSchema.messagesCrdt)
     }
 
     private let config = DepositConfig(
@@ -59,10 +23,10 @@ struct SyncClientDepositTests {
     )
 
     @Test func writesPreferencesRowAndEmitsCRDTMessage() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
-        let client = try await makeSyncClient(database: database)
+        let client = try await makeTestSyncClient(database: database)
         try await client.setDepositConfig(accountId: "acct_rd", config: config)
 
         let configs = try await database.fetchDepositConfigs()
@@ -78,10 +42,10 @@ struct SyncClientDepositTests {
     }
 
     @Test func clearingConfigSetsNullInPreferencesAndEmitsNullCRDTMessage() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
-        let client = try await makeSyncClient(database: database)
+        let client = try await makeTestSyncClient(database: database)
         try await client.setDepositConfig(accountId: "acct_rd", config: config)
         try await client.setDepositConfig(accountId: "acct_rd", config: nil)
 
@@ -97,10 +61,10 @@ struct SyncClientDepositTests {
     /// The opening day survives the round trip through Actual's preferences
     /// table, which is the part the `YYYYMMDD` wire format exists to protect.
     @Test func theOpeningDaySurvivesTheRoundTrip() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
-        let client = try await makeSyncClient(database: database)
+        let client = try await makeTestSyncClient(database: database)
         try await client.setDepositConfig(accountId: "acct_rd", config: config)
 
         let configs = try await database.fetchDepositConfigs()

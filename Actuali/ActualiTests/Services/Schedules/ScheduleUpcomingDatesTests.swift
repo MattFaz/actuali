@@ -14,10 +14,6 @@ struct ScheduleUpcomingDatesTests {
         return RecurConfig(json: merged)!
     }
 
-    private func pattern(_ type: String, _ value: Int) -> [String: Any] {
-        ["type": type, "value": value]
-    }
-
     @Test func listsSuccessiveMonthlyOccurrences() {
         let dates = ScheduleRecurrence.upcomingDates(
             for: config([:]), count: 4, from: Self.today

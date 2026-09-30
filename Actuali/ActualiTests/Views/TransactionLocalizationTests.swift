@@ -35,18 +35,17 @@ struct TransactionLocalizationTests {
         }
     }
 
-    @Test func transactionStatusFallbacksUseTheRequestedLocale() {
-        let expected = [
-            (Locale(identifier: "en_US"), ["Cleared", "Reconciled", "Uncleared"]),
-            (Locale(identifier: "fr_FR"), ["Pointée", "Rapproché", "Non pointée"]),
-            (Locale(identifier: "pt_BR"), ["Compensado", "Conciliado", "Não compensado"]),
-        ]
-
-        for (locale, values) in expected {
-            #expect(TransactionsListLocalization.statusLabel(cleared: true, reconciled: false, locale: locale, bundle: appBundle) == values[0])
-            #expect(TransactionsListLocalization.statusLabel(cleared: true, reconciled: true, locale: locale, bundle: appBundle) == values[1])
-            #expect(TransactionsListLocalization.statusLabel(cleared: false, reconciled: false, locale: locale, bundle: appBundle) == values[2])
-        }
+    @Test(arguments: [
+        (Locale(identifier: "en_US"), "Cleared", "Reconciled", "Uncleared"),
+        (Locale(identifier: "fr_FR"), "Pointée", "Rapproché", "Non pointée"),
+        (Locale(identifier: "pt_BR"), "Compensado", "Conciliado", "Não compensado"),
+    ])
+    func transactionStatusFallbacksUseTheRequestedLocale(
+        locale: Locale, cleared: String, reconciled: String, uncleared: String
+    ) {
+        #expect(TransactionsListLocalization.statusLabel(cleared: true, reconciled: false, locale: locale, bundle: appBundle) == cleared)
+        #expect(TransactionsListLocalization.statusLabel(cleared: true, reconciled: true, locale: locale, bundle: appBundle) == reconciled)
+        #expect(TransactionsListLocalization.statusLabel(cleared: false, reconciled: false, locale: locale, bundle: appBundle) == uncleared)
     }
 
     @Test func transactionStatusFilterChipsUseTheAppCatalog() {
@@ -88,24 +87,21 @@ struct TransactionLocalizationTests {
         }
     }
 
-    @Test func transactionSelectionLabelsUseTheRequestedLocale() {
-        let expected = [
-            (Locale(identifier: "en_US"), ["Selected", "Not selected"]),
-            (Locale(identifier: "fr_FR"), ["Sélectionnées", "Non sélectionné"]),
-        ]
-
-        for (locale, values) in expected {
-            #expect(TransactionsListLocalization.selectionLabel(
-                isSelected: true,
-                locale: locale,
-                bundle: appBundle
-            ) == values[0])
-            #expect(TransactionsListLocalization.selectionLabel(
-                isSelected: false,
-                locale: locale,
-                bundle: appBundle
-            ) == values[1])
-        }
+    @Test(arguments: [
+        (Locale(identifier: "en_US"), "Selected", "Not selected"),
+        (Locale(identifier: "fr_FR"), "Sélectionnées", "Non sélectionné"),
+    ])
+    func transactionSelectionLabelsUseTheRequestedLocale(locale: Locale, selected: String, notSelected: String) {
+        #expect(TransactionsListLocalization.selectionLabel(
+            isSelected: true,
+            locale: locale,
+            bundle: appBundle
+        ) == selected)
+        #expect(TransactionsListLocalization.selectionLabel(
+            isSelected: false,
+            locale: locale,
+            bundle: appBundle
+        ) == notSelected)
     }
 
     @Test(arguments: [
@@ -155,42 +151,36 @@ struct TransactionLocalizationTests {
         ) == brazilianPortuguese)
     }
 
-    @Test func ruleOperatorsMatchTheAppCatalog() {
-        let expected = [
-            ("en_US", "is", "is"),
-            ("fr_FR", "is", "est"),
-            ("pt_BR", "is", "é"),
-            ("en_US", "isNot", "is not"),
-            ("fr_FR", "isNot", "n’est pas"),
-            ("pt_BR", "isNot", "não é"),
-            ("en_US", "gt", "is greater than"),
-            ("fr_FR", "gt", "est supérieur à"),
-            ("pt_BR", "gt", "é maior que"),
-        ]
-
-        for (localeIdentifier, key, expectedValue) in expected {
-            let resourceKey = "rule.op.\(key == "isNot" ? "isNot" : key == "gt" ? "isGreaterThan" : key)"
-            #expect(ReportStrings.text(
-                resourceKey,
-                locale: Locale(identifier: localeIdentifier),
-                bundle: appBundle
-            ) == expectedValue)
-        }
+    @Test(arguments: [
+        ("en_US", "is", "is"),
+        ("fr_FR", "is", "est"),
+        ("pt_BR", "is", "é"),
+        ("en_US", "isNot", "is not"),
+        ("fr_FR", "isNot", "n’est pas"),
+        ("pt_BR", "isNot", "não é"),
+        ("en_US", "gt", "is greater than"),
+        ("fr_FR", "gt", "est supérieur à"),
+        ("pt_BR", "gt", "é maior que"),
+    ])
+    func ruleOperatorsMatchTheAppCatalog(localeIdentifier: String, key: String, expectedValue: String) {
+        let resourceKey = "rule.op.\(key == "isNot" ? "isNot" : key == "gt" ? "isGreaterThan" : key)"
+        #expect(ReportStrings.text(
+            resourceKey,
+            locale: Locale(identifier: localeIdentifier),
+            bundle: appBundle
+        ) == expectedValue)
     }
 
-    @Test func ruleFieldLabelsKeepTheCatalogCasing() {
-        let expected = [
-            ("fr_FR", "groupe de catégories"),
-            ("es_ES", "grupo de categorías"),
-            ("it_IT", "gruppo di categorie"),
-        ]
-
-        for (localeIdentifier, expectedValue) in expected {
-            #expect(ReportStrings.text(
-                "rule.field.categoryGroup",
-                locale: Locale(identifier: localeIdentifier),
-                bundle: appBundle
-            ) == expectedValue)
-        }
+    @Test(arguments: [
+        ("fr_FR", "groupe de catégories"),
+        ("es_ES", "grupo de categorías"),
+        ("it_IT", "gruppo di categorie"),
+    ])
+    func ruleFieldLabelsKeepTheCatalogCasing(localeIdentifier: String, expectedValue: String) {
+        #expect(ReportStrings.text(
+            "rule.field.categoryGroup",
+            locale: Locale(identifier: localeIdentifier),
+            bundle: appBundle
+        ) == expectedValue)
     }
 }

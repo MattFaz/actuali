@@ -1,111 +1,59 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Actuali
 
-/// Captures delete-user-file requests and answers with a preset status, so the
-/// client's request shape and error mapping can be pinned down offline.
-private final class DeleteFileTransport: URLProtocol {
-    nonisolated(unsafe) static var capturedRequests: [URLRequest] = []
-    nonisolated(unsafe) static var capturedBodies: [Data] = []
-    nonisolated(unsafe) static var status = 200
-    nonisolated(unsafe) static var responseBody = Data(#"{"status":"ok"}"#.utf8)
-    nonisolated(unsafe) static var responseContentType = "application/json"
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        Self.capturedRequests.append(request)
-        Self.capturedBodies.append(Self.readBody(request))
-
-        let response = HTTPURLResponse(
-            url: request.url!,
-            statusCode: Self.status,
-            httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": Self.responseContentType]
-        )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Self.responseBody)
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
-
-    /// URLSession hands POST bodies to URLProtocol as a stream, not httpBody.
-    private static func readBody(_ request: URLRequest) -> Data {
-        guard let stream = request.httpBodyStream else { return request.httpBody ?? Data() }
-        stream.open()
-        defer { stream.close() }
-        var body = Data()
-        let bufferSize = 16 * 1024
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
-        defer { buffer.deallocate() }
-        while stream.hasBytesAvailable {
-            let read = stream.read(buffer, maxLength: bufferSize)
-            if read <= 0 {
-                break
-            }
-            body.append(buffer, count: read)
-        }
-        return body
-    }
+/// The delete-user-file requests one client sent, body included.
+private final class CapturedRequests: Sendable {
+    let all = Mutex<[(request: URLRequest, body: Data)]>([])
 }
 
-@Suite(.serialized)
 struct ActualServerClientDeleteFileTests {
     private func makeClient(
         status: Int = 200,
         responseBody: String = #"{"status":"ok"}"#,
         responseContentType: String = "application/json"
-    ) async throws -> ActualServerClient {
-        DeleteFileTransport.capturedRequests = []
-        DeleteFileTransport.capturedBodies = []
-        DeleteFileTransport.status = status
-        DeleteFileTransport.responseBody = Data(responseBody.utf8)
-        DeleteFileTransport.responseContentType = responseContentType
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [DeleteFileTransport.self]
-        let client = ActualServerClient(session: URLSession(configuration: configuration))
+    ) async throws -> (ActualServerClient, CapturedRequests) {
+        let captured = CapturedRequests()
+        let session = StubTransport.session { request in
+            captured.all.withLock { $0.append((request, request.bodyData)) }
+            return StubTransport.Response(
+                status: status, contentType: responseContentType, body: Data(responseBody.utf8)
+            )
+        }
+        let client = ActualServerClient(session: session)
         try await client.configure(serverURL: "https://budget.example.com")
         await client.setToken("test-token")
-        return client
+        return (client, captured)
     }
 
     /// Upstream's removeFile POSTs `{token, fileId}` to /delete-user-file
     /// (cloud-storage.ts); the header carries the token like our other routes.
     @Test func postsTokenAndFileIdToDeleteUserFile() async throws {
-        let client = try await makeClient()
+        let (client, captured) = try await makeClient()
 
         try await client.deleteFile(fileId: "file-123")
 
-        let request = try #require(DeleteFileTransport.capturedRequests.first)
+        let (request, body) = try #require(captured.all.withLock { $0.first })
         #expect(request.url?.path == "/sync/delete-user-file")
         #expect(request.httpMethod == "POST")
         #expect(request.value(forHTTPHeaderField: "X-ACTUAL-TOKEN") == "test-token")
-        let body = try JSONDecoder().decode(
-            [String: String].self,
-            from: #require(DeleteFileTransport.capturedBodies.first)
-        )
-        #expect(body == ["token": "test-token", "fileId": "file-123"])
+        #expect(try JSONDecoder().decode([String: String].self, from: body)
+            == ["token": "test-token", "fileId": "file-123"])
     }
 
     @Test func requiresAToken() async throws {
-        let client = try await makeClient()
+        let (client, captured) = try await makeClient()
         await client.setToken(nil)
 
         await #expect(throws: ActualServerError.self) {
             try await client.deleteFile(fileId: "file-123")
         }
-        #expect(DeleteFileTransport.capturedRequests.isEmpty)
+        #expect(captured.all.withLock { $0.isEmpty })
     }
 
     @Test func mapsForbiddenToUnauthorized() async throws {
-        let client = try await makeClient(status: 403)
+        let (client, _) = try await makeClient(status: 403)
 
         do {
             try await client.deleteFile(fileId: "file-123")
@@ -121,7 +69,7 @@ struct ActualServerClientDeleteFileTests {
     /// The server answers an unknown fileId with 400 file-not-found (its own
     /// FIXME says it should be 404).
     @Test func mapsBadRequestToFileNotFound() async throws {
-        let client = try await makeClient(status: 400, responseBody: "file-not-found")
+        let (client, _) = try await makeClient(status: 400, responseBody: "file-not-found")
         do {
             try await client.deleteFile(fileId: "file-123")
             Issue.record("Expected deleteFile to throw")
@@ -134,7 +82,7 @@ struct ActualServerClientDeleteFileTests {
     }
 
     @Test func keepsOtherBadRequestsAsHTTPErrors() async throws {
-        let client = try await makeClient(status: 400, responseBody: "invalid fileId")
+        let (client, _) = try await makeClient(status: 400, responseBody: "invalid fileId")
         do {
             try await client.deleteFile(fileId: "budget@2026")
             Issue.record("Expected deleteFile to throw")
@@ -151,7 +99,7 @@ struct ActualServerClientDeleteFileTests {
     /// means a proxy or a stripped route. It must NOT map to .fileNotFound,
     /// which callers treat as "already deleted" before destroying local data.
     @Test func keeps404AsAPlainHTTPError() async throws {
-        let client = try await makeClient(status: 404)
+        let (client, _) = try await makeClient(status: 404)
         do {
             try await client.deleteFile(fileId: "file-123")
             Issue.record("Expected deleteFile to throw")
@@ -167,7 +115,7 @@ struct ActualServerClientDeleteFileTests {
     /// An auth proxy's HTML login page is named as such rather than surfacing
     /// as a decode failure — or worse, a status that callers act on.
     @Test func namesAnAuthProxyAnswer() async throws {
-        let client = try await makeClient(
+        let (client, _) = try await makeClient(
             status: 200,
             responseBody: "<html><body>Sign in</body></html>",
             responseContentType: "text/html"
@@ -184,7 +132,7 @@ struct ActualServerClientDeleteFileTests {
     }
 
     @Test func surfacesOtherServerFailuresAsHTTPErrors() async throws {
-        let client = try await makeClient(status: 500)
+        let (client, _) = try await makeClient(status: 500)
 
         do {
             try await client.deleteFile(fileId: "file-123")

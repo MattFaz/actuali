@@ -13,73 +13,15 @@ import Testing
 ///   rule `fetchAccounts()` already applies to balances).
 @MainActor
 struct BudgetDatabaseReportsFetchTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    parent_id TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.accounts, TestSchema.payees, TestSchema.payeeMapping,
+            TestSchema.categories, TestSchema.categoryMapping, TestSchema.transactions
+        )
     }
 
     @Test func populatesTransferAcctFromPayee() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -114,7 +56,7 @@ struct BudgetDatabaseReportsFetchTests {
     /// transaction view resolves it through payee_mapping, so reports must
     /// see the surviving payee or a Payee-grouped report drops the history.
     @Test func resolvesMergedPayeeThroughMapping() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -142,7 +84,7 @@ struct BudgetDatabaseReportsFetchTests {
     }
 
     @Test func excludesSplitParentsAndOrphanedChildren() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -172,7 +114,7 @@ struct BudgetDatabaseReportsFetchTests {
     // MARK: - custom_reports configs
 
     @Test func fetchesCustomReportConfigs() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -230,7 +172,7 @@ struct BudgetDatabaseReportsFetchTests {
     /// later columns (date_static, include_current, sort_by); the fetch must
     /// default them instead of failing.
     @Test func fetchesCustomReportConfigsWhenUpstreamColumnsMissing() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -260,7 +202,7 @@ struct BudgetDatabaseReportsFetchTests {
     // MARK: - firstDayOfWeekIdx preference
 
     @Test func firstDayOfWeekDefaultsToSunday() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         // No preferences table in this fixture: must default to 0 (Sunday).
@@ -268,7 +210,7 @@ struct BudgetDatabaseReportsFetchTests {
     }
 
     @Test func firstDayOfWeekReadsPreference() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -282,7 +224,7 @@ struct BudgetDatabaseReportsFetchTests {
     }
 
     @Test func firstDayOfWeekDefaultsWhenRowMissingOrInvalid() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in

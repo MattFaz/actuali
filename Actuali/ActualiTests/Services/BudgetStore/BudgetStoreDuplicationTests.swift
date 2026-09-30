@@ -5,110 +5,25 @@ import Testing
 
 @MainActor
 struct BudgetStoreDuplicationTests {
-    private func makeDatabase(seedSQL: String = "") throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-dup-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                starting_balance_flag INTEGER DEFAULT 0,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                acct TEXT,
-                category TEXT,
-                amount INTEGER,
-                description TEXT,
-                notes TEXT,
-                date INTEGER,
-                imported_description TEXT,
-                financial_id TEXT,
-                transferred_id TEXT,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0,
-                parent_id TEXT,
-                schedule TEXT
-            );
+    private func makeDatabase(seedSQL: [String] = []) async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.core + ["""
+        INSERT INTO accounts (id, name, offbudget, closed, sort_order, tombstone) VALUES
+            ('acct-1', 'Checking', 0, 0, 1, 0),
+            ('acct-2', 'Savings', 0, 0, 2, 0);
 
-            CREATE TABLE payees (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                transfer_acct TEXT,
-                tombstone INTEGER DEFAULT 0
-            );
+        INSERT INTO payees (id, name, transfer_acct, tombstone) VALUES
+            ('payee-transfer-1', 'Transfer: Checking', 'acct-1', 0),
+            ('payee-transfer-2', 'Transfer: Savings', 'acct-2', 0);
 
-            CREATE TABLE payee_mapping (
-                id TEXT PRIMARY KEY,
-                targetId TEXT
-            );
-
-            CREATE TABLE categories (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                cat_group TEXT,
-                is_income INTEGER DEFAULT 0,
-                sort_order REAL,
-                hidden INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            );
-
-            CREATE TABLE category_groups (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                is_income INTEGER DEFAULT 0,
-                sort_order REAL,
-                hidden INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            );
-
-            CREATE TABLE category_mapping (
-                id TEXT PRIMARY KEY,
-                transferId TEXT
-            );
-
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            );
-
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                offbudget INTEGER DEFAULT 0,
-                closed INTEGER DEFAULT 0,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0
-            );
-
-            INSERT INTO accounts (id, name, offbudget, closed, sort_order, tombstone) VALUES
-                ('acct-1', 'Checking', 0, 0, 1, 0),
-                ('acct-2', 'Savings', 0, 0, 2, 0);
-
-            INSERT INTO payees (id, name, transfer_acct, tombstone) VALUES
-                ('payee-transfer-1', 'Transfer: Checking', 'acct-1', 0),
-                ('payee-transfer-2', 'Transfer: Savings', 'acct-2', 0);
-
-            INSERT INTO payee_mapping (id, targetId) VALUES
-                ('payee-transfer-1', 'payee-transfer-1'),
-                ('payee-transfer-2', 'payee-transfer-2');
-            """ + seedSQL)
-        }
-
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
+        INSERT INTO payee_mapping (id, targetId) VALUES
+            ('payee-transfer-1', 'payee-transfer-1'),
+            ('payee-transfer-2', 'payee-transfer-2');
+        """] + seedSQL)
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> (BudgetStore, SyncClient) {
         let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+        let syncClient = try await makeTestSyncClient(database: database)
         store.configureForTesting(database: database, syncClient: syncClient)
         store.accounts = [
             Account(id: "acct-1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0),
@@ -123,7 +38,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func duplicateSingleTransaction() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
 
@@ -162,7 +77,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func duplicateTransactionsAndBulkDelete() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
 
@@ -194,7 +109,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func duplicateTransferTransaction() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
 
@@ -226,7 +141,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func duplicateSplitTransaction() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, syncClient) = try await makeStore(database: database)
 
@@ -269,7 +184,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func bulkSetClearedStatus() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
 
@@ -301,7 +216,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func bulkDuplicateTransferBothLegsSelected() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
 
@@ -330,7 +245,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func bulkDuplicateHalfLinkedTransferCopiesPartnerOnce() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, syncClient) = try await makeStore(database: database)
 
@@ -360,7 +275,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func deleteSingleTransferDoesNotDeletePartner() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
 
@@ -383,7 +298,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func bulkDeleteTransferBothLegsSelected() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
 
@@ -405,7 +320,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func bulkSetClearedStatusSplitParent() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, syncClient) = try await makeStore(database: database)
 
@@ -449,7 +364,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func bulkUnclearLeavesReconciledRowsLocked() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
 
@@ -479,7 +394,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func duplicateOrphanTransferPayeeClearsPayee() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
 
@@ -507,7 +422,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func duplicateSplitWithTransferChildClearsChildPayee() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, syncClient) = try await makeStore(database: database)
 
@@ -547,22 +462,12 @@ struct BudgetStoreDuplicationTests {
     func duplicateSkipsRulesEngine() async throws {
         // A delete-transaction rule that matches the source row must not be
         // able to silently swallow (or rewrite) the copy.
-        let (database, tempURL) = try makeDatabase(seedSQL: """
-
-        CREATE TABLE rules (
-            id TEXT PRIMARY KEY,
-            stage TEXT,
-            conditions_op TEXT DEFAULT 'and',
-            conditions TEXT,
-            actions TEXT,
-            tombstone INTEGER DEFAULT 0
-        );
-
+        let (database, tempURL) = try await makeDatabase(seedSQL: [TestSchema.rules, """
         INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone) VALUES
             ('rule-1', NULL, 'and',
              '[{"op":"contains","field":"imported_description","value":"spam"}]',
              '[{"op":"delete-transaction","value":null}]', 0);
-        """)
+        """])
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, syncClient) = try await makeStore(database: database)
 
@@ -586,7 +491,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func bulkDeleteSplitParentDeletesChildren() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, syncClient) = try await makeStore(database: database)
 
@@ -614,7 +519,7 @@ struct BudgetStoreDuplicationTests {
 
     @Test
     func bulkDuplicateSortOrderDifferentiation() async throws {
-        let (database, tempURL) = try makeDatabase()
+        let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
 

@@ -40,25 +40,9 @@ struct BudgetStoreLoanPaymentTests {
         loanOffBudget: Bool = true,
         seedSQL: String = ""
     ) async throws -> (Fixture, URL) {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("loan-payment-\(UUID().uuidString)", isDirectory: true)
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
+        let (store, manager, root) = makeFileBackedStore()
         let budgetId = "budget-\(UUID().uuidString)"
-
-        let dir = manager.budgetDirectory(for: budgetId)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: budgetId).path)
-        try await dbQueue.write { db in
-            try db.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema)
-            try db.execute(sql: seedSQL)
-        }
-        try JSONEncoder().encode(BudgetMetadata(
-            id: budgetId, budgetName: "Seed", cloudFileId: "cf-1", groupId: "group-1",
-            resetClock: nil, lastUploaded: nil, encryptKeyId: nil
-        )).write(to: manager.metadataPath(for: budgetId))
-
-        let store = BudgetStore.previewInstance()
-        store.setFileManagerForTesting(manager)
+        try seedBudget(id: budgetId, in: manager, sql: TestSchema.upstream + "\n" + seedSQL)
         await store.loadLocalBudget(budgetId)
         // `loadLocalBudget` opens the database and configures sync but leaves
         // `currentBudgetId` to its callers — `downloadBudget` and

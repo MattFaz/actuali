@@ -1,76 +1,19 @@
 import Foundation
 import GRDB
+import Synchronization
 import Testing
 @testable import Actuali
+
+/// What the stubbed server saw: every upload request, and the file it
+/// committed (so /sync/list-user-files can report it back).
+private final class UploadLog: Sendable {
+    let requests = Mutex<[URLRequest]>([])
+    let committed = Mutex<(fileId: String, name: String)?>(nil)
+}
 
 /// In-app budget creation (GH #387): name validation mirrors upstream's
 /// validateBudgetName, and the create flow builds the file from the bundled
 /// template, registers it via /sync/upload-user-file, and opens it.
-private final class CreateBudgetTransport: URLProtocol {
-    nonisolated(unsafe) static var uploadRequests: [URLRequest] = []
-    nonisolated(unsafe) static var uploadStatus = 200
-    nonisolated(unsafe) static var dropUploadResponse = false
-    nonisolated(unsafe) static var failFileList = false
-    nonisolated(unsafe) static var committedFileId: String?
-    nonisolated(unsafe) static var committedName: String?
-    nonisolated(unsafe) static var afterUpload: (@Sendable () -> Void)?
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        let path = request.url?.path ?? ""
-        var status = 200
-        var body = #"{"status":"ok"}"#
-
-        switch path {
-        case let p where p.hasSuffix("/sync/upload-user-file"):
-            Self.uploadRequests.append(request)
-            status = Self.uploadStatus
-            body = #"{"status":"ok","groupId":"group-fresh-1"}"#
-            if status == 200 {
-                Self.committedFileId = request.value(forHTTPHeaderField: "X-ACTUAL-FILE-ID")
-                Self.committedName = request.value(forHTTPHeaderField: "X-ACTUAL-NAME")?
-                    .removingPercentEncoding
-                Self.afterUpload?()
-                if Self.dropUploadResponse {
-                    client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
-                    return
-                }
-            }
-        case let p where p.hasSuffix("/sync/list-user-files"):
-            if Self.failFileList {
-                client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
-                return
-            }
-            if let fileId = Self.committedFileId, let name = Self.committedName {
-                body = #"{"status":"ok","data":[{"fileId":"\#(fileId)","groupId":"group-fresh-1","name":"\#(name)","deleted":0}]}"#
-            } else {
-                body = #"{"status":"ok","data":[]}"#
-            }
-        default:
-            break
-        }
-
-        let response = HTTPURLResponse(
-            url: request.url!,
-            statusCode: status,
-            httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
-        )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(body.utf8))
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
-}
-
 @MainActor
 @Suite(.serialized)
 struct BudgetStoreCreateBudgetTests {
@@ -86,7 +29,7 @@ struct BudgetStoreCreateBudgetTests {
     }
 
     @Test func createRejectsDuplicateOfServerFile() async throws {
-        let (store, _, root) = try await makeStore()
+        let (store, _, root, log) = try await makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         store.remoteBudgets = [
             .init(id: "f1", name: "Existing", groupId: "g1", isEncrypted: false),
@@ -96,41 +39,69 @@ struct BudgetStoreCreateBudgetTests {
 
         #expect(store.error?.contains("already exists") == true)
         #expect(store.currentBudgetId == nil)
-        #expect(CreateBudgetTransport.uploadRequests.isEmpty)
+        #expect(log.requests.withLock { $0.isEmpty })
     }
 
     // MARK: - End-to-end create
 
-    private func makeStore() async throws -> (BudgetStore, BudgetFileManager, URL) {
-        CreateBudgetTransport.uploadRequests = []
-        CreateBudgetTransport.uploadStatus = 200
-        CreateBudgetTransport.dropUploadResponse = false
-        CreateBudgetTransport.failFileList = false
-        CreateBudgetTransport.committedFileId = nil
-        CreateBudgetTransport.committedName = nil
-        CreateBudgetTransport.afterUpload = nil
+    /// Store over a stubbed server that registers uploads and lists them back.
+    /// `afterUpload` runs once the upload has been committed, before the
+    /// response is (or isn't) delivered.
+    private func makeStore(
+        uploadStatus: Int = 200,
+        dropUploadResponse: Bool = false,
+        failFileList: Bool = false,
+        afterUpload: (@Sendable (BudgetFileManager) -> Void)? = nil
+    ) async throws -> (BudgetStore, BudgetFileManager, URL, UploadLog) {
+        let (store, manager, root) = makeFileBackedStore()
+        let log = UploadLog()
+        let session = StubTransport.session { request in
+            let path = request.url?.path ?? ""
+            var status = 200
+            var body = #"{"status":"ok"}"#
 
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
+            switch path {
+            case let p where p.hasSuffix("/sync/upload-user-file"):
+                log.requests.withLock { $0.append(request) }
+                status = uploadStatus
+                body = #"{"status":"ok","groupId":"group-fresh-1"}"#
+                if status == 200 {
+                    if let fileId = request.value(forHTTPHeaderField: "X-ACTUAL-FILE-ID"),
+                       let name = request.value(forHTTPHeaderField: "X-ACTUAL-NAME")?.removingPercentEncoding {
+                        log.committed.withLock { $0 = (fileId, name) }
+                    }
+                    afterUpload?(manager)
+                    if dropUploadResponse {
+                        throw URLError(.networkConnectionLost)
+                    }
+                }
+            case let p where p.hasSuffix("/sync/list-user-files"):
+                if failFileList {
+                    throw URLError(.networkConnectionLost)
+                }
+                if let committed = log.committed.withLock({ $0 }) {
+                    body = #"{"status":"ok","data":[{"fileId":"\#(committed.fileId)","groupId":"group-fresh-1","name":"\#(committed.name)","deleted":0}]}"#
+                } else {
+                    body = #"{"status":"ok","data":[]}"#
+                }
+            default:
+                break
+            }
+            return .init(status: status, contentType: "application/json", body: Data(body.utf8))
+        }
 
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [CreateBudgetTransport.self]
-        let client = ActualServerClient(session: URLSession(configuration: configuration))
+        let client = ActualServerClient(session: session)
         try await client.configure(serverURL: "https://server.example.com")
         await client.setToken("token-1")
-
-        let store = BudgetStore.previewInstance()
-        store.setFileManagerForTesting(manager)
         store.setServerClientForTesting(client)
-        return (store, manager, root)
+        return (store, manager, root, log)
     }
 
     /// The whole flow against the real bundled template: local files created,
     /// the upload registered with upstream's headers, the returned groupId
     /// persisted, and the budget opened with upstream's default categories.
     @Test func createBudgetRegistersAndOpens() async throws {
-        let (store, manager, root) = try await makeStore()
+        let (store, manager, root, log) = try await makeStore()
         defer {
             // Close the DB before deleting its directory — createBudget opens a
             // live GRDB connection, and unlinking db.sqlite underneath it trips
@@ -153,7 +124,7 @@ struct BudgetStoreCreateBudgetTests {
         #expect(metadata.lastUploaded != nil)
 
         // The upload used upstream's header protocol (cloud-storage.ts:339).
-        let upload = try #require(CreateBudgetTransport.uploadRequests.first)
+        let upload = try #require(log.requests.withLock { $0.first })
         #expect(upload.value(forHTTPHeaderField: "X-ACTUAL-FILE-ID") == cloudFileId)
         #expect(upload.value(forHTTPHeaderField: "X-ACTUAL-NAME") == "Fresh%20Start")
         #expect(upload.value(forHTTPHeaderField: "X-ACTUAL-FORMAT") == "2")
@@ -166,9 +137,8 @@ struct BudgetStoreCreateBudgetTests {
 
     /// A failed registration must not strand an unsyncable local-only file.
     @Test func failedUploadRollsBackLocalFiles() async throws {
-        let (store, manager, root) = try await makeStore()
+        let (store, manager, root, _) = try await makeStore(uploadStatus: 500)
         defer { try? FileManager.default.removeItem(at: root) }
-        CreateBudgetTransport.uploadStatus = 500
 
         await store.createBudget(named: "Doomed")
 
@@ -178,17 +148,16 @@ struct BudgetStoreCreateBudgetTests {
     }
 
     @Test func committedUploadSurvivesLostResponse() async throws {
-        let (store, manager, root) = try await makeStore()
+        let (store, manager, root, log) = try await makeStore(dropUploadResponse: true)
         defer {
             store.closeDatabaseForTesting()
             try? FileManager.default.removeItem(at: root)
         }
-        CreateBudgetTransport.dropUploadResponse = true
 
         await store.createBudget(named: "Recovered")
 
         #expect(store.error == nil)
-        let committedFileId = try #require(CreateBudgetTransport.committedFileId)
+        let committedFileId = try #require(log.committed.withLock { $0?.fileId })
         let metadata = try #require(manager.listLocalBudgets().first)
         #expect(metadata.cloudFileId == committedFileId)
         #expect(metadata.groupId == "group-fresh-1")
@@ -196,10 +165,8 @@ struct BudgetStoreCreateBudgetTests {
     }
 
     @Test func unknownUploadOutcomeRemovesLocalCopy() async throws {
-        let (store, manager, root) = try await makeStore()
+        let (store, manager, root, _) = try await makeStore(dropUploadResponse: true, failFileList: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        CreateBudgetTransport.dropUploadResponse = true
-        CreateBudgetTransport.failFileList = true
 
         await store.createBudget(named: "Uncertain")
 
@@ -209,7 +176,10 @@ struct BudgetStoreCreateBudgetTests {
     }
 
     @Test func localOpenErrorIsNotClearedByRemoteRefresh() async throws {
-        let (store, manager, root) = try await makeStore()
+        let (store, _, root, _) = try await makeStore(afterUpload: { manager in
+            guard let budgetId = manager.listLocalBudgets().first?.id else { return }
+            try? Data("not sqlite".utf8).write(to: manager.databasePath(for: budgetId))
+        })
         defer { try? FileManager.default.removeItem(at: root) }
         store.accounts = [
             .init(
@@ -217,10 +187,6 @@ struct BudgetStoreCreateBudgetTests {
                 closed: false, sortOrder: 0, balance: 0
             ),
         ]
-        CreateBudgetTransport.afterUpload = {
-            guard let budgetId = manager.listLocalBudgets().first?.id else { return }
-            try? Data("not sqlite".utf8).write(to: manager.databasePath(for: budgetId))
-        }
 
         await store.createBudget(named: "Broken Local Copy")
 
@@ -230,12 +196,7 @@ struct BudgetStoreCreateBudgetTests {
     }
 
     @Test func syncSetupErrorKeepsPublishedBudgetVisible() async throws {
-        let (store, manager, root) = try await makeStore()
-        defer {
-            store.closeDatabaseForTesting()
-            try? FileManager.default.removeItem(at: root)
-        }
-        CreateBudgetTransport.afterUpload = {
+        let (store, _, root, _) = try await makeStore(afterUpload: { manager in
             guard let budgetId = manager.listLocalBudgets().first?.id,
                   let queue = try? DatabaseQueue(path: manager.databasePath(for: budgetId).path)
             else { return }
@@ -245,6 +206,10 @@ struct BudgetStoreCreateBudgetTests {
                 CREATE TABLE messages_clock (bad TEXT);
                 """)
             }
+        })
+        defer {
+            store.closeDatabaseForTesting()
+            try? FileManager.default.removeItem(at: root)
         }
 
         await store.createBudget(named: "Broken Sync State")

@@ -4,70 +4,24 @@ import Testing
 @testable import Actuali
 
 struct SyncClientGoalTemplateWritesTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE zero_budgets (
-                id TEXT PRIMARY KEY,
-                month INTEGER,
-                category TEXT,
-                amount INTEGER DEFAULT 0,
-                carryover INTEGER DEFAULT 0
-            );
-            CREATE TABLE categories (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                is_income INTEGER DEFAULT 0,
-                cat_group TEXT,
-                sort_order REAL,
-                hidden INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            );
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            );
-            INSERT INTO categories (id, name) VALUES ('cat-1', 'Groceries');
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.zeroBudgets, TestSchema.categories, TestSchema.messagesCrdt,
+            "INSERT INTO categories (id, name) VALUES ('cat-1', 'Groceries')"
+        )
     }
 
-    private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        return syncClient
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
-    /// Synchronous helpers, so the reads don't pick GRDB's async overloads
-    /// inside async test bodies.
+    /// Synchronous, so the read doesn't pick GRDB's async overload inside
+    /// async test bodies.
     private func firstRow(path: URL, sql: String) throws -> Row? {
         let queue = try DatabaseQueue(path: path.path)
         return try queue.read { db in try Row.fetchOne(db, sql: sql) }
     }
 
-    private func messageRows(path: URL) throws -> [Row] {
-        let queue = try DatabaseQueue(path: path.path)
-        return try queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
-        }
-    }
-
     @Test func budgetAndGoalMergeIntoOneRowWrite() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.applyGoalTemplateWrites(
             month: "2024-01",
@@ -94,7 +48,7 @@ struct SyncClientGoalTemplateWritesTests {
     }
 
     @Test func orphanGoalResetWritesNulls() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -102,7 +56,7 @@ struct SyncClientGoalTemplateWritesTests {
             VALUES ('202401-cat-1', 202401, 'cat-1', 0, 5000, 1)
             """)
         }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.applyGoalTemplateWrites(
             month: "2024-01",
@@ -116,9 +70,9 @@ struct SyncClientGoalTemplateWritesTests {
     }
 
     @Test func storeGoalDefsWritesDefinitionAndSource() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         let goalDef = #"[{"type":"simple","directive":"template","priority":0,"monthly":50}]"#
         try await syncClient.storeGoalDefs([("cat-1", goalDef, "notes")])
@@ -135,9 +89,9 @@ struct SyncClientGoalTemplateWritesTests {
     }
 
     @Test func cleanupWritesDefinitionAndResetsLongGoal() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
         let cleanupDef = #"[{"groupId":null,"role":"source"}]"#
         let templateSettingsBefore: String? = try firstRow(
             path: path,

@@ -105,24 +105,23 @@ struct ScheduleDescriptionTests {
         ])) == "Every day, 5 times")
     }
 
-    @Test func countBearingRecurrenceTextUsesRequestedLocale() {
-        let cases = [
-            (Locale(identifier: "en_US"), ["Every day, once", "Every day, 2 times", "Every 2 days"]),
-            (Locale(identifier: "fr_FR"), ["Tous les jours, une fois", "Tous les jours, 2 fois", "Tous les 2 jours"]),
-            (Locale(identifier: "pt_BR"), ["Todos os dias, uma vez", "Todos os dias, 2 vezes", "A cada 2 dias"]),
-        ]
-
-        for (locale, values) in cases {
-            #expect(ScheduleDescription.recurring(config([
-                "frequency": "daily", "endMode": "after_n_occurrences", "endOccurrences": 1,
-            ]), locale: locale, bundle: appBundle) == values[0])
-            #expect(ScheduleDescription.recurring(config([
-                "frequency": "daily", "endMode": "after_n_occurrences", "endOccurrences": 2,
-            ]), locale: locale, bundle: appBundle) == values[1])
-            #expect(ScheduleDescription.recurring(config([
-                "frequency": "daily", "interval": 2,
-            ]), locale: locale, bundle: appBundle) == values[2])
-        }
+    @Test(arguments: [
+        (Locale(identifier: "en_US"), "Every day, once", "Every day, 2 times", "Every 2 days"),
+        (Locale(identifier: "fr_FR"), "Tous les jours, une fois", "Tous les jours, 2 fois", "Tous les 2 jours"),
+        (Locale(identifier: "pt_BR"), "Todos os dias, uma vez", "Todos os dias, 2 vezes", "A cada 2 dias"),
+    ])
+    func countBearingRecurrenceTextUsesRequestedLocale(
+        locale: Locale, once: String, twice: String, everyTwoDays: String
+    ) {
+        #expect(ScheduleDescription.recurring(config([
+            "frequency": "daily", "endMode": "after_n_occurrences", "endOccurrences": 1,
+        ]), locale: locale, bundle: appBundle) == once)
+        #expect(ScheduleDescription.recurring(config([
+            "frequency": "daily", "endMode": "after_n_occurrences", "endOccurrences": 2,
+        ]), locale: locale, bundle: appBundle) == twice)
+        #expect(ScheduleDescription.recurring(config([
+            "frequency": "daily", "interval": 2,
+        ]), locale: locale, bundle: appBundle) == everyTwoDays)
     }
 
     @Test func weekendSuffix() {

@@ -13,73 +13,11 @@ import Testing
 /// garbage date and skews the account balance.
 @MainActor
 struct BudgetDatabaseHalfAppliedRowTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    type TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    parent_id TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.accounts, TestSchema.payees, TestSchema.payeeMapping,
+            TestSchema.categories, TestSchema.categoryMapping, TestSchema.transactions
+        )
     }
 
     /// One healthy transfer leg plus a half-applied row (no date cell ever
@@ -106,7 +44,7 @@ struct BudgetDatabaseHalfAppliedRowTests {
     }
 
     @Test func listHidesRowsWithoutDateOrAccount() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seed(db)
 
@@ -118,7 +56,7 @@ struct BudgetDatabaseHalfAppliedRowTests {
     }
 
     @Test func balancesExcludeRowsWithoutDate() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seed(db)
 
@@ -138,7 +76,7 @@ struct BudgetDatabaseHalfAppliedRowTests {
     /// parent row never materialized — or that lost its parent_id cell —
     /// counts nowhere.
     @Test func balancesExcludeChildrenOfMissingParents() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seed(db)
 
@@ -161,7 +99,7 @@ struct BudgetDatabaseHalfAppliedRowTests {
     }
 
     @Test func singleFetchAndReportsHideHalfAppliedRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seed(db)
 
@@ -173,7 +111,7 @@ struct BudgetDatabaseHalfAppliedRowTests {
     }
 
     @Test func scheduleLinkedListHidesHalfAppliedRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seed(db)
 
@@ -191,7 +129,7 @@ struct BudgetDatabaseHalfAppliedRowTests {
     /// The "All Time" category drill-down has no month window, so it can't
     /// rely on `(date / 100) = ?` to drop NULL-date rows as a side effect.
     @Test func allTimeCategoryListHidesHalfAppliedRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await seed(db)
 

@@ -14,66 +14,18 @@ struct PendingImportApproverTests {
         return store
     }
 
-    /// Non-async so GRDB's `write` resolves to its synchronous overload.
-    private func makeDatabaseFile() throws -> (BudgetDatabase, URL) {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: url.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY, starting_balance_flag INTEGER DEFAULT 0,
-                isParent INTEGER DEFAULT 0, isChild INTEGER DEFAULT 0,
-                acct TEXT, category TEXT, amount INTEGER, description TEXT,
-                notes TEXT, date INTEGER, imported_description TEXT,
-                financial_id TEXT, transferred_id TEXT, sort_order REAL,
-                tombstone INTEGER DEFAULT 0, cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0, parent_id TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payees (id TEXT PRIMARY KEY, name TEXT,
-                transfer_acct TEXT, tombstone INTEGER DEFAULT 0)
-            """)
-            try db.execute(sql: "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)")
-            try db.execute(sql: """
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY, name TEXT, offbudget INTEGER DEFAULT 0,
-                closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT)
-            """)
-            try db.execute(sql: """
-            CREATE TABLE categories (
-                id TEXT PRIMARY KEY, name TEXT, cat_group TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL,
-                row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL)
-            """)
-            try db.execute(sql: """
-            CREATE TABLE rules (id TEXT PRIMARY KEY, stage TEXT, conditions TEXT,
-                actions TEXT, tombstone INTEGER DEFAULT 0,
-                conditions_op TEXT DEFAULT 'and')
-            """)
-        }
-        return try (BudgetDatabase(path: url), url)
-    }
-
     /// A store with a real (temp-file) budget database wired, so the approve
     /// success path can write and the resulting signed amount can be checked.
     private func makeWritableStore() async throws -> (BudgetStore, URL) {
-        let (database, url) = try makeDatabaseFile()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-
-        let store = makeStore()
-        store.configureForTesting(database: database, syncClient: syncClient)
+        // No category_groups table, as before the shared schema: the tests seed
+        // `store.accounts` in memory, and a post-write refresh that could read
+        // the (empty) accounts table would wipe them.
+        let (database, url) = try await makeTestDatabase(
+            TestSchema.transactions, TestSchema.payees, TestSchema.payeeMapping, TestSchema.accounts,
+            TestSchema.categoryMapping, TestSchema.categories, TestSchema.messagesCrdt, TestSchema.rules
+        )
+        let store = try await makeTestStore(database: database)
+        store.currentBudgetId = "test-budget-\(UUID().uuidString)" // see makeStore
         return (store, url)
     }
 

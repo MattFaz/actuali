@@ -8,18 +8,8 @@ import Testing
 /// credit cards, so the prefixes staying apart is part of what these cover.
 @MainActor
 struct BudgetDatabaseDepositTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.preferences)
     }
 
     private func encoded(_ value: some Encodable) throws -> String {
@@ -54,7 +44,7 @@ struct BudgetDatabaseDepositTests {
     )
 
     @Test func fetchDepositConfigsReturnsDecodedConfigs() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await insert(db, id: "actuali:deposit:acct_fd", json: encoded(fixed))
@@ -68,7 +58,7 @@ struct BudgetDatabaseDepositTests {
     }
 
     @Test func fetchDepositConfigsIgnoresNullEmptyAndInvalidRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -93,7 +83,7 @@ struct BudgetDatabaseDepositTests {
     /// A deposit whose opening date didn't survive is skipped rather than
     /// failing the whole load — one bad row can't cost the others.
     @Test func aDepositWithAnUnusableOpeningDayIsSkippedNotFatal() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await insert(db, id: "actuali:deposit:acct_good", json: encoded(fixed))
@@ -110,7 +100,7 @@ struct BudgetDatabaseDepositTests {
     /// All three config types share one decode helper, so none may show up as
     /// another.
     @Test func depositLoanAndCardConfigsDoNotBleedIntoEachOther() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         let loan = LoanConfig(

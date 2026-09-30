@@ -12,28 +12,6 @@ struct BudgetStoreLoanTests {
         escrowOrFees: nil
     )
 
-    private func makeStore() throws -> (BudgetStore, BudgetFileManager, String, URL) {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("loan-tests-\(UUID().uuidString)", isDirectory: true)
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
-        let store = BudgetStore.previewInstance()
-        store.setFileManagerForTesting(manager)
-        return (store, manager, "budget-\(UUID().uuidString)", root)
-    }
-
-    private func seedBudget(id: String, in manager: BudgetFileManager) async throws {
-        let dir = manager.budgetDirectory(for: id)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
-        try await dbQueue.write { db in
-            try db.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema)
-        }
-        try JSONEncoder().encode(BudgetMetadata(
-            id: id, budgetName: "Seed", cloudFileId: "cf-1", groupId: "group-1",
-            resetClock: nil, lastUploaded: nil, encryptKeyId: nil
-        )).write(to: manager.metadataPath(for: id))
-    }
-
     private func seedLoan(_ config: LoanConfig, accountId: String, budgetId: String,
                           in manager: BudgetFileManager) async throws {
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: budgetId).path)
@@ -47,10 +25,11 @@ struct BudgetStoreLoanTests {
     }
 
     @Test func budgetStoreReflectsSyncedLoansFromDatabase() async throws {
-        let (store, manager, budgetId, root) = try makeStore()
+        let (store, manager, root) = makeFileBackedStore()
         defer { try? FileManager.default.removeItem(at: root) }
+        let budgetId = "budget-\(UUID().uuidString)"
 
-        try await seedBudget(id: budgetId, in: manager)
+        try seedBudget(id: budgetId, in: manager)
         try await seedLoan(config, accountId: "acct_car", budgetId: budgetId, in: manager)
 
         await store.loadLocalBudget(budgetId)
@@ -59,12 +38,13 @@ struct BudgetStoreLoanTests {
     }
 
     @Test func loansAreScopedPerBudgetOnLoad() async throws {
-        let (store, manager, budgetA, root) = try makeStore()
+        let (store, manager, root) = makeFileBackedStore()
         defer { try? FileManager.default.removeItem(at: root) }
+        let budgetA = "budget-\(UUID().uuidString)"
         let budgetB = "budget-\(UUID().uuidString)"
 
-        try await seedBudget(id: budgetA, in: manager)
-        try await seedBudget(id: budgetB, in: manager)
+        try seedBudget(id: budgetA, in: manager)
+        try seedBudget(id: budgetB, in: manager)
         try await seedLoan(config, accountId: "acct_car", budgetId: budgetA, in: manager)
 
         await store.loadLocalBudget(budgetA)
@@ -79,21 +59,9 @@ struct BudgetStoreLoanTests {
 
     /// Points the store at a throwaway budget with a test database and sync client.
     private func withStore(_ body: @MainActor (BudgetStore, BudgetDatabase) async throws -> Void) async throws {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        defer { try? FileManager.default.removeItem(at: tempURL) }
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try await queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
-                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL);
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        let store = BudgetStore.previewInstance()
-        store.configureForTesting(database: database, syncClient: syncClient)
+        let (database, url) = try await makeTestDatabase(TestSchema.preferences, TestSchema.messagesCrdt)
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
         store.currentBudgetId = "test-budget"
         try await body(store, database)
     }
