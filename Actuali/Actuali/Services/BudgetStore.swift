@@ -1453,6 +1453,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// `id` if that category still exists, else nil — so a category deleted
+    /// since a shortcut was configured is dropped instead of written as a
+    /// dangling id.
+    func existingCategoryId(_ id: String?) async -> String? {
+        guard let id else { return nil }
+        return await categoriesForIntent().contains { $0.id == id } ? id : nil
+    }
+
     func categoryBudgetForIntent(categoryId: String) async -> CategoryBudget? {
         let currentMonth = currentMonthString()
         if let currentBudgetMonth, currentBudgetMonth.month == currentMonth {
@@ -4604,9 +4612,8 @@ final class BudgetStore: ObservableObject {
 
         let offBudgetIds = offBudgetAccountIds
         func categorizable(_ accountId: String, partner: String) -> String? {
-            guard !offBudgetIds.contains(accountId),
-                  offBudgetIds.contains(partner) else { return nil }
-            return categoryId
+            Self.transferLegTakesCategory(leg: accountId, partner: partner, offBudgetAccountIds: offBudgetIds)
+                ? categoryId : nil
         }
 
         let source = Transaction(
@@ -4688,6 +4695,20 @@ final class BudgetStore: ObservableObject {
         Set(accounts.filter(\.offBudget).map(\.id))
     }
 
+    /// Actual's rule: a transfer leg carries a category only when its account
+    /// is on-budget and its partner's is off-budget — money entering or
+    /// leaving the budget. Two on-budget (or two off-budget) accounts never
+    /// do (`clearCategory` in loot-core's transfer.ts). A missing account
+    /// (partner not picked yet) takes none.
+    nonisolated static func transferLegTakesCategory(
+        leg: String?,
+        partner: String?,
+        offBudgetAccountIds: Set<String>
+    ) -> Bool {
+        guard let leg, let partner else { return false }
+        return !offBudgetAccountIds.contains(leg) && offBudgetAccountIds.contains(partner)
+    }
+
     /// Re-save an existing transfer: both legs take the new accounts, amount,
     /// date, notes and cleared state, with payees remapped to the (possibly
     /// re-targeted) accounts' transfer payees. `original` is whichever leg the
@@ -4729,8 +4750,9 @@ final class BudgetStore: ObservableObject {
         /// then both are cleared unless that leg is the categorizable side.
         func resolvedCategory(for leg: Transaction, accountId: String,
                               otherAccountId: String) -> String? {
-            guard !offBudgetIds.contains(accountId),
-                  offBudgetIds.contains(otherAccountId) else { return nil }
+            guard Self.transferLegTakesCategory(
+                leg: accountId, partner: otherAccountId, offBudgetAccountIds: offBudgetIds
+            ) else { return nil }
             return leg.id == original.id ? categoryId : leg.categoryId
         }
 
@@ -5494,7 +5516,8 @@ final class BudgetStore: ObservableObject {
                 amountCents: amountCents,
                 date: date,
                 notes: notes,
-                cleared: form.cleared
+                cleared: form.cleared,
+                categoryId: form.categoryId
             )
             return nil
 
@@ -5568,8 +5591,9 @@ final class BudgetStore: ObservableObject {
                 }
                 let partnerId = transferAccountId.map { _ in UUID().uuidString }
                 let childCategoryId = transferAccountId.map { destinationId in
-                    !offBudgetAccountIds.contains(form.accountId)
-                        && offBudgetAccountIds.contains(destinationId) ? line.categoryId : nil
+                    Self.transferLegTakesCategory(
+                        leg: form.accountId, partner: destinationId, offBudgetAccountIds: offBudgetAccountIds
+                    ) ? line.categoryId : nil
                 } ?? line.categoryId
                 children.append(Transaction(
                     id: childId,
@@ -5897,8 +5921,9 @@ final class BudgetStore: ObservableObject {
                 payeeId: resolvedPayee.id,
                 payeeName: resolvedPayee.name,
                 categoryId: resolvedPayee.transferAccountId.map { destinationId in
-                    !offBudgetAccountIds.contains(form.accountId)
-                        && offBudgetAccountIds.contains(destinationId) ? line.categoryId : nil
+                    Self.transferLegTakesCategory(
+                        leg: form.accountId, partner: destinationId, offBudgetAccountIds: offBudgetAccountIds
+                    ) ? line.categoryId : nil
                 } ?? line.categoryId,
                 categoryName: nil,
                 notes: line.notes,
@@ -6035,12 +6060,10 @@ final class BudgetStore: ObservableObject {
         }
 
         let signedAmount = original.amount < 0 ? -amountCents : amountCents
-        // Actual's rule: a transfer leg takes a category only when it sits in
-        // an on-budget account and the other side is off-budget. The new
-        // partner leg has no category of its own to keep either way.
-        let offBudgetIds = offBudgetAccountIds
-        let legCategoryId = !offBudgetIds.contains(form.accountId)
-            && offBudgetIds.contains(otherAccountId) ? form.categoryId : nil
+        // The new partner leg has no category of its own to keep either way.
+        let legCategoryId = Self.transferLegTakesCategory(
+            leg: form.accountId, partner: otherAccountId, offBudgetAccountIds: offBudgetAccountIds
+        ) ? form.categoryId : nil
 
         let partnerId = UUID().uuidString
         var leg = original
@@ -6155,8 +6178,9 @@ final class BudgetStore: ObservableObject {
                 payeeId: resolvedPayee.id,
                 payeeName: resolvedPayee.name,
                 categoryId: resolvedPayee.transferAccountId.map { destinationId in
-                    !offBudgetAccountIds.contains(form.accountId)
-                        && offBudgetAccountIds.contains(destinationId) ? line.categoryId : nil
+                    Self.transferLegTakesCategory(
+                        leg: form.accountId, partner: destinationId, offBudgetAccountIds: offBudgetAccountIds
+                    ) ? line.categoryId : nil
                 } ?? line.categoryId,
                 categoryName: nil,
                 notes: line.notes,
