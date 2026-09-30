@@ -42,21 +42,6 @@ struct PendingImport: Codable, Identifiable {
     nonisolated static func normalizedCurrencyCode(_ code: String) -> String {
         code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     }
-
-    /// The validated card hint. If the stored `cardHint` was hallucinated
-    /// or scrambled by an LLM and does not actually exist in `rawText`,
-    /// recovers the deterministic digits from `rawText`.
-    var effectiveCardHint: String? {
-        if let cardHint, !cardHint.isEmpty {
-            if rawText.isEmpty || rawText.contains(cardHint) {
-                return cardHint
-            }
-        }
-        if !rawText.isEmpty {
-            return TransactionTextParser.extractCardHint(from: rawText)
-        }
-        return cardHint
-    }
 }
 
 enum PendingImportReviewRequirement: Hashable {

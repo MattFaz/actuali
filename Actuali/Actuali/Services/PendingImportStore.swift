@@ -83,9 +83,10 @@ final class PendingImportStore: ObservableObject {
             let data = try Data(contentsOf: fileURL)
             var decoded = try JSONDecoder().decode([PendingImport].self, from: data)
             var repaired = false
-            for i in decoded.indices {
-                if let effective = decoded[i].effectiveCardHint, decoded[i].cardHint != effective {
-                    decoded[i].cardHint = effective
+            for i in decoded.indices where !decoded[i].rawText.isEmpty {
+                let healed = TransactionTextParser.resolveCardHint(decoded[i].cardHint, in: decoded[i].rawText)
+                if healed != decoded[i].cardHint {
+                    decoded[i].cardHint = healed
                     repaired = true
                 }
             }

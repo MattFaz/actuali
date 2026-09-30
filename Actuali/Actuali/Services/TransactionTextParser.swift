@@ -238,8 +238,10 @@ enum TransactionTextParser {
     /// Extract the last 4 digits of a card / account number.
     static func extractCardHint(from text: String) -> String? {
         // ponytail: simple pattern covering "card ending 1234", "XX9876",
-        // "A/C ...4321", "account ending 1234", "a/c no 1234".
-        let pattern = #"(?:card|account|a/c|ending|acct|xx|x{2,})[^\d]*(\d{4})"#
+        // "A/C ...4321", "account ending 1234", "a/c no 1234". The bounded gap
+        // and the (?!\d) tail keep a reference number or an amount out of the
+        // match; a longer digit run is not a last-4 hint.
+        let pattern = #"(?:card|account|a/c|ending|acct|xx|x{2,})[^\d]{0,12}(\d{4})(?!\d)"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
               let range = Range(match.range(at: 1), in: text) else {

@@ -68,7 +68,7 @@ struct CardAccountMappingsView: View {
         var grouped: [String: (keyword: String, count: Int, samplePayee: String?)] = [:]
         for item in pendingImports {
             guard item.originBudgetId == nil || item.originBudgetId == activeBudgetId,
-                  let hint = item.effectiveCardHint?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  let hint = item.cardHint?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !hint.isEmpty,
                   BudgetStore.resolveAccountId(
                       hint: hint, accounts: accounts, cardMappings: cardMappings

@@ -197,7 +197,7 @@ final class PendingImportApprover {
         // 1. Resolve account using the same chain as the edit form.
         let accounts = await store.accountsForIntent()
         let resolvedAccountId = Self.resolveAccountId(
-            cardHint: item.effectiveCardHint,
+            cardHint: item.cardHint,
             accounts: accounts,
             cardMappings: store.cardAccountMappings,
             defaultAccountId: store.defaultAccountId

@@ -199,16 +199,14 @@ struct TransactionTextParserTests {
         #expect(hint == nil)
     }
 
-    @Test func effectiveCardHintRecoversScrambledDigitsFromRawText() {
-        let text = "Rs 1,234.00 spent on Sample Bank Card XX6419 on 01-01-2026 at Coffee Shop."
-        let pending = PendingImport(cardHint: "1964", rawText: text)
-        #expect(pending.effectiveCardHint == "6419")
+    @Test func parsesAccountKeywordCardHint() {
+        let text = "Account ending 1234 charged USD 20.00 at Store"
+        #expect(TransactionTextParser.parseWithFallback(text).cardHint == "1234")
     }
 
-    @Test func effectiveCardHintPreservesValidCardHint() {
-        let text = "Card ending 1234 charged $20"
-        let pending = PendingImport(cardHint: "1234", rawText: text)
-        #expect(pending.effectiveCardHint == "1234")
+    @Test func doesNotTreatReferenceNumberAsCardHint() {
+        let text = "Rs 500 spent on card. Ref no 987654321. A/C XX6419 on 01-01-2026"
+        #expect(TransactionTextParser.parseWithFallback(text).cardHint == "6419")
     }
 }
 
