@@ -38,12 +38,11 @@ struct BudgetStoreBalanceVisibilityTests {
 
     /// The mask must never leak a digit, sign, or currency symbol for any
     /// amount, including the values most likely to hit formatter edge cases.
-    @Test func maskIsAmountIndependent() {
+    @Test(arguments: [0, -1, 1, Int.max, Int.min + 1, -987_654_321])
+    func maskIsAmountIndependent(cents: Int) {
         let store = BudgetStore.previewInstance()
         store.hideBalances = true
-        for cents in [0, -1, 1, Int.max, Int.min + 1, -987_654_321] {
-            #expect(store.displayBalance(cents) == BudgetStore.hiddenBalanceText)
-        }
+        #expect(store.displayBalance(cents) == BudgetStore.hiddenBalanceText)
     }
 
     @Test func togglePersistsToUserDefaults() {

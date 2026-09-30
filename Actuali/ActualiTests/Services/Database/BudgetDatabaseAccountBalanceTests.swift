@@ -9,49 +9,12 @@ import Testing
 /// double-counted), and accounts with no transactions report 0.
 @MainActor
 struct BudgetDatabaseAccountBalanceTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    type TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    date INTEGER,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    parent_id TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.accounts, TestSchema.transactions)
     }
 
     @Test func balancesSumNonTombstonedTransactionsPerAccount() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -81,7 +44,7 @@ struct BudgetDatabaseAccountBalanceTests {
     }
 
     @Test func accountWithNoTransactionsHasZeroBalance() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -101,7 +64,7 @@ struct BudgetDatabaseAccountBalanceTests {
         // children sum to the parent, so the balance must count the children
         // and exclude the parent — otherwise every split is double-counted
         // (GH #7: a checking account off by tens of thousands).
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -129,7 +92,7 @@ struct BudgetDatabaseAccountBalanceTests {
     }
 
     @Test func tombstonedAccountsAreExcluded() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -145,7 +108,7 @@ struct BudgetDatabaseAccountBalanceTests {
     }
 
     @Test func splitChildrenOfTombstonedParentAreExcluded() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in

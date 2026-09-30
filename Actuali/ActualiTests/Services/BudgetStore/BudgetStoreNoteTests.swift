@@ -13,41 +13,8 @@ struct BudgetStoreNoteTests {
     private func makeDatabase(
         includeNotesTable: Bool = true,
         seedSQL: String = ""
-    ) throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            if includeNotesTable {
-                try db.execute(sql: "CREATE TABLE notes (id TEXT PRIMARY KEY, note TEXT);")
-            }
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            );
-            """)
-            if !seedSQL.isEmpty {
-                try db.execute(sql: seedSQL)
-            }
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
-        return store
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    ) async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase((includeNotesTable ? [TestSchema.notes] : []) + [TestSchema.messagesCrdt, seedSQL])
     }
 
     private func noteRows(_ url: URL) throws -> [Row] {
@@ -86,9 +53,9 @@ struct BudgetStoreNoteTests {
     /// A category with no `notes` row gets one created, and the edit goes out
     /// as a CRDT message so Actual picks it up.
     @Test func savingFirstNoteCreatesRowAndQueuesMessage() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.saveNote(id: "cat-groceries", note: "Cap at $400/mo")
 
@@ -108,9 +75,9 @@ struct BudgetStoreNoteTests {
 
     /// The saved note is what a subsequent read returns — no manual refresh.
     @Test func savedNoteReadsBack() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.saveNote(id: "cat-groceries", note: "Weekly shop only")
 
@@ -122,11 +89,11 @@ struct BudgetStoreNoteTests {
     // MARK: - Editing an existing note
 
     @Test func editingExistingNoteUpdatesRowInPlace() async throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO notes (id, note) VALUES ('cat-groceries', 'old note');
         """)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.saveNote(id: "cat-groceries", note: "new note")
 
@@ -136,9 +103,9 @@ struct BudgetStoreNoteTests {
     }
 
     @Test func savingPreservesMultilineText() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.saveNote(id: "cat-groceries", note: "Line one\nLine two")
 
@@ -150,11 +117,11 @@ struct BudgetStoreNoteTests {
     /// the cleared state syncs. Tombstoning the row would instead leave other
     /// clients showing the stale note.
     @Test func clearingNoteSavesEmptyStringRatherThanDeletingRow() async throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO notes (id, note) VALUES ('cat-groceries', 'old note');
         """)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.saveNote(id: "cat-groceries", note: "")
 
@@ -184,9 +151,9 @@ struct BudgetStoreNoteTests {
     /// a category's, at the prefixed key — nothing about the save is
     /// category-specific, and this pins the key down end to end.
     @Test func savingAccountNoteWritesRowKeyedByPrefixedAccountId() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let noteId = EntityNote.accountNoteId("acct-chase")
         try await store.saveNote(id: noteId, note: "Direct deposit on the 15th")
@@ -209,11 +176,11 @@ struct BudgetStoreNoteTests {
     /// An account note written by Actual's web/desktop UI reads back in
     /// Actuali — the case the feature request was actually about.
     @Test func readsAccountNoteWrittenByActual() async throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO notes (id, note) VALUES ('account-acct-chase', 'Buffer $500');
         """)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let note = await store.fetchNote(id: EntityNote.accountNoteId("acct-chase"))
         #expect(note.supported)
@@ -225,11 +192,11 @@ struct BudgetStoreNoteTests {
     /// Actual's prefix also means an account and a category can never collide
     /// even if a file somehow reused an id.
     @Test func accountAndCategoryNotesAreIndependent() async throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO notes (id, note) VALUES ('cat-groceries', 'Cap at $400/mo');
         """)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.saveNote(id: EntityNote.accountNoteId("acct-chase"), note: "Buffer $500")
 
@@ -248,11 +215,11 @@ struct BudgetStoreNoteTests {
     /// A month's note saves at the prefixed key through the normal note path
     /// and reads back, and one written by Actual reads for its month only.
     @Test func monthNoteRoundTripsAtBudgetMonthKey() async throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO notes (id, note) VALUES ('budget-2026-08', 'Car rego due');
         """)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.saveNote(id: EntityNote.monthNoteId("2026-09"), note: "Holiday month")
 
@@ -269,9 +236,9 @@ struct BudgetStoreNoteTests {
     /// A file with no `notes` table must fail loudly rather than queue a
     /// message that applies to nothing locally.
     @Test func savingWithoutNotesTableThrows() async throws {
-        let (database, path) = try makeDatabase(includeNotesTable: false)
+        let (database, path) = try await makeDatabase(includeNotesTable: false)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         await #expect(throws: SyncError.notesTableMissing) {
             try await store.saveNote(id: "cat-groceries", note: "nope")

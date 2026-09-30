@@ -1,100 +1,99 @@
 import Foundation
 import GRDB
+import Synchronization
 import Testing
 @testable import Actuali
 
 /// A server that accepts the connection and then never answers in time — what
 /// an unreachable self-hosted server looks like to URLSession (the request
 /// hangs until the timeout rather than failing fast).
-private final class StallingSyncTransport: URLProtocol {
-    /// number of seconds. A wall-clock bound can't tell "the caller awaited
-    /// the push" from "the runner was starved": CI measured 4s across a window
-    /// that takes 20ms locally and failed a 3s bound with nothing wrong. Held
-    /// open, a caller that awaits the push simply never returns, which the
-    /// test's time limit catches no matter how slow the machine is.
-    private static let gate = NSCondition()
-    private nonisolated(unsafe) static var isOpen = false
-    private nonisolated(unsafe) static var attempts = 0
-    private nonisolated(unsafe) static var completions = 0
+///
+/// Requests stall until `release()`, not for a number of seconds. A wall-clock
+/// bound can't tell "the caller awaited the push" from "the runner was
+/// starved": CI measured 4s across a window that takes 20ms locally and failed
+/// a 3s bound with nothing wrong. Held open, a caller that awaits the push
+/// simply never returns, which the test's time limit catches no matter how
+/// slow the machine is.
+private final class StallingServer: Sendable {
+    private struct State {
+        var isOpen = false
+        var attempts = 0
+        var completions = 0
+        var stalled: [DispatchSemaphore] = []
+        var attemptWaiters: [CheckedContinuation<Void, Never>] = []
+    }
 
-    /// Safety net so a request left in flight by an earlier test can't hold a
-    /// URLSession thread for the life of the suite.
-    private static let maxStall: TimeInterval = 60
+    private let state = Mutex(State())
 
-    static func reset() {
-        gate.lock()
-        isOpen = false
-        attempts = 0
-        completions = 0
-        gate.unlock()
+    /// Safety net so a request left in flight can't hold a URLSession thread
+    /// for the life of the suite.
+    private static let maxStall: DispatchTimeInterval = .seconds(60)
+
+    var session: URLSession {
+        StubTransport.session { [self] _ in
+            let stall = DispatchSemaphore(value: 0)
+            let (isOpen, waiters) = state.withLock { current in
+                current.attempts += 1
+                if !current.isOpen {
+                    current.stalled.append(stall)
+                }
+                defer { current.attemptWaiters = [] }
+                return (current.isOpen, current.attemptWaiters)
+            }
+            for waiter in waiters {
+                waiter.resume()
+            }
+            if !isOpen {
+                _ = stall.wait(timeout: .now() + Self.maxStall)
+            }
+            state.withLock { $0.completions += 1 }
+            throw URLError(.cannotConnectToHost)
+        }
     }
 
     /// Let every stalled request fail so its thread unwinds.
-    static func release() {
-        gate.lock()
-        isOpen = true
-        gate.broadcast()
-        gate.unlock()
+    func release() {
+        let stalled = state.withLock { current in
+            current.isOpen = true
+            defer { current.stalled = [] }
+            return current.stalled
+        }
+        for semaphore in stalled {
+            semaphore.signal()
+        }
     }
 
-    static var attemptCount: Int {
-        gate.lock()
-        defer { gate.unlock() }
-        return attempts
+    /// Suspends until the first request arrives (returns at once if one has).
+    func waitForAttempt() async {
+        await withCheckedContinuation { continuation in
+            let reached = state.withLock { current in
+                if current.attempts == 0 {
+                    current.attemptWaiters.append(continuation)
+                }
+                return current.attempts > 0
+            }
+            if reached {
+                continuation.resume()
+            }
+        }
+    }
+
+    var attemptCount: Int {
+        state.withLock { $0.attempts }
     }
 
     /// Requests that have finished stalling — zero for as long as the gate is
     /// shut, so a caller that returned while this is zero cannot have waited
     /// for the server to answer.
-    static var completionCount: Int {
-        gate.lock()
-        defer { gate.unlock() }
-        return completions
+    var completionCount: Int {
+        state.withLock { $0.completions }
     }
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        Self.gate.lock()
-        Self.attempts += 1
-        let deadline = Date(timeIntervalSinceNow: Self.maxStall)
-        // wait(until:) returns false once the deadline passes.
-        while !Self.isOpen, Self.gate.wait(until: deadline) {}
-        Self.completions += 1
-        Self.gate.unlock()
-        client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
-    }
-
-    override func stopLoading() {}
-}
-
-private final class ImmediateFailureSyncTransport: URLProtocol {
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
-    }
-
-    override func stopLoading() {}
 }
 
 /// Issue #125: adding a transaction hung for the full network timeout when the
 /// server was unreachable. The row and its CRDT messages are committed locally
 /// before the push, so the push must not be awaited by the caller — the write
 /// returns immediately and the sync is deferred to the retry ladder.
-@Suite(.serialized)
 struct SyncClientOfflineWriteTests {
     private static let expectedBankSyncLink = ExpectedBankSyncLink(
         accountId: "acct-1", externalAccountId: "external-acct-1", source: "simpleFin"
@@ -102,113 +101,21 @@ struct SyncClientOfflineWriteTests {
 
     /// transactions and messages_crdt normally come from the downloaded budget
     /// file, so create them with the upstream schema.
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                starting_balance_flag INTEGER DEFAULT 0,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                acct TEXT,
-                category TEXT,
-                amount INTEGER,
-                description TEXT,
-                notes TEXT,
-                date INTEGER,
-                imported_description TEXT,
-                financial_id TEXT,
-                transferred_id TEXT,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0,
-                parent_id TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE rules (
-                id TEXT PRIMARY KEY,
-                stage TEXT,
-                conditions TEXT,
-                actions TEXT,
-                tombstone INTEGER DEFAULT 0,
-                conditions_op TEXT DEFAULT 'and'
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payee_mapping (
-                id TEXT PRIMARY KEY,
-                targetId TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payees (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                transfer_acct TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                offbudget INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0,
-                account_id TEXT,
-                account_sync_source TEXT
-            )
-            """)
-            try db.execute(sql: """
-            INSERT INTO accounts (id, account_id, account_sync_source)
-            VALUES ('acct-1', 'external-acct-1', 'simpleFin')
-            """)
-            try db.execute(sql: """
-            CREATE TABLE category_mapping (
-                id TEXT PRIMARY KEY,
-                transferId TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE categories (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                cat_group TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.core + [
+            TestSchema.rules,
+            "INSERT INTO accounts (id, account_id, account_sync_source) VALUES ('acct-1', 'external-acct-1', 'simpleFin')",
+        ])
     }
 
-    /// Sync client whose every request stalls, standing in for a server that
-    /// is down or off-network.
+    /// Sync client whose every request fails at once, or — given a `server` —
+    /// stalls, standing in for a server that is down or off-network.
     private func makeSyncClient(
         database: BudgetDatabase,
-        stallRequests: Bool = false
+        server: StallingServer? = nil
     ) async throws -> SyncClient {
-        let config = URLSessionConfiguration.ephemeral
-        if stallRequests {
-            StallingSyncTransport.reset()
-            config.protocolClasses = [StallingSyncTransport.self]
-        } else {
-            config.protocolClasses = [ImmediateFailureSyncTransport.self]
-        }
-        let serverClient = ActualServerClient(session: URLSession(configuration: config))
+        let session = server?.session ?? StubTransport.session { _ in throw URLError(.cannotConnectToHost) }
+        let serverClient = ActualServerClient(session: session)
         try await serverClient.configure(serverURL: "https://budget.example.com")
         await serverClient.setToken("test-token")
 
@@ -217,12 +124,8 @@ struct SyncClientOfflineWriteTests {
         return syncClient
     }
 
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
-    private func cancelStalledSync(_ syncClient: SyncClient) async {
-        StallingSyncTransport.release()
+    private func cancelStalledSync(_ syncClient: SyncClient, _ server: StallingServer) async {
+        server.release()
         await syncClient.cancelPendingSync()
     }
 
@@ -260,62 +163,63 @@ struct SyncClientOfflineWriteTests {
     /// all rather than returning slowly.
     @Test(.timeLimit(.minutes(1)))
     func createTransactionReturnsWithoutWaitingForTheServer() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database, stallRequests: true)
-        defer { StallingSyncTransport.release() }
+        let server = StallingServer()
+        let syncClient = try await makeSyncClient(database: database, server: server)
+        defer { server.release() }
 
         do {
             try await syncClient.createTransaction(transaction(id: "tx-offline-1"))
 
             // Returned while the server is still hanging: nothing has been allowed
             // to answer yet, so the push cannot have been awaited.
-            #expect(StallingSyncTransport.completionCount == 0, "createTransaction waited for the unreachable server to answer")
+            #expect(server.completionCount == 0, "createTransaction waited for the unreachable server to answer")
             // Local-first: the transaction is already durable on return.
             #expect(try rowExists(database, id: "tx-offline-1"))
         } catch {
-            await cancelStalledSync(syncClient)
+            await cancelStalledSync(syncClient, server)
             throw error
         }
 
-        await cancelStalledSync(syncClient)
+        await cancelStalledSync(syncClient, server)
     }
 
     /// Deferred, not dropped: the push still goes out, just off the caller's
-    /// thread.
-    @Test func pushStillHappensAfterTheWriteReturns() async throws {
-        let (database, path) = try makeDatabase()
+    /// thread. The time limit is the failure mode: a dropped push never wakes
+    /// `waitForAttempt()`.
+    @Test(.timeLimit(.minutes(1)))
+    func pushStillHappensAfterTheWriteReturns() async throws {
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database, stallRequests: true)
-        defer { StallingSyncTransport.release() }
+        let server = StallingServer()
+        let syncClient = try await makeSyncClient(database: database, server: server)
+        defer { server.release() }
 
         do {
             try await syncClient.createTransaction(transaction(id: "tx-offline-2"))
 
-            var observed = StallingSyncTransport.attemptCount
-            for _ in 0..<40 where observed == 0 {
-                try await Task.sleep(nanoseconds: 50_000_000)
-                observed = StallingSyncTransport.attemptCount
-            }
-            #expect(observed >= 1, "the deferred sync never reached the server")
+            await server.waitForAttempt()
+            #expect(server.attemptCount >= 1, "the deferred sync never reached the server")
         } catch {
-            await cancelStalledSync(syncClient)
+            await cancelStalledSync(syncClient, server)
             throw error
         }
 
-        await cancelStalledSync(syncClient)
+        await cancelStalledSync(syncClient, server)
     }
 
-    @Test func transactionUpdateRollsBackWhenMessagePersistenceFails() throws {
-        let (database, path) = try makeDatabase()
+    @Test func transactionUpdateRollsBackWhenMessagePersistenceFails() async throws {
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         let original = transaction(id: "tx-atomic-update")
         try database.insertTransaction(original)
-        var updated = original
-        updated.amount = -9999
+        var edited = original
+        edited.amount = -9999
+        let updated = edited
 
-        try database.dbQueueForTesting.write { db in
+        try await database.dbQueueForTesting.write { db in
             try db.execute(sql: "DROP TABLE messages_crdt")
         }
 
@@ -330,14 +234,14 @@ struct SyncClientOfflineWriteTests {
             try database.updateTransactionWithMessages(updated, messages: [message])
         }
 
-        let amount = try database.dbQueueForTesting.read { db in
+        let amount = try await database.dbQueueForTesting.read { db in
             try Int.fetchOne(db, sql: "SELECT amount FROM transactions WHERE id = ?", arguments: [updated.id])
         }
         #expect(amount == original.amount)
     }
 
     @Test func bulkTransactionUpdateRollsBackEveryRowWhenMessagePersistenceFails() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let first = transaction(id: "tx-bulk-1")
         let second = transaction(id: "tx-bulk-2")
@@ -366,7 +270,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func financialIdRetryReturnsDuplicateWithoutChangingMessagesOrMerkle() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
         let imported: Transaction = {
@@ -393,7 +297,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func concurrentFinancialIdCreatesCommitOneRowAndOneMessageSet() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
 
@@ -455,7 +359,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func bankSyncFinancialIdOccurrenceLimitIsAtomicAndRepairsFirst() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
         let prepared = try await syncClient.prepareRules()
@@ -517,7 +421,7 @@ struct SyncClientOfflineWriteTests {
 
     @Test(arguments: ["reconciled", "tombstone", "starting_balance", "child", "date", "amount", "payee", "financial_id", "imported_description", "notes", "cleared"])
     func bankSyncUpdateSkipsRowsThatChangedAfterPlanning(_ state: String) async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
 
@@ -621,7 +525,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func bankSyncWindowExcludesStartingBalanceRowsFromFuzzyMatching() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         var openingBalance = transaction(id: "tx-bank-opening-balance")
@@ -651,7 +555,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func bankSyncUpdateAppliesUnchangedPlanAndInsertsMessages() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
 
@@ -684,7 +588,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func standaloneBankAPIsRejectAStaleLinkWithoutWriting() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
         let staleLink = ExpectedBankSyncLink(
@@ -738,7 +642,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func staleBankStatusDoesNotDiscardOrReplicateValidStatuses() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
         try await database.dbQueueForTesting.write { db in
@@ -790,7 +694,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func staleDuplicateBankStatusDoesNotReplicateItsMessages() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
 
@@ -832,7 +736,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func bankStatusCannotValidateOneAccountAndUpdateAnother() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
         try await database.dbQueueForTesting.write { db in
@@ -861,7 +765,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func bankSyncMaterializationRejectsStalePreparedRulesBeforeWriting() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: "INSERT INTO rules (id, stage, conditions_op, conditions, actions) VALUES ('rule-1', NULL, 'and', '[]', '[{\"op\":\"set\",\"field\":\"category\",\"value\":\"cat-1\"}]')")
@@ -907,7 +811,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func bankSyncMaterializationToleratesPartialRulesContextSchema() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: "ALTER TABLE accounts DROP COLUMN offbudget")
@@ -940,7 +844,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func rejectedBankFinancialIdDoesNotLeavePendingPayeeRows() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
         let prepared = try await syncClient.prepareRules()
@@ -979,7 +883,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func bankSyncMaterializationRollsBackConflictingPendingPayeePayload() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { _ in
         }
@@ -1046,11 +950,11 @@ struct SyncClientOfflineWriteTests {
         #expect(counts.3 == 0)
     }
 
-    @Test func legacyNullAccountFinancialIdLookupIsNullSafeAndAccountScoped() throws {
-        let (database, path) = try makeDatabase()
+    @Test func legacyNullAccountFinancialIdLookupIsNullSafeAndAccountScoped() async throws {
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
-        try database.dbQueueForTesting.write { db in
+        try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
             INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
             VALUES ('tx-legacy-null-account', NULL, 20260811, -1234, 'financial-null-account', 0)
@@ -1061,7 +965,7 @@ struct SyncClientOfflineWriteTests {
             """)
         }
 
-        let nullAccountMatch = try database.dbQueueForTesting.read { db in
+        let nullAccountMatch = try await database.dbQueueForTesting.read { db in
             try String.fetchOne(db, sql: """
             SELECT id FROM transactions
             WHERE acct IS NULL AND financial_id = ?
@@ -1069,7 +973,7 @@ struct SyncClientOfflineWriteTests {
             LIMIT 1
             """, arguments: ["financial-null-account"])
         }
-        let realAccountMatch = try database.dbQueueForTesting.read { db in
+        let realAccountMatch = try await database.dbQueueForTesting.read { db in
             try String.fetchOne(db, sql: """
             SELECT id FROM transactions
             WHERE acct IS ? AND financial_id = ?
@@ -1083,7 +987,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func zeroMessageFinancialIdRetryRepairsThroughSyncClient() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let imported: Transaction = {
             var value = transaction(id: "tx-zero-message")
@@ -1141,7 +1045,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func zeroMessageRepairPersistsRuleMutationInRowAndMessages() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
         try await database.dbQueueForTesting.write { db in
@@ -1185,7 +1089,7 @@ struct SyncClientOfflineWriteTests {
     }
 
     @Test func partialFinancialIdStateIsRejectedWithoutAppendingMessages() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
         let imported: Transaction = {
@@ -1210,11 +1114,11 @@ struct SyncClientOfflineWriteTests {
         #expect(try database.deriveMerkleFromMessageLog().root.hash == MerkleTree().inserting(partial.timestamp).pruned().root.hash)
     }
 
-    @Test func tombstonedFinancialIdCanBeReimportedWithANewRow() throws {
-        let (database, path) = try makeDatabase()
+    @Test func tombstonedFinancialIdCanBeReimportedWithANewRow() async throws {
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
-        try database.dbQueueForTesting.write { db in
+        try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
             INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
             VALUES ('tx-deleted', 'acct-1', 20260811, -1234, 'financial-reimport', 1)
@@ -1229,11 +1133,11 @@ struct SyncClientOfflineWriteTests {
         )
 
         #expect(try database.insertTransactionWithMessages(imported, messages: [message]).count == 1)
-        let count = try database.dbQueueForTesting.read { db in
+        let count = try await database.dbQueueForTesting.read { db in
             try Int.fetchOne(
                 db,
                 sql: "SELECT COUNT(*) FROM transactions WHERE financial_id = ?",
-                arguments: [imported.financialId]
+                arguments: ["financial-reimport"]
             )
         }
         #expect(count == 2)

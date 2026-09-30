@@ -94,22 +94,19 @@ struct FormulaEngineTests {
         #expect(result == .text("FALSE"))
     }
 
-    @Test func comparisonOperatorsEvaluate() {
-        let cases = [
-            (#"=2=2"#, "TRUE"),
-            (#"=2<>3"#, "TRUE"),
-            (#"=3>2"#, "TRUE"),
-            (#"=2<3"#, "TRUE"),
-            (#"=2>=2"#, "TRUE"),
-            (#"=2<=2"#, "TRUE"),
-        ]
-
-        for (formula, expected) in cases {
-            let result = FormulaEngine.compute(
-                meta: meta(formula: formula), transactions: [], today: today, context: .empty
-            )
-            #expect(result == .text(expected))
-        }
+    @Test(arguments: [
+        (#"=2=2"#, "TRUE"),
+        (#"=2<>3"#, "TRUE"),
+        (#"=3>2"#, "TRUE"),
+        (#"=2<3"#, "TRUE"),
+        (#"=2>=2"#, "TRUE"),
+        (#"=2<=2"#, "TRUE"),
+    ])
+    func comparisonOperatorsEvaluate(formula: String, expected: String) {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: formula), transactions: [], today: today, context: .empty
+        )
+        #expect(result == .text(expected))
     }
 
     @Test func textComparisonUsesHyperFormulaCollation() {
@@ -161,15 +158,13 @@ struct FormulaEngineTests {
         #expect(result == .text("Balance: 12.5"))
     }
 
-    @Test func nonFiniteResultsAreUnsupported() {
-        for formula in ["=ROUND(1,400)", #"=ROUND(1,400)&"%""#, #"=ROUND(1,400)="""#] {
-            let result = FormulaEngine.compute(
-                meta: meta(formula: formula), transactions: [], today: today, context: .empty
-            )
-            guard case .unsupported = result else {
-                Issue.record("expected .unsupported, got \(result)")
-                continue
-            }
+    @Test(arguments: ["=ROUND(1,400)", #"=ROUND(1,400)&"%""#, #"=ROUND(1,400)="""#])
+    func nonFiniteResultsAreUnsupported(formula: String) {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: formula), transactions: [], today: today, context: .empty
+        )
+        guard case .unsupported = result else {
+            Issue.record("expected .unsupported, got \(result)"); return
         }
     }
 

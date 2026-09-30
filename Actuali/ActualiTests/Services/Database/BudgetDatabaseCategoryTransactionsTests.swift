@@ -32,106 +32,48 @@ struct BudgetDatabaseCategoryTransactionsTests {
         ))
     }
 
-    @Test func emptyStateWordingUsesDestinationMonthNotLocalizedTitle() {
-        let cases = [
-            (Locale(identifier: "en_US"), "September 2026", "No Transactions", "Nothing in Food for September 2026", "Nothing in Food for any month"),
-            (Locale(identifier: "fr_FR"), "septembre 2026", "Aucune transaction", "Aucune transaction dans Courses pour septembre 2026", "Aucune transaction dans Courses pour n'importe quel mois"),
-            (Locale(identifier: "pt_BR"), "setembro de 2026", "Nenhuma transação", "Nada em Alimentação para setembro de 2026", "Nada em Alimentação para qualquer mês"),
-        ]
-
-        for (locale, monthTitle, emptyTitle, monthDescription, allTimeDescription) in cases {
-            #expect(CategoryTransactionsView.scopeTitle(
-                for: "2026-09",
-                locale: locale,
-                bundle: .main
-            ) == monthTitle)
-            #expect(CategoryTransactionsView.emptyStateTitle(
-                locale: locale,
-                bundle: .main
-            ) == emptyTitle)
-            #expect(CategoryTransactionsView.emptyStateDescription(
-                categoryName: locale.identifier == "pt_BR" ? "Alimentação" : locale.identifier == "fr_FR" ? "Courses" : "Food",
-                month: "2026-09",
-                locale: locale,
-                bundle: .main
-            ) == monthDescription)
-            #expect(CategoryTransactionsView.emptyStateDescription(
-                categoryName: locale.identifier == "pt_BR" ? "Alimentação" : locale.identifier == "fr_FR" ? "Courses" : "Food",
-                month: nil,
-                locale: locale,
-                bundle: .main
-            ) == allTimeDescription)
-        }
+    @Test(arguments: [
+        ("en_US", "Food", "September 2026", "No Transactions", "Nothing in Food for September 2026", "Nothing in Food for any month"),
+        ("fr_FR", "Courses", "septembre 2026", "Aucune transaction", "Aucune transaction dans Courses pour septembre 2026", "Aucune transaction dans Courses pour n'importe quel mois"),
+        ("pt_BR", "Alimentação", "setembro de 2026", "Nenhuma transação", "Nada em Alimentação para setembro de 2026", "Nada em Alimentação para qualquer mês"),
+    ])
+    func emptyStateWordingUsesDestinationMonthNotLocalizedTitle(
+        localeIdentifier: String, categoryName: String, monthTitle: String,
+        emptyTitle: String, monthDescription: String, allTimeDescription: String
+    ) {
+        let locale = Locale(identifier: localeIdentifier)
+        #expect(CategoryTransactionsView.scopeTitle(
+            for: "2026-09",
+            locale: locale,
+            bundle: .main
+        ) == monthTitle)
+        #expect(CategoryTransactionsView.emptyStateTitle(
+            locale: locale,
+            bundle: .main
+        ) == emptyTitle)
+        #expect(CategoryTransactionsView.emptyStateDescription(
+            categoryName: categoryName,
+            month: "2026-09",
+            locale: locale,
+            bundle: .main
+        ) == monthDescription)
+        #expect(CategoryTransactionsView.emptyStateDescription(
+            categoryName: categoryName,
+            month: nil,
+            locale: locale,
+            bundle: .main
+        ) == allTimeDescription)
     }
 
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    parent_id TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.accounts, TestSchema.payees, TestSchema.payeeMapping,
+            TestSchema.categories, TestSchema.categoryMapping, TestSchema.transactions
+        )
     }
 
     @Test func returnsAllTimeMatchesWhenMonthIsNil() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -159,7 +101,7 @@ struct BudgetDatabaseCategoryTransactionsTests {
     }
 
     @Test func narrowsToSingleMonthWhenProvided() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -182,7 +124,7 @@ struct BudgetDatabaseCategoryTransactionsTests {
     }
 
     @Test func includesSplitChildrenWithParentPayeeAndExcludesParents() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -216,7 +158,7 @@ struct BudgetDatabaseCategoryTransactionsTests {
     }
 
     @Test func excludesTombstonedRowsOrphanedChildrenAndOffBudgetAccounts() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -246,7 +188,7 @@ struct BudgetDatabaseCategoryTransactionsTests {
     }
 
     @Test func resolvesCategoryThroughCategoryMapping() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -272,7 +214,7 @@ struct BudgetDatabaseCategoryTransactionsTests {
     }
 
     @Test func sortsNewestFirst() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -295,7 +237,7 @@ struct BudgetDatabaseCategoryTransactionsTests {
     }
 
     @Test func fetchesIncomeCategoryTransactions() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in

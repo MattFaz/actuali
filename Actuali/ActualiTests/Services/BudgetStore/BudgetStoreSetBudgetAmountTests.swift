@@ -5,97 +5,14 @@ import Testing
 
 @MainActor
 struct BudgetStoreSetBudgetAmountTests {
-    /// Full schema fetchBudgetMonth needs (matches BudgetDatabaseRolloverTests)
-    /// plus messages_crdt for the sync write path.
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    date INTEGER,
-                    transferred_id TEXT,
-                    parent_id TEXT,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    cat_group TEXT,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_groups (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE zero_budgets (
-                    id TEXT PRIMARY KEY,
-                    month INTEGER,
-                    category TEXT,
-                    amount INTEGER DEFAULT 0,
-                    carryover INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-
-                INSERT INTO category_groups (id, name) VALUES ('grp-1', 'Daily');
-                INSERT INTO categories (id, name, cat_group) VALUES ('cat-groceries', 'Groceries', 'grp-1');
-                INSERT INTO category_mapping (id, transferId) VALUES ('cat-groceries', 'cat-groceries');
-                INSERT INTO accounts (id, name, offbudget) VALUES ('acct-1', 'Checking', 0);
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
-        return store
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    /// Everything fetchBudgetMonth reads plus messages_crdt for the sync write path.
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.core + [TestSchema.zeroBudgets, """
+        INSERT INTO category_groups (id, name) VALUES ('grp-1', 'Daily');
+        INSERT INTO categories (id, name, cat_group) VALUES ('cat-groceries', 'Groceries', 'grp-1');
+        INSERT INTO category_mapping (id, transferId) VALUES ('cat-groceries', 'cat-groceries');
+        INSERT INTO accounts (id, name, offbudget) VALUES ('acct-1', 'Checking', 0);
+        """])
     }
 
     private func seedIncomeCategory(_ database: BudgetDatabase) async throws {
@@ -137,9 +54,9 @@ struct BudgetStoreSetBudgetAmountTests {
     // MARK: - End-to-end save
 
     @Test func settingBudgetPersistsAndRefreshesMonth() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-groceries", amountCents: 2550)
 
@@ -162,9 +79,9 @@ struct BudgetStoreSetBudgetAmountTests {
     }
 
     @Test func settingNegativeBudgetPersists() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-groceries", amountCents: -10000)
 
@@ -180,7 +97,7 @@ struct BudgetStoreSetBudgetAmountTests {
     }
 
     @Test func holdingMoreAndResettingPersistsAndRefreshesMonth() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try await seedIncomeCategory(database)
         try await database.dbQueueForTesting.write { db in
@@ -189,7 +106,7 @@ struct BudgetStoreSetBudgetAmountTests {
             VALUES ('salary', 'acct-1', 'cat-salary', 10000, 20260701)
             """)
         }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         await store.fetchBudgetMonth("2026-07")
 
         try await store.holdBudgetForNextMonth(month: "2026-07", amountCents: 4000)
@@ -207,7 +124,7 @@ struct BudgetStoreSetBudgetAmountTests {
     }
 
     @Test func disablingAutomaticBufferClearsIncomeCarryover() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try await seedIncomeCategory(database)
         try await database.dbQueueForTesting.write { db in
@@ -218,7 +135,7 @@ struct BudgetStoreSetBudgetAmountTests {
             VALUES ('salary-budget', 202607, 'cat-salary', 1)
             """)
         }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         await store.fetchBudgetMonth("2026-07")
 
         let before = try #require(await store.fetchEnvelopeBudgetSummary("2026-07"))
@@ -235,7 +152,7 @@ struct BudgetStoreSetBudgetAmountTests {
     }
 
     @Test func settingMonthBudgetsToZeroIncludesHiddenButNotEnvelopeIncome() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -247,7 +164,7 @@ struct BudgetStoreSetBudgetAmountTests {
                 ('202607-cat-income', 202607, 'cat-income', 5000);
             """)
         }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.setBudgetsToZero(month: "2026-07")
 
@@ -263,7 +180,7 @@ struct BudgetStoreSetBudgetAmountTests {
     }
 
     @Test func settingTrackingMonthBudgetsToZeroIncludesIncome() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -280,7 +197,7 @@ struct BudgetStoreSetBudgetAmountTests {
                 ('202607-cat-income', 202607, 'cat-income', 5000);
             """)
         }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.setBudgetsToZero(month: "2026-07")
 
@@ -292,7 +209,7 @@ struct BudgetStoreSetBudgetAmountTests {
     }
 
     @Test func copyingPreviousMonthBudgetCopiesVisibleAmountsAndClearsMissingOnes() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -306,7 +223,7 @@ struct BudgetStoreSetBudgetAmountTests {
                 ('202607-cat-hidden', 202607, 'cat-hidden', 700);
             """)
         }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.copyPreviousMonthBudget(month: "2026-07")
 
@@ -324,7 +241,7 @@ struct BudgetStoreSetBudgetAmountTests {
     }
 
     @Test func copyingPreviousTrackingMonthIncludesVisibleIncomeBudgets() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -343,7 +260,7 @@ struct BudgetStoreSetBudgetAmountTests {
                 ('202607-cat-income', 202607, 'cat-income', 1000);
             """)
         }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.copyPreviousMonthBudget(month: "2026-07")
 
@@ -358,9 +275,9 @@ struct BudgetStoreSetBudgetAmountTests {
     }
 
     @Test func zeroingAnOlderMonthPreservesTheNewerMonthSelection() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         await store.fetchBudgetMonth("2026-08")
 
         try await store.setBudgetsToZero(month: "2026-07")
@@ -373,9 +290,9 @@ struct BudgetStoreSetBudgetAmountTests {
     /// table's rows stop matching its title and the next amount edit lands on
     /// the wrong month.
     @Test func renamingACategoryKeepsTheDisplayedMonthPublished() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-groceries", amountCents: 2550)
         try await store.renameCategory(id: "cat-groceries", name: "Food", month: "2026-07")

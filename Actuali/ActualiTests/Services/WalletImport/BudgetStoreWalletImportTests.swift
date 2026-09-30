@@ -5,79 +5,10 @@ import Testing
 
 @MainActor
 struct BudgetStoreWalletImportTests {
-    /// Upstream schema, matching BudgetStoreSaveTransactionTests (real budget
-    /// files always have financial_id — it's Actual's bank-import dedup key).
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                starting_balance_flag INTEGER DEFAULT 0,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                acct TEXT,
-                category TEXT,
-                amount INTEGER,
-                description TEXT,
-                notes TEXT,
-                date INTEGER,
-                imported_description TEXT,
-                financial_id TEXT,
-                transferred_id TEXT,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0,
-                parent_id TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payees (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                transfer_acct TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payee_mapping (
-                id TEXT PRIMARY KEY,
-                targetId TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE rules (
-                id TEXT PRIMARY KEY,
-                stage TEXT,
-                conditions TEXT,
-                actions TEXT,
-                tombstone INTEGER DEFAULT 0,
-                conditions_op TEXT DEFAULT 'and'
-            )
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
-        return store
+    /// Real budget files always have financial_id — it's Actual's bank-import
+    /// dedup key — and rules, which can suppress an import.
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
     }
 
     private func transactionRows(path: URL) throws -> [Row] {
@@ -85,10 +16,6 @@ struct BudgetStoreWalletImportTests {
         return try queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM transactions ORDER BY financial_id")
         }
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
     }
 
     private func candidate(
@@ -105,9 +32,9 @@ struct BudgetStoreWalletImportTests {
     }
 
     @Test func importWritesRowsWithFinancialId() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let result = try await store.importWalletTransactions([
             candidate(id: "aaa-1", amountCents: -820, payeeName: "Blue Bottle"),
@@ -132,9 +59,9 @@ struct BudgetStoreWalletImportTests {
     }
 
     @Test func importEmitsFinancialIdCRDTMessage() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         _ = try await store.importWalletTransactions(
             [candidate(id: "bbb-1")], accountId: "acct-1"
@@ -151,9 +78,9 @@ struct BudgetStoreWalletImportTests {
     }
 
     @Test func reimportSkipsExistingFinancialIds() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         _ = try await store.importWalletTransactions(
             [candidate(id: "ccc-1"), candidate(id: "ccc-2")], accountId: "acct-1"
@@ -168,9 +95,9 @@ struct BudgetStoreWalletImportTests {
     }
 
     @Test func sameFinancialIdCanBeImportedIntoDifferentAccounts() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let first = try await store.importWalletTransactions(
             [candidate(id: "shared-wallet-id")], accountId: "acct-1"
@@ -195,9 +122,9 @@ struct BudgetStoreWalletImportTests {
     }
 
     @Test func duplicateWithinBatchImportsOnce() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let result = try await store.importWalletTransactions(
             [candidate(id: "ddd-1"), candidate(id: "ddd-1")], accountId: "acct-1"
@@ -208,9 +135,9 @@ struct BudgetStoreWalletImportTests {
     }
 
     @Test func deletedImportStaysDeletedOnReimport() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         _ = try await store.importWalletTransactions(
             [candidate(id: "eee-1")], accountId: "acct-1"
@@ -226,9 +153,9 @@ struct BudgetStoreWalletImportTests {
     }
 
     @Test func ruleSuppressionIsNotCountedAsImportedOrDuplicate() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
             INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
@@ -247,9 +174,9 @@ struct BudgetStoreWalletImportTests {
     }
 
     @Test func manualSaveLeavesFinancialIdNull() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.saveTransaction(BudgetStore.TransactionForm(
             accountId: "acct-1",

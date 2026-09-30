@@ -1,36 +1,17 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Actuali
 
-private final class ConnectionEditTransport: URLProtocol {
-    nonisolated(unsafe) static var unreachableHosts: Set<String> = []
-    nonisolated(unsafe) static var requestedHosts: [String] = []
+/// Which hosts refuse connections, and which were asked. Mutable so a test
+/// can bring a host back up mid-flight.
+private final class HostLog: Sendable {
+    let unreachable: Mutex<Set<String>>
+    let requested = Mutex<[String]>([])
 
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
+    init(unreachable: Set<String>) {
+        self.unreachable = Mutex(unreachable)
     }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        let host = request.url?.host ?? ""
-        Self.requestedHosts.append(host)
-        if Self.unreachableHosts.contains(host) {
-            client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
-            return
-        }
-        let response = HTTPURLResponse(
-            url: request.url!, statusCode: 404, httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
-        )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data())
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
 }
 
 @Suite(.serialized)
@@ -39,14 +20,19 @@ struct BudgetStoreFallbackServerTests {
     private func makeClient(
         configuredFor serverURL: String,
         unreachableHosts: Set<String> = []
-    ) async -> ActualServerClient {
-        ConnectionEditTransport.unreachableHosts = unreachableHosts
-        ConnectionEditTransport.requestedHosts = []
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [ConnectionEditTransport.self]
-        let client = ActualServerClient(session: URLSession(configuration: configuration))
+    ) async -> (ActualServerClient, HostLog) {
+        let log = HostLog(unreachable: unreachableHosts)
+        let session = StubTransport.session { request in
+            let host = request.url?.host ?? ""
+            log.requested.withLock { $0.append(host) }
+            if log.unreachable.withLock({ $0.contains(host) }) {
+                throw URLError(.cannotConnectToHost)
+            }
+            return StubTransport.Response(status: 404, contentType: "application/json")
+        }
+        let client = ActualServerClient(session: session)
         try? await client.configure(serverURL: serverURL)
-        return client
+        return (client, log)
     }
 
     @Test func connectNormalizesAndPersistsTheFallbackAddress() async {
@@ -77,7 +63,8 @@ struct BudgetStoreFallbackServerTests {
 
     @Test func connectedURLsCanBeReplacedWithoutDisconnectingOrRemovingTheBudget() async {
         let store = BudgetStore.previewInstance()
-        await store.setServerClientForTesting(makeClient(configuredFor: "https://old.example.com"))
+        let (client, _) = await makeClient(configuredFor: "https://old.example.com")
+        store.setServerClientForTesting(client)
         store.serverURL = "https://old.example.com"
         store.isConnected = true
         store.currentBudgetId = "local-budget"
@@ -115,7 +102,7 @@ struct BudgetStoreFallbackServerTests {
 
     @Test func unreachableEditRestoresTheLiveClientAndSavedAddresses() async throws {
         let oldURL = "https://old.example.com"
-        let client = await makeClient(
+        let (client, log) = await makeClient(
             configuredFor: oldURL,
             unreachableHosts: ["unreachable.example.com"]
         )
@@ -135,8 +122,8 @@ struct BudgetStoreFallbackServerTests {
         #expect(store.fallbackServerURL == "https://fallback.example.com")
         #expect(store.isConnected)
 
-        ConnectionEditTransport.unreachableHosts = []
+        log.unreachable.withLock { $0 = [] }
         _ = try await client.fetchLoginMethods()
-        #expect(ConnectionEditTransport.requestedHosts.last == "old.example.com")
+        #expect(log.requested.withLock { $0.last } == "old.example.com")
     }
 }

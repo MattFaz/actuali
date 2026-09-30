@@ -5,116 +5,24 @@ import Testing
 
 @MainActor
 struct CategoryFundingAutomationIntegrationTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("category-funding-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT
-                );
-
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    category TEXT,
-                    tombstone INTEGER DEFAULT 0,
-                    transfer_acct TEXT
-                );
-
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    cat_group TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    hidden INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_groups (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE zero_budgets (
-                    id TEXT PRIMARY KEY,
-                    month INTEGER,
-                    category TEXT,
-                    amount INTEGER DEFAULT 0,
-                    carryover INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-
-                INSERT INTO category_groups (id, name, is_income) VALUES ('grp-1', 'Daily', 0);
-                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-dining', 'Dining Out', 'grp-1', 0);
-                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-emergency', 'Emergency Fund', 'grp-1', 0);
-                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-income', 'Salary', 'grp-1', 1);
-                INSERT INTO category_mapping (id, transferId) VALUES ('cat-dining', 'cat-dining');
-                INSERT INTO category_mapping (id, transferId) VALUES ('cat-emergency', 'cat-emergency');
-                INSERT INTO category_mapping (id, transferId) VALUES ('cat-income', 'cat-income');
-                INSERT INTO accounts (id, name, offbudget, tombstone) VALUES ('acct-1', 'Checking', 0, 0);
-                INSERT INTO zero_budgets (id, month, category, amount) VALUES ('202607-cat-dining', 202607, 'cat-dining', 1000);
-                INSERT INTO zero_budgets (id, month, category, amount) VALUES ('202607-cat-emergency', 202607, 'cat-emergency', 2000);
-                INSERT INTO zero_budgets (id, month, category, amount) VALUES ('202607-cat-income', 202607, 'cat-income', 2000);
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.core + [TestSchema.zeroBudgets, """
+        INSERT INTO category_groups (id, name, is_income) VALUES ('grp-1', 'Daily', 0);
+        INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-dining', 'Dining Out', 'grp-1', 0);
+        INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-emergency', 'Emergency Fund', 'grp-1', 0);
+        INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-income', 'Salary', 'grp-1', 1);
+        INSERT INTO category_mapping (id, transferId) VALUES ('cat-dining', 'cat-dining');
+        INSERT INTO category_mapping (id, transferId) VALUES ('cat-emergency', 'cat-emergency');
+        INSERT INTO category_mapping (id, transferId) VALUES ('cat-income', 'cat-income');
+        INSERT INTO accounts (id, name, offbudget, tombstone) VALUES ('acct-1', 'Checking', 0, 0);
+        INSERT INTO zero_budgets (id, month, category, amount) VALUES ('202607-cat-dining', 202607, 'cat-dining', 1000);
+        INSERT INTO zero_budgets (id, month, category, amount) VALUES ('202607-cat-emergency', 202607, 'cat-emergency', 2000);
+        INSERT INTO zero_budgets (id, month, category, amount) VALUES ('202607-cat-income', 202607, 'cat-income', 2000);
+        """])
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
+        let store = try await makeTestStore(database: database)
         store.currentBudgetId = "budget-1"
         store.accounts = [
             Account(
@@ -210,13 +118,9 @@ struct CategoryFundingAutomationIntegrationTests {
         return transaction
     }
 
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     @Test("Automatic funding covers only the new expense shortfall")
     func automaticFundingCoversOnlyNewShortfall() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
         let transaction = try insertTransaction(in: database)
@@ -257,7 +161,7 @@ struct CategoryFundingAutomationIntegrationTests {
 
     @Test("Funding from another category moves exactly the shortfall")
     func fundsFromSourceCategory() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
         let transaction = try insertTransaction(in: database)
@@ -286,7 +190,7 @@ struct CategoryFundingAutomationIntegrationTests {
 
     @Test("Closed account is not eligible for category funding")
     func closedAccountDoesNotFund() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
         _ = try insertTransaction(in: database)
@@ -311,7 +215,7 @@ struct CategoryFundingAutomationIntegrationTests {
 
     @Test("Off-budget account is not eligible for category funding")
     func offBudgetAccountDoesNotFund() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
         _ = try insertTransaction(in: database)
@@ -336,7 +240,7 @@ struct CategoryFundingAutomationIntegrationTests {
 
     @Test("Unavailable funding category reports an actionable error")
     func unavailableFundingCategory() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
         _ = try insertTransaction(in: database)
@@ -357,7 +261,7 @@ struct CategoryFundingAutomationIntegrationTests {
 
     @Test("Missing funding category is ignored when there is no shortfall")
     func missingFundingCategoryWithNoShortfallDoesNotError() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
         _ = try insertTransaction(in: database, amount: -500)
@@ -378,7 +282,7 @@ struct CategoryFundingAutomationIntegrationTests {
 
     @Test("A category cannot fund itself")
     func sameCategoryFundingDoesNotError() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
         _ = try insertTransaction(in: database)
@@ -402,7 +306,7 @@ struct CategoryFundingAutomationIntegrationTests {
 
     @Test("Income category cannot be used as a funding source")
     func incomeFundingCategoryIsRejected() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
         _ = try insertTransaction(in: database)

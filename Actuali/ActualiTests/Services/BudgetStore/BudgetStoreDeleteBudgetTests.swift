@@ -1,37 +1,12 @@
 import CryptoKit
 import Foundation
+import Synchronization
 import Testing
 @testable import Actuali
 
-/// Answers /sync/delete-user-file with a preset status so deleteServerBudget's
-/// orchestration (server call, then local cleanup) can run offline.
-private final class DeleteBudgetTransport: URLProtocol {
-    nonisolated(unsafe) static var status = 200
-    nonisolated(unsafe) static var requestedPaths: [String] = []
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        Self.requestedPaths.append(request.url?.path ?? "")
-        let response = HTTPURLResponse(
-            url: request.url!,
-            statusCode: Self.status,
-            httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
-        )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        let body = Self.status == 400 ? "file-not-found" : #"{"status":"ok"}"#
-        client?.urlProtocol(self, didLoad: Data(body.utf8))
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
+/// The paths the stubbed server was asked for.
+private final class RequestLog: Sendable {
+    let paths = Mutex<[String]>([])
 }
 
 /// Coverage for the two budget-deletion scopes (GH #390): "remove from this
@@ -42,18 +17,6 @@ private final class DeleteBudgetTransport: URLProtocol {
 @MainActor
 @Suite(.serialized)
 struct BudgetStoreDeleteBudgetTests {
-    /// Store + file manager rooted in a unique temp directory, so parallel
-    /// suites that create real budgets in the shared directory stay unaffected.
-    private func makeIsolatedStore() throws -> (BudgetStore, BudgetFileManager) {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("delete-budget-tests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
-        let store = BudgetStore.previewInstance()
-        store.setFileManagerForTesting(manager)
-        return (store, manager)
-    }
-
     /// On-disk budget with the metadata.json that listLocalBudgets() keys on,
     /// plus a backup archive to prove directory removal takes backups/ along.
     private func seedBudget(
@@ -78,18 +41,17 @@ struct BudgetStoreDeleteBudgetTests {
         try JSONEncoder().encode(metadata).write(to: manager.metadataPath(for: id))
     }
 
-    private func makeOpenDatabase() throws -> BudgetDatabase {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("delete-budget-db-\(UUID().uuidString).sqlite")
-        return try BudgetDatabase(path: url)
-    }
-
-    private func makeStubbedServerClient(status: Int = 200) async throws -> ActualServerClient {
-        DeleteBudgetTransport.status = status
-        DeleteBudgetTransport.requestedPaths = []
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [DeleteBudgetTransport.self]
-        let client = ActualServerClient(session: URLSession(configuration: configuration))
+    /// Answers /sync/delete-user-file with a preset status so deleteServerBudget's
+    /// orchestration (server call, then local cleanup) can run offline.
+    private func makeStubbedServerClient(
+        status: Int = 200, log: RequestLog = RequestLog()
+    ) async throws -> ActualServerClient {
+        let session = StubTransport.session { request in
+            log.paths.withLock { $0.append(request.url?.path ?? "") }
+            let body = status == 400 ? "file-not-found" : #"{"status":"ok"}"#
+            return .init(status: status, contentType: "application/json", body: Data(body.utf8))
+        }
+        let client = ActualServerClient(session: session)
         try await client.configure(serverURL: "https://budget.example.com")
         await client.setToken("test-token")
         return client
@@ -100,7 +62,7 @@ struct BudgetStoreDeleteBudgetTests {
     @Test func removesOnlyTheTargetedBudgetIncludingBackups() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
-        let (store, manager) = try makeIsolatedStore()
+        let (store, manager, _) = makeFileBackedStore()
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
         try seedBudget(id: "budget-b", cloudFileId: "file-b", in: manager)
 
@@ -118,11 +80,11 @@ struct BudgetStoreDeleteBudgetTests {
     @Test func removingTheOpenBudgetClosesItAndReturnsToEmptyState() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
-        let (store, manager) = try makeIsolatedStore()
+        let (store, manager, _) = makeFileBackedStore()
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
         store.currentBudgetId = "budget-a"
-        try store.configureForTesting(
-            database: makeOpenDatabase(),
+        try await store.configureForTesting(
+            database: makeTestDatabase().0,
             syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         )
         store.accounts = [
@@ -141,12 +103,12 @@ struct BudgetStoreDeleteBudgetTests {
     @Test func removingAnotherBudgetLeavesTheOpenOneAlone() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
-        let (store, manager) = try makeIsolatedStore()
+        let (store, manager, _) = makeFileBackedStore()
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
         try seedBudget(id: "budget-b", cloudFileId: "file-b", in: manager)
         store.currentBudgetId = "budget-a"
-        try store.configureForTesting(
-            database: makeOpenDatabase(),
+        try await store.configureForTesting(
+            database: makeTestDatabase().0,
             syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         )
 
@@ -162,7 +124,7 @@ struct BudgetStoreDeleteBudgetTests {
     @Test func removalDeletesTheBudgetsEncryptionKey() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
-        let (store, manager) = try makeIsolatedStore()
+        let (store, manager, _) = makeFileBackedStore()
         let fileId = "cloud-file-\(UUID().uuidString)"
         try seedBudget(id: "budget-enc", cloudFileId: fileId, encryptKeyId: "key-1", in: manager)
         try EncryptionKeyManager.store(
@@ -181,7 +143,7 @@ struct BudgetStoreDeleteBudgetTests {
     @Test func removalDeletesTheKeyEvenWithoutALocalCopy() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
-        let (store, _) = try makeIsolatedStore()
+        let (store, _, _) = makeFileBackedStore()
         let fileId = "cloud-file-\(UUID().uuidString)"
         try EncryptionKeyManager.store(
             LoadedKey(keyId: "key-1", key: SymmetricKey(size: .bits256)),
@@ -199,9 +161,10 @@ struct BudgetStoreDeleteBudgetTests {
     @Test func serverDeleteRemovesTheFileTheLocalCopyAndTheListRow() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
-        let (store, manager) = try makeIsolatedStore()
+        let (store, manager, _) = makeFileBackedStore()
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
-        try await store.setServerClientForTesting(makeStubbedServerClient())
+        let log = RequestLog()
+        try await store.setServerClientForTesting(makeStubbedServerClient(log: log))
         let remote = BudgetStore.RemoteBudget(
             id: "file-a", name: "Test Budget", groupId: nil, isEncrypted: false
         )
@@ -213,7 +176,7 @@ struct BudgetStoreDeleteBudgetTests {
         let failure = await store.deleteServerBudget(remote)
 
         #expect(failure == nil)
-        #expect(DeleteBudgetTransport.requestedPaths == ["/sync/delete-user-file"])
+        #expect(log.paths.withLock { $0 } == ["/sync/delete-user-file"])
         #expect(!manager.budgetExists("budget-a"))
         #expect(store.remoteBudgets.map(\.id) == ["file-b"])
     }
@@ -223,7 +186,7 @@ struct BudgetStoreDeleteBudgetTests {
     @Test func serverDeleteTreatsFileNotFoundAsSuccess() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
-        let (store, manager) = try makeIsolatedStore()
+        let (store, manager, _) = makeFileBackedStore()
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
         try await store.setServerClientForTesting(makeStubbedServerClient(status: 400))
         let remote = BudgetStore.RemoteBudget(
@@ -243,7 +206,7 @@ struct BudgetStoreDeleteBudgetTests {
     @Test func serverFailureKeepsTheLocalCopyAndBackups() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
-        let (store, manager) = try makeIsolatedStore()
+        let (store, manager, _) = makeFileBackedStore()
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
         try await store.setServerClientForTesting(makeStubbedServerClient(status: 500))
         let remote = BudgetStore.RemoteBudget(

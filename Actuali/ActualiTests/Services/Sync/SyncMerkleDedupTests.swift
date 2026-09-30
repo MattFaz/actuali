@@ -6,23 +6,12 @@ import Testing
 struct SyncMerkleDedupTests {
     /// messages_crdt normally comes from the downloaded budget file, so create
     /// it with the upstream schema (timestamp UNIQUE drives the dedup).
-    private func makeDatabase() throws -> BudgetDatabase {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-        }
-        return try BudgetDatabase(path: tempURL)
+    private func makeDatabase() async throws -> BudgetDatabase {
+        try await makeTestDatabase(TestSchema.messagesCrdt).0
+    }
+
+    private func makeDatabaseWithPreferences() async throws -> BudgetDatabase {
+        try await makeTestDatabase(TestSchema.preferences, TestSchema.messagesCrdt).0
     }
 
     private func message(millis: Int64, counter: UInt16 = 0) -> CRDTMessage {
@@ -45,8 +34,8 @@ struct SyncMerkleDedupTests {
         )
     }
 
-    @Test func insertMessagesReturnsOnlyNewlyInsertedMessages() throws {
-        let database = try makeDatabase()
+    @Test func insertMessagesReturnsOnlyNewlyInsertedMessages() async throws {
+        let database = try await makeDatabase()
         let first = message(millis: 1_700_000_000_000)
         let second = message(millis: 1_700_000_000_001)
 
@@ -59,8 +48,8 @@ struct SyncMerkleDedupTests {
         #expect(echoed.first?.timestamp == second.timestamp)
     }
 
-    @Test func applyingSameMessageTwiceLeavesMerkleHashUnchanged() throws {
-        let database = try makeDatabase()
+    @Test func applyingSameMessageTwiceLeavesMerkleHashUnchanged() async throws {
+        let database = try await makeDatabase()
         let msg = message(millis: 1_700_000_000_000)
 
         var merkle = MerkleTree()
@@ -78,8 +67,8 @@ struct SyncMerkleDedupTests {
         #expect(merkle.root.hash == hashAfterFirstApply)
     }
 
-    @Test func allDuplicateBatchInsertsNothing() throws {
-        let database = try makeDatabase()
+    @Test func allDuplicateBatchInsertsNothing() async throws {
+        let database = try await makeDatabase()
         let messages = [message(millis: 1_700_000_000_000), message(millis: 1_700_000_000_001)]
 
         let first = try database.insertMessages(messages)
@@ -89,19 +78,19 @@ struct SyncMerkleDedupTests {
         #expect(retry.isEmpty)
     }
 
-    @Test func emptyBatchInsertsNothing() throws {
-        let database = try makeDatabaseWithPreferences()
+    @Test func emptyBatchInsertsNothing() async throws {
+        let database = try await makeDatabaseWithPreferences()
         let existing = preferenceMessage(millis: 1_700_000_000_000, row: "existing", value: "S:old")
         #expect(try database.applyMessagesAndInsertMessages([existing]).count == 1)
 
-        let before = try database.dbQueueForTesting.read { db in
+        let before = try await database.dbQueueForTesting.read { db in
             try (
                 String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
                 Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
             )
         }
         #expect(try database.applyMessagesAndInsertMessages([]).isEmpty)
-        let after = try database.dbQueueForTesting.read { db in
+        let after = try await database.dbQueueForTesting.read { db in
             try (
                 String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
                 Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
@@ -111,8 +100,8 @@ struct SyncMerkleDedupTests {
         #expect(after.1 == before.1)
     }
 
-    @Test func atomicReceiveAppliesOnlyNewMessagesAndRollsBackOnInsertFailure() throws {
-        let database = try makeDatabaseWithPreferences()
+    @Test func atomicReceiveAppliesOnlyNewMessagesAndRollsBackOnInsertFailure() async throws {
+        let database = try await makeDatabaseWithPreferences()
         let existing = preferenceMessage(millis: 1_700_000_000_000, row: "existing", value: "S:old")
         let incoming = preferenceMessage(millis: 1_700_000_000_001, row: "incoming", value: "S:new")
 
@@ -121,7 +110,7 @@ struct SyncMerkleDedupTests {
         let newMessages = try database.filterNewMessages(received)
         #expect(newMessages.map(\.timestamp) == [incoming.timestamp])
 
-        try database.dbQueueForTesting.write { db in
+        try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
             CREATE TRIGGER fail_incoming_message_insert
             BEFORE INSERT ON messages_crdt
@@ -136,7 +125,7 @@ struct SyncMerkleDedupTests {
             try database.applyMessagesAndInsertMessages(received, applying: newMessages)
         }
 
-        let rolledBack = try database.dbQueueForTesting.read { db in
+        let rolledBack = try await database.dbQueueForTesting.read { db in
             try (
                 String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
                 String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'incoming'"),
@@ -147,13 +136,13 @@ struct SyncMerkleDedupTests {
         #expect(rolledBack.1 == nil)
         #expect(rolledBack.2 == 1)
 
-        try database.dbQueueForTesting.write { db in
+        try await database.dbQueueForTesting.write { db in
             try db.execute(sql: "DROP TRIGGER fail_incoming_message_insert")
         }
         let inserted = try database.applyMessagesAndInsertMessages(received, applying: newMessages)
         #expect(inserted.map(\.timestamp) == [incoming.timestamp])
 
-        let finalState = try database.dbQueueForTesting.read { db in
+        let finalState = try await database.dbQueueForTesting.read { db in
             try (
                 String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
                 String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'incoming'"),
@@ -166,28 +155,5 @@ struct SyncMerkleDedupTests {
 
         let retry = try database.applyMessagesAndInsertMessages(received, applying: [])
         #expect(retry.isEmpty)
-    }
-
-    private func makeDatabaseWithPreferences() throws -> BudgetDatabase {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE preferences (
-                id TEXT PRIMARY KEY,
-                value TEXT
-            );
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            );
-            """)
-        }
-        return try BudgetDatabase(path: tempURL)
     }
 }

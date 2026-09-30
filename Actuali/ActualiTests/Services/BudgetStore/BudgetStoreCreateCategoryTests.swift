@@ -12,64 +12,21 @@ struct BudgetStoreCreateCategoryTests {
     /// The category tables plus the message log the sync layer writes to.
     /// `refreshDataOnly` fetches more than this after a write, but it swallows
     /// its own failures, same as in BudgetStoreCreateAccountTests.
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    cat_group TEXT,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_groups (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-
-                INSERT INTO category_groups (id, name, sort_order)
-                    VALUES ('grp-daily', 'Daily', 16384.0);
-                INSERT INTO categories (id, name, cat_group, sort_order) VALUES
-                    ('cat-groceries', 'Groceries', 'grp-daily', 16384.0),
-                    ('cat-fuel', 'Fuel', 'grp-daily', 32768.0);
-                INSERT INTO category_mapping (id, transferId) VALUES
-                    ('cat-groceries', 'cat-groceries'),
-                    ('cat-fuel', 'cat-fuel');
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
-        return store
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.categories, TestSchema.categoryGroups, TestSchema.categoryMapping,
+            TestSchema.messagesCrdt,
+            """
+            INSERT INTO category_groups (id, name, sort_order)
+                VALUES ('grp-daily', 'Daily', 16384.0);
+            INSERT INTO categories (id, name, cat_group, sort_order) VALUES
+                ('cat-groceries', 'Groceries', 'grp-daily', 16384.0),
+                ('cat-fuel', 'Fuel', 'grp-daily', 32768.0);
+            INSERT INTO category_mapping (id, transferId) VALUES
+                ('cat-groceries', 'cat-groceries'),
+                ('cat-fuel', 'cat-fuel');
+            """
+        )
     }
 
     private func rows(path: URL, sql: String) throws -> [Row] {
@@ -97,14 +54,10 @@ struct BudgetStoreCreateCategoryTests {
         .sorted()
     }
 
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     @Test func creatingAGroupMessagesEverySyncedColumn() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let group = try await store.createCategoryGroup(name: "  Fun Money  ")
         #expect(group.name == "Fun Money")
@@ -115,9 +68,9 @@ struct BudgetStoreCreateCategoryTests {
     }
 
     @Test func creatingACategoryMessagesItsColumnsAndItsSelfMapping() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let category = try await store.createCategory(name: "Coffee", groupId: "grp-daily")
 
@@ -140,9 +93,9 @@ struct BudgetStoreCreateCategoryTests {
     /// the moved rows' new sort_orders never leave this device, the group
     /// comes out in a different order everywhere else.
     @Test func everyShovedSiblingGetsASortOrderMessageCarryingItsNewValue() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         // Close the gap at the top of the group so the insert has to shove.
         try await database.dbQueueForTesting.write { db in
@@ -175,9 +128,9 @@ struct BudgetStoreCreateCategoryTests {
     }
 
     @Test func aCategoryThatFitsWithoutShovingMessagesNoSiblings() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let category = try await store.createCategory(name: "Coffee", groupId: "grp-daily")
 
@@ -193,9 +146,9 @@ struct BudgetStoreCreateCategoryTests {
     /// A refused write must leave the message log alone — a duplicate name
     /// that still emitted messages would push a row no client ever inserted.
     @Test func aRejectedDuplicateEmitsNothing() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         await #expect(throws: BudgetDatabase.CategoryWriteError.duplicateCategoryName(
             name: "groceries",
@@ -208,9 +161,9 @@ struct BudgetStoreCreateCategoryTests {
     }
 
     @Test func renamingACategoryWritesOnlyItsNameMessage() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.renameCategory(id: "cat-groceries", name: "  Food  ", month: "2026-07")
 
@@ -227,9 +180,9 @@ struct BudgetStoreCreateCategoryTests {
     }
 
     @Test func renamingAnIncomeGroupWritesOnlyItsNameMessage() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
             UPDATE category_groups SET is_income = 1 WHERE id = 'grp-daily'
@@ -255,9 +208,9 @@ struct BudgetStoreCreateCategoryTests {
     }
 
     @Test func aRejectedDuplicateGroupRenameEmitsNothing() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
             INSERT INTO category_groups (id, name, sort_order)
@@ -276,9 +229,9 @@ struct BudgetStoreCreateCategoryTests {
     }
 
     @Test func aRejectedRenameEmitsNothing() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         await #expect(throws: BudgetDatabase.CategoryWriteError.duplicateCategoryName(
             name: "Fuel",
@@ -290,9 +243,9 @@ struct BudgetStoreCreateCategoryTests {
     }
 
     @Test func hidingACategoryAndGroupWritesOnlyHiddenMessages() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.setCategoryHidden(id: "cat-groceries", hidden: true, month: "2026-07")
         try await store.setCategoryGroupHidden(id: "grp-daily", hidden: true, month: "2026-07")

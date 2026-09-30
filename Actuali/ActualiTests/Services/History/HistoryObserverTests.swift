@@ -61,8 +61,7 @@ struct HistoryObserverTests {
             """)
         }
         let database = try BudgetDatabase(path: url)
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+        let syncClient = try await makeTestSyncClient(database: database)
         let store = BudgetStore.previewInstance()
         store.configureForTesting(database: database, syncClient: syncClient)
         let budgetID = "history-observer-\(UUID().uuidString)"

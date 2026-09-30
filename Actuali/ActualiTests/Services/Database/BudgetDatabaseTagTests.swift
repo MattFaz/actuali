@@ -4,78 +4,15 @@ import Testing
 @testable import Actuali
 
 struct BudgetDatabaseTagTests {
-    private func makeDatabase(seedSQL: String = "") throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE tags (
-                id TEXT PRIMARY KEY,
-                tag TEXT,
-                color TEXT,
-                description TEXT,
-                hidden BOOLEAN DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            );
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                offbudget INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            );
-            CREATE TABLE payees (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                transfer_acct TEXT,
-                tombstone INTEGER DEFAULT 0
-            );
-            CREATE TABLE payee_mapping (
-                id TEXT PRIMARY KEY,
-                targetId TEXT
-            );
-            CREATE TABLE categories (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                tombstone INTEGER DEFAULT 0
-            );
-            CREATE TABLE category_mapping (
-                id TEXT PRIMARY KEY,
-                transferId TEXT
-            );
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                acct TEXT,
-                category TEXT,
-                description TEXT,
-                amount INTEGER,
-                notes TEXT,
-                date INTEGER,
-                imported_description TEXT,
-                transferred_id TEXT,
-                cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0,
-                sort_order REAL,
-                parent_id TEXT,
-                schedule TEXT,
-                tombstone INTEGER DEFAULT 0
-            );
-            """)
-            if !seedSQL.isEmpty {
-                try db.execute(sql: seedSQL)
-            }
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    private func makeDatabase(seedSQL: String = "") async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.tags, TestSchema.accounts, TestSchema.payees, TestSchema.payeeMapping,
+            TestSchema.categories, TestSchema.categoryMapping, TestSchema.transactions, seedSQL
+        )
     }
 
     @Test func insertsAndFetchesTags() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         let tag1 = Tag(id: "tag-1", tag: "vacation", color: "#3b82f6", description: "Holiday trip")
@@ -92,7 +29,7 @@ struct BudgetDatabaseTagTests {
     }
 
     @Test func fetchesTagsExcludingHidden() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         try database.insertTag(Tag(id: "t1", tag: "visible"))
@@ -107,7 +44,7 @@ struct BudgetDatabaseTagTests {
     }
 
     @Test func updatesTagMetadata() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         let tag = Tag(id: "t1", tag: "travel", color: "#ffffff")
@@ -127,7 +64,7 @@ struct BudgetDatabaseTagTests {
     }
 
     @Test func deleteTagSetsTombstone() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         try database.insertTag(Tag(id: "t1", tag: "todelete"))
@@ -138,7 +75,7 @@ struct BudgetDatabaseTagTests {
     }
 
     @Test func renamesTagAndRewritesTransactionNotes() async throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO tags (id, tag) VALUES ('t1', 'trip2025'), ('t2', 'cash');
         INSERT INTO transactions (id, acct, amount, notes, date) VALUES
         ('tx-1', 'acct-1', -1000, 'Hotel reservation #trip2025 in Rome', 20260101),
@@ -176,7 +113,7 @@ struct BudgetDatabaseTagTests {
     }
 
     @Test func discoversTagsFromTransactionNotes() async throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO tags (id, tag) VALUES ('t1', 'existing'), ('t-null', NULL);
         INSERT INTO transactions (id, acct, amount, notes, date) VALUES
         ('tx-1', 'acct-1', -1000, 'Lunch #food #work', 20260101),
@@ -193,7 +130,7 @@ struct BudgetDatabaseTagTests {
     }
 
     @Test func discoverTagsSkipsOnlyActiveNames() async throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO tags (id, tag) VALUES ('t1', 'existing');
         INSERT INTO tags (id, tag, tombstone) VALUES ('t2', 'archived', 1);
         INSERT INTO transactions (id, acct, amount, notes, date) VALUES
@@ -210,7 +147,7 @@ struct BudgetDatabaseTagTests {
     }
 
     @Test func aggregatesTagSummaries() async throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO tags (id, tag) VALUES ('t1', 'food'), ('t2', 'travel');
         INSERT INTO transactions (id, acct, amount, notes, date) VALUES
         ('tx-1', 'acct-1', -4000, 'Dinner #food', 20260101),
@@ -236,7 +173,7 @@ struct BudgetDatabaseTagTests {
     }
 
     @Test func fetchTransactionsTaggedWithFiltersCorrectly() async throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking');
         INSERT INTO transactions (id, acct, amount, notes, date) VALUES
         ('tx-1', 'acct-1', -4000, 'Dinner #food', 20260101),

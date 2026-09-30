@@ -4,54 +4,29 @@ import Testing
 
 /// Either fails the request outright or answers with a canned HTTP status, so
 /// the login-methods probe can be driven down both paths without a server.
-private final class ProbeTransport: URLProtocol {
-    enum Outcome {
-        case failure(URLError)
-        case status(Int)
-    }
-
-    nonisolated(unsafe) static var outcome = Outcome.failure(URLError(.secureConnectionFailed))
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        switch Self.outcome {
-        case .failure(let error):
-            client?.urlProtocol(self, didFailWithError: error)
-        case .status(let code):
-            let response = HTTPURLResponse(
-                url: request.url!,
-                statusCode: code,
-                httpVersion: "HTTP/1.1",
-                headerFields: ["Content-Type": "application/json"]
-            )!
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: Data("{}".utf8))
-            client?.urlProtocolDidFinishLoading(self)
-        }
-    }
-
-    override func stopLoading() {}
+private enum ProbeOutcome {
+    case failure(URLError)
+    case status(Int)
 }
 
 /// `checkLoginMethods` deliberately swallows probe failures and falls back to
 /// password login, which is right for older servers that lack the endpoint but
 /// wrong when the server can't be reached at all — the user tapped Connect and
 /// got no feedback whatsoever.
-@Suite(.serialized)
 @MainActor
 struct BudgetStoreLoginProbeTests {
-    private func makeStore(_ outcome: ProbeTransport.Outcome) async -> BudgetStore {
-        ProbeTransport.outcome = outcome
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [ProbeTransport.self]
-        let client = ActualServerClient(session: URLSession(configuration: config))
+    private func makeStore(_ outcome: ProbeOutcome) async -> BudgetStore {
+        let session = StubTransport.session { _ in
+            switch outcome {
+            case .failure(let error):
+                throw error
+            case .status(let code):
+                return StubTransport.Response(
+                    status: code, contentType: "application/json", body: Data("{}".utf8)
+                )
+            }
+        }
+        let client = ActualServerClient(session: session)
         try? await client.configure(serverURL: "https://budget.example.com")
 
         let store = BudgetStore.previewInstance()

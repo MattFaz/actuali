@@ -5,75 +5,15 @@ import Testing
 
 @MainActor
 struct BudgetDatabaseCreditCardStatementTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    schedule TEXT,
-                    transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    parent_id TEXT
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.accounts, TestSchema.payees, TestSchema.payeeMapping,
+            TestSchema.categories, TestSchema.categoryMapping, TestSchema.transactions
+        )
     }
 
     @Test func fetchCreditCardStatementDueCalculatesUnpaidAndPaidStatements() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         // Setup:
@@ -121,7 +61,7 @@ struct BudgetDatabaseCreditCardStatementTests {
     }
 
     @Test func fetchCreditCardStatementDuesBatchHandlesMultipleCards() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -144,7 +84,7 @@ struct BudgetDatabaseCreditCardStatementTests {
     }
 
     @Test func fetchRecentStatementsReturnsOnlyStatementsWithData() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         // Cycle 1: 2026-07-16 to 2026-08-15 (closing 2026-08-15)
@@ -192,7 +132,7 @@ struct BudgetDatabaseCreditCardStatementTests {
     }
 
     @Test func fetchTransactionsWithDateRangeFiltersAccurately() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in

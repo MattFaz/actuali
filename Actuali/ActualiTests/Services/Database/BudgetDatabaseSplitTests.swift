@@ -32,82 +32,6 @@ struct BudgetDatabaseSplitTests {
         }
     }
 
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    parent_id TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     private func seedPayees(_ db: BudgetDatabase) async throws {
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -133,7 +57,7 @@ struct BudgetDatabaseSplitTests {
     // MARK: - Parent payee fallback in the transaction list
 
     @Test func parentWithOwnPayeeShowsIt() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedPayees(db)
 
@@ -153,7 +77,7 @@ struct BudgetDatabaseSplitTests {
     }
 
     @Test func parentWithoutPayeeFallsBackToSingleChildPayee() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedPayees(db)
 
@@ -172,7 +96,7 @@ struct BudgetDatabaseSplitTests {
     }
 
     @Test func parentFallbackIgnoresChildrenWithoutPayee() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedPayees(db)
 
@@ -190,7 +114,7 @@ struct BudgetDatabaseSplitTests {
     }
 
     @Test func parentWithMixedChildPayeesResolvesNoPayee() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedPayees(db)
 
@@ -211,7 +135,7 @@ struct BudgetDatabaseSplitTests {
     }
 
     @Test func parentFallbackIgnoresTombstonedChildren() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedPayees(db)
 
@@ -231,7 +155,7 @@ struct BudgetDatabaseSplitTests {
     // MARK: - Parent split portions in the transaction list
 
     @Test func parentCarriesChildPortionsInEntryOrder() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedPayees(db)
 
@@ -257,7 +181,7 @@ struct BudgetDatabaseSplitTests {
     }
 
     @Test func uncategorizedChildrenAppearAsUnnamedPortions() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedPayees(db)
 
@@ -278,7 +202,7 @@ struct BudgetDatabaseSplitTests {
     }
 
     @Test func nonParentsCarryNoPortions() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedPayees(db)
 
@@ -296,7 +220,7 @@ struct BudgetDatabaseSplitTests {
     // MARK: - fetchChildTransactions
 
     @Test func fetchChildTransactionsReturnsLiveChildrenInEntryOrder() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedPayees(db)
 
@@ -320,7 +244,7 @@ struct BudgetDatabaseSplitTests {
     }
 
     @Test func fetchAllLiveTransactionsSeparatesParentsFromChildren() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedPayees(db)
 
@@ -409,7 +333,7 @@ struct BudgetDatabaseSplitTests {
     }
 
     @Test func insertSplitPersistsAllRowsAndMessages() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
 
         let parent = transaction(id: "parent", amount: -1000, payeeId: "payee-market", isParent: true, sortOrder: 100)
@@ -450,7 +374,7 @@ struct BudgetDatabaseSplitTests {
     }
 
     @Test func childFailureRollsBackParentAndAllMessages() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
 
         let parent = transaction(id: "parent", amount: -1000, isParent: true)

@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Actuali
 
@@ -109,17 +110,20 @@ struct TransactionPagerTests {
     /// finished after it started (fast typing in the search field).
     @Test func staleFirstPageLoadIsDropped() async {
         let all = ["slow-1", "fast-1"].map(makeTxn)
+        let slowStarted = Gate(), release = Gate()
         let pager = TransactionPager(pageSize: 3) { _, limit, search in
             if search == "slow" {
-                try? await Task.sleep(for: .milliseconds(200))
+                slowStarted.open()
+                await release.wait()
             }
             let matching = all.filter { $0.id.contains(search ?? "") }
             return Array(matching.prefix(limit))
         }
 
         async let slow: Void = pager.loadFirstPage(search: "slow")
-        try? await Task.sleep(for: .milliseconds(50))
+        await slowStarted.wait()
         await pager.loadFirstPage(search: "fast")
+        release.open()
         await slow
 
         #expect(pager.transactions.map(\.id) == ["fast-1"])
@@ -129,16 +133,28 @@ struct TransactionPagerTests {
     /// during a scroll bounce) must not fetch or append the same page twice.
     @Test func concurrentNextPageLoadsOnlyOnce() async {
         let all = (1...6).map { "t-\($0)" }.map(makeTxn)
+        let nextPageStarted = Gate(), release = Gate()
+        // Only the first next-page fetch is held: a second one (the guard
+        // failing) must run through and double-append, not deadlock.
+        var nextPageFetches = 0
         let pager = TransactionPager(pageSize: 3) { offset, limit, _ in
-            try? await Task.sleep(for: .milliseconds(50))
+            if offset > 0 {
+                nextPageFetches += 1
+                if nextPageFetches == 1 {
+                    nextPageStarted.open()
+                    await release.wait()
+                }
+            }
             return Array(all.dropFirst(offset).prefix(limit))
         }
 
         await pager.loadFirstPage()
 
         async let first: Void = pager.loadNextPage()
-        async let second: Void = pager.loadNextPage()
-        _ = await (first, second)
+        await nextPageStarted.wait()
+        await pager.loadNextPage()
+        release.open()
+        await first
 
         #expect(pager.transactions.map(\.id) == (1...6).map { "t-\($0)" })
     }
@@ -147,9 +163,11 @@ struct TransactionPagerTests {
     /// drop the stale append — it belongs to the old result set.
     @Test func staleNextPageIsDroppedAfterReset() async {
         let all = (1...6).map { "t-\($0)" }.map(makeTxn)
+        let nextPageStarted = Gate(), release = Gate()
         let pager = TransactionPager(pageSize: 3) { offset, limit, search in
             if offset > 0 {
-                try? await Task.sleep(for: .milliseconds(150))
+                nextPageStarted.open()
+                await release.wait()
             }
             let matching = search.map { s in all.filter { $0.id.contains(s) } } ?? all
             return Array(matching.dropFirst(offset).prefix(limit))
@@ -158,8 +176,9 @@ struct TransactionPagerTests {
         await pager.loadFirstPage()
 
         async let next: Void = pager.loadNextPage()
-        try? await Task.sleep(for: .milliseconds(50))
+        await nextPageStarted.wait()
         await pager.loadFirstPage(search: "t-1")
+        release.open()
         await next
 
         #expect(pager.transactions.map(\.id) == ["t-1"])

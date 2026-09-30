@@ -6,27 +6,8 @@ import Testing
 /// Pins `setCardAccountMappings()` on `SyncClient`.
 @MainActor
 struct SyncClientCardMappingTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE preferences (
-                id TEXT PRIMARY KEY,
-                value TEXT
-            );
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            );
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.preferences, TestSchema.messagesCrdt)
     }
 
     private func makeSyncClient(
@@ -38,21 +19,10 @@ struct SyncClientCardMappingTests {
         return syncClient
     }
 
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
-    private func messageRows(path: URL) throws -> [Row] {
-        let queue = try DatabaseQueue(path: path.path)
-        return try queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
-        }
-    }
-
     @Test func concurrentMappingsUseIndependentCRDTRows() async throws {
-        let (firstDatabase, firstPath) = try makeDatabase()
-        let (secondDatabase, secondPath) = try makeDatabase()
-        let (mergedDatabase, mergedPath) = try makeDatabase()
+        let (firstDatabase, firstPath) = try await makeDatabase()
+        let (secondDatabase, secondPath) = try await makeDatabase()
+        let (mergedDatabase, mergedPath) = try await makeDatabase()
         defer {
             cleanup(firstPath)
             cleanup(secondPath)
@@ -82,7 +52,7 @@ struct SyncClientCardMappingTests {
     }
 
     @Test func emptyMappingsClearsRowAndEmitsNullMessage() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         let client = try await makeSyncClient(database: database)

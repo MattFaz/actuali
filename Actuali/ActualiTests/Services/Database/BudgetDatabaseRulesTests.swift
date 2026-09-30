@@ -4,31 +4,12 @@ import Testing
 @testable import Actuali
 
 struct BudgetDatabaseRulesTests {
-    private func makeDatabase(includeRulesTable: Bool = true, seedSQL: String = "") throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            if includeRulesTable {
-                try db.execute(sql: """
-                CREATE TABLE rules (id TEXT PRIMARY KEY, stage TEXT, conditions TEXT,
-                                    actions TEXT, tombstone INTEGER DEFAULT 0,
-                                    conditions_op TEXT DEFAULT 'and');
-                """)
-            }
-            if !seedSQL.isEmpty {
-                try db.execute(sql: seedSQL)
-            }
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
+    private func makeDatabase(includeRulesTable: Bool = true, seedSQL: String = "") async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(includeRulesTable ? TestSchema.rules : "", seedSQL)
     }
 
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
-    @Test func fetchesLiveRulesOnly() throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+    @Test func fetchesLiveRulesOnly() async throws {
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone) VALUES
           ('r-live', NULL, 'and',
            '[{"op":"is","field":"description","value":"payee-1","type":"id"}]',
@@ -46,16 +27,16 @@ struct BudgetDatabaseRulesTests {
         #expect(rules[0].conditions[0].field == "payee")
     }
 
-    @Test func returnsEmptyWithoutRulesTable() throws {
-        let (database, path) = try makeDatabase(includeRulesTable: false)
+    @Test func returnsEmptyWithoutRulesTable() async throws {
+        let (database, path) = try await makeDatabase(includeRulesTable: false)
         defer { cleanup(path) }
 
         #expect(try database.rulesTableExists() == false)
         #expect(try database.fetchRules().isEmpty)
     }
 
-    @Test func preparesLiveRulesWithPartialContextSchemas() throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+    @Test func preparesLiveRulesWithPartialContextSchemas() async throws {
+        let (database, path) = try await makeDatabase(seedSQL: """
         CREATE TABLE accounts (id TEXT PRIMARY KEY);
         CREATE TABLE categories (id TEXT PRIMARY KEY, tombstone INTEGER DEFAULT 0);
         CREATE TABLE payees (id TEXT PRIMARY KEY, tombstone INTEGER DEFAULT 0);
@@ -77,7 +58,7 @@ struct BudgetDatabaseRulesTests {
     /// `fetchRulesRanked` mirrors upstream `rules-get`: least specific first
     /// within a stage, and `post` after `default`.
     @Test func rankedFetchOrdersLeastSpecificFirst() async throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+        let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone) VALUES
           ('r-exact', NULL, 'and',
            '[{"op":"is","field":"imported_description","value":"coffee co","type":"string"}]',
@@ -96,8 +77,8 @@ struct BudgetDatabaseRulesTests {
         #expect(ranked.map(\.id) == ["r-broad", "r-exact", "r-post"])
     }
 
-    @Test func schedulesOwningRulesAreReported() throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+    @Test func schedulesOwningRulesAreReported() async throws {
+        let (database, path) = try await makeDatabase(seedSQL: """
         CREATE TABLE IF NOT EXISTS schedules
           (id TEXT PRIMARY KEY, rule TEXT, tombstone INTEGER DEFAULT 0);
         INSERT INTO schedules (id, rule, tombstone) VALUES
@@ -110,8 +91,8 @@ struct BudgetDatabaseRulesTests {
         #expect(try database.scheduleOwnedRuleIds() == ["r-owned"])
     }
 
-    @Test func ruleContextMapsCategoriesAccountsAndPayees() throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+    @Test func ruleContextMapsCategoriesAccountsAndPayees() async throws {
+        let (database, path) = try await makeDatabase(seedSQL: """
         CREATE TABLE IF NOT EXISTS accounts
           (id TEXT PRIMARY KEY, name TEXT, offbudget INTEGER DEFAULT 0,
            closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0);
@@ -135,8 +116,8 @@ struct BudgetDatabaseRulesTests {
 
     /// `payee(named:)` backs the `set payee_name` action, which must reuse an
     /// existing payee rather than creating a second one that differs by case.
-    @Test func findsPayeeByNameCaseInsensitively() throws {
-        let (database, path) = try makeDatabase(seedSQL: """
+    @Test func findsPayeeByNameCaseInsensitively() async throws {
+        let (database, path) = try await makeDatabase(seedSQL: """
         CREATE TABLE IF NOT EXISTS payees
           (id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0);
         INSERT INTO payees (id, name, tombstone) VALUES

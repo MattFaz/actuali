@@ -244,47 +244,26 @@ struct GoalTemplateParserTests {
         }
     }
 
-    @Test func localizesEveryParserErrorInFrench() {
-        let cases = [
-            ("#goal", "Syntaxe #goal invalide"),
-            ("#template-", "Priorité invalide"),
-            ("#template nonsense", "Syntaxe de modèle invalide"),
-            ("not a template", "Ligne non conforme à un modèle"),
-        ]
-
-        for (line, expected) in cases {
-            do {
-                _ = try GoalTemplateParser.parse(
-                    line, locale: Locale(identifier: "fr_FR"), bundle: appBundle
-                )
-                Issue.record("Expected parsing to fail for \(line)")
-            } catch let error as GoalTemplateParser.ParseError {
-                #expect(error.message == expected)
-            } catch {
-                Issue.record("Unexpected error for \(line): \(error)")
-            }
-        }
-    }
-
-    @Test func keepsEveryParserErrorInEnglish() {
-        let cases = [
-            ("#goal", "Invalid #goal syntax"),
-            ("#template-", "Invalid priority"),
-            ("#template nonsense", "Invalid template syntax"),
-            ("not a template", "Line is not a template"),
-        ]
-
-        for (line, expected) in cases {
-            do {
-                _ = try GoalTemplateParser.parse(
-                    line, locale: Locale(identifier: "en_US"), bundle: appBundle
-                )
-                Issue.record("Expected parsing to fail for \(line)")
-            } catch let error as GoalTemplateParser.ParseError {
-                #expect(error.message == expected)
-            } catch {
-                Issue.record("Unexpected error for \(line): \(error)")
-            }
+    @Test(arguments: [
+        ("en_US", "#goal", "Invalid #goal syntax"),
+        ("en_US", "#template-", "Invalid priority"),
+        ("en_US", "#template nonsense", "Invalid template syntax"),
+        ("en_US", "not a template", "Line is not a template"),
+        ("fr_FR", "#goal", "Syntaxe #goal invalide"),
+        ("fr_FR", "#template-", "Priorité invalide"),
+        ("fr_FR", "#template nonsense", "Syntaxe de modèle invalide"),
+        ("fr_FR", "not a template", "Ligne non conforme à un modèle"),
+    ])
+    func localizesEveryParserError(localeIdentifier: String, line: String, expected: String) {
+        do {
+            _ = try GoalTemplateParser.parse(
+                line, locale: Locale(identifier: localeIdentifier), bundle: appBundle
+            )
+            Issue.record("Expected parsing to fail")
+        } catch let error as GoalTemplateParser.ParseError {
+            #expect(error.message == expected)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
         }
     }
 

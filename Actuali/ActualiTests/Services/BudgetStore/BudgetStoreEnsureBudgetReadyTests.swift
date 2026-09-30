@@ -24,20 +24,8 @@ struct BudgetStoreEnsureBudgetReadyTests {
 
         let queue = try DatabaseQueue(path: BudgetFileManager.shared.databasePath(for: budgetId).path)
         try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    type TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                INSERT INTO accounts (id, name, type, sort_order)
-                VALUES ('acct-1', 'Checking', 'checking', 1.0);
-            """)
+            try db.execute(sql: TestSchema.accounts)
+            try db.execute(sql: "INSERT INTO accounts (id, name, type, sort_order) VALUES ('acct-1', 'Checking', 'checking', 1.0)")
         }
         return budgetId
     }

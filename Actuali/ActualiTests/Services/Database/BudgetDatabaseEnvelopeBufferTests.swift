@@ -4,37 +4,8 @@ import Testing
 @testable import Actuali
 
 struct BudgetDatabaseEnvelopeBufferTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("buffer-\(UUID().uuidString).sqlite")
-        try DatabaseQueue(path: url.path).write { db in
-            try db.execute(sql: """
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                offbudget INTEGER DEFAULT 0,
-                closed INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE zero_budget_months (
-                id TEXT PRIMARY KEY,
-                buffered INTEGER NOT NULL DEFAULT 0
-            )
-            """)
-        }
-        return try (BudgetDatabase(path: url), url)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.accounts, TestSchema.messagesCrdt, TestSchema.zeroBudgetMonths)
     }
 
     private func message(amount: Int, millis: Int64) -> CRDTMessage {
@@ -71,8 +42,8 @@ struct BudgetDatabaseEnvelopeBufferTests {
     }
 
     @Test("Buffer CRDT message creates a missing zero-budget row")
-    func createsMissingRow() throws {
-        let (database, path) = try makeDatabase()
+    func createsMissingRow() async throws {
+        let (database, path) = try await makeDatabase()
         _ = try database.applyMessagesAndInsertMessages([
             message(amount: 500, millis: 1_700_000_000_000),
         ])
@@ -82,8 +53,8 @@ struct BudgetDatabaseEnvelopeBufferTests {
     }
 
     @Test("Buffer CRDT message updates an existing zero-budget row")
-    func updatesExistingRow() throws {
-        let (database, path) = try makeDatabase()
+    func updatesExistingRow() async throws {
+        let (database, path) = try await makeDatabase()
         _ = try database.applyMessagesAndInsertMessages([
             message(amount: 500, millis: 1_700_000_000_000),
         ])
@@ -96,8 +67,8 @@ struct BudgetDatabaseEnvelopeBufferTests {
     }
 
     @Test("Reset buffer writes zero to the synced row")
-    func resetsExistingRow() throws {
-        let (database, path) = try makeDatabase()
+    func resetsExistingRow() async throws {
+        let (database, path) = try await makeDatabase()
         _ = try database.applyMessagesAndInsertMessages([
             message(amount: 500, millis: 1_700_000_000_000),
         ])
@@ -110,14 +81,14 @@ struct BudgetDatabaseEnvelopeBufferTests {
     }
 
     @Test("Latest buffer CRDT message wins regardless of application order")
-    func latestMessageWinsOutOfOrder() throws {
+    func latestMessageWinsOutOfOrder() async throws {
         let earlier = message(amount: 500, millis: 1_700_000_000_000)
         let later = message(amount: 250, millis: 1_700_000_000_001)
 
-        let (orderedDatabase, orderedPath) = try makeDatabase()
+        let (orderedDatabase, orderedPath) = try await makeDatabase()
         _ = try orderedDatabase.applyMessagesAndInsertMessages([earlier, later])
 
-        let (reversedDatabase, reversedPath) = try makeDatabase()
+        let (reversedDatabase, reversedPath) = try await makeDatabase()
         _ = try reversedDatabase.applyMessagesAndInsertMessages([later, earlier])
 
         #expect(try bufferedValue(path: orderedPath) == 250)

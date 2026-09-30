@@ -5,63 +5,22 @@ import Testing
 
 @MainActor
 struct BudgetStoreCreditCardStatementDueTests {
-    private func makeStore() throws -> (BudgetStore, BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-due-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    schedule TEXT,
-                    transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    parent_id TEXT
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+    /// Skips `SyncClient.configure`: the due-date paths never sync.
+    private func makeStore() async throws -> (BudgetStore, BudgetDatabase, URL) {
+        let (database, url) = try await makeTestDatabase(
+            TestSchema.preferences, TestSchema.messagesCrdt, TestSchema.accounts, TestSchema.transactions
+        )
         let store = BudgetStore.previewInstance()
         store.currentBudgetId = "test-budget"
-        store.configureForTesting(database: database, syncClient: syncClient)
-        return (store, database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+        store.configureForTesting(
+            database: database,
+            syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        )
+        return (store, database, url)
     }
 
     @Test func loadCreditCardStatementDuesUsesPendingStatement() async throws {
-        let (store, database, url) = try makeStore()
+        let (store, database, url) = try await makeStore()
         defer { cleanup(url) }
 
         // Configure active credit card cycle closing on the 15th
@@ -101,7 +60,7 @@ struct BudgetStoreCreditCardStatementDueTests {
     }
 
     @Test func loadCreditCardStatementDuesKeepsOverlappingStatements() async throws {
-        let (store, database, url) = try makeStore()
+        let (store, database, url) = try await makeStore()
         defer { cleanup(url) }
 
         let today = DayDate(year: 2026, month: 2, day: 20)

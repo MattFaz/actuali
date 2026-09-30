@@ -9,93 +9,11 @@ import Testing
 /// children.
 @MainActor
 struct BudgetStoreSplitSaveTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    parent_id TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
-        return store
-    }
-
     private func rows(path: URL, orderBy: String = "sort_order DESC") throws -> [Row] {
         let queue = try DatabaseQueue(path: path.path)
         return try queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM transactions ORDER BY \(orderBy)")
         }
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
     }
 
     private func form(
@@ -119,9 +37,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func savingASplitPersistsParentAndChildren() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.saveTransaction(form(
             type: .expense, amount: "10.00", payeeName: "Trader Joe's",
@@ -176,9 +94,9 @@ struct BudgetStoreSplitSaveTests {
         // A refund/credit line inside a spend split (GH #216): the flipped
         // line lands positive while the rest stay negative, netting the
         // parent's total.
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.saveTransaction(form(
             type: .expense, amount: "20.00", payeeName: "Hardware Store",
@@ -196,9 +114,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func splitLinePayeeOverrideCreatesDistinctChildPayee() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         var overridden = BudgetStore.SplitLineForm(categoryId: "cat-med", amount: "6.00")
         overridden.payeeName = "Pharmacy"
@@ -217,9 +135,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func splitLineTransferCreatesPairedTransaction() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -306,9 +224,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func editingSplitTransferUpdatesItsPartner() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -387,9 +305,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func inheritedTransferPayeePreservesChildPartners() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -452,9 +370,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func missingTransferPayeeStillPreflightsPartnerBeforeParentWrite() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
@@ -515,9 +433,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func editingParentPayeeCascadesToChildrenThatMatchedIt() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -564,9 +482,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func editingAFlatTransactionIntoASplitConvertsIt() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let original = Transaction(
             id: "tx-1", accountId: "acct-1", date: 20_260_610, amount: -500,
@@ -628,9 +546,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func editingATransferIntoASplitIsRejected() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let original = Transaction(
             id: "tx-1", accountId: "acct-1", date: 20_260_610, amount: -500,
@@ -658,9 +576,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func removingSplitFromAParentCollapsesItToSingleTransaction() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -718,9 +636,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func editingAnOffBudgetSplitParentCollapsesIt() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         store.accounts = [
             Account(id: "acct-1", name: "Brokerage", type: .investment,
                     offBudget: true, closed: false, sortOrder: 0, balance: 0),
@@ -753,9 +671,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func editingASplitParentProtectsAmountAndCategoryAndCascadesSharedFields() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -805,9 +723,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func editingASplitParentUpdatesAmountAndReconcilesChildren() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -876,9 +794,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func editingASplitParentKeepsChildPayeeOverrides() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -925,9 +843,9 @@ struct BudgetStoreSplitSaveTests {
     }
 
     @Test func deletingASplitParentTombstonesItsChildren() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """

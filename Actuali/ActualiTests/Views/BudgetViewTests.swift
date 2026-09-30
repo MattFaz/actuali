@@ -133,19 +133,18 @@ struct BudgetViewTests {
         #expect(ReportStrings.text("Income", locale: Locale(identifier: "fr_FR"), bundle: actualiBundle) == "Revenus")
     }
 
-    @Test func transferCandidateLabelsUseRequestedLocaleAndGrammar() {
-        let cases: [(String, String, String, String, String)] = [
-            ("en_US", "Groceries", "$25.00", "Recommended: Groceries ($25.00)", "Groceries ($25.00)"),
-            ("fr_FR", "Courses", "25,00 €", "Recommandé : Courses (25,00 €)", "Courses (25,00 €)"),
-            ("de_DE", "Lebensmittel", "25,00 €", "Empfohlen: Lebensmittel (25,00 €)", "Lebensmittel (25,00 €)"),
-            ("pt_BR", "Mercado", "R$ 25,00", "Recomendado: Mercado (R$ 25,00)", "Mercado (R$ 25,00)"),
-        ]
-
-        for (identifier, categoryName, amount, recommended, ordinary) in cases {
-            let locale = Locale(identifier: identifier)
-            #expect(BudgetTransferLocalization.candidateLabel(categoryName: categoryName, amount: amount, isRecommended: true, locale: locale, bundle: actualiBundle) == recommended)
-            #expect(BudgetTransferLocalization.candidateLabel(categoryName: categoryName, amount: amount, isRecommended: false, locale: locale, bundle: actualiBundle) == ordinary)
-        }
+    @Test(arguments: [
+        ("en_US", "Groceries", "$25.00", "Recommended: Groceries ($25.00)", "Groceries ($25.00)"),
+        ("fr_FR", "Courses", "25,00 €", "Recommandé : Courses (25,00 €)", "Courses (25,00 €)"),
+        ("de_DE", "Lebensmittel", "25,00 €", "Empfohlen: Lebensmittel (25,00 €)", "Lebensmittel (25,00 €)"),
+        ("pt_BR", "Mercado", "R$ 25,00", "Recomendado: Mercado (R$ 25,00)", "Mercado (R$ 25,00)"),
+    ])
+    func transferCandidateLabelsUseRequestedLocaleAndGrammar(
+        identifier: String, categoryName: String, amount: String, recommended: String, ordinary: String
+    ) {
+        let locale = Locale(identifier: identifier)
+        #expect(BudgetTransferLocalization.candidateLabel(categoryName: categoryName, amount: amount, isRecommended: true, locale: locale, bundle: actualiBundle) == recommended)
+        #expect(BudgetTransferLocalization.candidateLabel(categoryName: categoryName, amount: amount, isRecommended: false, locale: locale, bundle: actualiBundle) == ordinary)
     }
 
     @Test func templateAlertMonthRunReportsUpToDateAsSuccess() {

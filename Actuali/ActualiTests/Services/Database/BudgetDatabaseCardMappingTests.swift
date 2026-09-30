@@ -6,23 +6,8 @@ import Testing
 /// Pins `fetchCardAccountMappings()` against the SQLite `preferences` table.
 @MainActor
 struct BudgetDatabaseCardMappingTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     @Test func fetchCardAccountMappingsReturnsDecodedMappings() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.preferences)
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -48,7 +33,7 @@ struct BudgetDatabaseCardMappingTests {
     }
 
     @Test func fetchCardAccountMappingsReturnsEmptyWhenMissingOrCleared() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.preferences)
         defer { cleanup(url) }
 
         // Missing key

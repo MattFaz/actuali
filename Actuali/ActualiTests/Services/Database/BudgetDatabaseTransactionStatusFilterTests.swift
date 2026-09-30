@@ -13,81 +13,6 @@ import Testing
 /// status chips partition the list, matching the row status dot.
 @MainActor
 struct BudgetDatabaseTransactionStatusFilterTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    parent_id TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     private func seedLookups(_ db: BudgetDatabase) async throws {
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -122,7 +47,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func allReturnsEveryStatus() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
         try await seedStatuses(db)
@@ -136,7 +61,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func unclearedKeepsOnlyUnclearedRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
         try await seedStatuses(db)
@@ -146,7 +71,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func clearedExcludesReconciledRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
         try await seedStatuses(db)
@@ -156,7 +81,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func reconciledKeepsOnlyReconciledRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
         try await seedStatuses(db)
@@ -166,7 +91,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func unreconciledKeepsUnclearedAndClearedRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
         try await seedStatuses(db)
@@ -176,7 +101,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func uncategorizedMatchesTheUncategorizedListFilter() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
 
@@ -207,7 +132,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     /// The transfer rule belongs to each child: an on-budget transfer needs
     /// no category, regardless of the parent's payee.
     @Test func uncategorizedChipIncludesSplitParentsWithUncategorizedChildren() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
 
@@ -241,7 +166,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func uncategorizedComposesWithSearchAndPaging() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
 
@@ -282,7 +207,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func statusFilterComposesWithAccountScope() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
 

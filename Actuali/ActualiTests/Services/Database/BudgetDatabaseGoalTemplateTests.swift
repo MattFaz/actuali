@@ -8,96 +8,29 @@ struct BudgetDatabaseGoalTemplateTests {
     /// Fixture mirrors a downloaded budget file that predates the goal
     /// migrations — no goal/long_goal/goal_def columns — so opening it also
     /// exercises the migration path.
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    date INTEGER,
-                    parent_id TEXT,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    cat_group TEXT,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_groups (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE notes (
-                    id TEXT PRIMARY KEY,
-                    note TEXT
-                );
-
-                CREATE TABLE zero_budgets (
-                    id TEXT PRIMARY KEY,
-                    month INTEGER,
-                    category TEXT,
-                    amount INTEGER DEFAULT 0,
-                    carryover INTEGER DEFAULT 0
-                );
-
-                INSERT INTO category_groups (id, name) VALUES ('grp-1', 'Daily');
-                INSERT INTO category_groups (id, name, is_income) VALUES ('grp-inc', 'Income', 1);
-                INSERT INTO categories (id, name, cat_group) VALUES ('cat-groceries', 'Groceries', 'grp-1');
-                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-salary', 'Salary', 'grp-inc', 1);
-                INSERT INTO category_mapping (id, transferId) VALUES
-                    ('cat-groceries', 'cat-groceries'),
-                    ('cat-salary', 'cat-salary');
-                INSERT INTO accounts (id, name, offbudget, sort_order) VALUES ('acct-1', 'Checking', 0, 1.0);
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.transactions, TestSchema.categories, TestSchema.categoryGroups,
+            TestSchema.categoryMapping, TestSchema.accounts, TestSchema.notes, TestSchema.zeroBudgets,
+            """
+            INSERT INTO category_groups (id, name) VALUES ('grp-1', 'Daily');
+            INSERT INTO category_groups (id, name, is_income) VALUES ('grp-inc', 'Income', 1);
+            INSERT INTO categories (id, name, cat_group) VALUES ('cat-groceries', 'Groceries', 'grp-1');
+            INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-salary', 'Salary', 'grp-inc', 1);
+            INSERT INTO category_mapping (id, transferId) VALUES
+                ('cat-groceries', 'cat-groceries'),
+                ('cat-salary', 'cat-salary');
+            INSERT INTO accounts (id, name, offbudget, sort_order) VALUES ('acct-1', 'Checking', 0, 1.0);
+            """
+        )
     }
 
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
-    @Test func migrationsAddGoalColumns() throws {
-        let (_, path) = try makeDatabase()
+    @Test func migrationsAddGoalColumns() async throws {
+        let (_, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         let queue = try DatabaseQueue(path: path.path)
-        try queue.read { db in
+        try await queue.read { db in
             let budgetColumns = try Set(db.columns(in: "zero_budgets").map(\.name))
             #expect(budgetColumns.contains("goal"))
             #expect(budgetColumns.contains("long_goal"))
@@ -108,7 +41,7 @@ struct BudgetDatabaseGoalTemplateTests {
     }
 
     @Test func fetchBudgetMonthSurfacesGoals() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         try await database.dbQueueForTesting.write { db in
@@ -126,7 +59,7 @@ struct BudgetDatabaseGoalTemplateTests {
     }
 
     @Test func fetchGoalTemplateSheetBuildsSheetValues() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         try await database.dbQueueForTesting.write { db in
@@ -153,7 +86,7 @@ struct BudgetDatabaseGoalTemplateTests {
     }
 
     @Test func fetchGoalTemplateCategoriesJoinsNotesAndSource() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         try await database.dbQueueForTesting.write { db in
@@ -178,7 +111,7 @@ struct BudgetDatabaseGoalTemplateTests {
     }
 
     @Test func resetGoalDefsClearsColumn() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         try await database.dbQueueForTesting.write { db in

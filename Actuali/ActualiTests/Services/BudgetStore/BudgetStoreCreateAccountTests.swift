@@ -10,82 +10,6 @@ import Testing
 /// category for on-budget accounts.
 @MainActor
 struct BudgetStoreCreateAccountTests {
-    /// Upstream schema, matching BudgetStoreWalletImportTests plus the
-    /// accounts table createAccount writes.
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                type TEXT,
-                offbudget INTEGER DEFAULT 0,
-                closed INTEGER DEFAULT 0,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                starting_balance_flag INTEGER DEFAULT 0,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                acct TEXT,
-                category TEXT,
-                amount INTEGER,
-                description TEXT,
-                notes TEXT,
-                date INTEGER,
-                imported_description TEXT,
-                financial_id TEXT,
-                transferred_id TEXT,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0,
-                parent_id TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payees (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                transfer_acct TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payee_mapping (
-                id TEXT PRIMARY KEY,
-                targetId TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
-        return store
-    }
-
     /// An "Income" group whose second category is Starting Balances, so a
     /// test can tell "picked by name" apart from "picked because it's first".
     private func incomeGroups() -> [CategoryGroup] {
@@ -118,14 +42,10 @@ struct BudgetStoreCreateAccountTests {
         }
     }
 
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     @Test func createPersistsAccountTransferPayeeAndOpeningBalance() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let account = try await store.createAccount(
             name: "  Savings  ", offBudget: false, startingBalanceCents: 12345
@@ -171,9 +91,9 @@ struct BudgetStoreCreateAccountTests {
     }
 
     @Test func createEmitsCRDTMessagesForEveryRow() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let account = try await store.createAccount(
             name: "Checking", offBudget: false, startingBalanceCents: 500
@@ -203,9 +123,9 @@ struct BudgetStoreCreateAccountTests {
     }
 
     @Test func onBudgetOpeningBalanceTakesTheStartingBalancesCategory() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         store.categoryGroups = incomeGroups()
 
         try await store.createAccount(
@@ -218,9 +138,9 @@ struct BudgetStoreCreateAccountTests {
     }
 
     @Test func openingBalanceFallsBackToTheFirstIncomeCategory() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         var groups = incomeGroups()
         groups[0].categories.removeAll { $0.name == "Starting Balances" }
         store.categoryGroups = groups
@@ -235,9 +155,9 @@ struct BudgetStoreCreateAccountTests {
     }
 
     @Test func offBudgetOpeningBalanceStaysUncategorized() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         store.categoryGroups = incomeGroups()
 
         try await store.createAccount(
@@ -252,9 +172,9 @@ struct BudgetStoreCreateAccountTests {
     }
 
     @Test func zeroBalanceSkipsTheOpeningTransaction() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try await store.createAccount(
             name: "Empty", offBudget: false, startingBalanceCents: 0
@@ -272,9 +192,9 @@ struct BudgetStoreCreateAccountTests {
     }
 
     @Test func blankNameIsRejectedAndNothingPersists() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         await #expect(throws: BudgetStoreError.invalidAccountName) {
             try await store.createAccount(
@@ -288,7 +208,7 @@ struct BudgetStoreCreateAccountTests {
     }
 
     @Test func openingBalanceFailureRollsBackAccountAndPayee() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
 
         // Pre-insert a row so the opening-balance INSERT violates the primary

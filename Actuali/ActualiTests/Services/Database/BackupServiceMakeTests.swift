@@ -45,7 +45,7 @@ struct BackupServiceMakeTests {
 
     @Test func backupStripsCRDTStateAndKeepsData() async throws {
         let (manager, root) = makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b1")
 
         let service = BackupService(fileManager: manager)
@@ -95,7 +95,7 @@ struct BackupServiceMakeTests {
 
     @Test func backupClearsRevertBaseline() async throws {
         let (manager, root) = makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b2")
 
         // Simulate "viewing a backup".
@@ -111,7 +111,7 @@ struct BackupServiceMakeTests {
 
     @Test func backupWorksThroughOpenBudgetDatabase() async throws {
         let (manager, root) = makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b3")
 
         // The live-database path: snapshot via the open BudgetDatabase
@@ -128,7 +128,7 @@ struct BackupServiceMakeTests {
 
     @Test func backupSweepsLeftoverArchiveTemp() async throws {
         let (manager, root) = makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b4")
 
         // A .zip.tmp a killed background backup left mid-write. It must never
@@ -154,7 +154,7 @@ struct BackupServiceMakeTests {
 
     @Test func backupMirrorsToInjectedDestinationManager() async throws {
         let (manager, root) = makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b5")
 
         let suiteName = "test.backup.service.dest.\(UUID().uuidString)"

@@ -1,148 +1,117 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Actuali
 
-private final class FallbackTransport: URLProtocol {
+/// A primary and a fallback host whose reachability a test flips mid-run.
+/// Starts with the primary down, since that is what every failover needs.
+private final class FallbackServers: Sendable {
     private struct State {
         var requestedURLs: [URL] = []
-        var failures: [String: URLError] = [:]
+        var failures = ["primary.example.com": URLError(.cannotConnectToHost)]
         var statuses: [String: Int] = [:]
     }
 
-    private static let lock = NSLock()
-    private nonisolated(unsafe) static var state = State()
+    private let state = Mutex(State())
 
-    static var requestedURLs: [URL] {
-        lock.withLock { state.requestedURLs }
+    var requestedURLs: [URL] {
+        state.withLock { $0.requestedURLs }
     }
 
-    static var failures: [String: URLError] {
-        get { lock.withLock { state.failures } }
-        set { lock.withLock { state.failures = newValue } }
+    var failures: [String: URLError] {
+        get { state.withLock { $0.failures } }
+        set { state.withLock { $0.failures = newValue } }
     }
 
-    static var statuses: [String: Int] {
-        get { lock.withLock { state.statuses } }
-        set { lock.withLock { state.statuses = newValue } }
+    var statuses: [String: Int] {
+        get { state.withLock { $0.statuses } }
+        set { state.withLock { $0.statuses = newValue } }
     }
 
-    static func reset() {
-        lock.withLock {
-            state = State(
-                failures: ["primary.example.com": URLError(.cannotConnectToHost)]
+    func session() -> URLSession {
+        StubTransport.session { request in
+            let host = request.url?.host ?? ""
+            let (failure, status) = self.state.withLock { state in
+                state.requestedURLs.append(request.url!)
+                return (state.failures[host], state.statuses[host] ?? 200)
+            }
+            if let failure {
+                throw failure
+            }
+            return StubTransport.Response(
+                status: status,
+                contentType: "application/json",
+                body: Data(#"{"status":"ok","data":{"token":"fallback-token"}}"#.utf8)
             )
         }
     }
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        let host = request.url?.host ?? ""
-        let (failure, status) = Self.lock.withLock {
-            Self.state.requestedURLs.append(request.url!)
-            return (Self.state.failures[host], Self.state.statuses[host] ?? 200)
-        }
-
-        if let failure {
-            client?.urlProtocol(self, didFailWithError: failure)
-            return
-        }
-
-        let response = HTTPURLResponse(
-            url: request.url!,
-            statusCode: status,
-            httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
-        )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(
-            self,
-            didLoad: Data(#"{"status":"ok","data":{"token":"fallback-token"}}"#.utf8)
-        )
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
 }
 
-@Suite(.serialized)
 struct ActualServerClientFallbackTests {
-    private func makeSession() -> URLSession {
-        FallbackTransport.reset()
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [FallbackTransport.self]
-        return URLSession(configuration: configuration)
-    }
-
     private func makeClient(fallbackServerURL: String = "https://fallback.example.com") async throws
-        -> ActualServerClient {
-        let client = ActualServerClient(session: makeSession())
+        -> (ActualServerClient, FallbackServers) {
+        let servers = FallbackServers()
+        let client = ActualServerClient(session: servers.session())
         try await client.configure(
             serverURL: "https://primary.example.com",
             fallbackServerURL: fallbackServerURL
         )
-        return client
+        return (client, servers)
     }
 
     @Test func retriesAtFallbackWhenPrimaryCannotBeReached() async throws {
-        let client = try await makeClient()
+        let (client, servers) = try await makeClient()
 
         let token = try await client.login(password: "password")
 
         #expect(token == "fallback-token")
-        #expect(FallbackTransport.requestedURLs.map(\.host) == [
+        #expect(servers.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com",
         ])
     }
 
     @Test func doesNotRetryWithoutAFallbackAddress() async throws {
-        let client = try await makeClient(fallbackServerURL: "")
+        let (client, servers) = try await makeClient(fallbackServerURL: "")
 
         await #expect(throws: ActualServerError.self) {
             _ = try await client.login(password: "password")
         }
-        #expect(FallbackTransport.requestedURLs.map(\.host) == ["primary.example.com"])
+        #expect(servers.requestedURLs.map(\.host) == ["primary.example.com"])
     }
 
     @Test func preservesFallbackAddressPathPrefix() async throws {
-        let client = try await makeClient(
+        let (client, servers) = try await makeClient(
             fallbackServerURL: "https://fallback.example.com/actual"
         )
 
         _ = try await client.login(password: "password")
 
-        #expect(FallbackTransport.requestedURLs.last?.path == "/actual/account/login")
+        #expect(servers.requestedURLs.last?.path == "/actual/account/login")
     }
 
     @Test func sticksWithFallbackOnceItSucceeds() async throws {
-        let client = try await makeClient()
+        let (client, servers) = try await makeClient()
         _ = try await client.login(password: "password")
         // Even with the primary healthy again, the session keeps using the
         // address that answered instead of paying a probe on every request.
-        FallbackTransport.failures = [:]
+        servers.failures = [:]
 
         _ = try await client.login(password: "password")
 
-        #expect(FallbackTransport.requestedURLs.map(\.host) == [
+        #expect(servers.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com", "fallback.example.com",
         ])
     }
 
     @Test func returnsToPrimaryWhenFallbackFailsLater() async throws {
-        let client = try await makeClient()
+        let (client, servers) = try await makeClient()
         _ = try await client.login(password: "password")
-        FallbackTransport.failures = ["fallback.example.com": URLError(.cannotConnectToHost)]
+        servers.failures = ["fallback.example.com": URLError(.cannotConnectToHost)]
 
         _ = try await client.login(password: "password")
         _ = try await client.login(password: "password")
 
-        #expect(FallbackTransport.requestedURLs.map(\.host) == [
+        #expect(servers.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com",
             "fallback.example.com", "primary.example.com",
             "primary.example.com",
@@ -150,36 +119,36 @@ struct ActualServerClientFallbackTests {
     }
 
     @Test func foregroundProbeSwapsBackWhenPrimaryRecovers() async throws {
-        let client = try await makeClient()
+        let (client, servers) = try await makeClient()
         _ = try await client.login(password: "password")
-        FallbackTransport.failures = [:]
+        servers.failures = [:]
 
         await client.retryPrimaryIfRecovered()
         _ = try await client.login(password: "password")
 
-        #expect(FallbackTransport.requestedURLs.map(\.host) == [
+        #expect(servers.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com",
             "primary.example.com", "primary.example.com",
         ])
-        #expect(FallbackTransport.requestedURLs[2].path == "/info")
+        #expect(servers.requestedURLs[2].path == "/info")
     }
 
     @Test func foregroundProbeKeepsFallbackWhilePrimaryIsDown() async throws {
-        let client = try await makeClient()
+        let (client, servers) = try await makeClient()
         _ = try await client.login(password: "password")
 
         await client.retryPrimaryIfRecovered()
         _ = try await client.login(password: "password")
 
-        #expect(FallbackTransport.requestedURLs.map(\.host) == [
+        #expect(servers.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com",
             "primary.example.com", "fallback.example.com",
         ])
     }
 
     @Test func surfacesPrimaryErrorWhenBothAddressesFail() async throws {
-        let client = try await makeClient()
-        FallbackTransport.failures = [
+        let (client, servers) = try await makeClient()
+        servers.failures = [
             "primary.example.com": URLError(.secureConnectionFailed),
             "fallback.example.com": URLError(.cannotFindHost),
         ]
@@ -200,54 +169,54 @@ struct ActualServerClientFallbackTests {
     }
 
     @Test func foregroundProbeAcceptsPrimariesWithoutAnInfoRoute() async throws {
-        let client = try await makeClient()
+        let (client, servers) = try await makeClient()
         _ = try await client.login(password: "password")
-        FallbackTransport.failures = [:]
-        FallbackTransport.statuses = ["primary.example.com": 404]
+        servers.failures = [:]
+        servers.statuses = ["primary.example.com": 404]
 
         await client.retryPrimaryIfRecovered()
-        FallbackTransport.statuses = [:]
+        servers.statuses = [:]
         _ = try await client.login(password: "password")
 
-        #expect(FallbackTransport.requestedURLs.map(\.host) == [
+        #expect(servers.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com",
             "primary.example.com", "primary.example.com",
         ])
     }
 
     @Test func foregroundProbeStaysOnFallbackWhenPrimaryAnswers5xx() async throws {
-        let client = try await makeClient()
+        let (client, servers) = try await makeClient()
         _ = try await client.login(password: "password")
-        FallbackTransport.failures = [:]
-        FallbackTransport.statuses = ["primary.example.com": 502]
+        servers.failures = [:]
+        servers.statuses = ["primary.example.com": 502]
 
         await client.retryPrimaryIfRecovered()
         _ = try await client.login(password: "password")
 
-        #expect(FallbackTransport.requestedURLs.map(\.host) == [
+        #expect(servers.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com",
             "primary.example.com", "fallback.example.com",
         ])
     }
 
     @Test func foregroundProbeIsANoOpBeforeAnyFailover() async throws {
-        let client = try await makeClient()
-        FallbackTransport.failures = [:]
+        let (client, servers) = try await makeClient()
+        servers.failures = [:]
 
         await client.retryPrimaryIfRecovered()
 
-        #expect(FallbackTransport.requestedURLs.isEmpty)
+        #expect(servers.requestedURLs.isEmpty)
     }
 
     @Test func offlineDeviceDoesNotAttemptFallback() async throws {
-        let client = try await makeClient()
-        FallbackTransport.failures = ["primary.example.com": URLError(.notConnectedToInternet)]
+        let (client, servers) = try await makeClient()
+        servers.failures = ["primary.example.com": URLError(.notConnectedToInternet)]
 
         await #expect(throws: ActualServerError.self) {
             _ = try await client.login(password: "password")
         }
 
-        #expect(FallbackTransport.requestedURLs.map(\.host) == ["primary.example.com"])
+        #expect(servers.requestedURLs.map(\.host) == ["primary.example.com"])
     }
 
     @Test func malformedFallbackHasSpecificError() async {
@@ -267,8 +236,9 @@ struct ActualServerClientFallbackTests {
     @Test func badFallbackStillConfiguresPrimary() async throws {
         // configureSavedSession swallows configure errors with try?; a bad
         // fallback must degrade to "no fallback", not an unconfigured client.
-        let client = ActualServerClient(session: makeSession())
-        FallbackTransport.failures = [:]
+        let servers = FallbackServers()
+        let client = ActualServerClient(session: servers.session())
+        servers.failures = [:]
         await #expect(throws: ActualServerError.self) {
             try await client.configure(
                 serverURL: "https://primary.example.com",
@@ -279,6 +249,6 @@ struct ActualServerClientFallbackTests {
         let token = try await client.login(password: "password")
 
         #expect(token == "fallback-token")
-        #expect(FallbackTransport.requestedURLs.map(\.host) == ["primary.example.com"])
+        #expect(servers.requestedURLs.map(\.host) == ["primary.example.com"])
     }
 }

@@ -6,48 +6,13 @@ import Testing
 struct SyncClientTransferBudgetTests {
     /// The budget table and messages_crdt normally come from the downloaded
     /// budget file, so create them with the upstream schema.
-    private func makeDatabase(budgetTable: String? = "zero_budgets") throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            if let budgetTable {
-                try db.execute(sql: """
-                CREATE TABLE \(budgetTable) (
-                    id TEXT PRIMARY KEY,
-                    month INTEGER,
-                    category TEXT,
-                    amount INTEGER DEFAULT 0,
-                    carryover INTEGER DEFAULT 0
-                )
-                """)
-            }
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
+    private func makeDatabase(budgetTable: String? = TestSchema.zeroBudgets) async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase([budgetTable, TestSchema.messagesCrdt].compactMap(\.self))
     }
 
-    /// Sync client wired to a real database. The server client is
-    /// unconfigured, so the post-write automatic sync fails fast and locally
-    /// without touching the network.
-    private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        return syncClient
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
+    // Sync client wired to a real database. The server client is
+    // unconfigured, so the post-write automatic sync fails fast and locally
+    // without touching the network.
 
     private func seedCell(_ database: BudgetDatabase, id: String, month: Int, category: String, amount: Int) throws {
         try database.dbQueueForTesting.write { db in
@@ -68,19 +33,12 @@ struct SyncClientTransferBudgetTests {
         }
     }
 
-    private func messageRows(path: URL) throws -> [Row] {
-        let queue = try DatabaseQueue(path: path.path)
-        return try queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
-        }
-    }
-
     @Test func transferBetweenCategoriesMovesBudgetedAmount() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try seedCell(database, id: "202607-cat-1", month: 202_607, category: "cat-1", amount: 5000)
         try seedCell(database, id: "202607-cat-2", month: 202_607, category: "cat-2", amount: 1000)
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.transferBudget(month: "2026-07", fromCategoryId: "cat-1", toCategoryId: "cat-2", amount: 2000)
 
@@ -103,10 +61,10 @@ struct SyncClientTransferBudgetTests {
     /// the destination cell is written (upstream coverOverspending's
     /// to-be-budgeted branch).
     @Test func coverFromToBudgetWritesOnlyDestination() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try seedCell(database, id: "202607-cat-1", month: 202_607, category: "cat-1", amount: 500)
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.transferBudget(month: "2026-07", fromCategoryId: nil, toCategoryId: "cat-1", amount: 3000)
 
@@ -124,10 +82,10 @@ struct SyncClientTransferBudgetTests {
     /// Moving a category's funds back to "To Budget": only the source cell
     /// shrinks (upstream transferAvailable).
     @Test func transferToToBudgetWritesOnlySource() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try seedCell(database, id: "202607-cat-1", month: 202_607, category: "cat-1", amount: 5000)
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.transferBudget(month: "2026-07", fromCategoryId: "cat-1", toCategoryId: nil, amount: 2000)
 
@@ -144,10 +102,10 @@ struct SyncClientTransferBudgetTests {
     /// A destination that was never budgeted has no row yet: it must be
     /// created with the full month/category/amount insert, like setBudgetAmount.
     @Test func missingDestinationRowIsCreatedWithFullInsertMessages() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
         try seedCell(database, id: "202607-cat-1", month: 202_607, category: "cat-1", amount: 5000)
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.transferBudget(month: "2026-07", fromCategoryId: "cat-1", toCategoryId: "cat-new", amount: 1500)
 
@@ -164,9 +122,9 @@ struct SyncClientTransferBudgetTests {
     }
 
     @Test func missingBudgetTableThrowsWithoutEmittingMessages() async throws {
-        let (database, path) = try makeDatabase(budgetTable: nil)
+        let (database, path) = try await makeDatabase(budgetTable: nil)
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         await #expect(throws: SyncError.self) {
             try await syncClient.transferBudget(month: "2026-07", fromCategoryId: "cat-1", toCategoryId: "cat-2", amount: 100)

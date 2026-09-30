@@ -11,57 +11,18 @@ import Testing
 struct SyncClientUpdateCurrencyCodeTests {
     /// The preferences table and messages_crdt normally come from the
     /// downloaded budget file, so create them with the upstream schema.
-    private func makeDatabase(withPreferencesTable: Bool = true) throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            if withPreferencesTable {
-                try db.execute(sql: """
-                CREATE TABLE preferences (
-                    id TEXT PRIMARY KEY,
-                    value TEXT
-                )
-                """)
-            }
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
+    private func makeDatabase(withPreferencesTable: Bool = true) async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase((withPreferencesTable ? [TestSchema.preferences] : []) + [TestSchema.messagesCrdt])
     }
 
-    /// Sync client wired to a real database. The server client is
-    /// unconfigured, so the post-write automatic sync fails fast and locally
-    /// without touching the network.
-    private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        return syncClient
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
-    private func messageRows(path: URL) throws -> [Row] {
-        let queue = try DatabaseQueue(path: path.path)
-        return try queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
-        }
-    }
+    // Sync client wired to a real database. The server client is
+    // unconfigured, so the post-write automatic sync fails fast and locally
+    // without touching the network.
 
     @Test func writesPreferencesRowAndEmitsMessage() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.updateCurrencyCode("EUR")
 
@@ -81,9 +42,9 @@ struct SyncClientUpdateCurrencyCodeTests {
     }
 
     @Test func secondChangeOverwritesRowInPlace() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.updateCurrencyCode("EUR")
         try await syncClient.updateCurrencyCode("NZD")
@@ -106,9 +67,9 @@ struct SyncClientUpdateCurrencyCodeTests {
         // local apply is skipped (unknown schema), but the message must still
         // be recorded in messages_crdt so it replays after a migration and
         // reaches the server.
-        let (database, path) = try makeDatabase(withPreferencesTable: false)
+        let (database, path) = try await makeDatabase(withPreferencesTable: false)
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.updateCurrencyCode("EUR")
 

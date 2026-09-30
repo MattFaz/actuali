@@ -71,20 +71,23 @@ struct ReportStringsTests {
         ) == brazilianPortuguese)
     }
 
-    @Test func overspentBadgeUsesRequestedLocaleAndPluralRules() {
-        let expected = [
-            Locale(identifier: "en_US"): ["", "1 overspent category", "2 overspent categories"],
-            Locale(identifier: "fr_FR"): ["", "1 catégorie en dépassement", "2 catégories en dépassement"],
-            Locale(identifier: "pt_BR"): ["", "1 categoria com excesso de gastos", "2 categorias com excesso de gastos"],
-        ]
-
-        for (locale, values) in expected {
-            for (count, value) in values.enumerated() {
-                #expect(MainTabView.overspentBadgeValue(
-                    count: count, locale: locale, bundle: appBundle
-                ) == value)
-            }
-        }
+    @Test(arguments: [
+        (0, "", "", ""),
+        (1, "1 overspent category", "1 catégorie en dépassement", "1 categoria com excesso de gastos"),
+        (2, "2 overspent categories", "2 catégories en dépassement", "2 categorias com excesso de gastos"),
+    ])
+    func overspentBadgeUsesRequestedLocaleAndPluralRules(
+        count: Int, english: String, french: String, brazilianPortuguese: String
+    ) {
+        #expect(MainTabView.overspentBadgeValue(
+            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == english)
+        #expect(MainTabView.overspentBadgeValue(
+            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == french)
+        #expect(MainTabView.overspentBadgeValue(
+            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == brazilianPortuguese)
     }
 
     @Test func reportComparisonDeltaChartAndSyntheticLabelsAreExact() {
@@ -154,34 +157,23 @@ struct ReportStringsTests {
         }
     }
 
-    @Test @MainActor func schedulePostNoticeUsesCLDRBranchesForZeroOneAndTwo() {
-        let expected = [
-            Locale(identifier: "en_US"): [
-                "Posted 0 scheduled transactions",
-                "Posted 1 scheduled transaction",
-                "Posted 2 scheduled transactions",
-            ],
-            Locale(identifier: "fr_FR"): [
-                "0 transaction planifiée publiée",
-                "1 transaction planifiée publiée",
-                "2 transactions planifiées publiées",
-            ],
-            Locale(identifier: "pt_BR"): [
-                "0 transação agendada publicada",
-                "1 transação agendada publicada",
-                "2 transações agendadas publicadas",
-            ],
-        ]
-
-        for (locale, values) in expected {
-            for (count, value) in values.enumerated() {
-                #expect(BudgetStore.schedulePostNoticeText(
-                    count: count,
-                    locale: locale,
-                    bundle: appBundle
-                ) == value)
-            }
-        }
+    @Test(arguments: [
+        (0, "Posted 0 scheduled transactions", "0 transaction planifiée publiée", "0 transação agendada publicada"),
+        (1, "Posted 1 scheduled transaction", "1 transaction planifiée publiée", "1 transação agendada publicada"),
+        (2, "Posted 2 scheduled transactions", "2 transactions planifiées publiées", "2 transações agendadas publicadas"),
+    ])
+    @MainActor func schedulePostNoticeUsesCLDRBranchesForZeroOneAndTwo(
+        count: Int, english: String, french: String, brazilianPortuguese: String
+    ) {
+        #expect(BudgetStore.schedulePostNoticeText(
+            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == english)
+        #expect(BudgetStore.schedulePostNoticeText(
+            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == french)
+        #expect(BudgetStore.schedulePostNoticeText(
+            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == brazilianPortuguese)
     }
 
     @Test func calendarFormattingUsesRequestedLocale() {

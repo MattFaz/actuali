@@ -5,25 +5,53 @@ import Testing
 /// Verifies the demo budget ships a valid, renderable Reports dashboard — the
 /// seeded widget meta must parse to real widget types (never `.unsupported`)
 /// and the engines must produce data from the seeded transactions.
-// Serialized: every test seeds the same fixed "demo" budget directory, so they
-// must not run in parallel against shared on-disk state.
+// Serialized: every seed writes the same fixed "demo" budget directory, so the
+// fixtures below must not build in parallel against shared on-disk state.
 @Suite(.serialized)
 @MainActor
 struct DemoDataSeederTests {
-    private func seedAndOpen(
+    /// A seeded demo file, copied out of the shared demo directory (the next
+    /// configuration's seed wipes it). No test writes after seeding, so each
+    /// configuration seeds once and every test opens its own copy.
+    private struct Seed: Sendable {
+        let url: URL
+        /// The instant the seeder was given, so date assertions share the
+        /// seed's reference rather than a second `Date()` that could
+        /// straddle local midnight.
+        let now: Date
+    }
+
+    private static let defaultSeed = Result { try seed() }
+    private static let trackingSeed = Result { try seed(tracking: true) }
+    private static let uncategorizedSeed = Result { try seed(seedUncategorized: true) }
+    private static let unsupportedBankSyncSeed = Result { try seed(seedUnsupportedBankSync: true) }
+    private static let august31Seed = Result {
+        try seed(now: Calendar(identifier: .gregorian)
+            .date(from: DateComponents(year: 2026, month: 8, day: 31, hour: 12))!)
+    }
+
+    private nonisolated static func seed(
         tracking: Bool = false,
         seedUncategorized: Bool = false,
         seedUnsupportedBankSync: Bool = false,
         now: Date = Date()
-    ) throws -> BudgetDatabase {
+    ) throws -> Seed {
         try DemoDataSeeder.seed(
             tracking: tracking,
             seedUncategorized: seedUncategorized,
             seedUnsupportedBankSync: seedUnsupportedBankSync,
             now: now
         )
-        let dbPath = BudgetFileManager.shared.databasePath(for: DemoDataSeeder.budgetId)
-        return try BudgetDatabase(path: dbPath)
+        let copy = FileManager.default.temporaryDirectory
+            .appendingPathComponent("demo-\(UUID().uuidString).sqlite")
+        try FileManager.default.copyItem(
+            at: BudgetFileManager.shared.databasePath(for: DemoDataSeeder.budgetId), to: copy
+        )
+        return Seed(url: copy, now: now)
+    }
+
+    private func open(_ seed: Result<Seed, any Error>) throws -> BudgetDatabase {
+        try BudgetDatabase(path: seed.get().url)
     }
 
     /// The current month as "YYYY-MM", matching the demo seeder's budget month.
@@ -37,7 +65,7 @@ struct DemoDataSeederTests {
     /// budget reads as tracking (no envelope "To Budget") and the new
     /// Saved / Projected savings summary has real figures to show.
     @Test func trackingSeedProducesATrackingBudget() async throws {
-        let database = try seedAndOpen(tracking: true)
+        let database = try open(Self.trackingSeed)
         let month = try await database.fetchBudgetMonth(month: currentMonth)
 
         #expect(month.toBudget == nil)
@@ -50,19 +78,19 @@ struct DemoDataSeederTests {
     /// transaction lacks a category, and the default demo seed has none — the
     /// `seedUncategorized` hook exists so UI tests can render the bar.
     @Test func seedUncategorizedAddsExactlyOneUncategorizedTransaction() async throws {
-        let defaultSeed = try seedAndOpen()
+        let defaultSeed = try open(Self.defaultSeed)
         #expect(try await defaultSeed.fetchUncategorizedCount() == 0)
 
-        let seeded = try seedAndOpen(seedUncategorized: true)
+        let seeded = try open(Self.uncategorizedSeed)
         #expect(try await seeded.fetchUncategorizedCount() == 1)
     }
 
     /// `seedUnsupportedBankSync` links two accounts to providers Actuali can't
     /// refresh (GH #499); the default demo stays unlinked.
     @Test func seedUnsupportedBankSyncLinksGoCardlessAndPluggy() async throws {
-        #expect(try await seedAndOpen().fetchBankSyncAccounts().isEmpty)
+        #expect(try await open(Self.defaultSeed).fetchBankSyncAccounts().isEmpty)
 
-        let linked = try await seedAndOpen(seedUnsupportedBankSync: true).fetchBankSyncAccounts()
+        let linked = try await open(Self.unsupportedBankSyncSeed).fetchBankSyncAccounts()
         #expect(Dictionary(uniqueKeysWithValues: linked.map { ($0.name, $0.syncSource) }) == [
             "Chase Checking": "goCardless",
             "Ally Savings": "pluggyai",
@@ -73,16 +101,14 @@ struct DemoDataSeederTests {
     /// The default (envelope) demo keeps its "To Budget" unallocated-funds
     /// figure — the tracking flag must not leak into the normal path.
     @Test func envelopeSeedKeepsToBudget() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let month = try await database.fetchBudgetMonth(month: currentMonth)
 
         #expect(month.toBudget != nil)
     }
 
     @Test func newestCheckingTransactionsStayUnclearedAtMonthEnd() async throws {
-        let calendar = Calendar(identifier: .gregorian)
-        let august31 = try #require(calendar.date(from: DateComponents(year: 2026, month: 8, day: 31, hour: 12)))
-        let database = try seedAndOpen(now: august31)
+        let database = try open(Self.august31Seed)
         let checking = try #require(try await database.fetchAccounts().first { $0.name == "Chase Checking" })
         let newest = try #require(try await database.fetchTransactions()
             .filter { $0.accountId == checking.id }
@@ -94,13 +120,13 @@ struct DemoDataSeederTests {
     /// Two pages so the demo exercises the dashboard switcher (GH #120);
     /// "Main" is first so it's the default dashboard on open.
     @Test func seedsTwoDashboardPages() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let pages = try await database.fetchDashboardPages()
         #expect(pages.map(\.name) == ["Main", "Trends"])
     }
 
     @Test func seededDashboardWidgetsAllParseToSupportedTypes() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let pages = try await database.fetchDashboardPages()
         let mainPage = try #require(pages.first { $0.name == "Main" })
         let trendsPage = try #require(pages.first { $0.name == "Trends" })
@@ -120,7 +146,7 @@ struct DemoDataSeederTests {
     }
 
     @Test func seededWidgetsProduceDataFromDemoTransactions() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let pages = try await database.fetchDashboardPages()
         let mainPage = try #require(pages.first { $0.name == "Main" })
         let widgets = try await database.fetchWidgets(pageId: mainPage.id)
@@ -154,7 +180,7 @@ struct DemoDataSeederTests {
     /// the "Rules Unavailable" placeholder) and two upcoming schedules backed
     /// by their own rules, per ScheduleWriteBuilder.createPlan's shape.
     @Test func seedsRulesAndSchedules() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
 
         let rules = try await database.fetchRulesRanked()
         #expect(rules.count == 3)
@@ -180,13 +206,10 @@ struct DemoDataSeederTests {
     /// today or past, and a fresh demo load must never mutate its own seeded
     /// data (or record history) on its own.
     @Test func seededSchedulesAreNeverDueOnLoad() async throws {
-        // One reference instant for both seed and assertion: two independent
-        // Date() calls would flake if the test straddles local midnight.
-        let now = Date()
-        let database = try seedAndOpen(now: now)
-        let schedules = try await database.fetchSchedules()
+        let seed = try Self.defaultSeed.get()
+        let schedules = try await BudgetDatabase(path: seed.url).fetchSchedules()
         #expect(!schedules.isEmpty)
-        let today = DayDate.today(now: now)
+        let today = DayDate.today(now: seed.now)
         for schedule in schedules {
             let next = try #require(schedule.nextDate)
             #expect(next > today, "\(schedule.name ?? "?") is due at load")
@@ -194,7 +217,7 @@ struct DemoDataSeederTests {
     }
 
     @Test func everyAccountHasATransferPayee() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let accounts = try await database.fetchAccounts()
         let payees = try await database.fetchPayees()
 
@@ -210,7 +233,7 @@ struct DemoDataSeederTests {
     /// uncategorized list; the off-budget brokerage's takes none and renders
     /// as "Off budget" (GH #123).
     @Test func startingBalancesAreCategorizedOnlyOnBudget() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let accounts = try await database.fetchAccounts()
         let transactions = try await database.fetchTransactions()
 
@@ -228,7 +251,7 @@ struct DemoDataSeederTests {
     /// mode. The loan must be off-budget (Record Payment refuses otherwise),
     /// paid down by paired transfers, and the CD must have earned interest.
     @Test func seedsATrackedLoanAndDeposit() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let accounts = try await database.fetchAccounts()
         let transactions = try await database.fetchTransactions()
 
@@ -252,7 +275,7 @@ struct DemoDataSeederTests {
     }
 
     @Test func seedsCardMappingsToOpenAccounts() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let accountsByName = try await Dictionary(uniqueKeysWithValues: database.fetchAccounts().map { ($0.name, $0.id) })
         let mappings = try await database.fetchCardAccountMappings()
 
@@ -267,7 +290,7 @@ struct DemoDataSeederTests {
     /// section (GH #131) hides itself as unsupported and the feature is
     /// invisible in demo mode — including in App Store screenshots.
     @Test func seededBudgetShipsAnAnnotatedCategory() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let groups = try await database.fetchCategoryGroups()
 
         let groceries = try #require(
@@ -282,7 +305,7 @@ struct DemoDataSeederTests {
     /// Every other category opens with an empty — not unsupported — note, so
     /// the "Add Note" row is offered rather than hidden.
     @Test func unannotatedCategoriesSupportNotes() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let groups = try await database.fetchCategoryGroups()
 
         let rent = try #require(groups.flatMap(\.categories).first { $0.name == "Rent" })
@@ -295,7 +318,7 @@ struct DemoDataSeederTests {
     /// One demo account ships annotated too (GH #198), so the account note
     /// menu item opens onto something in demo mode rather than an empty sheet.
     @Test func seededBudgetShipsAnAnnotatedAccount() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let accounts = try await database.fetchAccounts()
 
         let checking = try #require(accounts.first { $0.name == "Chase Checking" })
@@ -311,7 +334,7 @@ struct DemoDataSeederTests {
     /// Accounts nobody has annotated read as empty-but-supported, so the menu
     /// offers "Add Note" instead of hiding.
     @Test func unannotatedAccountsSupportNotes() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let accounts = try await database.fetchAccounts()
 
         let savings = try #require(accounts.first { $0.name == "Ally Savings" })
@@ -322,7 +345,7 @@ struct DemoDataSeederTests {
     }
 
     @Test func seededBudgetShipsTagsAndTaggedTransactions() async throws {
-        let database = try seedAndOpen()
+        let database = try open(Self.defaultSeed)
         let tags = try await database.fetchTags(includeHidden: true)
 
         #expect(tags.count >= 5)

@@ -9,15 +9,10 @@ import Testing
 /// that predates the CRDT preference messages carrying the setting.
 @MainActor
 struct BudgetStoreCurrencyRefreshTests {
-    /// Store rooted in a unique temp directory. The currency cache lives in
-    /// UserDefaults keyed by budget id, and suites run in parallel, so both
-    /// the files and the ids have to be unique per test.
-    private func makeStore() throws -> (BudgetStore, BudgetFileManager, String, URL) {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("currency-tests-\(UUID().uuidString)", isDirectory: true)
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
-        let store = BudgetStore.previewInstance()
-        store.setFileManagerForTesting(manager)
+    /// The currency cache lives in UserDefaults keyed by budget id, and suites
+    /// run in parallel, so the ids have to be unique per test.
+    private func makeStore() -> (BudgetStore, BudgetFileManager, String, URL) {
+        let (store, manager, root) = makeFileBackedStore()
         return (store, manager, "budget-\(UUID().uuidString)", root)
     }
 
@@ -31,7 +26,7 @@ struct BudgetStoreCurrencyRefreshTests {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
         try dbQueue.write { db in
-            try db.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema)
+            try db.execute(sql: TestSchema.upstream)
         }
         try JSONEncoder().encode(BudgetMetadata(
             id: id, budgetName: "Seed", cloudFileId: "cf-1", groupId: nil,
@@ -60,7 +55,7 @@ struct BudgetStoreCurrencyRefreshTests {
     // MARK: - Load
 
     @Test func loadAppliesStoredCurrency() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: "CAD", in: manager)
 
@@ -73,7 +68,7 @@ struct BudgetStoreCurrencyRefreshTests {
     /// No preference row at all: Actual only writes one once the user picks a
     /// currency, so the current value has to survive rather than be blanked.
     @Test func loadKeepsCurrentCurrencyWhenPreferenceIsAbsent() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: nil, in: manager)
 
@@ -86,7 +81,7 @@ struct BudgetStoreCurrencyRefreshTests {
     /// An empty value is Actual's explicit "None" setting, distinct from an
     /// absent row — amounts render as plain numbers.
     @Test func loadAppliesEmptyPreferenceAsNone() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: "", in: manager)
 
@@ -101,7 +96,7 @@ struct BudgetStoreCurrencyRefreshTests {
     /// currency changed on another client would stay hidden for the whole
     /// session whenever the correcting sync fails.
     @Test func storedCurrencyOutranksCachedCurrency() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: "USD", in: manager)
 
@@ -118,7 +113,7 @@ struct BudgetStoreCurrencyRefreshTests {
     /// messages have not been applied yet must still show this budget's
     /// currency, not the one belonging to the budget we came from.
     @Test func cachedCurrencyCoversASnapshotMissingThePreference() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: "GBP", in: manager)
 
@@ -138,7 +133,7 @@ struct BudgetStoreCurrencyRefreshTests {
     /// so the currency only appears once sync applies them. refreshDataOnly()
     /// runs after every sync and is what has to pick it up.
     @Test func refreshAppliesCurrencyArrivingBySync() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: nil, in: manager)
 
@@ -156,7 +151,7 @@ struct BudgetStoreCurrencyRefreshTests {
     /// A refresh must not blank the currency for a budget that has no
     /// preference row — every local write goes through this path.
     @Test func refreshKeepsCurrentCurrencyWhenPreferenceIsAbsent() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: nil, in: manager)
 
@@ -174,7 +169,7 @@ struct BudgetStoreCurrencyRefreshTests {
     /// go too — a stale one would otherwise outlive the files and reappear if
     /// the same budget were ever downloaded again.
     @Test func logoutForgetsCachedCurrencies() async throws {
-        let (store, manager, id, root) = try makeStore()
+        let (store, manager, id, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: "GBP", in: manager)
 

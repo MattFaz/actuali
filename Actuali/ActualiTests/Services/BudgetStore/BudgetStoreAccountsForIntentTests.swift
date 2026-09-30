@@ -10,43 +10,8 @@ import Testing
 /// direct database read when the cache is empty.
 @MainActor
 struct BudgetStoreAccountsForIntentTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    type TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    date INTEGER,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    parent_id TEXT
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
+    /// Skips `SyncClient.configure`: there is no messages_crdt table and the
+    /// intent path never syncs.
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
         let store = BudgetStore.previewInstance()
         let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
@@ -54,14 +19,10 @@ struct BudgetStoreAccountsForIntentTests {
         return store
     }
 
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     /// The bug: an empty in-memory cache (cold headless launch) must still
     /// resolve accounts by reading the attached database.
     @Test func resolvesAccountsFromDatabaseWhenCacheIsEmpty() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.accounts, TestSchema.transactions)
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -87,7 +48,7 @@ struct BudgetStoreAccountsForIntentTests {
     /// When the cache is already populated (warm process) it is used as-is and
     /// the database is not consulted.
     @Test func usesInMemoryCacheWhenPopulated() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.accounts, TestSchema.transactions)
         defer { cleanup(url) }
 
         // DB has one account; cache has a different one — cache must win.

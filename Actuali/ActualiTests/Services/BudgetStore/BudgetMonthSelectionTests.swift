@@ -5,21 +5,13 @@ import Testing
 
 @MainActor
 struct BudgetMonthSelectionTests {
-    private func makeStore() -> (BudgetStore, BudgetFileManager, URL) {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("budget-month-tests-\(UUID().uuidString)", isDirectory: true)
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
-        let store = BudgetStore.previewInstance()
-        store.setFileManagerForTesting(manager)
-        return (store, manager, root)
-    }
-
+    /// groupId stays nil so the load leaves sync unconfigured.
     private func seedBudget(_ id: String, in manager: BudgetFileManager) throws {
         try FileManager.default.createDirectory(
             at: manager.budgetDirectory(for: id), withIntermediateDirectories: true
         )
         let queue = try DatabaseQueue(path: manager.databasePath(for: id).path)
-        try queue.write { try $0.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema) }
+        try queue.write { try $0.execute(sql: TestSchema.upstream) }
         try JSONEncoder().encode(BudgetMetadata(
             id: id, budgetName: "Seed", cloudFileId: "cf-1", groupId: nil,
             resetClock: nil, lastUploaded: nil, encryptKeyId: nil
@@ -27,7 +19,7 @@ struct BudgetMonthSelectionTests {
     }
 
     @Test func loadRestoresPersistedMonthAndIgnoresAnotherBudgetsRequest() async throws {
-        let (_, manager, root) = makeStore()
+        let (_, manager, root) = makeFileBackedStore()
         let budgetId = "budget-\(UUID().uuidString)"
         let otherBudgetId = "budget-\(UUID().uuidString)"
         let key = "lastViewedBudgetMonth_\(budgetId)"
@@ -55,7 +47,7 @@ struct BudgetMonthSelectionTests {
     }
 
     @Test func loadPreservesMonthRequestedWhileLoading() async throws {
-        let (store, manager, root) = makeStore()
+        let (store, manager, root) = makeFileBackedStore()
         let budgetId = "budget-\(UUID().uuidString)"
         let key = "lastViewedBudgetMonth_\(budgetId)"
         defer {
