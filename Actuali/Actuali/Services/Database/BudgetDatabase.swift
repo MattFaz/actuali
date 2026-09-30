@@ -639,6 +639,14 @@ final class BudgetDatabase: Sendable {
         /// tabs stay in step.
         var expenseCents = 0
 
+        /// Spending in categories hidden from Spent, kept apart so Net stays
+        /// the month's real cash flow.
+        var excludedExpenseCents = 0
+
+        var spentCents: Int {
+            expenseCents - excludedExpenseCents
+        }
+
         /// What the month kept: income less what actually went out. A net
         /// refund makes `expenseCents` negative and so adds here, which is
         /// the cash that stayed.
@@ -647,7 +655,7 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    /// Income and expenses for one "yyyy-MM" month.
+    /// Income and spending for one "yyyy-MM" month.
     ///
     /// Same scope as the budget month's income/spent so the two tabs agree
     /// (GH #256): categorised transactions in on-budget accounts only, with
@@ -662,12 +670,24 @@ final class BudgetDatabase: Sendable {
     /// tombstones an account's transactions along with it, so a live
     /// transaction left on a tombstoned account is a sync-race orphan the
     /// all-accounts balance above the card doesn't count either.
-    func fetchAccountsMonthSummary(month: String) async throws -> AccountsMonthSummary {
+    func fetchAccountsMonthSummary(
+        month: String,
+        excludingCategoryIds: Set<String> = []
+    ) async throws -> AccountsMonthSummary {
         try await dbQueue.read { db in
+            let excluded = excludingCategoryIds.sorted()
+            let excludedPlaceholders = Array(repeating: "?", count: excluded.count)
+                .joined(separator: ", ")
+            let excludedExpenseExpression = excluded.isEmpty
+                ? "0"
+                : "CASE WHEN c.is_income = 1 OR c.id NOT IN (\(excludedPlaceholders)) THEN 0 ELSE -t.amount END"
+            var arguments: [any DatabaseValueConvertible] = excluded
+            arguments.append(Self.monthStringToInt(month))
             guard let row = try Row.fetchOne(db, sql: """
             SELECT
                 COALESCE(SUM(CASE WHEN c.is_income = 1 THEN t.amount ELSE 0 END), 0) AS income,
-                COALESCE(SUM(CASE WHEN c.is_income = 1 THEN 0 ELSE -t.amount END), 0) AS expense
+                COALESCE(SUM(CASE WHEN c.is_income = 1 THEN 0 ELSE -t.amount END), 0) AS expense,
+                COALESCE(SUM(\(excludedExpenseExpression)), 0) AS excluded_expense
             FROM transactions t
             LEFT JOIN category_mapping cm ON cm.id = t.category
             JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
@@ -684,12 +704,17 @@ final class BudgetDatabase: Sendable {
               AND a.offbudget = 0
               AND (a.tombstone = 0 OR a.tombstone IS NULL)
               AND (t.date / 100) = ?
-            """, arguments: [Self.monthStringToInt(month)]) else {
+            """, arguments: StatementArguments(arguments)) else {
                 return AccountsMonthSummary()
             }
             let income: Int = row["income"] ?? 0
             let expense: Int = row["expense"] ?? 0
-            return AccountsMonthSummary(incomeCents: income, expenseCents: expense)
+            let excludedExpense: Int = row["excluded_expense"] ?? 0
+            return AccountsMonthSummary(
+                incomeCents: income,
+                expenseCents: expense,
+                excludedExpenseCents: excludedExpense
+            )
         }
     }
 

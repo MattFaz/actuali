@@ -63124,6 +63124,28 @@
         }
       }
     },
+    "Include in Spent" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "In Ausgaben einbeziehen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Include in Spent" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Incluir en Gastado" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Inclure dans Dépensé" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Includi nelle spese" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Opgenomen in Uitgaven" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Incluir em Gasto" } }
+      }
+    },
+    "Excluded categories stay in the budget and transaction totals, but do not contribute to the Budget tab's Spent summary." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Ausgeschlossene Kategorien bleiben im Budget und in den Transaktionssummen, tragen aber nicht zur Ausgabensumme im Budget-Tab bei." } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Excluded categories stay in the budget and transaction totals, but do not contribute to the Budget tab's Spent summary." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Las categorías excluidas permanecen en el presupuesto y los totales de transacciones, pero no contribuyen al resumen Gastado de la pestaña Presupuesto." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Les catégories exclues restent dans le budget et les totaux des transactions, mais ne contribuent pas au résumé Dépensé de l’onglet Budget." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Le categorie escluse restano nel budget e nei totali delle transazioni, ma non contribuiscono al riepilogo Spese della scheda Budget." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Uitgesloten categorieën blijven in het budget en de transactietotalen, maar dragen niet bij aan de samenvatting Uitgaven op het tabblad Budget." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "As categorias excluídas permanecem no orçamento e nos totais de transações, mas não contribuem para o resumo Gasto da aba Orçamento." } }
+      }
+    },
     "Routes to %@" : {
       "extractionState" : "stale",
       "localizations" : {

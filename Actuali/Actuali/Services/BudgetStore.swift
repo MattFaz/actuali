@@ -266,6 +266,10 @@ final class BudgetStore: ObservableObject {
                 loanConfigs = [:]
                 depositConfigs = [:]
                 cardAccountMappings = [:]
+                excludedFromSpentCategoryIds = Self.loadExcludedFromSpentCategoryIds(
+                    for: currentBudgetId,
+                    defaults: .standard
+                )
             }
         }
     }
@@ -293,6 +297,18 @@ final class BudgetStore: ObservableObject {
     /// Statement dues (statement balance, payments since closing, remaining due) for active credit card accounts.
     @Published var creditCardStatementDues: [String: [CreditCardCycle.StatementDue]] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
+
+    /// Categories excluded from the Budget tab's summary Spent figure. This
+    /// is intentionally local to the device and budget: it is a presentation
+    /// preference, not a change to Actual's synced budget data.
+    @Published var excludedFromSpentCategoryIds: Set<String> = [] {
+        didSet {
+            guard let budgetId = currentBudgetId else { return }
+            let key = Self.excludedFromSpentDefaultsKey(for: budgetId)
+            UserDefaults.standard.set(Array(excludedFromSpentCategoryIds), forKey: key)
+        }
+    }
+
     /// Accounts wired up to a bank feed, refreshed alongside the rest of the
     /// budget so the accounts tab knows which rows can be synced.
     @Published private(set) var bankSyncAccounts: [BankSyncAccount] = []
@@ -757,6 +773,36 @@ final class BudgetStore: ObservableObject {
         return showHiddenCategories
             ? filtered + categories.filter(\.isEffectivelyHidden)
             : filtered
+    }
+
+    func totalSpent(for budget: BudgetMonth) -> Int {
+        budget.totalSpent(excluding: excludedFromSpentCategoryIds)
+    }
+
+    func isCategoryIncludedInSpent(_ categoryId: String) -> Bool {
+        !excludedFromSpentCategoryIds.contains(categoryId)
+    }
+
+    func setCategoryIncludedInSpent(_ included: Bool, categoryId: String) {
+        if included {
+            excludedFromSpentCategoryIds.remove(categoryId)
+        } else {
+            excludedFromSpentCategoryIds.insert(categoryId)
+        }
+    }
+
+    private static func excludedFromSpentDefaultsKey(for budgetId: String) -> String {
+        "excludedFromSpentCategoryIds.\(budgetId)"
+    }
+
+    private static func loadExcludedFromSpentCategoryIds(
+        for budgetId: String?,
+        defaults: UserDefaults
+    ) -> Set<String> {
+        guard let budgetId,
+              let values = defaults.array(forKey: excludedFromSpentDefaultsKey(for: budgetId)) as? [String]
+        else { return [] }
+        return Set(values)
     }
 
     /// Closed accounts the Accounts list should show — none when the hide
@@ -1661,6 +1707,10 @@ final class BudgetStore: ObservableObject {
         _currentBudgetId = Published(
             initialValue: defaults.string(forKey: "currentBudgetId")
         )
+        _excludedFromSpentCategoryIds = Published(initialValue: Self.loadExcludedFromSpentCategoryIds(
+            for: defaults.string(forKey: "currentBudgetId"),
+            defaults: defaults
+        ))
         _currencyCode = Published(
             initialValue: defaults.string(forKey: "currencyCode") ?? "USD"
         )
@@ -3343,7 +3393,10 @@ final class BudgetStore: ObservableObject {
     /// flashing zeroes.
     func fetchAccountsMonthSummary(month: String) async -> BudgetDatabase.AccountsMonthSummary? {
         do {
-            return try await database?.fetchAccountsMonthSummary(month: month)
+            return try await database?.fetchAccountsMonthSummary(
+                month: month,
+                excludingCategoryIds: excludedFromSpentCategoryIds
+            )
         } catch is CancellationError {
             // The caller's task was cancelled (tab switch, a superseded
             // refresh). Nothing failed — never alarm the user.

@@ -50,6 +50,16 @@ struct BudgetDatabaseAccountsSummaryTests {
         #expect(summary.incomeCents == 400_000)
         #expect(summary.expenseCents == 150_000)
         #expect(summary.netCents == 250_000)
+
+        let withoutRent = try await db.fetchAccountsMonthSummary(
+            month: "2026-08",
+            excludingCategoryIds: ["cat-rent"]
+        )
+        #expect(withoutRent.incomeCents == 400_000)
+        #expect(withoutRent.expenseCents == 150_000)
+        #expect(withoutRent.excludedExpenseCents == 150_000)
+        #expect(withoutRent.spentCents == 0)
+        #expect(withoutRent.netCents == 250_000)
     }
 
     @Test func aMonthOfRefundsGoesNegativeLikeTheBudgetTabsSpent() async throws {

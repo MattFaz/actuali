@@ -482,6 +482,9 @@ struct AccountsListView: View {
                     consumePendingAccountNavigation()
                 }
             }
+            .onChange(of: budgetStore.excludedFromSpentCategoryIds) { _, _ in
+                Task { await loadMonthSummary() }
+            }
             // Keyed to dataVersion so the summary's month totals follow every
             // edit and sync, like the account balances beneath them.
             .task(id: budgetStore.dataVersion) { await loadMonthSummary() }
@@ -648,8 +651,8 @@ struct AccountsSummaryCard: View {
                 SummaryStat(label: "Income", value: amount(summary?.incomeCents))
                 Spacer(minLength: 4)
                 SummaryStat(
-                    label: "Expenses",
-                    value: amount(summary?.expenseCents),
+                    label: "Spent",
+                    value: amount(summary?.spentCents),
                     alignment: .center
                 )
                 Spacer(minLength: 4)
