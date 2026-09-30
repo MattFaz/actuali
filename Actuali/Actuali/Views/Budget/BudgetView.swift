@@ -755,6 +755,9 @@ struct BudgetView: View {
                     budget: budget,
                     selection: $categoryFilter
                 )
+                // Since GH #546 the strip is the top surface whenever it's
+                // shown, so it carries the standardized top gutter (GH #542).
+                .padding(.top, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
                 .padding(.bottom, 8)
             }
 
@@ -788,9 +791,10 @@ struct BudgetView: View {
                     )
                 }
                 .accessibilityIdentifier("budgetUncategorized")
-                // Clean style makes the bar the top surface, so it carries the
-                // standardized top gutter (GH #542); the summary's own padding
-                // supplies the gap below it. Compact rows stay edge-to-edge.
+                // With the strip hidden, clean style makes the bar the top
+                // surface, so it carries the standardized top gutter (GH #542);
+                // the summary's own padding supplies the gap below it. Compact
+                // rows stay edge-to-edge.
                 .padding(.top, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
                 .padding(.horizontal, isCompact ? 0 : 4)
                 .padding(.bottom, isCompact ? 8 : 0)
