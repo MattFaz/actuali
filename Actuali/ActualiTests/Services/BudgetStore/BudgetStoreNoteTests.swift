@@ -237,6 +237,33 @@ struct BudgetStoreNoteTests {
         #expect(await store.fetchNote(id: EntityNote.accountNoteId("acct-chase")).text == "Buffer $500")
     }
 
+    // MARK: - Month notes
+
+    /// Month notes are keyed `budget-YYYY-MM`, the key Actual's budget summary
+    /// reads and writes (GH #567).
+    @Test func monthNoteIdMatchesActualsBudgetMonthKey() {
+        #expect(EntityNote.monthNoteId("2026-09") == "budget-2026-09")
+    }
+
+    /// A month's note saves at the prefixed key through the normal note path
+    /// and reads back, and one written by Actual reads for its month only.
+    @Test func monthNoteRoundTripsAtBudgetMonthKey() async throws {
+        let (database, path) = try makeDatabase(seedSQL: """
+        INSERT INTO notes (id, note) VALUES ('budget-2026-08', 'Car rego due');
+        """)
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        try await store.saveNote(id: EntityNote.monthNoteId("2026-09"), note: "Holiday month")
+
+        let rows = try noteRows(path)
+        #expect(rows.contains { $0["id"] == "budget-2026-09" && $0["note"] == "Holiday month" })
+        #expect(try noteMessages(path).first?["row"] == "budget-2026-09")
+        #expect(await store.fetchNote(id: EntityNote.monthNoteId("2026-09")).text == "Holiday month")
+        #expect(await store.fetchNote(id: EntityNote.monthNoteId("2026-08")).text == "Car rego due")
+        #expect(await store.fetchNote(id: EntityNote.monthNoteId("2026-10")).isEmpty)
+    }
+
     // MARK: - Unsupported files and misconfiguration
 
     /// A file with no `notes` table must fail loudly rather than queue a

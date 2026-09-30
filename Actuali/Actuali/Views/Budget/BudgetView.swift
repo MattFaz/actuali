@@ -118,6 +118,11 @@ struct BudgetView: View {
     @State private var categoryFilter: BudgetCategoryFilter = .all
     @State private var templateResult: GoalTemplateResultAlert?
     @State private var isRunningBudgetAction = false
+    @State private var monthNote: EntityNote = .unsupported
+    /// The month `monthNote` was read for; nil until a read lands for the
+    /// open budget file.
+    @State private var monthNoteMonth: String?
+    @State private var editingMonthNote = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
@@ -222,6 +227,9 @@ struct BudgetView: View {
                 selectedMonth = budgetStore.lastViewedBudgetMonth ?? selectedMonth
             }
             .onChange(of: budgetStore.currentBudgetId) { _, _ in
+                // The last file's note for the same month string isn't this
+                // file's note.
+                monthNoteMonth = nil
                 selectedMonth = budgetStore.lastViewedBudgetMonth ?? Self.currentMonthString()
             }
             .onChange(of: selectedMonth) { _, newMonth in
@@ -236,6 +244,20 @@ struct BudgetView: View {
                 if !isShown {
                     categoryFilter = .all
                 }
+            }
+            // Keyed on the data version too, so a note synced in from Actual
+            // shows without leaving the month.
+            .task(id: [selectedMonth, String(budgetStore.dataVersion)]) {
+                await reloadMonthNote()
+            }
+            .sheet(isPresented: $editingMonthNote, onDismiss: {
+                Task { await reloadMonthNote() }
+            }) {
+                NoteEditorView(
+                    noteId: EntityNote.monthNoteId(selectedMonth),
+                    title: MonthPicker.title(for: selectedMonth, locale: locale),
+                    note: displayedMonthNote.text
+                )
             }
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
@@ -522,7 +544,11 @@ struct BudgetView: View {
                 }
                 .accessibilityLabel("Previous month")
 
-                MonthPicker(selectedMonth: $selectedMonth)
+                MonthPicker(
+                    selectedMonth: $selectedMonth,
+                    note: displayedMonthNote,
+                    onEditNote: { editingMonthNote = true }
+                )
 
                 Button {
                     selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
@@ -560,6 +586,34 @@ struct BudgetView: View {
                     && budgetStore.goalTemplatesEnabled
                     ? { runCleanup() } : nil
             )
+        }
+    }
+
+    private var displayedMonthNote: EntityNote {
+        Self.monthNote(monthNote, loadedFor: monthNoteMonth, selectedMonth: selectedMonth)
+    }
+
+    /// The note to offer for `selectedMonth`. Until that month's own read
+    /// lands, the previous month's text is still in state; offering it would
+    /// seed the editor with it under the new month's id and a save would
+    /// overwrite the new month's note. `.unsupported` hides the item instead.
+    nonisolated static func monthNote(
+        _ note: EntityNote,
+        loadedFor loadedMonth: String?,
+        selectedMonth: String
+    ) -> EntityNote {
+        loadedMonth == selectedMonth ? note : .unsupported
+    }
+
+    private func reloadMonthNote() async {
+        let month = selectedMonth
+        let budgetId = budgetStore.currentBudgetId
+        let note = await budgetStore.fetchNote(id: EntityNote.monthNoteId(month))
+        // A slower read for a month already swiped away, or for a file since
+        // closed, mustn't overwrite the one now on screen.
+        if month == selectedMonth, budgetId == budgetStore.currentBudgetId {
+            monthNote = note
+            monthNoteMonth = month
         }
     }
 
@@ -2131,10 +2185,28 @@ struct EditBudgetAmountSheet: View {
 
 struct MonthPicker: View {
     @Binding var selectedMonth: String
+    /// The selected month's note (GH #567). It lives in this menu rather than
+    /// its own toolbar button because the stepper has no width to spare (see
+    /// `budgetToolbar`); the note text doubles as the "has a note" indicator.
+    let note: EntityNote
+    let onEditNote: () -> Void
     @Environment(\.locale) private var locale
 
     var body: some View {
         Menu {
+            if note.supported {
+                Section {
+                    Button(action: onEditNote) {
+                        if note.isEmpty {
+                            Label("Add Note", systemImage: "note.text.badge.plus")
+                        } else {
+                            Label("Edit Note", systemImage: "note.text")
+                            Text(note.text)
+                        }
+                    }
+                    .accessibilityIdentifier("budget.monthNote")
+                }
+            }
             Picker("Month", selection: $selectedMonth) {
                 ForEach(monthOptions, id: \.self) { month in
                     Text(Self.title(for: month, locale: locale)).tag(month)
