@@ -135,6 +135,9 @@ final class BudgetSummaryPinUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
             "-seedUncategorized",
+            // The status strip sits above the bar (GH #546); hide it so the
+            // bar is the top surface whose gutter this test measures.
+            "-showBudgetCheckInStrip", "NO",
         ]
         app.launch()
 
