@@ -144,14 +144,14 @@ private struct CompactOverviewAmount: View {
     let isResult: Bool
 
     var body: some View {
-        Text(budgetStore.displayBudgetCell(stat.amount))
+        Text(budgetStore.displayBalance(stat.amount))
             .font(.footnote.weight(.semibold))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.35)
             .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
             .foregroundStyle(resultColor)
-            .animatedAmount(budgetStore.displayBudgetCell(stat.amount))
+            .animatedAmount(budgetStore.displayBalance(stat.amount))
             .balancePill(
                 resultColor,
                 isMasked: budgetStore.hideBalances,
@@ -875,14 +875,14 @@ private struct CompactAmountText: View {
     var balanceColor: Color?
 
     var body: some View {
-        Text(budgetStore.displayBudgetCell(amount))
+        Text(budgetStore.displayBalance(amount))
             .font(.footnote.weight(isBalance ? .semibold : .regular))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.35)
             .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
             .foregroundStyle(foregroundColor)
-            .animatedAmount(budgetStore.displayBudgetCell(amount))
+            .animatedAmount(budgetStore.displayBalance(amount))
             .balancePill(
                 foregroundColor,
                 isMasked: budgetStore.hideBalances,

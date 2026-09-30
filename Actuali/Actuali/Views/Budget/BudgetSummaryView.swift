@@ -59,14 +59,14 @@ struct BudgetBufferCompactSummaryStat: View {
             Button {
                 showingSummary = true
             } label: {
-                Text(budgetStore.displayBudgetCell(stat.amount))
+                Text(budgetStore.displayBalance(stat.amount))
                     .font(.footnote.weight(.semibold))
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.35)
                     .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
                     .foregroundStyle(resultColor)
-                    .animatedAmount(budgetStore.displayBudgetCell(stat.amount))
+                    .animatedAmount(budgetStore.displayBalance(stat.amount))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(ReportStrings.format(
