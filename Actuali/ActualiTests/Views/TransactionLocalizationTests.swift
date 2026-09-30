@@ -56,6 +56,7 @@ struct TransactionLocalizationTests {
             (.uncleared, ["Uncleared", "Non pointée", "Não compensado"]),
             (.cleared, ["Cleared", "Pointée", "Compensado"]),
             (.reconciled, ["Reconciled", "Rapproché", "Conciliado"]),
+            (.unreconciled, ["Unreconciled", "Non rapproché", "Não conciliado"]),
         ]
 
         for (index, localeIdentifier) in ["en_US", "fr_FR", "pt_BR"].enumerated() {

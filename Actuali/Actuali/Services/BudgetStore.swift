@@ -473,9 +473,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Default for `showCompactSpentColumn` (GH #452), shared by the
+    /// property declaration and the init's persisted-restore path so the
+    /// two can't drift.
+    static let defaultShowCompactSpentColumn = true
+
     /// Whether the Compact Budget view style includes the Spent column.
-    /// The narrower two-amount layout is the default.
-    @Published var showCompactSpentColumn: Bool = false {
+    /// Defaults on (GH #452); the narrower two-amount layout is opt-out.
+    @Published var showCompactSpentColumn: Bool = BudgetStore.defaultShowCompactSpentColumn {
         didSet {
             UserDefaults.standard.set(
                 showCompactSpentColumn,
@@ -701,23 +706,6 @@ final class BudgetStore: ObservableObject {
     @Published var showHiddenCategories: Bool = false {
         didSet {
             UserDefaults.standard.set(showHiddenCategories, forKey: "showHiddenCategories")
-        }
-    }
-
-    /// Whether transaction lists show only uncleared transactions, so long
-    /// histories don't bury the items that still need attention (GH #133).
-    /// Persisted to UserDefaults, defaults to off.
-    @Published var hideClearedTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(hideClearedTransactions, forKey: "hideClearedTransactions")
-        }
-    }
-
-    /// Whether transaction lists hide transactions locked by reconciliation.
-    /// Persisted to UserDefaults, defaults to off (GH #355).
-    @Published var hideReconciledTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(hideReconciledTransactions, forKey: "hideReconciledTransactions")
         }
     }
 
@@ -1691,7 +1679,10 @@ final class BudgetStore: ObservableObject {
             initialValue: persistedBool("showCompactBudgetOverview", default: true)
         )
         _showCompactSpentColumn = Published(
-            initialValue: persistedBool("showCompactSpentColumn", default: false)
+            initialValue: persistedBool(
+                "showCompactSpentColumn",
+                default: BudgetStore.defaultShowCompactSpentColumn
+            )
         )
         _showBudgetedAmounts = Published(
             initialValue: persistedBool("showBudgetedAmounts", default: true)
@@ -1744,10 +1735,6 @@ final class BudgetStore: ObservableObject {
             .bool(forKey: "hideZeroBudgetCategories"))
         _showHiddenCategories = Published(initialValue: defaults
             .bool(forKey: "showHiddenCategories"))
-        _hideClearedTransactions = Published(initialValue: defaults
-            .bool(forKey: "hideClearedTransactions"))
-        _hideReconciledTransactions = Published(initialValue: defaults
-            .bool(forKey: "hideReconciledTransactions"))
         _hideClosedAccounts = Published(initialValue: defaults
             .bool(forKey: "hideClosedAccounts"))
 
@@ -2741,13 +2728,17 @@ final class BudgetStore: ObservableObject {
     /// Populate a local "demo" budget with curated data, for screenshots and for
     /// letting users (and App Review) explore the app without configuring a server.
     /// Logs out any active server session so sync cannot fire against a real server.
-    func loadDemoData(tracking: Bool = false, seedUncategorized: Bool = false) async {
+    func loadDemoData(tracking: Bool = false, seedUncategorized: Bool = false, seedUnsupportedBankSync: Bool = false) async {
         // Log out any active session so sync doesn't try to fire against a
         // real server — but keep local budget files: trying the demo must
         // never destroy a user's synced data.
         logout(clearLocalData: false)
         do {
-            try DemoDataSeeder.seed(tracking: tracking, seedUncategorized: seedUncategorized)
+            try DemoDataSeeder.seed(
+                tracking: tracking,
+                seedUncategorized: seedUncategorized,
+                seedUnsupportedBankSync: seedUnsupportedBankSync
+            )
             currentBudgetId = DemoDataSeeder.budgetId
             // Reseeding rebuilds the budget directory, but history persists in
             // UserDefaults keyed by budget id and survives it. Clear it so a
@@ -3373,15 +3364,12 @@ final class BudgetStore: ObservableObject {
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
-        statusFilter: TransactionStatusFilter = .all,
-        unclearedOnly: Bool = false,
-        hideReconciled: Bool = false
+        statusFilter: TransactionStatusFilter = .all
     ) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
-                statusFilter: statusFilter,
-                unclearedOnly: unclearedOnly, hideReconciled: hideReconciled
+                statusFilter: statusFilter
             ) ?? []
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a superseded .task(id:)
@@ -3696,6 +3684,33 @@ final class BudgetStore: ObservableObject {
         ) -> String {
             ReportStrings.localized(
                 "\(accountName): Skipped \(count) transactions because the bank returned conflicting details for the same transaction.",
+                locale: locale,
+                bundle: bundle
+            )
+        }
+
+        /// The message for linked accounts Actuali can't refresh — a run that
+        /// finds only those should explain why instead of claiming nothing is
+        /// linked. `nil` when a supported account is present (the run syncs it)
+        /// or nothing is linked, leaving the usual messages in charge.
+        static func unsupportedSourceMessage(
+            for accounts: [BankSyncAccount],
+            locale: Locale = .autoupdatingCurrent,
+            bundle: Bundle = .main
+        ) -> String? {
+            guard !accounts.isEmpty, accounts.allSatisfy({ $0.source == nil }) else { return nil }
+            // Upstream writes exactly 'goCardless' into account_sync_source
+            // (app.ts); pluggyai, akahu, enableBanking and future sources
+            // stay generic rather than guess a provider name.
+            if Set(accounts.map(\.syncSource)) == ["goCardless"] {
+                return ReportStrings.text(
+                    "Actuali can't refresh GoCardless accounts yet. Refresh them from the Actual web app.",
+                    locale: locale,
+                    bundle: bundle
+                )
+            }
+            return ReportStrings.text(
+                "Actuali can't refresh accounts from this bank provider yet. Refresh them from the Actual web app.",
                 locale: locale,
                 bundle: bundle
             )
@@ -4120,7 +4135,12 @@ final class BudgetStore: ObservableObject {
         }
         let simpleFinTargets = linked.filter { $0.source == .simpleFin }
         var walletTargets = linked.filter { $0.source == .financeKit }
-        guard !(simpleFinTargets.isEmpty && walletTargets.isEmpty) else { return BankSyncResult() }
+        guard !(simpleFinTargets.isEmpty && walletTargets.isEmpty) else {
+            if let message = BankSyncResult.unsupportedSourceMessage(for: linked) {
+                return BankSyncResult(problems: [message])
+            }
+            return BankSyncResult()
+        }
 
         // Nothing may suspend between the isBankSyncing guard above and this
         // write — an await in that window would let a second call slip past

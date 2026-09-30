@@ -16,10 +16,14 @@ enum DemoDataSeeder {
     /// than the default envelope (`zero_budgets`) one. `seedUncategorized` adds
     /// one on-budget uncategorized transaction — demo data is otherwise fully
     /// categorized on-budget, so the Budget screen's uncategorized bar never
-    /// renders (UI tests use this to see the bar).
+    /// renders (UI tests use this to see the bar). `seedUnsupportedBankSync`
+    /// links Chase Checking to GoCardless and Ally Savings to Pluggy — providers
+    /// Actuali can't refresh — so bank sync's explanation can be exercised
+    /// without a real bank link (GH #499).
     static func seed(
         tracking: Bool = false,
         seedUncategorized: Bool = false,
+        seedUnsupportedBankSync: Bool = false,
         now: Date = Date()
     ) throws {
         let fileManager = BudgetFileManager.shared
@@ -51,6 +55,16 @@ enum DemoDataSeeder {
         try dbQueue.write { db in
             try createSchema(db, tracking: tracking)
             try insertSeedData(db, tracking: tracking, seedUncategorized: seedUncategorized, now: now)
+            if seedUnsupportedBankSync {
+                try db.execute(sql: """
+                UPDATE accounts SET account_id = 'demo-' || id,
+                    account_sync_source = CASE name
+                        WHEN 'Chase Checking' THEN 'goCardless'
+                        WHEN 'Ally Savings' THEN 'pluggyai'
+                    END
+                WHERE name IN ('Chase Checking', 'Ally Savings')
+                """)
+            }
         }
 
         logger.info("Demo data seeded successfully at \(dbPath.path, privacy: .public)")
@@ -69,6 +83,7 @@ enum DemoDataSeeder {
             tombstone INTEGER DEFAULT 0,
             sort_order REAL,
             account_id TEXT,
+            account_sync_source TEXT,
             balance_current INTEGER,
             balance_available INTEGER,
             balance_limit INTEGER,
