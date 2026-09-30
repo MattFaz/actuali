@@ -98,10 +98,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # macos-15 defaults to Xcode 16, which lacks the iOS 26 SDK.
-      # ponytail: pinned to the newest Xcode 26 on the image; bump when the
-      # image adds one or a build needs a newer compiler.
-      - run: sudo xcode-select -s /Applications/Xcode_26.3.app
+      # macos-15 defaults to Xcode 16, which lacks the iOS 26 SDK. Take the
+      # newest Xcode 26 on the image rather than pinning one the image may
+      # later prune; the iOS 26 leg still builds on the current toolchain.
+      - run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
 
       - name: Select iOS 18 simulator
         id: sim
