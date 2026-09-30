@@ -73,7 +73,7 @@ struct BudgetDatabaseEnvelopeBufferTests {
     @Test("Buffer CRDT message creates a missing zero-budget row")
     func createsMissingRow() throws {
         let (database, path) = try makeDatabase()
-        try database.applyMessagesAndInsertMessages([
+        _ = try database.applyMessagesAndInsertMessages([
             message(amount: 500, millis: 1_700_000_000_000),
         ])
 
@@ -84,10 +84,10 @@ struct BudgetDatabaseEnvelopeBufferTests {
     @Test("Buffer CRDT message updates an existing zero-budget row")
     func updatesExistingRow() throws {
         let (database, path) = try makeDatabase()
-        try database.applyMessagesAndInsertMessages([
+        _ = try database.applyMessagesAndInsertMessages([
             message(amount: 500, millis: 1_700_000_000_000),
         ])
-        try database.applyMessagesAndInsertMessages([
+        _ = try database.applyMessagesAndInsertMessages([
             message(amount: 250, millis: 1_700_000_000_001),
         ])
 
@@ -98,10 +98,10 @@ struct BudgetDatabaseEnvelopeBufferTests {
     @Test("Reset buffer writes zero to the synced row")
     func resetsExistingRow() throws {
         let (database, path) = try makeDatabase()
-        try database.applyMessagesAndInsertMessages([
+        _ = try database.applyMessagesAndInsertMessages([
             message(amount: 500, millis: 1_700_000_000_000),
         ])
-        try database.applyMessagesAndInsertMessages([
+        _ = try database.applyMessagesAndInsertMessages([
             message(amount: 0, millis: 1_700_000_000_001),
         ])
 
@@ -115,10 +115,10 @@ struct BudgetDatabaseEnvelopeBufferTests {
         let later = message(amount: 250, millis: 1_700_000_000_001)
 
         let (orderedDatabase, orderedPath) = try makeDatabase()
-        try orderedDatabase.applyMessagesAndInsertMessages([earlier, later])
+        _ = try orderedDatabase.applyMessagesAndInsertMessages([earlier, later])
 
         let (reversedDatabase, reversedPath) = try makeDatabase()
-        try reversedDatabase.applyMessagesAndInsertMessages([later, earlier])
+        _ = try reversedDatabase.applyMessagesAndInsertMessages([later, earlier])
 
         #expect(try bufferedValue(path: orderedPath) == 250)
         #expect(try bufferedValue(path: reversedPath) == 250)

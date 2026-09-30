@@ -2745,7 +2745,7 @@ final class BudgetStore: ObservableObject {
             // reseeded demo opens pristine (this also keeps UI tests
             // deterministic: they share the simulator's defaults across
             // launches, and earlier tests record demo-budget history).
-            await HistoryStore.shared.clearPersistedActions(budgetID: DemoDataSeeder.budgetId)
+            HistoryStore.shared.clearPersistedActions(budgetID: DemoDataSeeder.budgetId)
             await loadLocalBudget(DemoDataSeeder.budgetId)
             // The seeder recreates the budget directory mid-launch, so any
             // loadLocalBudget already running from init() may have captured an

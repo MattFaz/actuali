@@ -63,7 +63,7 @@ struct SettingsView: View {
     }
 
     /// External links offered in the Information section of the More tab.
-    static var informationLinkItems: [SettingsLinkItem] {
+    nonisolated static var informationLinkItems: [SettingsLinkItem] {
         [
             SettingsLinkItem(
                 title: String(localized: "Privacy Policy"),
