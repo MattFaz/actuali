@@ -11386,6 +11386,98 @@
         }
       }
     },
+    "Actuali can't refresh GoCardless accounts yet. Refresh them from the Actual web app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali kann GoCardless-Konten noch nicht aktualisieren. Aktualisieren Sie sie in der Actual-Webapp."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali can't refresh GoCardless accounts yet. Refresh them from the Actual web app."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali aún no puede actualizar las cuentas de GoCardless. Actualícelas desde la aplicación web de Actual."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali ne peut pas encore actualiser les comptes GoCardless. Actualisez-les depuis l'application web Actual."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali non può ancora aggiornare i conti GoCardless. Aggiornali dalla webapp di Actual."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali kan GoCardless-accounts nog niet vernieuwen. Vernieuw ze in de Actual webapp."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Actuali ainda não consegue atualizar contas do GoCardless. Atualize-as pelo app web do Actual."
+          }
+        }
+      }
+    },
+    "Actuali can't refresh accounts from this bank provider yet. Refresh them from the Actual web app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali kann Konten dieses Bankanbieters noch nicht aktualisieren. Aktualisieren Sie sie in der Actual-Webapp."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali can't refresh accounts from this bank provider yet. Refresh them from the Actual web app."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali aún no puede actualizar las cuentas de este proveedor bancario. Actualícelas desde la aplicación web de Actual."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali ne peut pas encore actualiser les comptes de ce fournisseur bancaire. Actualisez-les depuis l'application web Actual."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali non può ancora aggiornare i conti di questo provider bancario. Aggiornali dalla webapp di Actual."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali kan accounts van deze bankprovider nog niet vernieuwen. Vernieuw ze in de Actual webapp."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Actuali ainda não consegue atualizar contas deste provedor bancário. Atualize-as pelo app web do Actual."
+          }
+        }
+      }
+    },
     "Add" : {
       "extractionState" : "stale",
       "localizations" : {

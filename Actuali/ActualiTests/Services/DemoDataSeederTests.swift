@@ -13,9 +13,15 @@ struct DemoDataSeederTests {
     private func seedAndOpen(
         tracking: Bool = false,
         seedUncategorized: Bool = false,
+        seedUnsupportedBankSync: Bool = false,
         now: Date = Date()
     ) throws -> BudgetDatabase {
-        try DemoDataSeeder.seed(tracking: tracking, seedUncategorized: seedUncategorized, now: now)
+        try DemoDataSeeder.seed(
+            tracking: tracking,
+            seedUncategorized: seedUncategorized,
+            seedUnsupportedBankSync: seedUnsupportedBankSync,
+            now: now
+        )
         let dbPath = BudgetFileManager.shared.databasePath(for: DemoDataSeeder.budgetId)
         return try BudgetDatabase(path: dbPath)
     }
@@ -49,6 +55,19 @@ struct DemoDataSeederTests {
 
         let seeded = try seedAndOpen(seedUncategorized: true)
         #expect(try await seeded.fetchUncategorizedCount() == 1)
+    }
+
+    /// `seedUnsupportedBankSync` links two accounts to providers Actuali can't
+    /// refresh (GH #499); the default demo stays unlinked.
+    @Test func seedUnsupportedBankSyncLinksGoCardlessAndPluggy() async throws {
+        #expect(try await seedAndOpen().fetchBankSyncAccounts().isEmpty)
+
+        let linked = try await seedAndOpen(seedUnsupportedBankSync: true).fetchBankSyncAccounts()
+        #expect(Dictionary(uniqueKeysWithValues: linked.map { ($0.name, $0.syncSource) }) == [
+            "Chase Checking": "goCardless",
+            "Ally Savings": "pluggyai",
+        ])
+        #expect(linked.allSatisfy { !$0.externalAccountId.isEmpty })
     }
 
     /// The default (envelope) demo keeps its "To Budget" unallocated-funds
