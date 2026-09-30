@@ -513,6 +513,18 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether Budget progress bars are inverted so they start full and
+    /// decrease as category spending is used up. Persisted to UserDefaults,
+    /// defaults to off to preserve the existing progress-bar behavior.
+    @Published var showInverseBudgetProgressBars: Bool = false {
+        didSet {
+            UserDefaults.standard.set(
+                showInverseBudgetProgressBars,
+                forKey: "showInverseBudgetProgressBars"
+            )
+        }
+    }
+
     /// Whether Budget rows show their compact category-status dot.
     /// Persisted to UserDefaults, defaults to on.
     @Published var showCategoryStatusDots: Bool = true {
@@ -1691,6 +1703,9 @@ final class BudgetStore: ObservableObject {
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(
             initialValue: persistedBool("showBudgetProgressBars", default: true)
+        )
+        _showInverseBudgetProgressBars = Published(
+            initialValue: persistedBool("showInverseBudgetProgressBars", default: false)
         )
         _showCategoryStatusDots = Published(
             initialValue: persistedBool("showCategoryStatusDots", default: true)
