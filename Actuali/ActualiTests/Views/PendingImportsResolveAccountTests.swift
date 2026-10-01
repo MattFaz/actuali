@@ -43,7 +43,7 @@ struct PendingImportsResolveAccountTests {
             budgetCurrency: "USD",
             locale: locale,
             bundle: appBundle
-        ) == "Devise source : EUR. Budget actif : USD. Vérifiez et confirmez avant d’enregistrer.")
+        ) == "Cette importation est en EUR, mais le budget actif utilise USD. Aucune conversion de devise ne sera effectuée.")
         #expect(PendingImportsView.unknownPayee(locale: locale, bundle: appBundle)
             == "Bénéficiaire inconnu")
         #expect(PendingImportsView.cardLabel("1234", locale: locale, bundle: appBundle)
@@ -294,5 +294,47 @@ struct PendingImportsResolveAccountTests {
             == .failure(count: 2))
         #expect(PendingImportsView.bulkApprovalOutcome(reviewItem: nil, failedCount: 0)
             == .none)
+    }
+
+    @Test func currencyLabelFallback() {
+        let locale = Locale(identifier: "en_US")
+        #expect(PendingImport.currencyLabel("USD", locale: locale, bundle: appBundle) == "USD")
+        #expect(PendingImport.currencyLabel("", locale: locale, bundle: appBundle) == "None")
+    }
+
+    @Test func emptyBudgetCurrencyShowsNone() {
+        let locale = Locale(identifier: "en_US")
+        let item = PendingImport(originBudgetId: "active-budget", sourceCurrencyCode: "INR")
+        let context = PendingImportsView.currencyContext(
+            for: item,
+            activeBudgetId: "active-budget",
+            budgetCurrency: "",
+            locale: locale,
+            bundle: appBundle
+        )
+        #expect(context == "This import is in INR, but the active budget has no currency set. No currency conversion will be performed.")
+
+        let req = PendingImportReviewRequirement.confirmActiveBudgetCurrency(source: "INR", budget: "")
+        #expect(req.prompt(locale: locale, bundle: appBundle).contains("(None)"))
+        #expect(req.prompt(locale: locale, bundle: appBundle).contains("INR"))
+    }
+
+    @Test func currencySettingsLinkOnlyForBudgetCurrencyMessages() {
+        func offers(origin: String?, source: String?, budget: String) -> Bool {
+            PendingImportsView.offersCurrencySettings(
+                for: PendingImport(originBudgetId: origin, sourceCurrencyCode: source),
+                activeBudgetId: "active",
+                budgetCurrency: budget
+            )
+        }
+        #expect(offers(origin: "active", source: "INR", budget: "USD"))
+        #expect(offers(origin: "active", source: "INR", budget: ""))
+        #expect(!offers(origin: "active", source: "usd", budget: "USD"))
+        // Undetected currency: settings only help when the budget has none.
+        #expect(offers(origin: "active", source: nil, budget: ""))
+        #expect(!offers(origin: "active", source: nil, budget: "USD"))
+        // Adoption and legacy messages aren't about the budget's currency.
+        #expect(!offers(origin: "other", source: "INR", budget: "USD"))
+        #expect(!offers(origin: nil, source: nil, budget: ""))
     }
 }

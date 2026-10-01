@@ -2445,6 +2445,13 @@ final class BudgetStore: ObservableObject {
     }
 
     func loadLocalBudget(_ budgetId: String) async {
+        if budgetId != DemoDataSeeder.budgetId {
+            do {
+                try DemoDataSeeder.removeSamplePendingImport()
+            } catch {
+                logger.error("Demo pending import cleanup failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
         isLoading = true
         isBudgetLoaded = false
         error = nil
@@ -2747,6 +2754,11 @@ final class BudgetStore: ObservableObject {
             // launches, and earlier tests record demo-budget history).
             HistoryStore.shared.clearPersistedActions(budgetID: DemoDataSeeder.budgetId)
             await loadLocalBudget(DemoDataSeeder.budgetId)
+            do {
+                try DemoDataSeeder.seedPendingImports()
+            } catch {
+                logger.error("Demo pending import seed failed: \(error.localizedDescription, privacy: .public)")
+            }
             // The seeder recreates the budget directory mid-launch, so any
             // loadLocalBudget already running from init() may have captured an
             // I/O error. A successful demo seed supersedes it.

@@ -301,12 +301,28 @@ struct PendingImportsView: View {
                     budgetCurrency: budgetStore.currencyCode,
                     locale: locale
                 ) {
-                    Text(context)
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .background(.orange.opacity(0.12))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(context)
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if Self.offersCurrencySettings(
+                            for: item,
+                            activeBudgetId: budgetStore.currentBudgetId,
+                            budgetCurrency: budgetStore.currencyCode
+                        ) {
+                            NavigationLink {
+                                DisplaySettingsView()
+                            } label: {
+                                Label(String(localized: "Currency Settings"), systemImage: "gearshape")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .accessibilityIdentifier("pendingImport.currencySettings")
+                        }
+                    }
+                    .padding()
+                    .background(.orange.opacity(0.12))
                 }
                 AddTransactionView(
                     accountId: accountId,
@@ -339,6 +355,24 @@ struct PendingImportsView: View {
         }
     }
 
+    /// Whether the banner should link to Currency Settings: only when its
+    /// message is about the budget's currency, which an adoption prompt or a
+    /// legacy import's message isn't.
+    nonisolated static func offersCurrencySettings(
+        for item: PendingImport,
+        activeBudgetId: String?,
+        budgetCurrency: String
+    ) -> Bool {
+        if let originBudgetId = item.originBudgetId, originBudgetId != activeBudgetId {
+            return false
+        }
+        let budget = PendingImport.normalizedCurrencyCode(budgetCurrency)
+        guard let source = item.sourceCurrencyCode else {
+            return item.originBudgetId != nil && budget.isEmpty
+        }
+        return PendingImport.normalizedCurrencyCode(source) != budget
+    }
+
     nonisolated static func currencyContext(
         for item: PendingImport,
         activeBudgetId: String?,
@@ -362,9 +396,11 @@ struct PendingImportsView: View {
                     bundle: bundle
                 )
             }
+            let budget = PendingImport.normalizedCurrencyCode(budgetCurrency)
+            let budgetLabel = PendingImport.currencyLabel(budget, locale: locale, bundle: bundle)
             return ReportStrings.format(
                 "Currency was not identified. Active budget: %@. Review and confirm before saving.",
-                PendingImport.normalizedCurrencyCode(budgetCurrency),
+                budgetLabel,
                 locale: locale,
                 bundle: bundle
             )
@@ -372,8 +408,16 @@ struct PendingImportsView: View {
         let source = PendingImport.normalizedCurrencyCode(sourceCurrencyCode)
         let budget = PendingImport.normalizedCurrencyCode(budgetCurrency)
         guard source != budget else { return nil }
+        if budget.isEmpty {
+            return ReportStrings.format(
+                "This import is in %@, but the active budget has no currency set. No currency conversion will be performed.",
+                source,
+                locale: locale,
+                bundle: bundle
+            )
+        }
         return ReportStrings.format(
-            "Source currency: %@. Active budget: %@. Review and confirm before saving.",
+            "This import is in %@, but the active budget uses %@. No currency conversion will be performed.",
             source,
             budget,
             locale: locale,

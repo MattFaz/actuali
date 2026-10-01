@@ -70,6 +70,35 @@ enum DemoDataSeeder {
         logger.info("Demo data seeded successfully at \(dbPath.path, privacy: .public)")
     }
 
+    /// Fixed so cleanup removes only the sample. Shortcut imports queued while
+    /// the demo is open also carry the demo's budget id, and those are real
+    /// bank messages the user can still adopt into another budget.
+    static let samplePendingImportId = UUID(uuidString: "6D3C1F0E-8B5A-4E2D-9C47-1A2B3C4D5E6F")!
+
+    /// Seeds a sample pending import whose INR currency differs from the demo
+    /// budget's USD, so the currency mismatch review flow can be explored.
+    @MainActor
+    static func seedPendingImports(store: PendingImportStore = .shared) throws {
+        guard !store.imports.contains(where: { $0.id == samplePendingImportId }) else { return }
+        try store.add(PendingImport(
+            id: samplePendingImportId,
+            originBudgetId: budgetId,
+            amount: 156.00,
+            sourceCurrencyCode: "INR",
+            payee: "SWIGGY INST",
+            cardHint: "Apple Card",
+            rawText: "Paid INR 156.00 with Apple Card at SWIGGY INST"
+        ))
+    }
+
+    /// Removes the sample seeded by `seedPendingImports`, leaving every other
+    /// import alone.
+    @MainActor
+    static func removeSamplePendingImport(store: PendingImportStore = .shared) throws {
+        guard store.imports.contains(where: { $0.id == samplePendingImportId }) else { return }
+        try store.remove(id: samplePendingImportId)
+    }
+
     // MARK: - Schema
 
     private static func createSchema(_ db: Database, tracking: Bool) throws {
