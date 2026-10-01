@@ -54,6 +54,10 @@ struct BudgetMonth: Identifiable, Hashable {
         categoryBudgets.reduce(0) { $0 + $1.spent }
     }
 
+    func totalSpent(excluding categoryIds: Set<String>) -> Int {
+        categoryBudgets.reduce(0) { categoryIds.contains($1.categoryId) ? $0 : $0 + $1.spent }
+    }
+
     var totalAvailable: Int {
         categoryBudgets.reduce(0) { $0 + $1.available }
     }
@@ -74,6 +78,11 @@ struct BudgetMonth: Identifiable, Hashable {
     /// (`total-income - -total-spent`); `totalSpent` is negative, so this adds.
     var savedActual: Int {
         totalIncome + totalSpent
+    }
+
+    /// Actual money kept after excluding the selected categories from spent.
+    func savedActual(excluding categoryIds: Set<String>) -> Int {
+        totalIncome + totalSpent(excluding: categoryIds)
     }
 
     /// What the budget projects will be kept: budgeted income minus budgeted

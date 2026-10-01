@@ -1388,8 +1388,11 @@ extension View {
 /// a month is finished, projected savings while it's still current or ahead.
 /// Mirrors the Actual webapp, which flips "Projected savings" to "Saved" when
 /// the month rolls over.
-@MainActor private func trackingSavings(_ budget: BudgetMonth) -> Int {
-    isPastMonth(budget.month) ? budget.savedActual : budget.projectedSavings
+@MainActor private func trackingSavings(
+    _ budget: BudgetMonth,
+    excluding excluded: Set<String>
+) -> Int {
+    isPastMonth(budget.month) ? budget.savedActual(excluding: excluded) : budget.projectedSavings
 }
 
 @MainActor private func trackingSavingsLabel(_ budget: BudgetMonth) -> String {
@@ -1425,7 +1428,7 @@ struct CleanBudgetSummary: View {
             HStack(alignment: .top) {
                 SummaryStat(
                     label: "Spent",
-                    value: budgetStore.displayBalance(-budget.totalSpent)
+                    value: budgetStore.displayBalance(-budget.totalSpent(excluding: budgetStore.excludedFromSpentCategoryIds))
                 )
                 Spacer()
                 // Envelope budgets lead with unallocated funds; tracking
@@ -1440,7 +1443,10 @@ struct CleanBudgetSummary: View {
                         alignment: .trailing
                     )
                 } else {
-                    let value = trackingSavings(budget)
+                    let value = trackingSavings(
+                        budget,
+                        excluding: budgetStore.excludedFromSpentCategoryIds
+                    )
                     SummaryStat(
                         label: trackingSavingsLabel(budget),
                         value: budgetStore.displayBalance(value),
@@ -1804,6 +1810,16 @@ struct CategoryBudgetDetailSheet: View {
                         Text("Suggestions use this category's existing Actual history and replace the amount shown above.")
                     }
                 )
+
+                Section {
+                    Toggle("Include in Spent", isOn: Binding(
+                        get: { budgetStore.isCategoryIncludedInSpent(category.categoryId) },
+                        set: { budgetStore.setCategoryIncludedInSpent($0, categoryId: category.categoryId) }
+                    ))
+                    .accessibilityIdentifier("categoryEditor.includeInSpent")
+                } footer: {
+                    Text("Excluded categories stay in the budget and transaction totals, but are left out of Spent, Saved, and Net on the Budget and Accounts tabs.")
+                }
 
                 if let errorMessage {
                     Section {

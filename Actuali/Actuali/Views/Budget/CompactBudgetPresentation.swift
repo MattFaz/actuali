@@ -214,7 +214,13 @@ struct CompactBudgetOverview: Equatable {
     let leading: Stat
     let columns: [Stat]
 
-    init(budget: BudgetMonth, showsSpent: Bool, showsBudgeted: Bool = true, currentMonth: String) {
+    init(
+        budget: BudgetMonth,
+        showsSpent: Bool,
+        showsBudgeted: Bool = true,
+        excludedFromSpentCategoryIds: Set<String> = [],
+        currentMonth: String
+    ) {
         if let toBudget = budget.toBudget {
             leading = Stat(kind: .toBudget, amount: toBudget)
         } else {
@@ -226,12 +232,18 @@ struct CompactBudgetOverview: Equatable {
             columns.append(Stat(kind: .budgeted, amount: budget.totalBudgeted))
         }
         if showsSpent {
-            columns.append(Stat(kind: .spent, amount: budget.totalSpent))
+            columns.append(Stat(
+                kind: .spent,
+                amount: budget.totalSpent(excluding: excludedFromSpentCategoryIds)
+            ))
         }
         if budget.isTrackingBudget {
             columns.append(
                 budget.month < currentMonth
-                    ? Stat(kind: .saved, amount: budget.savedActual)
+                    ? Stat(
+                        kind: .saved,
+                        amount: budget.savedActual(excluding: excludedFromSpentCategoryIds)
+                    )
                     : Stat(kind: .projected, amount: budget.projectedSavings)
             )
         } else {

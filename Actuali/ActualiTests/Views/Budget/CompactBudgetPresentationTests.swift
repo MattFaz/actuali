@@ -240,6 +240,33 @@ struct CompactBudgetPresentationTests {
         #expect(overview.columns.last == .init(kind: .saved, amount: 50000))
     }
 
+    @Test func excludedCategoriesDropOutOfSpentAndSaved() {
+        let budget = BudgetMonth(
+            month: "2026-07",
+            categoryBudgets: [
+                category(id: "groceries", budgeted: 80000, spent: -60000, available: 20000),
+                category(id: "investments", budgeted: 30000, spent: -30000, available: 0),
+            ],
+            incomeCategories: [
+                income(budgeted: 125_000, received: 110_000),
+            ],
+            toBudget: nil
+        )
+
+        let overview = CompactBudgetOverview(
+            budget: budget,
+            showsSpent: true,
+            excludedFromSpentCategoryIds: ["investments"],
+            currentMonth: "2026-08"
+        )
+
+        #expect(overview.columns == [
+            .init(kind: .budgeted, amount: 110_000),
+            .init(kind: .spent, amount: -60000),
+            .init(kind: .saved, amount: 50000),
+        ])
+    }
+
     @Test func balanceToneDistinguishesEverySemanticStateAndPrivacyMasking() {
         #expect(CompactBalanceTone(amount: -1, isMasked: false) == .negative)
         #expect(CompactBalanceTone(amount: 0, isMasked: false) == .zero)
@@ -332,10 +359,10 @@ struct CompactBudgetPresentationTests {
         #expect(balanceColor(underfunded, goalsEnabled: false, zero: .secondary) == .green)
     }
 
-    private func category(budgeted: Int, spent: Int, available: Int) -> CategoryBudget {
+    private func category(id: String = "category", budgeted: Int, spent: Int, available: Int) -> CategoryBudget {
         CategoryBudget(
             month: "2026-08",
-            categoryId: "category",
+            categoryId: id,
             categoryName: "Groceries",
             groupId: "group",
             groupName: "Essentials",

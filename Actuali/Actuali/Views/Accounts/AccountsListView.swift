@@ -21,6 +21,13 @@ struct AccountsMonthTotals: Equatable {
     let totals: BudgetDatabase.AccountsMonthSummary
 }
 
+/// What the month summary is fetched from, so one `.task(id:)` reloads it
+/// when either changes.
+private struct MonthSummaryInputs: Equatable {
+    let dataVersion: Int
+    let excludedFromSpent: Set<String>
+}
+
 struct AccountsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @StateObject private var notificationRouter = NotificationRouter.shared
@@ -483,8 +490,12 @@ struct AccountsListView: View {
                 }
             }
             // Keyed to dataVersion so the summary's month totals follow every
-            // edit and sync, like the account balances beneath them.
-            .task(id: budgetStore.dataVersion) { await loadMonthSummary() }
+            // edit and sync, like the account balances beneath them, and to
+            // the Spent exclusions, which change the totals without an edit.
+            .task(id: MonthSummaryInputs(
+                dataVersion: budgetStore.dataVersion,
+                excludedFromSpent: budgetStore.excludedFromSpentCategoryIds
+            )) { await loadMonthSummary() }
             // Nothing above re-runs when only the date changes, so a phone
             // left on this tab overnight would keep showing last month's
             // totals. Foregrounding is when that becomes visible, and the
@@ -648,7 +659,7 @@ struct AccountsSummaryCard: View {
                 SummaryStat(label: "Income", value: amount(summary?.incomeCents))
                 Spacer(minLength: 4)
                 SummaryStat(
-                    label: "Expenses",
+                    label: "Spent",
                     value: amount(summary?.expenseCents),
                     alignment: .center
                 )

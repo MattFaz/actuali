@@ -647,7 +647,7 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    /// Income and expenses for one "yyyy-MM" month.
+    /// Income and spending for one "yyyy-MM" month.
     ///
     /// Same scope as the budget month's income/spent so the two tabs agree
     /// (GH #256): categorised transactions in on-budget accounts only, with
@@ -662,12 +662,22 @@ final class BudgetDatabase: Sendable {
     /// tombstones an account's transactions along with it, so a live
     /// transaction left on a tombstoned account is a sync-race orphan the
     /// all-accounts balance above the card doesn't count either.
-    func fetchAccountsMonthSummary(month: String) async throws -> AccountsMonthSummary {
+    func fetchAccountsMonthSummary(
+        month: String,
+        excludingCategoryIds: Set<String> = []
+    ) async throws -> AccountsMonthSummary {
         try await dbQueue.read { db in
+            // Categories the user left out of Spent drop out of expense only,
+            // so Net stays Income less the Spent shown beside it, as the
+            // Budget tab's Saved does.
+            let excluded = excludingCategoryIds.sorted()
+            let excludedClause = excluded.isEmpty
+                ? ""
+                : " OR c.id IN (\(Array(repeating: "?", count: excluded.count).joined(separator: ", ")))"
             guard let row = try Row.fetchOne(db, sql: """
             SELECT
                 COALESCE(SUM(CASE WHEN c.is_income = 1 THEN t.amount ELSE 0 END), 0) AS income,
-                COALESCE(SUM(CASE WHEN c.is_income = 1 THEN 0 ELSE -t.amount END), 0) AS expense
+                COALESCE(SUM(CASE WHEN c.is_income = 1\(excludedClause) THEN 0 ELSE -t.amount END), 0) AS expense
             FROM transactions t
             LEFT JOIN category_mapping cm ON cm.id = t.category
             JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
@@ -684,7 +694,7 @@ final class BudgetDatabase: Sendable {
               AND a.offbudget = 0
               AND (a.tombstone = 0 OR a.tombstone IS NULL)
               AND (t.date / 100) = ?
-            """, arguments: [Self.monthStringToInt(month)]) else {
+            """, arguments: StatementArguments(excluded) + [Self.monthStringToInt(month)]) else {
                 return AccountsMonthSummary()
             }
             let income: Int = row["income"] ?? 0
