@@ -459,7 +459,7 @@ struct TransactionRow: View {
                     isInOffBudgetAccount: isInOffBudgetAccount,
                     locale: locale
                 ))
-                    .font(.body)
+                .font(.body)
                 HStack(spacing: 4) {
                     if transaction.isParent {
                         Image(systemName: "arrow.triangle.branch")
