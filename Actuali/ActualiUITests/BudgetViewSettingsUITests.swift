@@ -12,6 +12,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         hideZeroBudgetCategories: Bool = false,
         showCategoryStatusDots: Bool = true,
         showBudgetProgressBars: Bool = true,
+        showInverseBudgetProgressBars: Bool = false,
         showBudgetedAmounts: Bool = true
     ) -> XCUIApplication {
         let app = XCUIApplication()
@@ -24,6 +25,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
             "-hideZeroBudgetCategories", hideZeroBudgetCategories ? "YES" : "NO",
             "-showCategoryStatusDots", showCategoryStatusDots ? "YES" : "NO",
             "-showBudgetProgressBars", showBudgetProgressBars ? "YES" : "NO",
+            "-showInverseBudgetProgressBars", showInverseBudgetProgressBars ? "YES" : "NO",
             "-showBudgetedAmounts", showBudgetedAmounts ? "YES" : "NO",
         ]
         app.launch()

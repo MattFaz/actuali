@@ -24023,49 +24023,49 @@
         }
       }
     },
-    "Inverse Progress Bar" : {
+    "Inverse Progress Bars" : {
       "comment" : "Settings toggle for inverse budget progress bars",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Umgekehrter Fortschrittsbalken"
+            "value" : "Umgekehrte Fortschrittsbalken"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Inverse Progress Bar"
+            "value" : "Inverse Progress Bars"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Barra de progreso inversa"
+            "value" : "Barras de progreso inversas"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Barre de progression inversée"
+            "value" : "Barres de progression inversées"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Barra di avanzamento inversa"
+            "value" : "Barre di avanzamento inverse"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Omgekeerde voortgangsbalk"
+            "value" : "Omgekeerde voortgangsbalken"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Barra de progresso inversa"
+            "value" : "Barras de progresso inversas"
           }
         }
       }

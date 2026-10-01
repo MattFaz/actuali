@@ -2033,7 +2033,8 @@ extension CategoryProgressState {
 }
 
 /// Spent-vs-available bar for a budget row. Fill and color mirror the row's
-/// Available amount: green while money remains, red once overspent.
+/// Available amount: green while money remains, red once overspent. Inverse
+/// mode draws the remaining share instead, so it starts full and drains.
 struct CategoryProgressBar: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
@@ -2047,11 +2048,11 @@ struct CategoryProgressBar: View {
         budgetStore.categoryStatusDotColor(for: category.progressState)
     }
 
+    /// Inverse mode empties the fill as money runs out, so the status color
+    /// has to live in the track or an overspent row reads as a spent one.
     private var trackTint: Color {
-        if budgetStore.showInverseBudgetProgressBars || category.progressState == .funded {
-            return statusColor.opacity(0.25)
-        }
-        return Color(.systemFill)
+        budgetStore.showInverseBudgetProgressBars || category.progressState == .funded
+            ? statusColor.opacity(0.25) : Color(.systemFill)
     }
 
     var body: some View {
@@ -2065,6 +2066,9 @@ struct CategoryProgressBar: View {
             }
         }
         .frame(height: 5)
+        // Budgeting a category moves its bar as the money lands (shrinks it,
+        // or fills it in inverse mode), so the edit is visible in the row
+        // itself and not only in the pill.
         .animation(AppAnimation.amount, value: fraction)
         .accessibilityElement()
         .accessibilityLabel(ReportStrings.format(
