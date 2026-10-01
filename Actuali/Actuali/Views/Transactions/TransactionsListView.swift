@@ -353,31 +353,61 @@ struct TransactionRow: View {
         transaction.transferId != nil || transaction.transferAcct != nil
     }
 
-    /// Caption under the payee. Off-budget accounts aren't categorized at all
-    /// ("Off budget", GH #123); split parents show their children's breakdown
-    /// ("Food $6.00, Refund +$4.00" — outflows unsigned, inflows keep a "+"
-    /// so a credit line inside a spend split stays distinguishable, GH #216);
-    /// transfers that can't take a category show "Transfer" instead of
-    /// nagging "Uncategorized" (GH #104).
-    private var categoryLabel: String {
+    nonisolated static func splitSummaryLabel(
+        isParent: Bool,
+        locale: Locale
+    ) -> String? {
+        guard isParent else { return nil }
+        return String(localized: TransactionsListLocalization.split, locale: locale)
+    }
+
+    nonisolated static func payeeLabel(
+        payeeName: String?,
+        isInOffBudgetAccount: Bool,
+        locale: Locale
+    ) -> String {
+        payeeName ?? (isInOffBudgetAccount
+            ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
+            : String(localized: TransactionsListLocalization.unknown, locale: locale))
+    }
+
+    nonisolated static func secondaryLabel(
+        categoryName: String?,
+        isParent: Bool,
+        isInOffBudgetAccount: Bool,
+        isTransfer: Bool,
+        needsCategory: Bool,
+        locale: Locale
+    ) -> String {
         if isInOffBudgetAccount {
             return String(localized: TransactionsListLocalization.offBudget, locale: locale)
         }
-        if let portions = transaction.splitPortions, !portions.isEmpty {
-            return portions.map { portion in
-                let name = portion.categoryName
-                    ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
-                return "\(name) \(budgetStore.displaySpentCaption(portion.amount))"
-            }.joined(separator: ", ")
+        if let summary = Self.splitSummaryLabel(isParent: isParent, locale: locale) {
+            return summary
         }
-        if transaction.categoryName == nil, isTransfer,
-           !transaction.needsCategory(offBudgetAccountIds: budgetStore.offBudgetAccountIds) {
+        if categoryName == nil, isTransfer, !needsCategory {
             return String(localized: TransactionsListLocalization.transfer, locale: locale)
         }
-        return transaction.categoryName
-            ?? (transaction.isParent
-                ? String(localized: TransactionsListLocalization.split, locale: locale)
-                : String(localized: TransactionsListLocalization.uncategorized, locale: locale))
+        return categoryName
+            ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
+    }
+
+    /// Caption under the payee. Off-budget accounts aren't categorized at all
+    /// ("Off budget", GH #123); split parents show only "Split" here so
+    /// the payee line stays reserved for the transaction's actual payee.
+    /// Transfers that can't take a category show "Transfer" instead of
+    /// nagging "Uncategorized" (GH #104).
+    private var categoryLabel: String {
+        Self.secondaryLabel(
+            categoryName: transaction.categoryName,
+            isParent: transaction.isParent,
+            isInOffBudgetAccount: isInOffBudgetAccount,
+            isTransfer: isTransfer,
+            needsCategory: transaction.needsCategory(
+                offBudgetAccountIds: budgetStore.offBudgetAccountIds
+            ),
+            locale: locale
+        )
     }
 
     var body: some View {
@@ -427,16 +457,13 @@ struct TransactionRow: View {
                     .frame(width: 28, height: 28)
             }
             VStack(alignment: .leading, spacing: 2) {
-                // Split parents may resolve no payee (mixed child payees) —
-                // label them "Split" like the desktop app, not "Unknown".
-                // Off-budget rows say "No payee": they're commonly payee-less
-                // (balance adjustments) and "Unknown" read as a bug (GH #123).
-                Text(transaction.payeeName
-                    ?? (transaction.isParent
-                        ? String(localized: TransactionsListLocalization.split, locale: locale)
-                        : (isInOffBudgetAccount
-                            ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
-                            : String(localized: TransactionsListLocalization.unknown, locale: locale))))
+                // Split status belongs on the category line; the top line is
+                // always reserved for the transaction's payee.
+                Text(Self.payeeLabel(
+                    payeeName: transaction.payeeName,
+                    isInOffBudgetAccount: isInOffBudgetAccount,
+                    locale: locale
+                ))
                     .font(.body)
                 HStack(spacing: 4) {
                     if transaction.isParent {

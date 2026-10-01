@@ -821,7 +821,7 @@ final class BudgetDatabase: Sendable {
             -- Split parents may carry no payee of their own (payees can
             -- live on the children, GH #47). When the live children agree
             -- on one payee, display it; mixed payees resolve NULL and the
-            -- UI labels the row "Split".
+            -- transaction row shows the split summary on the category line.
             LEFT JOIN (
                 SELECT ct.parent_id AS parent_id,
                        CASE WHEN COUNT(DISTINCT ct.description) = 1
@@ -935,8 +935,8 @@ final class BudgetDatabase: Sendable {
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
 
             // Split parents have no category of their own; carry the live
-            // children's category + amount as portions so the list row can
-            // show the breakdown ("Food $6.00, Fun $4.00") without opening it.
+            // children's category + amount as portions for callers that need
+            // the child category and amount breakdown.
             let parentIds: [String] = rows.compactMap { row in
                 (row["isParent"] == 1) ? row["id"] : nil
             }

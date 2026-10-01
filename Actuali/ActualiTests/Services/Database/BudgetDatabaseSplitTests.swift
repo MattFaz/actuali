@@ -127,8 +127,8 @@ struct BudgetDatabaseSplitTests {
             """)
         }
 
-        // Mixed payees can't be summarized in one name; the UI labels the
-        // row "Split" when a parent resolves no payee.
+        // Mixed payees can't be summarized in one name; the row's secondary
+        // label is "Split" when a parent resolves no payee.
         let txns = try await db.fetchTransactions()
         #expect(txns.map(\.id) == ["parent"])
         #expect(txns.first?.payeeName == nil)
@@ -170,7 +170,8 @@ struct BudgetDatabaseSplitTests {
             """)
         }
 
-        // One portion per live child, in entry order, for the list caption.
+        // One portion per live child, in entry order, for callers that need
+        // the child category and amount breakdown.
         let txns = try await db.fetchTransactions()
         #expect(txns.map(\.id) == ["parent"])
         #expect(txns.first?.splitPortions == [
@@ -272,7 +273,7 @@ struct BudgetDatabaseSplitTests {
 
         #expect(snapshot.transactions.map(\.id).sorted() == ["parent", "plain"])
         #expect(snapshot.splitChildren.map(\.id) == ["c-first", "c-second"])
-        // Same portions the list reads, so History can caption the split.
+        // The same child category and amount breakdown used by History.
         #expect(snapshot.transactions.first { $0.id == "parent" }?.splitPortions == [
             .init(categoryName: "Food", amount: -6000),
             .init(categoryName: "Fun", amount: -4000),
