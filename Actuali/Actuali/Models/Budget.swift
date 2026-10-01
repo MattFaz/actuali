@@ -55,9 +55,7 @@ struct BudgetMonth: Identifiable, Hashable {
     }
 
     func totalSpent(excluding categoryIds: Set<String>) -> Int {
-        categoryBudgets.reduce(0) { total, category in
-            total + (categoryIds.contains(category.categoryId) ? 0 : category.spent)
-        }
+        categoryBudgets.reduce(0) { categoryIds.contains($1.categoryId) ? $0 : $0 + $1.spent }
     }
 
     var totalAvailable: Int {

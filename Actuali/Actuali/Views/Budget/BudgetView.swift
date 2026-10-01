@@ -1428,7 +1428,7 @@ struct CleanBudgetSummary: View {
             HStack(alignment: .top) {
                 SummaryStat(
                     label: "Spent",
-                    value: budgetStore.displayBalance(-budgetStore.totalSpent(for: budget))
+                    value: budgetStore.displayBalance(-budget.totalSpent(excluding: budgetStore.excludedFromSpentCategoryIds))
                 )
                 Spacer()
                 // Envelope budgets lead with unallocated funds; tracking
@@ -1818,7 +1818,7 @@ struct CategoryBudgetDetailSheet: View {
                     ))
                     .accessibilityIdentifier("categoryEditor.includeInSpent")
                 } footer: {
-                    Text("Excluded categories stay in the budget and transaction totals, but do not contribute to the Budget tab's Spent summary.")
+                    Text("Excluded categories stay in the budget and transaction totals, but are left out of Spent, Saved, and Net on the Budget and Accounts tabs.")
                 }
 
                 if let errorMessage {

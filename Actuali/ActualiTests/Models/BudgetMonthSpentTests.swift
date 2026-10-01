@@ -16,6 +16,30 @@ struct BudgetMonthSpentTests {
         #expect(budget.totalSpent(excluding: ["missing"]) == -8000)
     }
 
+    @Test func excludedCategoriesCountAsSaved() {
+        let budget = BudgetMonth(
+            month: "2026-09",
+            categoryBudgets: [
+                makeCategory(id: "investments", spent: -5000),
+                makeCategory(id: "groceries", spent: -3000),
+            ],
+            incomeCategories: [
+                IncomeCategory(
+                    month: "2026-09",
+                    categoryId: "salary",
+                    categoryName: "Salary",
+                    groupName: "Income",
+                    sortOrder: 1,
+                    budgeted: 0,
+                    received: 10000
+                ),
+            ]
+        )
+
+        #expect(budget.savedActual == 2000)
+        #expect(budget.savedActual(excluding: ["investments"]) == 7000)
+    }
+
     private func makeCategory(id: String, spent: Int) -> CategoryBudget {
         CategoryBudget(
             month: "2026-09",

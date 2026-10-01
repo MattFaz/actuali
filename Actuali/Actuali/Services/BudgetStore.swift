@@ -266,10 +266,7 @@ final class BudgetStore: ObservableObject {
                 loanConfigs = [:]
                 depositConfigs = [:]
                 cardAccountMappings = [:]
-                excludedFromSpentCategoryIds = Self.loadExcludedFromSpentCategoryIds(
-                    for: currentBudgetId,
-                    defaults: .standard
-                )
+                excludedFromSpentCategoryIds = Self.loadExcludedFromSpentCategoryIds(for: currentBudgetId)
             }
         }
     }
@@ -298,7 +295,8 @@ final class BudgetStore: ObservableObject {
     @Published var creditCardStatementDues: [String: [CreditCardCycle.StatementDue]] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
 
-    /// Categories excluded from the Budget tab's summary Spent figure. This
+    /// Categories left out of the Spent (and so Saved/Net) summaries on the
+    /// Budget and Accounts tabs. This
     /// is intentionally local to the device and budget: it is a presentation
     /// preference, not a change to Actual's synced budget data.
     @Published var excludedFromSpentCategoryIds: Set<String> = [] {
@@ -775,10 +773,6 @@ final class BudgetStore: ObservableObject {
             : filtered
     }
 
-    func totalSpent(for budget: BudgetMonth) -> Int {
-        budget.totalSpent(excluding: excludedFromSpentCategoryIds)
-    }
-
     func isCategoryIncludedInSpent(_ categoryId: String) -> Bool {
         !excludedFromSpentCategoryIds.contains(categoryId)
     }
@@ -795,12 +789,9 @@ final class BudgetStore: ObservableObject {
         "excludedFromSpentCategoryIds.\(budgetId)"
     }
 
-    private static func loadExcludedFromSpentCategoryIds(
-        for budgetId: String?,
-        defaults: UserDefaults
-    ) -> Set<String> {
+    private static func loadExcludedFromSpentCategoryIds(for budgetId: String?) -> Set<String> {
         guard let budgetId,
-              let values = defaults.array(forKey: excludedFromSpentDefaultsKey(for: budgetId)) as? [String]
+              let values = UserDefaults.standard.array(forKey: excludedFromSpentDefaultsKey(for: budgetId)) as? [String]
         else { return [] }
         return Set(values)
     }
@@ -1707,10 +1698,9 @@ final class BudgetStore: ObservableObject {
         _currentBudgetId = Published(
             initialValue: defaults.string(forKey: "currentBudgetId")
         )
-        _excludedFromSpentCategoryIds = Published(initialValue: Self.loadExcludedFromSpentCategoryIds(
-            for: defaults.string(forKey: "currentBudgetId"),
-            defaults: defaults
-        ))
+        _excludedFromSpentCategoryIds = Published(
+            initialValue: Self.loadExcludedFromSpentCategoryIds(for: defaults.string(forKey: "currentBudgetId"))
+        )
         _currencyCode = Published(
             initialValue: defaults.string(forKey: "currencyCode") ?? "USD"
         )
@@ -2796,6 +2786,9 @@ final class BudgetStore: ObservableObject {
             // deterministic: they share the simulator's defaults across
             // launches, and earlier tests record demo-budget history).
             HistoryStore.shared.clearPersistedActions(budgetID: DemoDataSeeder.budgetId)
+            UserDefaults.standard.removeObject(
+                forKey: Self.excludedFromSpentDefaultsKey(for: DemoDataSeeder.budgetId)
+            )
             await loadLocalBudget(DemoDataSeeder.budgetId)
             // The seeder recreates the budget directory mid-launch, so any
             // loadLocalBudget already running from init() may have captured an

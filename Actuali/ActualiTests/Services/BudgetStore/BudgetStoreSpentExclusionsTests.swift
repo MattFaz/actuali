@@ -18,12 +18,13 @@ struct BudgetStoreSpentExclusionsTests {
         let keyA = "excludedFromSpentCategoryIds.budget-a"
         let keyB = "excludedFromSpentCategoryIds.budget-b"
         let previousBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
+        let store = BudgetStore.previewInstance()
         defer {
+            store.currentBudgetId = previousBudgetId
             UserDefaults.standard.removeObject(forKey: keyA)
             UserDefaults.standard.removeObject(forKey: keyB)
         }
 
-        let store = BudgetStore.previewInstance()
         store.currentBudgetId = "budget-a"
         store.setCategoryIncludedInSpent(false, categoryId: "investments")
         #expect(UserDefaults.standard.array(forKey: keyA) as? [String] == ["investments"])
@@ -32,6 +33,5 @@ struct BudgetStoreSpentExclusionsTests {
         #expect(store.isCategoryIncludedInSpent("investments"))
         store.currentBudgetId = "budget-a"
         #expect(!store.isCategoryIncludedInSpent("investments"))
-        store.currentBudgetId = previousBudgetId
     }
 }
