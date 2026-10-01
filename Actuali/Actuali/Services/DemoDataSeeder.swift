@@ -70,24 +70,33 @@ enum DemoDataSeeder {
         logger.info("Demo data seeded successfully at \(dbPath.path, privacy: .public)")
     }
 
-    /// Seeds sample pending imports for exploring and testing the import review flow,
-    /// including currency mismatch warnings.
+    /// Fixed so cleanup removes only the sample. Shortcut imports queued while
+    /// the demo is open also carry the demo's budget id, and those are real
+    /// bank messages the user can still adopt into another budget.
+    static let samplePendingImportId = UUID(uuidString: "6D3C1F0E-8B5A-4E2D-9C47-1A2B3C4D5E6F")!
+
+    /// Seeds a sample pending import whose INR currency differs from the demo
+    /// budget's USD, so the currency mismatch review flow can be explored.
     @MainActor
     static func seedPendingImports(store: PendingImportStore = .shared) throws {
-        guard !store.imports.contains(where: { $0.originBudgetId == budgetId }) else { return }
-        let now = Date()
-        let sample = PendingImport(
+        guard !store.imports.contains(where: { $0.id == samplePendingImportId }) else { return }
+        try store.add(PendingImport(
+            id: samplePendingImportId,
             originBudgetId: budgetId,
             amount: 156.00,
             sourceCurrencyCode: "INR",
             payee: "SWIGGY INST",
             cardHint: "Apple Card",
-            date: now,
-            isIncome: false,
-            rawText: "Paid INR 156.00 with Apple Card at SWIGGY INST",
-            createdAt: now
-        )
-        try store.add(sample)
+            rawText: "Paid INR 156.00 with Apple Card at SWIGGY INST"
+        ))
+    }
+
+    /// Removes the sample seeded by `seedPendingImports`, leaving every other
+    /// import alone.
+    @MainActor
+    static func removeSamplePendingImport(store: PendingImportStore = .shared) throws {
+        guard store.imports.contains(where: { $0.id == samplePendingImportId }) else { return }
+        try store.remove(id: samplePendingImportId)
     }
 
     // MARK: - Schema

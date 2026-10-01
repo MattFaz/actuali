@@ -40,13 +40,6 @@ final class PendingImportStore: ObservableObject {
         imports
     }
 
-    func removeImports(originBudgetId: String) throws {
-        let updated = imports.filter { $0.originBudgetId != originBudgetId }
-        guard updated.count != imports.count else { return }
-        try save(updated)
-        imports = updated
-    }
-
     private let fileURL: URL
 
     private init() {

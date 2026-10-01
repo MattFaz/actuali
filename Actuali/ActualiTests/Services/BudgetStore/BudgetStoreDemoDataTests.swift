@@ -2,34 +2,31 @@ import Foundation
 import Testing
 @testable import Actuali
 
-/// Tests for loadDemoData and budget switching cleanup.
-@Suite(.serialized)
+/// Leaving the demo removes its sample pending import, and only that one.
+/// Goes through `loadLocalBudget` on an isolated store rather than
+/// `loadDemoData`, which rewrites the shared demo directory that
+/// `DemoDataSeederTests` reads in parallel.
 @MainActor
 struct BudgetStoreDemoDataTests {
-    @Test func loadDemoDataSeedsPendingImportAndSwitchingBudgetsCleansIt() async throws {
-        let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
+    @Test func loadingAnotherBudgetRemovesOnlyTheDemoSample() async throws {
+        let pending = PendingImportStore.shared
+        let queuedInDemo = PendingImport(originBudgetId: DemoDataSeeder.budgetId, amount: 12)
         defer {
-            UserDefaults.standard.set(saved, forKey: "currentBudgetId")
-            try? PendingImportStore.shared.removeImports(originBudgetId: DemoDataSeeder.budgetId)
+            try? DemoDataSeeder.removeSamplePendingImport()
+            try? pending.remove(id: queuedInDemo.id)
         }
+        try DemoDataSeeder.seedPendingImports()
+        try pending.add(queuedInDemo)
 
-        let store = BudgetStore.previewInstance()
-        await store.loadDemoData()
-
-        #expect(PendingImportStore.shared.imports.contains { $0.originBudgetId == DemoDataSeeder.budgetId })
-
-        // Loading a non-demo budget cleans up demo imports
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("demo-cleanup-tests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let (store, manager, root) = makeFileBackedStore()
         defer { try? FileManager.default.removeItem(at: root) }
-
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
-        store.setFileManagerForTesting(manager)
         try seedBudget(id: "real-budget", in: manager)
 
         await store.loadLocalBudget("real-budget")
 
-        #expect(!PendingImportStore.shared.imports.contains { $0.originBudgetId == DemoDataSeeder.budgetId })
+        let ids = pending.imports.map(\.id)
+        #expect(!ids.contains(DemoDataSeeder.samplePendingImportId))
+        // A real shortcut import queued while the demo was open survives.
+        #expect(ids.contains(queuedInDemo.id))
     }
 }

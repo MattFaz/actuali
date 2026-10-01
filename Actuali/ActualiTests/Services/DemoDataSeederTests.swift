@@ -394,16 +394,17 @@ struct DemoDataSeederTests {
         #expect(store.count == 1)
     }
 
-    @Test func demoImportCleanupRemovesSeededImport() throws {
+    @Test func removeSamplePendingImportKeepsOtherDemoImports() throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let store = PendingImportStore(fileURL: tempDir.appendingPathComponent("pending.json"))
+        let queuedInDemo = PendingImport(originBudgetId: DemoDataSeeder.budgetId, amount: 12)
 
         try DemoDataSeeder.seedPendingImports(store: store)
-        #expect(store.count == 1)
+        try store.add(queuedInDemo)
+        try DemoDataSeeder.removeSamplePendingImport(store: store)
 
-        try store.removeImports(originBudgetId: DemoDataSeeder.budgetId)
-        #expect(store.count == 0)
+        #expect(store.imports.map(\.id) == [queuedInDemo.id])
     }
 }

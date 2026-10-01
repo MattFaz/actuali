@@ -318,4 +318,23 @@ struct PendingImportsResolveAccountTests {
         #expect(req.prompt(locale: locale, bundle: appBundle).contains("(None)"))
         #expect(req.prompt(locale: locale, bundle: appBundle).contains("INR"))
     }
+
+    @Test func currencySettingsLinkOnlyForBudgetCurrencyMessages() {
+        func offers(origin: String?, source: String?, budget: String) -> Bool {
+            PendingImportsView.offersCurrencySettings(
+                for: PendingImport(originBudgetId: origin, sourceCurrencyCode: source),
+                activeBudgetId: "active",
+                budgetCurrency: budget
+            )
+        }
+        #expect(offers(origin: "active", source: "INR", budget: "USD"))
+        #expect(offers(origin: "active", source: "INR", budget: ""))
+        #expect(!offers(origin: "active", source: "usd", budget: "USD"))
+        // Undetected currency: settings only help when the budget has none.
+        #expect(offers(origin: "active", source: nil, budget: ""))
+        #expect(!offers(origin: "active", source: nil, budget: "USD"))
+        // Adoption and legacy messages aren't about the budget's currency.
+        #expect(!offers(origin: "other", source: "INR", budget: "USD"))
+        #expect(!offers(origin: nil, source: nil, budget: ""))
+    }
 }

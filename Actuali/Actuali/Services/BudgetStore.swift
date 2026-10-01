@@ -2446,7 +2446,11 @@ final class BudgetStore: ObservableObject {
 
     func loadLocalBudget(_ budgetId: String) async {
         if budgetId != DemoDataSeeder.budgetId {
-            try? PendingImportStore.shared.removeImports(originBudgetId: DemoDataSeeder.budgetId)
+            do {
+                try DemoDataSeeder.removeSamplePendingImport()
+            } catch {
+                logger.error("Demo pending import cleanup failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
         isLoading = true
         isBudgetLoaded = false

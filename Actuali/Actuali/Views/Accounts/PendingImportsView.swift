@@ -294,10 +294,6 @@ struct PendingImportsView: View {
         let targetAccountId = resolveAccountId(for: item)
         if let accountId = targetAccountId {
             let approver = PendingImportApprover(store: budgetStore)
-            let requirements = item.reviewRequirements(
-                activeBudgetId: budgetStore.currentBudgetId,
-                budgetCurrency: budgetStore.currencyCode
-            )
             VStack(spacing: 0) {
                 if let context = Self.currencyContext(
                     for: item,
@@ -311,9 +307,11 @@ struct PendingImportsView: View {
                             .foregroundStyle(.orange)
                             .frame(maxWidth: .infinity, alignment: .leading)
 
-                        if let source = item.sourceCurrencyCode,
-                           PendingImport.normalizedCurrencyCode(source)
-                           != PendingImport.normalizedCurrencyCode(budgetStore.currencyCode) {
+                        if Self.offersCurrencySettings(
+                            for: item,
+                            activeBudgetId: budgetStore.currentBudgetId,
+                            budgetCurrency: budgetStore.currencyCode
+                        ) {
                             NavigationLink {
                                 DisplaySettingsView()
                             } label: {
@@ -341,7 +339,10 @@ struct PendingImportsView: View {
                     onSaved: { _ in
                         try store.remove(id: item.id)
                     },
-                    reviewRequirements: requirements
+                    reviewRequirements: item.reviewRequirements(
+                        activeBudgetId: budgetStore.currentBudgetId,
+                        budgetCurrency: budgetStore.currencyCode
+                    )
                 )
                 .environmentObject(budgetStore)
             }
@@ -352,6 +353,24 @@ struct PendingImportsView: View {
                 description: Text("Please add an account before editing this import.")
             )
         }
+    }
+
+    /// Whether the banner should link to Currency Settings: only when its
+    /// message is about the budget's currency, which an adoption prompt or a
+    /// legacy import's message isn't.
+    nonisolated static func offersCurrencySettings(
+        for item: PendingImport,
+        activeBudgetId: String?,
+        budgetCurrency: String
+    ) -> Bool {
+        if let originBudgetId = item.originBudgetId, originBudgetId != activeBudgetId {
+            return false
+        }
+        let budget = PendingImport.normalizedCurrencyCode(budgetCurrency)
+        guard let source = item.sourceCurrencyCode else {
+            return item.originBudgetId != nil && budget.isEmpty
+        }
+        return PendingImport.normalizedCurrencyCode(source) != budget
     }
 
     nonisolated static func currencyContext(
