@@ -81,7 +81,13 @@ final class PendingImportStore: ObservableObject {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
         do {
             let data = try Data(contentsOf: fileURL)
-            imports = try JSONDecoder().decode([PendingImport].self, from: data)
+            var decoded = try JSONDecoder().decode([PendingImport].self, from: data)
+            // Heals hints a model scrambled before resolveCardHint existed. It's
+            // re-derived on every load, so it doesn't need writing back.
+            for i in decoded.indices where !decoded[i].rawText.isEmpty {
+                decoded[i].cardHint = TransactionTextParser.resolveCardHint(decoded[i].cardHint, in: decoded[i].rawText)
+            }
+            imports = decoded
         } catch {
             logger.error("Failed to load pending imports: \(error.localizedDescription, privacy: .public)")
             do {
