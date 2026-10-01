@@ -821,7 +821,7 @@ final class BudgetDatabase: Sendable {
             -- Split parents may carry no payee of their own (payees can
             -- live on the children, GH #47). When the live children agree
             -- on one payee, display it; mixed payees resolve NULL and the
-            -- transaction row shows the split summary on the category line.
+            -- UI labels the row "Split".
             LEFT JOIN (
                 SELECT ct.parent_id AS parent_id,
                        CASE WHEN COUNT(DISTINCT ct.description) = 1
@@ -934,7 +934,39 @@ final class BudgetDatabase: Sendable {
 
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
 
-            return rows.map(Self.mapTransaction)
+            // Split parents have no category of their own; carry the live
+            // children's category + amount as portions so the list row can
+            // show the breakdown ("Food $6.00, Fun $4.00") without opening it.
+            let parentIds: [String] = rows.compactMap { row in
+                (row["isParent"] == 1) ? row["id"] : nil
+            }
+            var splitPortions: [String: [Transaction.SplitPortion]] = [:]
+            if !parentIds.isEmpty {
+                let placeholders = Array(repeating: "?", count: parentIds.count).joined(separator: ", ")
+                let childRows = try Row.fetchAll(db, sql: """
+                SELECT ct.parent_id AS parent_id, ct.amount AS amount,
+                       c.name AS category_name
+                FROM transactions ct
+                LEFT JOIN category_mapping cm ON cm.id = ct.category
+                LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, ct.category)
+                WHERE ct.parent_id IN (\(placeholders))
+                  AND (ct.tombstone = 0 OR ct.tombstone IS NULL)
+                ORDER BY ct.sort_order DESC
+                """, arguments: StatementArguments(parentIds))
+                for childRow in childRows {
+                    guard let parentId: String = childRow["parent_id"] else { continue }
+                    splitPortions[parentId, default: []].append(Transaction.SplitPortion(
+                        categoryName: childRow["category_name"],
+                        amount: childRow["amount"] ?? 0
+                    ))
+                }
+            }
+
+            return rows.map { row in
+                var transaction = Self.mapTransaction(row)
+                transaction.splitPortions = splitPortions[transaction.id]
+                return transaction
+            }
         }
     }
 

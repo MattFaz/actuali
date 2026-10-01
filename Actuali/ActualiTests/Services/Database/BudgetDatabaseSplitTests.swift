@@ -127,8 +127,8 @@ struct BudgetDatabaseSplitTests {
             """)
         }
 
-        // Mixed payees can't be summarized in one name; the row's secondary
-        // label is "Split" when a parent resolves no payee.
+        // Mixed payees can't be summarized in one name; the UI labels the
+        // row "Split" when a parent resolves no payee.
         let txns = try await db.fetchTransactions()
         #expect(txns.map(\.id) == ["parent"])
         #expect(txns.first?.payeeName == nil)
@@ -150,6 +150,71 @@ struct BudgetDatabaseSplitTests {
 
         let txns = try await db.fetchTransactions()
         #expect(txns.first?.payeeName == "Market")
+    }
+
+    // MARK: - Parent split portions in the transaction list
+
+    @Test func parentCarriesChildPortionsInEntryOrder() async throws {
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        try await seedPayees(db)
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, category, description, amount, date, isParent, isChild, parent_id, sort_order, tombstone) VALUES
+                    ('parent',  'acct-1', NULL,      'payee-market', -10000, 20260601, 1, 0, NULL,     10, 0),
+                    ('c-first', 'acct-1', 'cat-fun',  NULL,           -6000, 20260601, 0, 1, 'parent',  9, 0),
+                    ('c-second','acct-1', 'cat-food', NULL,           -3000, 20260601, 0, 1, 'parent',  8, 0),
+                    ('c-third', 'acct-1', 'cat-food', NULL,           -1000, 20260601, 0, 1, 'parent',  7, 0),
+                    ('c-dead',  'acct-1', 'cat-food', NULL,            -500, 20260601, 0, 1, 'parent',  6, 1);
+            """)
+        }
+
+        // One portion per live child, in entry order, for the list caption.
+        let txns = try await db.fetchTransactions()
+        #expect(txns.map(\.id) == ["parent"])
+        #expect(txns.first?.splitPortions == [
+            .init(categoryName: "Fun", amount: -6000),
+            .init(categoryName: "Food", amount: -3000),
+            .init(categoryName: "Food", amount: -1000),
+        ])
+    }
+
+    @Test func uncategorizedChildrenAppearAsUnnamedPortions() async throws {
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        try await seedPayees(db)
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, category, description, amount, date, isParent, isChild, parent_id, sort_order) VALUES
+                    ('parent', 'acct-1', NULL, 'payee-market', -10000, 20260601, 1, 0, NULL,     10),
+                    ('c-1',    'acct-1', NULL, NULL,            -6000, 20260601, 0, 1, 'parent',  9),
+                    ('c-2',    'acct-1', NULL, NULL,            -4000, 20260601, 0, 1, 'parent',  8);
+            """)
+        }
+
+        let txns = try await db.fetchTransactions()
+        #expect(txns.first?.splitPortions == [
+            .init(categoryName: nil, amount: -6000),
+            .init(categoryName: nil, amount: -4000),
+        ])
+    }
+
+    @Test func nonParentsCarryNoPortions() async throws {
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        try await seedPayees(db)
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, category, description, amount, date) VALUES
+                    ('plain', 'acct-1', 'cat-food', 'payee-market', -500, 20260601);
+            """)
+        }
+
+        let txns = try await db.fetchTransactions()
+        #expect(txns.first?.splitPortions == nil)
     }
 
     // MARK: - fetchChildTransactions
@@ -207,7 +272,7 @@ struct BudgetDatabaseSplitTests {
 
         #expect(snapshot.transactions.map(\.id).sorted() == ["parent", "plain"])
         #expect(snapshot.splitChildren.map(\.id) == ["c-first", "c-second"])
-        // The same child category and amount breakdown used by History.
+        // Same portions the list reads, so History can caption the split.
         #expect(snapshot.transactions.first { $0.id == "parent" }?.splitPortions == [
             .init(categoryName: "Food", amount: -6000),
             .init(categoryName: "Fun", amount: -4000),
