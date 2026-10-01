@@ -353,20 +353,15 @@ struct TransactionRow: View {
         transaction.transferId != nil || transaction.transferAcct != nil
     }
 
-    nonisolated static func splitSummaryLabel(
-        isParent: Bool,
-        locale: Locale
-    ) -> String? {
-        guard isParent else { return nil }
-        return String(localized: TransactionsListLocalization.split, locale: locale)
-    }
-
     nonisolated static func payeeLabel(
         payeeName: String?,
+        isParent: Bool,
         isInOffBudgetAccount: Bool,
         locale: Locale
     ) -> String {
-        payeeName ?? (isInOffBudgetAccount
+        // Split parents are commonly payee-less (payees live on the
+        // children, GH #47), so "Unknown" read as a bug there (GH #123).
+        payeeName ?? ((isParent || isInOffBudgetAccount)
             ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
             : String(localized: TransactionsListLocalization.unknown, locale: locale))
     }
@@ -382,8 +377,8 @@ struct TransactionRow: View {
         if isInOffBudgetAccount {
             return String(localized: TransactionsListLocalization.offBudget, locale: locale)
         }
-        if let summary = Self.splitSummaryLabel(isParent: isParent, locale: locale) {
-            return summary
+        if isParent {
+            return String(localized: TransactionsListLocalization.split, locale: locale)
         }
         if categoryName == nil, isTransfer, !needsCategory {
             return String(localized: TransactionsListLocalization.transfer, locale: locale)
@@ -393,8 +388,7 @@ struct TransactionRow: View {
     }
 
     /// Caption under the payee. Off-budget accounts aren't categorized at all
-    /// ("Off budget", GH #123); split parents show only "Split" here so
-    /// the payee line stays reserved for the transaction's actual payee.
+    /// ("Off budget", GH #123); split parents use "Split" on the category line.
     /// Transfers that can't take a category show "Transfer" instead of
     /// nagging "Uncategorized" (GH #104).
     private var categoryLabel: String {
@@ -461,6 +455,7 @@ struct TransactionRow: View {
                 // always reserved for the transaction's payee.
                 Text(Self.payeeLabel(
                     payeeName: transaction.payeeName,
+                    isParent: transaction.isParent,
                     isInOffBudgetAccount: isInOffBudgetAccount,
                     locale: locale
                 ))

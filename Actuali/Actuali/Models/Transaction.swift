@@ -40,9 +40,9 @@ struct Transaction: Identifiable, Hashable, Codable {
     /// exclude them the way the WebUI does. Not synced (it lives on the payee,
     /// not the transaction).
     var transferAcct: String? = nil
-    /// One entry per live child of a split parent, in entry order. Only
-    /// populated by fetchTransactions for isParent rows, so callers can
-    /// display the child category and amount breakdown. Display-only, not synced.
+    /// One entry per live child of a split parent, in entry order. Populated
+    /// by fetchAllLiveTransactions for History's child category and amount
+    /// breakdown. Display-only, not synced.
     var splitPortions: [SplitPortion]? = nil
     /// Display-only running balance used by account transaction registers.
     /// It is populated from the account's current balance in account detail

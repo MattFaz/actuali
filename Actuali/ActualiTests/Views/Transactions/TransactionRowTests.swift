@@ -3,32 +3,20 @@ import Testing
 @testable import Actuali
 
 struct TransactionRowTests {
-    @Test func splitParentShowsSplitLabelInEveryTransactionList() {
-        #expect(TransactionRow.splitSummaryLabel(
-            isParent: true,
-            locale: Locale(identifier: "en_US")
-        ) == "Split")
-    }
-
-    @Test func nonSplitTransactionDoesNotUseSplitSummary() {
-        #expect(TransactionRow.splitSummaryLabel(
-            isParent: false,
-            locale: Locale(identifier: "en_US")
-        ) == nil)
-    }
-
     @Test func splitParentKeepsPayeeAndUsesSplitAsSecondaryLabel() {
         let locale = Locale(identifier: "en_US")
         #expect(TransactionRow.payeeLabel(
             payeeName: "Grocery Store",
+            isParent: true,
             isInOffBudgetAccount: false,
             locale: locale
         ) == "Grocery Store")
         #expect(TransactionRow.payeeLabel(
             payeeName: nil,
+            isParent: true,
             isInOffBudgetAccount: false,
             locale: locale
-        ) == "Unknown")
+        ) == "No payee")
         #expect(TransactionRow.secondaryLabel(
             categoryName: "Food",
             isParent: true,
