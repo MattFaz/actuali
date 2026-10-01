@@ -32,6 +32,10 @@ enum BudgetCategoryAccessibility {
         ReportStrings.text(isHidden ? "Show" : "Hide", locale: locale, bundle: bundle)
     }
 
+    static func progressBarVisibility(isHidden: Bool, locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.text(isHidden ? "Show progress bar" : "Hide progress bar", locale: locale, bundle: bundle)
+    }
+
     static func contextMoveAction(isOverspent: Bool, locale: Locale, bundle: Bundle = .main) -> String {
         ReportStrings.text(isOverspent ? "Cover Overspending" : "Move Money", locale: locale, bundle: bundle)
     }
@@ -373,7 +377,8 @@ struct BudgetView: View {
                             },
                             showsSpent: budgetStore.showCompactSpentColumn,
                             showsBudgeted: budgetStore.showBudgetedAmounts,
-                            showsProgressBars: budgetStore.showBudgetProgressBars,
+                            showsProgressBars: budgetStore.showBudgetProgressBars
+                                && !budgetStore.hiddenBudgetProgressCategoryIDs.contains(category.categoryId),
                             showsStatusDots: budgetStore.showCategoryStatusDots,
                             onShowDetails: { selectedCategory = $0 },
                             onEditBudget: { editingCategory = $0 },
@@ -1227,7 +1232,9 @@ struct CleanCategoryBudgetRow: View {
                 ))
                 .rolloverIndicator(category.carryoverEnabled, color: balanceTint)
             }
-            if budgetStore.showBudgetProgressBars, category.showsProgressBar {
+            if budgetStore.showBudgetProgressBars,
+               category.showsProgressBar,
+               !budgetStore.hiddenBudgetProgressCategoryIDs.contains(category.categoryId) {
                 CategoryProgressBar(category: category)
             }
             HStack {
@@ -1295,6 +1302,7 @@ struct CleanCategoryBudgetRow: View {
 /// actions as the row's tappable cells plus hide/show. Nothing here is a swipe
 /// action: a row swipe would swallow the table's month navigation (GH #425).
 struct CategoryRowContextMenu: ViewModifier {
+    @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     let category: CategoryBudget
     let isHidden: Bool
@@ -1336,6 +1344,17 @@ struct CategoryRowContextMenu: ViewModifier {
                 Button { onSetHidden(!isHidden) } label: {
                     Label(BudgetCategoryAccessibility.contextVisibility(isHidden: isHidden, locale: locale),
                           systemImage: isHidden ? "eye" : "eye.slash")
+                }
+            }
+            if budgetStore.showBudgetProgressBars, category.showsProgressBar {
+                let isProgressBarHidden = budgetStore.hiddenBudgetProgressCategoryIDs.contains(category.categoryId)
+                Button {
+                    budgetStore.setBudgetProgressBarHidden(!isProgressBarHidden, for: category.categoryId)
+                } label: {
+                    Label(
+                        BudgetCategoryAccessibility.progressBarVisibility(isHidden: isProgressBarHidden, locale: locale),
+                        systemImage: isProgressBarHidden ? "plus.rectangle" : "minus.rectangle"
+                    )
                 }
             }
         }
