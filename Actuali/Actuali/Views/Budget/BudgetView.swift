@@ -1228,10 +1228,7 @@ struct CleanCategoryBudgetRow: View {
                 .rolloverIndicator(category.carryoverEnabled, color: balanceTint)
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
-                CategoryProgressBar(
-                    fraction: category.progressFraction,
-                    state: category.progressState
-                )
+                CategoryProgressBar(category: category)
             }
             HStack {
                 if budgetStore.showBudgetedAmounts {
@@ -2052,19 +2049,26 @@ extension CategoryProgressState {
 }
 
 /// Spent-vs-available bar for a budget row. Fill and color mirror the row's
-/// Available amount: green while money remains, red once overspent.
+/// Available amount: green while money remains, red once overspent. Inverse
+/// mode draws the remaining share instead, so it starts full and drains.
 struct CategoryProgressBar: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
-    let fraction: Double
-    let state: CategoryProgressState
+    let category: CategoryBudget
 
-    private var statusColor: Color {
-        budgetStore.categoryStatusDotColor(for: state)
+    private var fraction: Double {
+        category.progressFraction(inverted: budgetStore.showInverseBudgetProgressBars)
     }
 
+    private var statusColor: Color {
+        budgetStore.categoryStatusDotColor(for: category.progressState)
+    }
+
+    /// Inverse mode empties the fill as money runs out, so the status color
+    /// has to live in the track or an overspent row reads as a spent one.
     private var trackTint: Color {
-        state == .funded ? statusColor.opacity(0.25) : Color(.systemFill)
+        budgetStore.showInverseBudgetProgressBars || category.progressState == .funded
+            ? statusColor.opacity(0.25) : Color(.systemFill)
     }
 
     var body: some View {
@@ -2078,14 +2082,15 @@ struct CategoryProgressBar: View {
             }
         }
         .frame(height: 5)
-        // Budgeting a category shrinks its bar as the money lands, so the
-        // edit is visible in the row itself and not only in the pill.
+        // Budgeting a category moves its bar as the money lands (shrinks it,
+        // or fills it in inverse mode), so the edit is visible in the row
+        // itself and not only in the pill.
         .animation(AppAnimation.amount, value: fraction)
         .accessibilityElement()
         .accessibilityLabel(ReportStrings.format(
             "%@, spent %lld percent of available",
-            state.statusText(locale: locale, bundle: .main),
-            Int64((fraction * 100).rounded()),
+            category.progressState.statusText(locale: locale, bundle: .main),
+            Int64((category.progressFraction * 100).rounded()),
             locale: locale,
             bundle: .main
         ))

@@ -363,10 +363,7 @@ struct CompactCategoryBudgetRow: View {
                 compactContent
             }
             if showsProgressBars, category.showsProgressBar {
-                CategoryProgressBar(
-                    fraction: category.progressFraction,
-                    state: category.progressState
-                )
+                CategoryProgressBar(category: category)
             }
         }
         .padding(.vertical, CompactBudgetTableLayout.categoryRowVerticalPadding)

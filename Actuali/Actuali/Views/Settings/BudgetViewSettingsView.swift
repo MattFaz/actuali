@@ -29,6 +29,8 @@ struct BudgetViewSettingsView: View {
                 Toggle(String(localized: "Hide Spent Categories"), isOn: $budgetStore.hideZeroBudgetCategories)
                 Toggle(String(localized: "Category Status Dots"), isOn: $budgetStore.showCategoryStatusDots)
                 Toggle(String(localized: "Budget Progress Bars"), isOn: $budgetStore.showBudgetProgressBars)
+                Toggle(String(localized: "Inverse Progress Bars"), isOn: $budgetStore.showInverseBudgetProgressBars)
+                    .disabled(!budgetStore.showBudgetProgressBars)
                 Toggle(String(localized: "Overspent Badge"), isOn: $budgetStore.showOverspentBadge)
 
                 DisclosureGroup(

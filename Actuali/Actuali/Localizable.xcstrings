@@ -24311,6 +24311,53 @@
         }
       }
     },
+    "Inverse Progress Bars" : {
+      "comment" : "Settings toggle for inverse budget progress bars",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umgekehrte Fortschrittsbalken"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inverse Progress Bars"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barras de progreso inversas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barres de progression inversées"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barre di avanzamento inverse"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Omgekeerde voortgangsbalken"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barras de progresso inversas"
+          }
+        }
+      }
+    },
     "Category Status Dots" : {
       "extractionState" : "stale",
       "localizations" : {

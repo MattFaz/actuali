@@ -116,6 +116,21 @@ struct BudgetStoreDisplayStyleTests {
         }
     }
 
+    @Test func inverseBudgetProgressPreferenceDefaultsOffAndPersists() {
+        let key = "showInverseBudgetProgressBars"
+
+        withSavedDefaults(for: [key]) {
+            let store = BudgetStore.previewInstance()
+            #expect(!store.showInverseBudgetProgressBars)
+
+            store.showInverseBudgetProgressBars = true
+            #expect(UserDefaults.standard.object(forKey: key) as? Bool == true)
+
+            store.showInverseBudgetProgressBars = false
+            #expect(UserDefaults.standard.object(forKey: key) as? Bool == false)
+        }
+    }
+
     /// Raw values round-trip, and unknown raw values (from a future build)
     /// decode to nil so init falls back to the default rather than crashing.
     @Test func rawValueRoundTrip() {
