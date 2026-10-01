@@ -377,7 +377,8 @@ struct BudgetView: View {
                             },
                             showsSpent: budgetStore.showCompactSpentColumn,
                             showsBudgeted: budgetStore.showBudgetedAmounts,
-                            showsProgressBars: budgetStore.showBudgetProgressBars,
+                            showsProgressBars: budgetStore.showBudgetProgressBars
+                                && !budgetStore.hiddenBudgetProgressCategoryIDs.contains(category.categoryId),
                             showsStatusDots: budgetStore.showCategoryStatusDots,
                             onShowDetails: { selectedCategory = $0 },
                             onEditBudget: { editingCategory = $0 },
@@ -1233,7 +1234,7 @@ struct CleanCategoryBudgetRow: View {
             }
             if budgetStore.showBudgetProgressBars,
                category.showsProgressBar,
-               !budgetStore.isBudgetProgressBarHidden(for: category.categoryId) {
+               !budgetStore.hiddenBudgetProgressCategoryIDs.contains(category.categoryId) {
                 CategoryProgressBar(category: category)
             }
             HStack {
@@ -1346,13 +1347,13 @@ struct CategoryRowContextMenu: ViewModifier {
                 }
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
-                let isProgressBarHidden = budgetStore.isBudgetProgressBarHidden(for: category.categoryId)
+                let isProgressBarHidden = budgetStore.hiddenBudgetProgressCategoryIDs.contains(category.categoryId)
                 Button {
                     budgetStore.setBudgetProgressBarHidden(!isProgressBarHidden, for: category.categoryId)
                 } label: {
                     Label(
                         BudgetCategoryAccessibility.progressBarVisibility(isHidden: isProgressBarHidden, locale: locale),
-                        systemImage: isProgressBarHidden ? "eye" : "eye.slash"
+                        systemImage: isProgressBarHidden ? "plus.rectangle" : "minus.rectangle"
                     )
                 }
             }

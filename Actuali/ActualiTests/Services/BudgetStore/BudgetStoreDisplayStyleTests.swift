@@ -106,21 +106,24 @@ struct BudgetStoreDisplayStyleTests {
         let key = "hiddenBudgetProgressCategoryIDs"
         withSavedDefaults(for: [key]) {
             let store = BudgetStore.previewInstance()
-            #expect(!store.isBudgetProgressBarHidden(for: "food"))
-            #expect(!store.isBudgetProgressBarHidden(for: "rent"))
+            #expect(!store.hiddenBudgetProgressCategoryIDs.contains("food"))
+            #expect(!store.hiddenBudgetProgressCategoryIDs.contains("rent"))
 
             store.setBudgetProgressBarHidden(true, for: "food")
-            #expect(store.isBudgetProgressBarHidden(for: "food"))
-            #expect(!store.isBudgetProgressBarHidden(for: "rent"))
+            #expect(store.hiddenBudgetProgressCategoryIDs.contains("food"))
+            #expect(!store.hiddenBudgetProgressCategoryIDs.contains("rent"))
             #expect(UserDefaults.standard.stringArray(forKey: key) == ["food"])
 
             store.setBudgetProgressBarHidden(true, for: "rent")
             #expect(Set(UserDefaults.standard.stringArray(forKey: key) ?? []) == ["food", "rent"])
 
             store.setBudgetProgressBarHidden(false, for: "food")
-            #expect(!store.isBudgetProgressBarHidden(for: "food"))
-            #expect(store.isBudgetProgressBarHidden(for: "rent"))
+            #expect(!store.hiddenBudgetProgressCategoryIDs.contains("food"))
+            #expect(store.hiddenBudgetProgressCategoryIDs.contains("rent"))
             #expect(UserDefaults.standard.stringArray(forKey: key) == ["rent"])
+
+            let reloaded = BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting()
+            #expect(reloaded.hiddenBudgetProgressCategoryIDs == ["rent"])
         }
     }
 

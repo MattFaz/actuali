@@ -550,16 +550,16 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    func isBudgetProgressBarHidden(for categoryId: String) -> Bool {
-        hiddenBudgetProgressCategoryIDs.contains(categoryId)
-    }
-
     func setBudgetProgressBarHidden(_ hidden: Bool, for categoryId: String) {
         if hidden {
             hiddenBudgetProgressCategoryIDs.insert(categoryId)
         } else {
             hiddenBudgetProgressCategoryIDs.remove(categoryId)
         }
+    }
+
+    private static func loadHiddenBudgetProgressCategoryIDs(from defaults: UserDefaults) -> Set<String> {
+        Set(defaults.stringArray(forKey: "hiddenBudgetProgressCategoryIDs") ?? [])
     }
 
     /// Whether Budget rows show their compact category-status dot.
@@ -1771,7 +1771,7 @@ final class BudgetStore: ObservableObject {
             initialValue: persistedBool("showInverseBudgetProgressBars", default: false)
         )
         _hiddenBudgetProgressCategoryIDs = Published(
-            initialValue: Set(defaults.stringArray(forKey: "hiddenBudgetProgressCategoryIDs") ?? [])
+            initialValue: Self.loadHiddenBudgetProgressCategoryIDs(from: defaults)
         )
         _showCategoryStatusDots = Published(
             initialValue: persistedBool("showCategoryStatusDots", default: true)
@@ -1871,6 +1871,9 @@ final class BudgetStore: ObservableObject {
         case .loadPersistedPreferences:
             _categoryStatusDotColors = Published(
                 initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard)
+            )
+            _hiddenBudgetProgressCategoryIDs = Published(
+                initialValue: Self.loadHiddenBudgetProgressCategoryIDs(from: UserDefaults.standard)
             )
         }
     }

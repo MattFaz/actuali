@@ -362,9 +362,7 @@ struct CompactCategoryBudgetRow: View {
             } else {
                 compactContent
             }
-            if showsProgressBars,
-               category.showsProgressBar,
-               !budgetStore.isBudgetProgressBarHidden(for: category.categoryId) {
+            if showsProgressBars, category.showsProgressBar {
                 CategoryProgressBar(category: category)
             }
         }
