@@ -82,18 +82,12 @@ final class PendingImportStore: ObservableObject {
         do {
             let data = try Data(contentsOf: fileURL)
             var decoded = try JSONDecoder().decode([PendingImport].self, from: data)
-            var repaired = false
+            // Heals hints a model scrambled before resolveCardHint existed. It's
+            // re-derived on every load, so it doesn't need writing back.
             for i in decoded.indices where !decoded[i].rawText.isEmpty {
-                let healed = TransactionTextParser.resolveCardHint(decoded[i].cardHint, in: decoded[i].rawText)
-                if healed != decoded[i].cardHint {
-                    decoded[i].cardHint = healed
-                    repaired = true
-                }
+                decoded[i].cardHint = TransactionTextParser.resolveCardHint(decoded[i].cardHint, in: decoded[i].rawText)
             }
             imports = decoded
-            if repaired {
-                try? save(decoded)
-            }
         } catch {
             logger.error("Failed to load pending imports: \(error.localizedDescription, privacy: .public)")
             do {

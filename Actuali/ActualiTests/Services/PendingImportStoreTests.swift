@@ -150,4 +150,17 @@ struct PendingImportStoreTests {
         #expect(loaded.imports.count == 1)
         #expect(loaded.imports[0].cardHint == "6419")
     }
+
+    @Test @MainActor func keepsGroundedCardHintOnLoad() throws {
+        let directory = FileManager.default.temporaryDirectory
+        let url = directory.appendingPathComponent("test_pending_imports_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // The regex alone would pick 1111; a stored hint the text contains must survive.
+        let text = "Card XX1111 was replaced. Rs 500 charged on card XX6419"
+        let data = try JSONEncoder().encode([PendingImport(cardHint: "6419", rawText: text)])
+        try data.write(to: url)
+
+        #expect(PendingImportStore(fileURL: url).imports.first?.cardHint == "6419")
+    }
 }
