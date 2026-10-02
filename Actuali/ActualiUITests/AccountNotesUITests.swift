@@ -83,6 +83,16 @@ final class AccountNotesUITests: XCTestCase {
     }
 
     @MainActor
+    private func tapNotesVisibility(_ control: XCUIElement) {
+        if control.elementType == .switch {
+            let inner = control.switches.firstMatch
+            (inner.exists ? inner : control).tap()
+        } else {
+            tapMenuItem(control)
+        }
+    }
+
+    @MainActor
     func testNoteVisibilityCanBeHiddenShownAndPersistsAcrossRelaunch() {
         let app = openAccount("Chase Checking")
         let noteRow = app.buttons["accountNoteRow"]
@@ -97,7 +107,7 @@ final class AccountNotesUITests: XCTestCase {
                 toolbarOverflow.tap()
                 let notesVisibility = notesVisibilityControl(in: app)
                 if notesVisibility.waitForExistence(timeout: 3) {
-                    notesVisibility.tap()
+                    tapNotesVisibility(notesVisibility)
                 }
             }
         }
@@ -107,14 +117,14 @@ final class AccountNotesUITests: XCTestCase {
             toolbarOverflow.tap()
             let notesVisibility = notesVisibilityControl(in: app)
             XCTAssertTrue(notesVisibility.waitForExistence(timeout: 5), "note visibility control not shown")
-            notesVisibility.tap()
+            tapNotesVisibility(notesVisibility)
             XCTAssertTrue(noteRow.waitForExistence(timeout: 5), "notes could not be restored before testing")
         }
 
         toolbarOverflow.tap()
         let notesVisibility = notesVisibilityControl(in: app)
         XCTAssertTrue(notesVisibility.waitForExistence(timeout: 5), "note visibility control not shown")
-        notesVisibility.tap()
+        tapNotesVisibility(notesVisibility)
         XCTAssertTrue(noteRow.waitForNonExistence(timeout: 5), "note row did not hide")
 
         app.terminate()
@@ -135,7 +145,7 @@ final class AccountNotesUITests: XCTestCase {
         XCTAssertTrue(relaunchedNotesVisibility.waitForExistence(timeout: 10), "note visibility control not shown after relaunch")
         XCTAssertFalse(relaunchedNoteRow.exists, "hidden note reappeared after relaunch")
 
-        relaunchedNotesVisibility.tap()
+        tapNotesVisibility(relaunchedNotesVisibility)
         XCTAssertTrue(relaunchedNoteRow.waitForExistence(timeout: 10), "note visibility control did not restore the note after relaunch")
     }
 

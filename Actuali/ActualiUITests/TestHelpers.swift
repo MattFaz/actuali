@@ -1,6 +1,21 @@
 import XCTest
 
 extension XCTestCase {
+    /// Native menus can expose their items before accepting taps on a busy
+    /// runner. Retry only while the item remains in the open menu, so a
+    /// successful toggle cannot be flipped back (nightly run 36911859727).
+    @MainActor
+    func tapMenuItem(_ item: XCUIElement) {
+        XCTAssertTrue(item.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        for _ in 0..<3 {
+            item.tap()
+            if item.waitForNonExistence(timeout: 3) {
+                return
+            }
+        }
+        XCTFail("Menu did not dismiss after tapping \(item.label)")
+    }
+
     /// Open Settings > Budget View whether Settings last showed its hub or
     /// retained the destination from an earlier tab visit.
     @MainActor
