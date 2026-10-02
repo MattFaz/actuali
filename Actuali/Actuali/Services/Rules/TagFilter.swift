@@ -47,6 +47,46 @@ enum TagFilter {
         return result
     }
 
+    /// One piece of a note: plain text, or a genuine `#hashtag`.
+    enum NoteSegment: Equatable {
+        case text(String)
+        case tag(String)
+    }
+
+    /// A note split into plain text and `#hashtags`, in reading order, so a
+    /// row can draw the tags in place (as chips) within the note's own line.
+    /// `##hidden` and invalid tags stay in the text, mirroring
+    /// `extractHashtags`; whitespace is collapsed and empty text is dropped.
+    /// E.g. "Lunch #food with Sam" → [.text("Lunch"), .tag("#food"), .text("with Sam")]
+    static func noteSegments(_ notes: String) -> [NoteSegment] {
+        var segments: [NoteSegment] = []
+        var text = ""
+        func flushText() {
+            let collapsed = text
+                .components(separatedBy: .whitespacesAndNewlines)
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            if !collapsed.isEmpty {
+                segments.append(.text(collapsed))
+            }
+            text = ""
+        }
+        var cursor = notes.startIndex
+        let range = NSRange(notes.startIndex..., in: notes)
+        for match in hashtagRegex.matches(in: notes, range: range) {
+            guard let tagRange = Range(match.range, in: notes) else { continue }
+            let normalized = Tag.normalizeTagName(String(notes[tagRange]))
+            guard Tag.isValidTagName(normalized) else { continue }
+            text += notes[cursor..<tagRange.lowerBound]
+            flushText()
+            segments.append(.tag("#" + normalized))
+            cursor = tagRange.upperBound
+        }
+        text += notes[cursor...]
+        flushText()
+        return segments
+    }
+
     /// Matches upstream's tag pattern `(?<!#)tag([\s#]|$)`: the tag must not
     /// be preceded by an extra `#` (so `##hidden` tags never match) and must
     /// end at whitespace, another tag, or the end of the notes.
