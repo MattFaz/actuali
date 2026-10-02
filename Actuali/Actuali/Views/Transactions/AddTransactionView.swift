@@ -594,7 +594,7 @@ struct AddTransactionView: View {
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
                     // full view of a transaction's note.
-                    AddTransactionNoteLinkRows(text: notes).equatable()
+                    NoteLinkRows(text: notes).equatable()
 
                     Toggle("Cleared", isOn: $cleared)
                     // Only the paths that record locations (adds and split
@@ -968,15 +968,6 @@ struct AddTransactionView: View {
     }
 }
 
-/// Only changed notes need another markdown/detector pass.
-struct AddTransactionNoteLinkRows: View, nonisolated Equatable {
-    let text: String
-
-    var body: some View {
-        NoteLinkRows(text: text)
-    }
-}
-
 /// Resign whatever field is focused. Pickers call this before they open: UIKit
 /// remembers the first responder across a sheet or push and restores it on the
 /// way back, which would bring the amount keypad up again with its text
@@ -1147,7 +1138,7 @@ private struct SplitLineRow: View {
             TextField(String(localized: AddTransactionLocalization.optionalNotes, locale: locale), text: $line.notes)
                 .font(.subheadline)
             TagSuggestionBar(text: $line.notes, availableTags: budgetStore.tags)
-            AddTransactionNoteLinkRows(text: line.notes).equatable()
+            NoteLinkRows(text: line.notes).equatable()
                 .font(.subheadline)
         }
         .sheet(isPresented: $showCategoryPicker) {

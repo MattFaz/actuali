@@ -4,7 +4,7 @@ import SwiftUI
 /// surfaces keep the raw text editable — a TextField can't render tappable
 /// links — so any markdown links or bare URLs in the draft surface as rows
 /// beneath the field, updating live as the user types.
-struct NoteLinkRows: View {
+struct NoteLinkRows: View, nonisolated Equatable {
     let text: String
 
     var body: some View {

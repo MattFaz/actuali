@@ -5,10 +5,10 @@ import Testing
 
 struct AddTransactionPreviewTests {
     @Test func unchangedNotesKeepPreviewEqual() {
-        #expect(AddTransactionNoteLinkRows(text: "[Receipt](https://example.com)") ==
-            AddTransactionNoteLinkRows(text: "[Receipt](https://example.com)"))
-        #expect(AddTransactionNoteLinkRows(text: "https://example.com/old") !=
-            AddTransactionNoteLinkRows(text: "https://example.com/new"))
+        #expect(NoteLinkRows(text: "[Receipt](https://example.com)") ==
+            NoteLinkRows(text: "[Receipt](https://example.com)"))
+        #expect(NoteLinkRows(text: "https://example.com/old") !=
+            NoteLinkRows(text: "https://example.com/new"))
     }
 
     @MainActor
