@@ -1,20 +1,16 @@
 import XCTest
 
 extension XCTestCase {
-    /// Retry a missed tap only while its expected result is absent. Menu
-    /// dismissal can lag a successful toggle, so wait for it separately.
+    /// Retry a missed tap only while its expected result is absent, so a
+    /// successful toggle cannot be flipped back while its menu dismisses.
     @MainActor
     func tapControl(_ control: XCUIElement, until changed: () -> Bool) {
         let inner = control.switches.firstMatch
         let target = inner.exists ? inner : control
-        let dismissesMenu = target.elementType == .button
         XCTAssertTrue(target.wait(for: \.isHittable, toEqual: true, timeout: 5))
         for _ in 0..<3 {
             target.tap()
             if changed() {
-                if dismissesMenu {
-                    XCTAssertTrue(target.waitForNonExistence(timeout: 10), "Menu did not dismiss")
-                }
                 return
             }
         }

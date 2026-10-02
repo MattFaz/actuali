@@ -85,9 +85,17 @@ final class AccountNotesUITests: XCTestCase {
             if overflow.waitForExistence(timeout: 5) {
                 overflow.tap()
             } else if !asSwitch.exists, !asButton.exists {
-                app.navigationBars.buttons["More"].tap()
+                // An inline control can appear while waiting for the overflow.
+                let more = app.navigationBars.buttons["More"]
+                XCTAssertTrue(more.waitForExistence(timeout: 5), "toolbar overflow not shown")
+                more.tap()
             }
         }
+        let rendered = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in asSwitch.exists || asButton.exists }, object: nil
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [rendered], timeout: 5), .completed,
+                       "note visibility control not shown")
         return asSwitch.exists ? asSwitch : asButton
     }
 
