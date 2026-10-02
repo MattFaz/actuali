@@ -430,11 +430,24 @@ struct BudgetView: View {
                 .accessibilityLabel("Next month")
             }
         }
-        // New Category / New Group now live at the top of the options menu
-        // below (GH #157 follow-up) — creation is one more "how this looks
-        // and what's in it" action rather than its own toolbar button, and
-        // the trailing edge stays down to a single control.
-        ToolbarItem(placement: .topBarTrailing) {
+        // New Category / New Group live at the top of the options menu below
+        // (GH #157 follow-up) — creation is one more "how this looks and
+        // what's in it" action rather than its own toolbar button.
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            // Budget actions get their own button so the options menu stays
+            // about how the table looks. It sits beside that menu in one
+            // group, still within the title stepper's centering budget.
+            if budgetStore.currentBudgetMonth != nil {
+                BudgetActionsMenu(
+                    onCopyPreviousMonthBudget: { copyPreviousMonthBudget() },
+                    onSetBudgetsToZero: { setBudgetsToZero() },
+                    onTemplateAction: budgetStore.goalTemplatesEnabled
+                        ? { runTemplates($0) } : nil,
+                    onCleanup: budgetStore.currentBudgetMonth?.isTrackingBudget == false
+                        && budgetStore.goalTemplatesEnabled
+                        ? { runCleanup() } : nil
+                )
+            }
             // Every "how should this look" control lives here (GH #157).
             // Whole-table expand/collapse is a menu rather than a long-press
             // on the group headers: SwiftUI context menus don't fire inside
@@ -447,14 +460,7 @@ struct BudgetView: View {
                 canAddCategory: firstSelectableGroupId != nil,
                 onNewGroup: hasBudget ? { newBudgetItem = .group } : nil,
                 expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
-                collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil,
-                onCopyPreviousMonthBudget: hasBudget ? { copyPreviousMonthBudget() } : nil,
-                onSetBudgetsToZero: hasBudget ? { setBudgetsToZero() } : nil,
-                onTemplateAction: hasBudget && budgetStore.goalTemplatesEnabled
-                    ? { runTemplates($0) } : nil,
-                onCleanup: budgetStore.currentBudgetMonth?.isTrackingBudget == false
-                    && budgetStore.goalTemplatesEnabled
-                    ? { runCleanup() } : nil
+                collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil
             )
         }
     }

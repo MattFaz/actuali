@@ -828,6 +828,52 @@
         }
       }
     },
+    "Budget actions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budgetaktionen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budget actions"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acciones del presupuesto"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actions du budget"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Azioni di budget"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budgetacties"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ações do orçamento"
+          }
+        }
+      }
+    },
     "Budgeted Amounts" : {
       "comment" : "Budget view toggle that shows or hides budgeted amounts",
       "localizations" : {
@@ -1059,6 +1105,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Empréstimos configurados"
+          }
+        }
+      }
+    },
+    "Copy last month's budget, set budgets to zero, apply templates and clean up" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budget des letzten Monats kopieren, Budgets auf null setzen, Vorlagen anwenden und bereinigen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy last month's budget, set budgets to zero, apply templates and clean up"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar el presupuesto del mes pasado, establecer los presupuestos en cero, aplicar plantillas y limpiar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copier le budget du mois dernier, mettre les budgets à zéro, appliquer les modèles et nettoyer"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copia il budget del mese scorso, imposta i budget a zero, applica i modelli e pulisci"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budget van vorige maand kopiëren, budgetten op nul zetten, sjablonen toepassen en opschonen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar o orçamento do mês passado, definir os orçamentos como zero, aplicar modelos e limpar"
           }
         }
       }
