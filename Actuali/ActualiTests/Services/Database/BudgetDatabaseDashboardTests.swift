@@ -39,6 +39,38 @@ struct BudgetDatabaseDashboardTests {
         }
     }
 
+    @Test func dashboardObservationIgnoresTransactionsAndTracksDefinitionWrites() async throws {
+        let (database, url) = try await makeTestDatabase(TestSchema.transactions)
+        defer { cleanup(url) }
+        try await confirmation(expectedCount: 3) { changed in
+            let (events, continuation) = AsyncStream<Void>.makeStream()
+            let observer = Task {
+                for try await _ in database.dashboardChanges() {
+                    changed()
+                    continuation.yield(())
+                }
+                continuation.finish()
+            }
+            var iterator = events.makeAsyncIterator()
+            _ = await iterator.next() // Initial definitions are available without a write.
+            try await database.dbQueueForTesting.write { db in
+                try db.execute(sql: "INSERT INTO transactions (id, acct, date, amount) VALUES ('tx', 'a', 20260514, 100)")
+            }
+            // Allow an erroneous transaction event to arrive before the definition writes.
+            try await Task.sleep(for: .milliseconds(100))
+            try await database.dbQueueForTesting.write { db in
+                try db.execute(sql: "INSERT INTO dashboard_pages (id, name) VALUES ('p', 'New dashboard')")
+            }
+            _ = await iterator.next()
+            try await database.dbQueueForTesting.write { db in
+                try db.execute(sql: "INSERT INTO dashboard (id, type, dashboard_page_id) VALUES ('w', 'summary-card', 'p')")
+            }
+            _ = await iterator.next()
+            observer.cancel()
+            try await observer.value
+        }
+    }
+
     @Test func returnsEmptyForFreshDatabase() async throws {
         let (database, _) = try await makeTestDatabase()
         let widgets = try await database.fetchWidgets(pageId: nil)
@@ -223,7 +255,7 @@ struct ReportsPageSelectionTests {
 
 struct ReportsLoadRequestTests {
     @Test func cancelledRequestCannotPublish() {
-        let request = ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 1)
+        let request = ReportsLoadRequest(databaseID: nil, generation: 1)
 
         #expect(!ReportsTabView.shouldPublish(
             request: request,
@@ -234,16 +266,8 @@ struct ReportsLoadRequestTests {
 
     @Test func staleGenerationCannotPublish() {
         #expect(!ReportsTabView.shouldPublish(
-            request: ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 1),
-            currentRequest: ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 2),
-            taskIsCancelled: false
-        ))
-    }
-
-    @Test func dataVersionChangeInvalidatesRequest() {
-        #expect(!ReportsTabView.shouldPublish(
-            request: ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 1),
-            currentRequest: ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 1),
+            request: ReportsLoadRequest(databaseID: nil, generation: 1),
+            currentRequest: ReportsLoadRequest(databaseID: nil, generation: 2),
             taskIsCancelled: false
         ))
     }
@@ -255,12 +279,10 @@ struct ReportsLoadRequestTests {
         #expect(!ReportsTabView.shouldPublish(
             request: ReportsLoadRequest(
                 databaseID: ObjectIdentifier(previousDatabase),
-                dataVersion: 1,
                 generation: 1
             ),
             currentRequest: ReportsLoadRequest(
                 databaseID: ObjectIdentifier(currentDatabase),
-                dataVersion: 1,
                 generation: 1
             ),
             taskIsCancelled: false
@@ -268,7 +290,7 @@ struct ReportsLoadRequestTests {
     }
 
     @Test func currentRequestCanPublish() {
-        let request = ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 2)
+        let request = ReportsLoadRequest(databaseID: nil, generation: 2)
 
         #expect(ReportsTabView.shouldPublish(
             request: request,
@@ -277,9 +299,9 @@ struct ReportsLoadRequestTests {
         ))
     }
 
-    @Test func sameDataVersionKeepsRequestIdentityStable() {
-        let first = ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 1)
-        let second = ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 1)
+    @Test func sameConfigurationKeepsRequestIdentityStable() {
+        let first = ReportsLoadRequest(databaseID: nil, generation: 1)
+        let second = ReportsLoadRequest(databaseID: nil, generation: 1)
 
         #expect(first == second)
     }

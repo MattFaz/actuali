@@ -2721,6 +2721,12 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Includes an initial event, then only dashboard definition writes (including sync).
+    func dashboardChanges() -> some AsyncSequence<Void, any Error> {
+        ValueObservation.tracking(region: Table("dashboard"), Table("dashboard_pages"), fetch: { _ in () })
+            .values(in: dbQueue, bufferingPolicy: .bufferingNewest(1))
+    }
+
     /// Live dashboard pages in table order — the same order the web app's
     /// unordered AQL select (`q('dashboard_pages').select('*')`) yields and
     /// its router indexes into for the default dashboard
