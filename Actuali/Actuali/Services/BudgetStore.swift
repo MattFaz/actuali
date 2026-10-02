@@ -4904,25 +4904,24 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
-    /// Restore several transaction rows as one sync write. History uses this
-    /// for multi-row Undo so a transfer or split does not intentionally issue
-    /// one independent write per leg.
+    /// Update several transaction rows as one sync write: one SQLite write,
+    /// clock save and reload for the whole set instead of one per row.
     ///
     /// Batches by distinct changed-field set rather than sending one union of
     /// fields for every row: a row whose amount didn't change must not have
     /// `amount` rewritten just because another row in the same batch changed
     /// its amount — that would stamp a fresh HLC timestamp on an unchanged
     /// value and could clobber a concurrent edit from another device.
-    func restoreTransactions(
+    private func updateTransactions(
         _ transactions: [Transaction],
-        from recordedAfter: [Transaction]
+        originals: [Transaction]
     ) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
 
         var batches: [Set<String>: [Transaction]] = [:]
-        for (updated, original) in zip(transactions, recordedAfter) {
+        for (updated, original) in zip(transactions, originals) {
             let fields = Self.changedFields(original: original, updated: updated)
             guard !fields.isEmpty else { continue }
             batches[fields, default: []].append(updated)
@@ -4957,7 +4956,8 @@ final class BudgetStore: ObservableObject {
         originalPayeeId: String?
     ) async throws {
         guard let database else { return }
-        for child in try await database.fetchChildTransactions(parentId: parent.id) {
+        let children = try await database.fetchChildTransactions(parentId: parent.id)
+        let updated = children.map { child in
             var updated = child
             updated.accountId = parent.accountId
             updated.date = parent.date
@@ -4965,10 +4965,9 @@ final class BudgetStore: ObservableObject {
             if child.payeeId == originalPayeeId {
                 updated.payeeId = parent.payeeId
             }
-            if updated != child {
-                try await updateTransaction(updated, original: child)
-            }
+            return updated
         }
+        try await updateTransactions(updated, originals: children)
     }
 
     /// Split children of a parent, for the edit sheet's editable split lines.

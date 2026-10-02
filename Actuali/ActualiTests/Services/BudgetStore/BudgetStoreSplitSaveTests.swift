@@ -545,6 +545,61 @@ struct BudgetStoreSplitSaveTests {
         #expect(messageRows == 3)
     }
 
+    /// Editing a split parent without touching its lines (date, cleared,
+    /// payee) cascades to every child in one batch: one clock save and one
+    /// reload for the whole cascade, not one per child (GH #543 item 12).
+    @Test func editingSplitParentCascadesChildrenThroughOneBatch() async throws {
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(path) }
+        let store = try await makeTestStore(database: database)
+
+        try await database.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+            INSERT INTO transactions (id, acct, category, description, amount, date, cleared, isParent, isChild, parent_id, sort_order) VALUES
+                ('parent', 'acct-1', NULL,      'p-1', -1000, 20260601, 0, 1, 0, NULL,    10),
+                ('c-1',    'acct-1', 'cat-food', 'p-1',  -600, 20260601, 0, 0, 1, 'parent', 9),
+                ('c-2',    'acct-1', 'cat-fun',  'p-1',  -400, 20260601, 0, 0, 1, 'parent', 8),
+                ('c-3',    'acct-1', 'cat-med',  'p-1',  -300, 20260601, 0, 0, 1, 'parent', 7);
+            """)
+        }
+
+        let original = Transaction(
+            id: "parent", accountId: "acct-1", date: 20_260_601, amount: -1000,
+            payeeId: "p-1", payeeName: "Grocer", categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: true, parentId: nil, tombstone: false, sortOrder: 10,
+            importedPayee: nil
+        )
+        var edit = form(amount: "10.00", payeeName: "Grocer")
+        edit.date = Transaction.date(fromYYYYMMDD: 20_260_602)
+        edit.cleared = true
+
+        let versionBefore = store.dataVersion
+        try await store.saveTransaction(edit, editing: original)
+
+        // Every child follows the parent's date and cleared state...
+        let all = try rows(path: path, orderBy: "id")
+        let dates = Dictionary(uniqueKeysWithValues: all.map { ($0["id"] as String, $0["date"] as Int) })
+        let clearedFlags = Dictionary(uniqueKeysWithValues: all.map { ($0["id"] as String, $0["cleared"] as Int) })
+        #expect(dates == ["parent": 20_260_602, "c-1": 20_260_602, "c-2": 20_260_602, "c-3": 20_260_602])
+        #expect(clearedFlags.values.allSatisfy { $0 == 1 })
+
+        // ...with one reload for the parent edit plus one for the whole
+        // cascade. Per-child updates reloaded the store once per child.
+        #expect(store.dataVersion - versionBefore == 2)
+
+        // Message content per row matches what the per-child path produced:
+        // a date and a cleared message for the parent and every child.
+        let messages = try messageRows(path: path).filter { $0["dataset"] as String == "transactions" }
+        let values = Dictionary(uniqueKeysWithValues: messages.map {
+            ("\($0["row"] as String)/\($0["column"] as String)", $0["value"] as String)
+        })
+        for id in ["parent", "c-1", "c-2", "c-3"] {
+            #expect(values["\(id)/date"] == "N:20260602")
+            #expect(values["\(id)/cleared"] == "N:1")
+        }
+    }
+
     @Test func editingATransferIntoASplitIsRejected() async throws {
         let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
