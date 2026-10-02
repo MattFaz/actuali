@@ -1,19 +1,24 @@
 import XCTest
 
 extension XCTestCase {
-    /// Native menus can expose their items before accepting taps on a busy
-    /// runner. Retry only while the item remains in the open menu, so a
-    /// successful toggle cannot be flipped back (nightly run 36911859727).
+    /// Retry a missed tap only while its expected result is absent. Menu
+    /// dismissal can lag a successful toggle, so wait for it separately.
     @MainActor
-    func tapMenuItem(_ item: XCUIElement) {
-        XCTAssertTrue(item.wait(for: \.isHittable, toEqual: true, timeout: 5))
+    func tapControl(_ control: XCUIElement, until changed: () -> Bool) {
+        let inner = control.switches.firstMatch
+        let target = inner.exists ? inner : control
+        let dismissesMenu = target.elementType == .button
+        XCTAssertTrue(target.wait(for: \.isHittable, toEqual: true, timeout: 5))
         for _ in 0..<3 {
-            item.tap()
-            if item.waitForNonExistence(timeout: 3) {
+            target.tap()
+            if changed() {
+                if dismissesMenu {
+                    XCTAssertTrue(target.waitForNonExistence(timeout: 10), "Menu did not dismiss")
+                }
                 return
             }
         }
-        XCTFail("Menu did not dismiss after tapping \(item.label)")
+        XCTFail("Control did not update after tapping \(control.label)")
     }
 
     /// Open Settings > Budget View whether Settings last showed its hub or
