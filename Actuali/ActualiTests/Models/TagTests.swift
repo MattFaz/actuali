@@ -70,6 +70,20 @@ struct TagTests {
         #expect(TagFilter.extractHashtags(from: hiddenNote) == ["#visible"])
     }
 
+    @Test func noteSegmentsKeepTagsInPlaceWithinTheNote() {
+        #expect(TagFilter.noteSegments("Lunch #food with Sam") == [.text("Lunch"), .tag("#food"), .text("with Sam")])
+        #expect(TagFilter.noteSegments("Team lunch #food #reimbursable")
+            == [.text("Team lunch"), .tag("#food"), .tag("#reimbursable")])
+        #expect(TagFilter.noteSegments("#food Team") == [.tag("#food"), .text("Team")])
+        #expect(TagFilter.noteSegments("Plain  note") == [.text("Plain note")])
+        #expect(TagFilter.noteSegments("").isEmpty)
+    }
+
+    @Test func noteSegmentsLeaveHiddenTagsInTheText() {
+        // `##hidden` is not a tag (see extractHashtags), so it stays text.
+        #expect(TagFilter.noteSegments("Gift ##hidden #visible") == [.text("Gift ##hidden"), .tag("#visible")])
+    }
+
     @Test func colorToHexSupportsGrayscaleAndRgb() {
         let red = Color(hex: "#FF0000")
         #expect(red?.toHex() == "#FF0000")

@@ -423,6 +423,40 @@ struct TransactionRow: View {
         )
     }
 
+    /// The note, wrapping over as many lines as it needs, with each `#tag`
+    /// drawn as a colored chip in place so the tags read as part of the note.
+    private func noteLine(_ notes: String) -> some View {
+        WrappingHStack(spacing: 4, lineSpacing: 2) {
+            ForEach(Array(TagFilter.noteSegments(notes).enumerated()), id: \.offset) { _, segment in
+                switch segment {
+                case .text(let text):
+                    ForEach(Array(text.split(separator: " ").enumerated()), id: \.offset) { _, word in
+                        Text(word)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                case .tag(let rawTag):
+                    tagChip(rawTag)
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(notes)
+    }
+
+    private func tagChip(_ rawTag: String) -> some View {
+        let match = budgetStore.tagsByName[Tag.normalizeTagName(rawTag).lowercased()]
+        let tagColor = match?.swiftUIColor ?? .secondary
+        return Text(rawTag)
+            .font(.system(size: 10, weight: .semibold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(tagColor.opacity(0.15), in: Capsule())
+            .foregroundStyle(tagColor)
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             if isSelectionMode {
@@ -486,42 +520,24 @@ struct TransactionRow: View {
                     Text(categoryLabel)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if let notes = transaction.notes, !notes.isEmpty {
-                        let extractedTags = TagFilter.extractHashtags(from: notes)
-                        if !extractedTags.isEmpty {
-                            ForEach(extractedTags.prefix(2), id: \.self) { rawTag in
-                                let clean = Tag.normalizeTagName(rawTag)
-                                let match = budgetStore.tagsByName[clean.lowercased()]
-                                let tagColor = match?.swiftUIColor ?? .secondary
-                                Text(rawTag)
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 1.5)
-                                    .background(tagColor.opacity(0.15), in: Capsule())
-                                    .foregroundStyle(tagColor)
-                            }
-                        }
-                        Text("・")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(notes)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
                 }
+                if let notes = transaction.notes, !notes.isEmpty {
+                    noteLine(notes)
+                }
+            }
+            // Take all the width the amount column leaves. A trailing Spacer
+            // would claim half of it, wrapping notes well before the amount.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(budgetStore.displayBalance(transaction.amount))
+                    .foregroundColor(transaction.isOutflow ? .primary : .green)
                 if showAccount {
                     Text(accountName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .frame(maxWidth: 120, alignment: .trailing)
                 }
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(budgetStore.displayBalance(transaction.amount))
-                    .foregroundColor(transaction.isOutflow ? .primary : .green)
                 if let runningBalance = transaction.runningBalance {
                     Text(budgetStore.displayBalance(runningBalance))
                         .foregroundStyle(balanceColor(for: runningBalance))
@@ -545,6 +561,57 @@ struct TransactionRow: View {
             if active {
                 confirmingUnlock = false
             }
+        }
+    }
+}
+
+/// Lays its children out left to right and wraps to a new line when the row
+/// is full, centering each line's children vertically. Used for a note whose
+/// words and tag chips flow together.
+private struct WrappingHStack: Layout {
+    var spacing: CGFloat
+    var lineSpacing: CGFloat
+
+    private struct Line {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func lines(for width: CGFloat, _ subviews: Subviews) -> [Line] {
+        var lines = [Line()]
+        for (index, subview) in subviews.enumerated() {
+            let size = subview.sizeThatFits(.unspecified)
+            if let last = lines.last, !last.indices.isEmpty, last.width + spacing + size.width > width {
+                lines.append(Line())
+            }
+            let gap = lines[lines.count - 1].indices.isEmpty ? 0 : spacing
+            lines[lines.count - 1].indices.append(index)
+            lines[lines.count - 1].width += gap + size.width
+            lines[lines.count - 1].height = max(lines[lines.count - 1].height, size.height)
+        }
+        return lines
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        let lines = lines(for: proposal.width ?? .infinity, subviews)
+        let height = lines.reduce(0) { $0 + $1.height } + lineSpacing * CGFloat(max(lines.count - 1, 0))
+        return CGSize(width: lines.map(\.width).max() ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        var y = bounds.minY
+        for line in lines(for: bounds.width, subviews) {
+            var x = bounds.minX
+            for index in line.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(
+                    at: CGPoint(x: x, y: y + (line.height - size.height) / 2),
+                    proposal: ProposedViewSize(size)
+                )
+                x += size.width + spacing
+            }
+            y += line.height + lineSpacing
         }
     }
 }
