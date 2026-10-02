@@ -1,4 +1,3 @@
-import GRDB
 import SwiftUI
 
 struct ReportsLoadRequest: Equatable {
@@ -171,6 +170,13 @@ struct ReportsTabView: View {
         return pages.first?.id
     }
 
+    nonisolated static func dashboardIdentityChanged(
+        loadedWidgets: [DashboardWidget], fetchedWidgets: [DashboardWidget],
+        loadedPageId: String?, fetchedPageId: String?
+    ) -> Bool {
+        loadedWidgets != fetchedWidgets || loadedPageId != fetchedPageId
+    }
+
     nonisolated static func shouldPublish(
         request: ReportsLoadRequest,
         currentRequest: ReportsLoadRequest,
@@ -204,7 +210,8 @@ struct ReportsTabView: View {
             ) else { return }
             self.pages = fetchedPages
             self.selectedPageId = pageId
-            if widgets != fetched || loadedPageId != pageId {
+            if Self.dashboardIdentityChanged(loadedWidgets: widgets, fetchedWidgets: fetched,
+                                             loadedPageId: loadedPageId, fetchedPageId: pageId) {
                 dashboardGeneration += 1
             }
             self.widgets = fetched

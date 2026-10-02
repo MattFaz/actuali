@@ -119,41 +119,6 @@ struct DashboardView: View {
         )
     }
 
-    /// A shared superset for engines that only read their visible months.
-    nonisolated static func transactionRange(widgets: [DashboardWidget], today: Date) -> ClosedRange<Int>? {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        var bounds: [ClosedRange<Int>] = []
-        for widget in widgets {
-            let timeFrame: WidgetTimeFrame?
-            switch widget {
-            case .summary(_, let meta):
-                guard meta?.content?.divisorAllTimeDateRange != true else { return nil }
-                timeFrame = meta?.timeFrame
-            case .cashFlow(_, let meta): timeFrame = meta?.timeFrame
-            case .calendar(_, let meta): timeFrame = meta?.timeFrame
-            case .sankey(_, let meta): timeFrame = meta?.timeFrame
-            case .markdown, .monteCarlo, .unsupported: continue
-            // ponytail: other engines need historical balances or range metadata.
-            // Keep full history until each engine's minimum inputs are established.
-            default: return nil
-            }
-            let (start, end) = TimeFrame.resolve(timeFrame, asOf: today)
-            let firstMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: start))!
-            let lastMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: end))!
-            let nextMonth = calendar.date(byAdding: .month, value: 1, to: lastMonth)!
-            let lastDay = calendar.date(byAdding: .day, value: -1, to: nextMonth)!
-            func ymd(_ date: Date) -> Int {
-                let parts = calendar.dateComponents([.year, .month, .day], from: date)
-                return parts.year! * 10000 + parts.month! * 100 + parts.day!
-            }
-            guard firstMonth <= lastDay else { return nil }
-            bounds.append(ymd(firstMonth)...ymd(lastDay))
-        }
-        guard let start = bounds.map(\.lowerBound).min(), let end = bounds.map(\.upperBound).max() else { return nil }
-        return start...end
-    }
-
     nonisolated static func shouldPublish(
         request: DashboardLoadRequest,
         currentRequest: DashboardLoadRequest,
@@ -238,7 +203,7 @@ struct DashboardView: View {
             }
             try Task.checkCancellation()
 
-            let loadedTransactions = try await database.fetchTransactionsForReports(dateRange: Self.transactionRange(widgets: widgets, today: today))
+            let loadedTransactions = try await database.fetchTransactionsForReports()
             try Task.checkCancellation()
 
             guard Self.shouldPublish(
