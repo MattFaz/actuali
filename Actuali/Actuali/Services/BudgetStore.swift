@@ -1610,6 +1610,7 @@ final class BudgetStore: ObservableObject {
     var canChangeBudgetType: Bool {
         currentBudgetId != nil && syncClient != nil
     }
+
     private var syncStateCancellable: AnyCancellable?
 
     // MARK: - Backups
@@ -2591,9 +2592,8 @@ final class BudgetStore: ObservableObject {
             // is Actual's explicit "None" setting.
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
             let fetchedNumberFormat = try await openedDb.fetchPreference(id: "numberFormat")
-            let fetchedBudgetType = BudgetType.fromPreference(
-                try await openedDb.fetchPreference(id: "budgetType")
-            )
+            let budgetTypePreference = try await openedDb.fetchPreference(id: "budgetType")
+            let fetchedBudgetType = BudgetType.fromPreference(budgetTypePreference)
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await openedDb.fetchCreditCardConfigs()
             let fetchedLoans = try await openedDb.fetchLoanConfigs()
@@ -2941,9 +2941,8 @@ final class BudgetStore: ObservableObject {
             // client, and nothing else republishes it (GH #297).
             let fetchedCurrencyCode = try await database.fetchCurrencyCode()
             let fetchedNumberFormat = try await database.fetchPreference(id: "numberFormat")
-            let fetchedBudgetType = BudgetType.fromPreference(
-                try await database.fetchPreference(id: "budgetType")
-            )
+            let budgetTypePreference = try await database.fetchPreference(id: "budgetType")
+            let fetchedBudgetType = BudgetType.fromPreference(budgetTypePreference)
             // Same story for the goal-templates flags — the web's Experimental
             // settings toggles arrive as synced preferences.
             let fetchedGoalTemplatesFlag = try await database.fetchPreference(

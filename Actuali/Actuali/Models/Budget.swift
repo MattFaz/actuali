@@ -8,9 +8,9 @@ enum BudgetType: String, CaseIterable, Hashable {
     static func fromPreference(_ value: String?) -> Self {
         switch value {
         case "tracking", "report":
-            return .tracking
+            .tracking
         default:
-            return .envelope
+            .envelope
         }
     }
 }
