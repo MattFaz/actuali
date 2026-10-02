@@ -335,8 +335,18 @@ final class BudgetStore: ObservableObject {
     /// fetches (transaction pagers, report widgets) key reloads on this so
     /// changes made elsewhere in the app reach them without a pull-down.
     @Published private(set) var dataVersion = 0
-    @Published var syncState: SyncState = .idle
-    @Published var lastSyncTime: Date?
+    /// Only views displaying sync status observe this object; status changes
+    /// must not invalidate every view observing the budget data.
+    let syncStatus = SyncStatus()
+    var syncState: SyncState {
+        get { syncStatus.state }
+        set { syncStatus.update(state: newValue, lastSyncTime: syncStatus.lastSyncTime) }
+    }
+
+    var lastSyncTime: Date? {
+        get { syncStatus.lastSyncTime }
+        set { syncStatus.update(state: syncStatus.state, lastSyncTime: newValue) }
+    }
 
     /// True from the moment a budget is opened until its first sync attempt
     /// finishes. Everything on screen until then comes from the downloaded
@@ -2195,8 +2205,7 @@ final class BudgetStore: ObservableObject {
         payees = []
         tags = []
         tagSummaries = []
-        lastSyncTime = nil
-        syncState = .idle
+        syncStatus.update(state: .idle, lastSyncTime: nil)
         // No budget left to catch up — an in-flight initial sync's banner must
         // not outlive the budget it described.
         isInitialSyncing = false
@@ -6657,7 +6666,7 @@ final class BudgetStore: ObservableObject {
         ReportStrings.localized("Posted \(count) scheduled transactions", locale: locale, bundle: bundle)
     }
 
-    /// Mirror sync state into the published property, and post due schedules
+    /// Mirror sync state into the status object, and post due schedules
     /// whenever a sync completes successfully (.syncing → .idle; performSync
     /// is the only sender of that transition). loot-core runs its schedule
     /// service on every sync completion event, so posting must not depend on
