@@ -354,6 +354,8 @@ struct CompactCategoryBudgetRow: View {
     /// Apply this category's own templates (GH #495); nil hides the item —
     /// callers gate it on the goalTemplatesEnabled flag.
     var onApplyTemplate: ((CategoryBudget) -> Void)?
+    /// Rename the category from its long-press menu; nil hides the item.
+    var onRename: ((CategoryBudget) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -380,7 +382,8 @@ struct CompactCategoryBudgetRow: View {
             onEditBudget: onEditBudget,
             onShowTransactions: onShowTransactions,
             onMoveMoney: onMoveMoney,
-            onApplyTemplate: onApplyTemplate
+            onApplyTemplate: onApplyTemplate,
+            onRename: onRename
         ))
     }
 
