@@ -5,10 +5,10 @@ import SwiftUI
 extension View {
     func filterChip(isSelected: Bool) -> some View {
         self
-            .font(.subheadline.weight(.semibold))
+            .font(.footnote.weight(.semibold))
             .foregroundStyle(isSelected ? Color.white : Color.primary)
-            .padding(.horizontal, 14)
-            .frame(minHeight: 40)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 32)
             .background {
                 Capsule().fill(isSelected
                     ? Color.accentColor
