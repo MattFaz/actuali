@@ -2282,23 +2282,15 @@ struct MonthPicker: View {
     /// is DateFormatter use on iOS 7+. The locale is frozen to its identifier so
     /// a cached entry can't drift when .autoupdatingCurrent follows a system
     /// language change.
-    private nonisolated(unsafe) static let formatterCache = NSCache<NSString, DateFormatter>()
-
     private nonisolated static func formatter(template: String, locale: Locale) -> DateFormatter {
-        let key = "\(template)|\(locale.identifier)" as NSString
-        let formatter: DateFormatter
-        if let cached = formatterCache.object(forKey: key) {
-            formatter = cached
-        } else {
-            let created = DateFormatter()
-            created.locale = Locale(identifier: locale.identifier)
-            created.calendar = Calendar(identifier: .gregorian)
-            created.timeZone = TimeZone(secondsFromGMT: 0)
-            created.dateFormat = DateFormatter.dateFormat(fromTemplate: template, options: 0, locale: locale) ?? template
-            formatterCache.setObject(created, forKey: key)
-            formatter = created
+        DateFormatterCache.cached("\(template)|\(locale.identifier)") {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: locale.identifier)
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: template, options: 0, locale: locale) ?? template
+            return formatter
         }
-        return formatter
     }
 
     nonisolated static func date(fromMonth month: String) -> Date? {

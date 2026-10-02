@@ -17,31 +17,39 @@ struct AgeOfMoneyData: Equatable {
                                       insufficientData: false)
 }
 
-enum ReportMonthYearFormatting {
-    /// DateFormatter construction is slow and this runs per chart point, so
-    /// formatters are cached per locale. NSCache is thread-safe, as is
-    /// DateFormatter use on iOS 7+. The locale is frozen to its identifier so a
-    /// cached entry can't drift when .autoupdatingCurrent follows a system
-    /// language change.
+/// Shared get-or-create cache for locale-keyed DateFormatters: constructing
+/// one is slow and several call sites do it per redraw. NSCache is
+/// thread-safe, as is DateFormatter use on iOS 7+, so handing the shared
+/// formatter out is safe. Keys must fully determine the construction — freeze
+/// a runtime locale to its identifier so a cached entry can't drift when
+/// .autoupdatingCurrent follows a system language change.
+enum DateFormatterCache {
+    /// The one nonisolated(unsafe) here: NSCache is thread-safe but not marked
+    /// Sendable in the SDK.
     private nonisolated(unsafe) static let cache = NSCache<NSString, DateFormatter>()
 
+    static func cached(_ key: String, _ make: () -> DateFormatter) -> DateFormatter {
+        if let cached = cache.object(forKey: key as NSString) {
+            return cached
+        }
+        let created = make()
+        cache.setObject(created, forKey: key as NSString)
+        return created
+    }
+}
+
+enum ReportMonthYearFormatting {
     static func formatter(locale: Locale) -> DateFormatter {
-        let key = locale.identifier as NSString
-        let formatter: DateFormatter
-        if let cached = cache.object(forKey: key) {
-            formatter = cached
-        } else {
-            let created = DateFormatter()
-            created.locale = Locale(identifier: locale.identifier)
-            created.calendar = Calendar(identifier: .gregorian)
-            created.dateFormat = DateFormatter.dateFormat(
+        DateFormatterCache.cached("yMMM|\(locale.identifier)") {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: locale.identifier)
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.dateFormat = DateFormatter.dateFormat(
                 fromTemplate: "yMMM", options: 0, locale: locale
             )
-            created.timeZone = TimeZone(identifier: "UTC")
-            cache.setObject(created, forKey: key)
-            formatter = created
+            formatter.timeZone = TimeZone(identifier: "UTC")
+            return formatter
         }
-        return formatter
     }
 }
 
