@@ -2,7 +2,7 @@
 # Distributes the newest processed iOS build to an existing external group.
 # Needs TESTFLIGHT_GROUP_NAME and ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH.
 # Notes use merge subjects (PR titles) since the group's previous build;
-# with no previous build, only the latest build's merge is listed.
+# with no mapped previous build, only the latest build's merge is listed.
 require "json"
 require "net/http"
 require "open3"
@@ -47,7 +47,7 @@ class TestFlightDistribution
 
   def commit_for_build(version)
     count = Integer(version, 10) - 100
-    raise "Build #{version} does not use commit-count numbering" unless count.positive?
+    return nil unless count.positive?
 
     # Walk main's history: historical merge commits make HEAD~N arithmetic
     # incorrect. Each count includes the same ancestors as the Xcode stamp.
@@ -57,12 +57,18 @@ class TestFlightDistribution
       return sha if ancestors == count
       break if ancestors < count
     end
-    raise "No main commit matches build #{version}"
+    nil
   end
 
   def notes(version, previous_version)
     finish = commit_for_build(version)
-    start = previous_version ? commit_for_build(previous_version) : git("rev-parse", "#{finish}^")
+    raise "No main commit matches build #{version}; refusing to distribute an off-main build" unless finish
+
+    start = previous_version && commit_for_build(previous_version)
+    if previous_version && !start
+      puts "Previous build #{previous_version} has no main commit; listing the latest merge only."
+    end
+    start ||= git("rev-parse", "#{finish}^")
     titles = git("log", "--first-parent", "--reverse", "--format=%s", "#{start}..#{finish}").lines.map do |line|
       "• #{line.strip.sub(/\s+\(#\d+\)\z/, '')}"
     end.uniq
@@ -104,6 +110,10 @@ class TestFlightDistribution
 
     detail = request("get", "builds/#{id}/buildBetaDetail").fetch("data")
     state = detail.fetch("attributes").fetch("externalBuildState")
+    if state == "IN_EXPORT_COMPLIANCE_REVIEW"
+      puts "Build #{version} is awaiting export-compliance review; retry next night."
+      return
+    end
     allowed = %w[READY_FOR_BETA_SUBMISSION WAITING_FOR_BETA_REVIEW IN_BETA_REVIEW BETA_APPROVED READY_FOR_BETA_TESTING IN_BETA_TESTING]
     raise "Build #{version} cannot be distributed: #{state}" unless allowed.include?(state)
 

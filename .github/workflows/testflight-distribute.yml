@@ -1,6 +1,14 @@
 name: TestFlight nightly distribution
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/testflight-distribute.yml"
+      - ".github/workflows/testflight.yml"
+      - "dev/scripts/distribute-testflight.rb"
+      - "dev/scripts/test_distribute_testflight.rb"
+      - "dev/scripts/asc_jwt.rb"
   schedule:
     - cron: "0 23 * * *"
       timezone: Australia/Melbourne
@@ -10,12 +18,21 @@ permissions:
   contents: read
 
 concurrency:
-  group: testflight-distribute
+  group: testflight-distribute-${{ github.event.pull_request.number || 'release' }}
   cancel-in-progress: false
 
 jobs:
+  check:
+    name: TestFlight script tests
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: ruby dev/scripts/test_distribute_testflight.rb
+
   distribute:
-    if: github.repository == 'MattFaz/actuali'
+    if: github.repository == 'MattFaz/actuali' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -24,9 +41,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-
-      - name: Check distribution script
-        run: ruby dev/scripts/test_distribute_testflight.rb
 
       # Reuses the upload workflow's API key secrets.
       - name: Distribute latest build with PR notes

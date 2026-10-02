@@ -31,6 +31,7 @@ class FakeDistribution < TestFlightDistribution
   end
 
   def notes(version, previous_version)
+    check(@writes.empty?, "Notes must be computed before any ASC write")
     @notes_range = [version, previous_version]
     "• Fix the budget screen\n• Add account filters"
   end
@@ -107,6 +108,14 @@ end
   check(script.writes.empty?, "Must not mutate blocked build")
 end
 
+[false, true].each do |assigned|
+  script = FakeDistribution.new
+  script.state = "IN_EXPORT_COMPLIANCE_REVIEW"
+  script.assigned = assigned
+  script.run("Nightly")
+  check(script.writes.empty?, "Export-compliance review must wait without mutating the build")
+end
+
 script = FakeDistribution.new
 script.pending = true
 script.run("Nightly")
@@ -158,8 +167,11 @@ Dir.mktmpdir("testflight-notes") do |dir|
     check(git.commit_for_build("105") == finish, "Must map commit count through merges")
     check(git.notes("105", "102") == "• Fix the budget screen\n• Add account filters", "Must exclude old, branch, and unuploaded changes")
     check(git.notes("105", nil) == "• Add account filters", "First run must not dump full history")
-    raises("No main commit") { git.commit_for_build("104") }
-    raises("commit-count numbering") { git.commit_for_build("88") }
+    check(git.commit_for_build("104").nil?, "Must identify an unmappable build")
+    check(git.commit_for_build("88").nil?, "Must identify legacy build numbering")
+    check(git.notes("105", "104") == "• Add account filters", "Unmapped previous build must not block new main builds")
+    check(git.notes("105", "88") == "• Add account filters", "Legacy previous build must not block new main builds")
+    raises("refusing to distribute an off-main build") { git.notes("104", "102") }
     commit.call("X" * 4100)
     check(git.notes("107", "106").length == 4000, "Must respect TestFlight's notes limit")
   end
