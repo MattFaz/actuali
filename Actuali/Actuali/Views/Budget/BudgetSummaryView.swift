@@ -120,10 +120,27 @@ struct BudgetSummarySheet: View {
               (1...12).contains(monthNumber) else {
             return String(localized: "Overspent", locale: locale)
         }
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        let monthName = formatter.shortMonthSymbols[monthNumber - 1]
+        let monthName = Self.shortMonthSymbols(locale)[monthNumber - 1]
         return String(format: String(localized: "Overspent in %@", locale: locale), monthName)
+    }
+
+    /// DateFormatter construction is slow and this runs per redraw, so the
+    /// month symbols are cached per locale. NSCache is thread-safe; the locale
+    /// is frozen to its identifier like the other formatter caches.
+    private nonisolated(unsafe) static let shortMonthSymbolsCache = NSCache<NSString, NSArray>()
+
+    private nonisolated static func shortMonthSymbols(_ locale: Locale) -> [String] {
+        let key = locale.identifier as NSString
+        let symbols: [String]
+        if let cached = shortMonthSymbolsCache.object(forKey: key) as? [String] {
+            symbols = cached
+        } else {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: locale.identifier)
+            symbols = formatter.shortMonthSymbols ?? []
+            shortMonthSymbolsCache.setObject(symbols as NSArray, forKey: key)
+        }
+        return symbols
     }
 
     var body: some View {

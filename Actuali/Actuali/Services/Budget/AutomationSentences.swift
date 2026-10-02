@@ -5,6 +5,8 @@ import Foundation
 /// note-line renderer (port of template-notes.ts `unparse`) used by the
 /// un-migrate flow.
 enum AutomationSentences {
+    private nonisolated(unsafe) static let monthLabelFormatters = NSCache<NSString, DateFormatter>()
+
     private static func localized(
         _ value: String.LocalizationValue, locale: Locale, bundle: Bundle
     ) -> String {
@@ -19,9 +21,21 @@ enum AutomationSentences {
     static func monthLabel(_ month: String?, locale: Locale = .autoupdatingCurrent) -> String {
         guard let month, !month.isEmpty else { return "—" }
         guard let (year, monthNumber) = BudgetMonthMath.yearAndMonth(month) else { return month }
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.dateFormat = "MMM yyyy"
+        // DateFormatter construction is slow and this runs per template row per
+        // redraw, so formatters are cached per locale. NSCache is thread-safe,
+        // as is DateFormatter use on iOS 7+. The locale is frozen to its
+        // identifier like the other formatter caches.
+        let key = locale.identifier as NSString
+        let formatter: DateFormatter
+        if let cached = monthLabelFormatters.object(forKey: key) {
+            formatter = cached
+        } else {
+            let created = DateFormatter()
+            created.locale = Locale(identifier: locale.identifier)
+            created.dateFormat = "MMM yyyy"
+            monthLabelFormatters.setObject(created, forKey: key)
+            formatter = created
+        }
         let components = DateComponents(year: year, month: monthNumber, day: 1)
         guard let date = Calendar.current.date(from: components) else { return month }
         return formatter.string(from: date)

@@ -18,14 +18,29 @@ struct AgeOfMoneyData: Equatable {
 }
 
 enum ReportMonthYearFormatting {
+    /// DateFormatter construction is slow and this runs per chart point, so
+    /// formatters are cached per locale. NSCache is thread-safe, as is
+    /// DateFormatter use on iOS 7+. The locale is frozen to its identifier so a
+    /// cached entry can't drift when .autoupdatingCurrent follows a system
+    /// language change.
+    private nonisolated(unsafe) static let cache = NSCache<NSString, DateFormatter>()
+
     static func formatter(locale: Locale) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = DateFormatter.dateFormat(
-            fromTemplate: "yMMM", options: 0, locale: locale
-        )
-        formatter.timeZone = TimeZone(identifier: "UTC")
+        let key = locale.identifier as NSString
+        let formatter: DateFormatter
+        if let cached = cache.object(forKey: key) {
+            formatter = cached
+        } else {
+            let created = DateFormatter()
+            created.locale = Locale(identifier: locale.identifier)
+            created.calendar = Calendar(identifier: .gregorian)
+            created.dateFormat = DateFormatter.dateFormat(
+                fromTemplate: "yMMM", options: 0, locale: locale
+            )
+            created.timeZone = TimeZone(identifier: "UTC")
+            cache.setObject(created, forKey: key)
+            formatter = created
+        }
         return formatter
     }
 }

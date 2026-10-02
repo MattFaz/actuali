@@ -7,6 +7,15 @@ struct ReportStringsTests {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
 
+    @Test func localizedBundleCacheKeepsPerLanguageBundlesDistinct() {
+        let english = ReportStrings.localizedBundle(for: Locale(identifier: "en_US"), in: appBundle)
+        let french = ReportStrings.localizedBundle(for: Locale(identifier: "fr_FR"), in: appBundle)
+
+        #expect(english != french)
+        // Repeat calls resolve through the cache to the same bundle.
+        #expect(ReportStrings.localizedBundle(for: Locale(identifier: "fr_FR"), in: appBundle) == french)
+    }
+
     @Test func fixedReportLabelsResolveForSupportedLocales() {
         let english = ReportStrings.text("This month", locale: Locale(identifier: "en_US"), bundle: appBundle)
         let french = ReportStrings.text("This month", locale: Locale(identifier: "fr_FR"), bundle: appBundle)

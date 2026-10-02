@@ -14,19 +14,32 @@ enum ReportStrings {
         ))
     }
 
+    // Bundle(path:) hits disk and runs on every chart label and axis tick, so
+    // resolved bundles are cached per parent bundle + language. NSCache is
+    // thread-safe, as is Bundle. Keying on the locale identifier keeps a
+    // language change resolving to the right bundle.
+    private nonisolated(unsafe) static let bundleCache = NSCache<NSString, Bundle>()
+
     static func localizedBundle(for locale: Locale, in bundle: Bundle) -> Bundle {
+        let key = "\(bundle.bundlePath)|\(locale.identifier)" as NSString
+        if let cached = bundleCache.object(forKey: key) {
+            return cached
+        }
         let identifiers = [
             locale.identifier,
             locale.identifier.replacingOccurrences(of: "_", with: "-"),
             locale.language.languageCode?.identifier ?? locale.identifier,
         ]
+        var resolved = bundle
         for identifier in identifiers {
             if let path = bundle.path(forResource: identifier, ofType: "lproj"),
                let localizedBundle = Bundle(path: path) {
-                return localizedBundle
+                resolved = localizedBundle
+                break
             }
         }
-        return bundle
+        bundleCache.setObject(resolved, forKey: key)
+        return resolved
     }
 
     static func text(

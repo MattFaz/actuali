@@ -113,11 +113,24 @@ private struct CalendarMonthGridView: View {
 }
 
 enum CalendarWidgetFormatting {
+    /// DateFormatter construction is slow and these run per redraw, so the
+    /// weekday symbols are cached per locale. NSCache is thread-safe; the
+    /// locale is frozen to its identifier like the other formatter caches.
+    private nonisolated(unsafe) static let weekdaySymbolCache = NSCache<NSString, NSArray>()
+
     static func weekdaySymbols(locale: Locale, firstDayOfWeekIdx: Int) -> [String] {
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        let symbols = formatter.veryShortStandaloneWeekdaySymbols ?? ["S", "M", "T", "W", "T", "F", "S"]
-        return (0..<7).map { symbols[($0 + firstDayOfWeekIdx) % 7] }
+        let key = locale.identifier as NSString
+        let base: [String]
+        if let cached = weekdaySymbolCache.object(forKey: key) as? [String] {
+            base = cached
+        } else {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: locale.identifier)
+            let symbols = formatter.veryShortStandaloneWeekdaySymbols ?? ["S", "M", "T", "W", "T", "F", "S"]
+            weekdaySymbolCache.setObject(symbols as NSArray, forKey: key)
+            base = symbols
+        }
+        return (0..<7).map { base[($0 + firstDayOfWeekIdx) % 7] }
     }
 
     static func monthTitle(_ date: Date, locale: Locale) -> String {
