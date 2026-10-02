@@ -329,6 +329,9 @@ final class BudgetStore: ObservableObject {
     /// Where publishWidgetSnapshot() writes; injectable for tests. nil when
     /// the build's provisioning lacks the app group.
     var widgetSnapshotStore: WidgetSnapshotStore? = .standard()
+    var lastWidgetSnapshot: (url: URL, snapshot: WidgetSnapshot)?
+    var isPublishingReload = false
+    private let creditCardDueNotifier = CreditCardDueNotifier()
 
     /// Bumped every time the published data snapshot above is republished
     /// (budget load, local mutation, sync). Views that cache their own
@@ -364,6 +367,7 @@ final class BudgetStore: ObservableObject {
     /// Persisted to UserDefaults, defaults to "USD"
     @Published var currencyCode: String = "USD" {
         didSet {
+            guard oldValue != currencyCode else { return }
             UserDefaults.standard.set(currencyCode, forKey: "currencyCode")
             publishWidgetSnapshot()
         }
@@ -374,6 +378,7 @@ final class BudgetStore: ObservableObject {
     /// preference is the source of truth, with `.commaDot` as the Actual default.
     @Published var numberFormat: ActualNumberFormat = .commaDot {
         didSet {
+            guard oldValue != numberFormat else { return }
             publishWidgetSnapshot()
         }
     }
@@ -1205,7 +1210,7 @@ final class BudgetStore: ObservableObject {
                 cycles[accountId] = cycle
             }
         }
-        await CreditCardDueNotifier.scheduleNotifications(
+        await creditCardDueNotifier.scheduleNotifications(
             accounts: accounts,
             cycles: cycles,
             statementDues: creditCardStatementDues,
@@ -2597,6 +2602,7 @@ final class BudgetStore: ObservableObject {
             // the CRDT preference messages that carry the setting, and without
             // it the previous budget's currency would stay on screen until the
             // first sync lands (GH #297).
+            isPublishingReload = true
             if let fetchedCurrencyCode {
                 currencyCode = fetchedCurrencyCode
                 cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
@@ -2660,6 +2666,7 @@ final class BudgetStore: ObservableObject {
             goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             tags = fetchedTags
             dataVersion += 1
+            isPublishingReload = false
             publishWidgetSnapshot()
             published = true
             Task { [weak self] in
@@ -2855,6 +2862,12 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    private func assignIfChanged<T: Equatable>(_ keyPath: ReferenceWritableKeyPath<BudgetStore, T>, _ value: T) {
+        if self[keyPath: keyPath] != value {
+            self[keyPath: keyPath] = value
+        }
+    }
+
     /// Refresh just the data without recreating SyncClient
     /// Use this after local changes to update the UI
     private func refreshDataOnly() async {
@@ -2909,62 +2922,71 @@ final class BudgetStore: ObservableObject {
                 id: "flags.goalTemplatesUIEnabled"
             ) == "true"
 
+            let fetchedSchedules = await fetchSchedules(database: database, upcomingLength: fetchedUpcomingLength)
+            let duesConfigs = creditCardConfigs == creditCardsBefore ? fetchedCreditCards : creditCardConfigs
+            let fetchedDues = await fetchCreditCardStatementDues(database: database, accounts: fetchedAccounts,
+                                                                 configs: duesConfigs)
+            let fetchedBankAccounts = await fetchBankSyncAccounts(fallbackAccounts: fetchedAccounts)
+
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
             guard self.database === database, self.currentBudgetId == budgetId else { return }
 
+            isPublishingReload = true
+
             // A card saved while these reads were in flight is newer than
             // this snapshot; its write comes back on the next refresh.
             if creditCardConfigs == creditCardsBefore {
-                creditCardConfigs = fetchedCreditCards
+                assignIfChanged(\.creditCardConfigs, fetchedCreditCards)
             }
             if loanConfigs == loansBefore {
-                loanConfigs = fetchedLoans
+                assignIfChanged(\.loanConfigs, fetchedLoans)
             }
             if depositConfigs == depositsBefore {
-                depositConfigs = fetchedDeposits
+                assignIfChanged(\.depositConfigs, fetchedDeposits)
             }
             if cardAccountMappings == cardMappingsBefore {
-                cardAccountMappings = fetchedCardMappings
+                assignIfChanged(\.cardAccountMappings, fetchedCardMappings)
             }
 
-            accounts = fetchedAccounts
-            transactions = fetchedTransactions
-            uncategorizedCount = fetchedUncategorizedCount
-            categoryGroups = fetchedGroups
-            payees = fetchedPayees
-            tags = fetchedTags
-            tagSummaries = fetchedTagSummaries
+            assignIfChanged(\.accounts, fetchedAccounts)
+            assignIfChanged(\.transactions, fetchedTransactions)
+            assignIfChanged(\.uncategorizedCount, fetchedUncategorizedCount)
+            assignIfChanged(\.categoryGroups, fetchedGroups)
+            assignIfChanged(\.payees, fetchedPayees)
+            assignIfChanged(\.tags, fetchedTags)
+            assignIfChanged(\.tagSummaries, fetchedTagSummaries)
             // A month selected while these reads were in flight owns the
             // Budget tab now. Its fetch publishes separately, while the rest
             // of this valid refresh snapshot must still reach the app.
             if requestedBudgetMonth == displayedMonth {
-                currentBudgetMonth = fetchedBudgetMonth
+                assignIfChanged(\.currentBudgetMonth, fetchedBudgetMonth)
             }
             widgetBudgetMonth = fetchedWidgetBudgetMonth
-            upcomingScheduledTransactionLength = fetchedUpcomingLength
-            goalTemplatesEnabled = fetchedGoalTemplatesFlag
-            goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
-            // Last in the batch: assigning this publishes a widget snapshot,
-            // which must see the balances above rather than the previous
-            // refresh's. Skipped when the user picked a currency in Settings
-            // while the reads above were in flight — that choice is newer than
-            // anything this snapshot holds, and the write it kicked off will
-            // come back on the next refresh.
+            assignIfChanged(\.upcomingScheduledTransactionLength, fetchedUpcomingLength)
+            assignIfChanged(\.goalTemplatesEnabled, fetchedGoalTemplatesFlag)
+            assignIfChanged(\.goalTemplatesUIEnabled, fetchedGoalTemplatesUIFlag)
+            // Keep a currency chosen while the reads were in flight. The
+            // widget publishes once below, after the entire batch is applied.
             if let fetchedCurrencyCode, currencyCode == currencyCodeBefore {
-                currencyCode = fetchedCurrencyCode
+                assignIfChanged(\.currencyCode, fetchedCurrencyCode)
                 if let budgetId {
                     cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
                 }
             }
             if let fetchedNumberFormat, numberFormat == numberFormatBefore {
-                numberFormat = ActualNumberFormat(rawValue: fetchedNumberFormat) ?? .commaDot
+                let parsed = ActualNumberFormat(rawValue: fetchedNumberFormat) ?? .commaDot
+                assignIfChanged(\.numberFormat, parsed)
+            }
+            publishSchedules(fetchedSchedules)
+            if creditCardConfigs == duesConfigs {
+                assignIfChanged(\.creditCardStatementDues, fetchedDues)
+            }
+            if let fetchedBankAccounts {
+                assignIfChanged(\.bankSyncAccounts, fetchedBankAccounts)
             }
             dataVersion += 1
-
-            await loadSchedules()
-            await loadCreditCardStatementDues()
-            await loadBankSyncAccounts()
+            isPublishingReload = false
             publishWidgetSnapshot()
             await scheduleCreditCardDueNotifications()
         } catch is CancellationError {
@@ -3183,7 +3205,9 @@ final class BudgetStore: ObservableObject {
     /// Refresh tag summaries without a full budget reload.
     func refreshTagSummaries() async {
         guard let database else { return }
-        tagSummaries = await (try? database.fetchTagSummaries()) ?? []
+        let fetched = await (try? database.fetchTagSummaries()) ?? []
+        guard self.database === database else { return }
+        assignIfChanged(\.tagSummaries, fetched)
     }
 
     /// Transactions carrying the given tag in their notes.
@@ -3941,6 +3965,12 @@ final class BudgetStore: ObservableObject {
     }
 
     func loadBankSyncAccounts() async {
+        if let fetched = await fetchBankSyncAccounts() {
+            assignIfChanged(\.bankSyncAccounts, fetched)
+        }
+    }
+
+    private func fetchBankSyncAccounts(fallbackAccounts: [Account]? = nil) async -> [BankSyncAccount]? {
         let capturedDatabase = database
         let capturedBudgetId = currentBudgetId
         bankSyncLoadGeneration += 1
@@ -3948,9 +3978,8 @@ final class BudgetStore: ObservableObject {
         guard let database = capturedDatabase else {
             guard capturedDatabase === self.database,
                   currentBudgetId == capturedBudgetId,
-                  bankSyncLoadGeneration == capturedGeneration else { return }
-            bankSyncAccounts = []
-            return
+                  bankSyncLoadGeneration == capturedGeneration else { return nil }
+            return []
         }
         func isCurrentRequest() -> Bool {
             self.database === capturedDatabase
@@ -3962,7 +3991,7 @@ final class BudgetStore: ObservableObject {
         #if DEBUG
         await bankSyncAccountsFetchedForTesting?()
         #endif
-        guard isCurrentRequest() else { return }
+        guard isCurrentRequest() else { return nil }
 
         // UserDefaults was the original Wallet-link store. Copy it into the
         // budget-local SQLite identity table before exposing links to imports.
@@ -3972,14 +4001,14 @@ final class BudgetStore: ObservableObject {
         } ?? [:]
         if !storedWalletLinks.isEmpty {
             do {
-                guard isCurrentRequest() else { return }
-                guard let capturedBudgetId else { return }
+                guard isCurrentRequest() else { return nil }
+                guard let capturedBudgetId else { return nil }
                 let result = try migrateLegacyAppleWalletLinksIfNeeded(
                     database: database,
                     budgetId: capturedBudgetId,
                     storedWalletLinks: storedWalletLinks
                 )
-                guard isCurrentRequest() else { return }
+                guard isCurrentRequest() else { return nil }
                 removeMigratedAppleWalletLinks(
                     budgetId: capturedBudgetId,
                     result: result
@@ -3989,7 +4018,7 @@ final class BudgetStore: ObservableObject {
             }
         }
         var localLinks = await (try? database.fetchBankSyncLocalLinks()) ?? []
-        guard isCurrentRequest() else { return }
+        guard isCurrentRequest() else { return nil }
 
         // Early builds wrote financeKit links into the synced columns, where
         // the ids mean nothing to any other device and today's unlink path
@@ -4006,10 +4035,10 @@ final class BudgetStore: ObservableObject {
                 )
             }
             do {
-                guard isCurrentRequest() else { return }
+                guard isCurrentRequest() else { return nil }
                 _ = try database.migrateBankSyncLocalLinks(strayLinks)
                 let persistedLinks = try await database.fetchBankSyncLocalLinks()
-                guard isCurrentRequest() else { return }
+                guard isCurrentRequest() else { return nil }
                 let adopted = strays.filter { stray in
                     persistedLinks.contains { link in
                         link.accountId == stray.id
@@ -4018,7 +4047,7 @@ final class BudgetStore: ObservableObject {
                 }
                 if let syncClient {
                     for stray in adopted {
-                        guard isCurrentRequest() else { return }
+                        guard isCurrentRequest() else { return nil }
                         let expectedLink = ExpectedBankSyncLink(
                             accountId: stray.id,
                             externalAccountId: stray.externalAccountId,
@@ -4028,10 +4057,10 @@ final class BudgetStore: ObservableObject {
                             accountId: stray.id,
                             expectedLink: expectedLink
                         )
-                        guard isCurrentRequest() else { return }
+                        guard isCurrentRequest() else { return nil }
                     }
                     synced = await (try? database.fetchBankSyncAccounts()) ?? []
-                    guard isCurrentRequest() else { return }
+                    guard isCurrentRequest() else { return nil }
                 } else {
                     // No sync client yet (restored budget): serve adopted
                     // links locally and leave their columns for later.
@@ -4039,7 +4068,7 @@ final class BudgetStore: ObservableObject {
                     synced.removeAll { adoptedIds.contains($0.id) }
                 }
                 localLinks = await (try? database.fetchBankSyncLocalLinks()) ?? localLinks
-                guard isCurrentRequest() else { return }
+                guard isCurrentRequest() else { return nil }
             } catch {
                 // Keep the synced columns intact so a later load can retry.
             }
@@ -4055,7 +4084,7 @@ final class BudgetStore: ObservableObject {
             guard let synchronized = synchronizedById[link.accountId], synchronized.source != .financeKit else {
                 continue
             }
-            guard isCurrentRequest() else { return }
+            guard isCurrentRequest() else { return nil }
             let removed = (try? database.removeBankSyncLocalLinkIfSynchronizedProviderWins(link)) ?? false
             if removed {
                 localLinks.removeAll { $0 == link }
@@ -4063,7 +4092,7 @@ final class BudgetStore: ObservableObject {
                 refetchedAfterStaleCleanup = true
                 synced = await (try? database.fetchBankSyncAccounts()) ?? synced
                 localLinks = await (try? database.fetchBankSyncLocalLinks()) ?? localLinks
-                guard isCurrentRequest() else { return }
+                guard isCurrentRequest() else { return nil }
             }
         }
 
@@ -4071,14 +4100,13 @@ final class BudgetStore: ObservableObject {
             uniqueKeysWithValues: localLinks.map { ($0.accountId, $0.externalAccountId) }
         )
         guard !walletLinks.isEmpty else {
-            guard isCurrentRequest() else { return }
-            bankSyncAccounts = synced
-            return
+            guard isCurrentRequest() else { return nil }
+            return synced
         }
         let syncedById = Dictionary(uniqueKeysWithValues: synced.map { ($0.id, $0) })
-        let budgetAccounts = await (try? database.fetchAccounts()) ?? accounts
-        guard isCurrentRequest() else { return }
-        bankSyncAccounts = budgetAccounts.compactMap { account in
+        let budgetAccounts = await (try? database.fetchAccounts()) ?? fallbackAccounts ?? accounts
+        guard isCurrentRequest() else { return nil }
+        return budgetAccounts.compactMap { account in
             if let linked = syncedById[account.id] {
                 return linked
             }
@@ -6722,48 +6750,63 @@ final class BudgetStore: ObservableObject {
     /// every refresh rather than cached against a schedule row.
     func loadSchedules() async {
         guard let database else {
-            schedules = []
-            scheduleStatuses = [:]
-            schedulePaymentDates = [:]
+            publishSchedules(([], [:], [:]))
             return
         }
+        let fetched = await fetchSchedules(database: database, upcomingLength: upcomingScheduledTransactionLength)
+        guard self.database === database else { return }
+        publishSchedules(fetched)
+    }
+
+    private func publishSchedules(_ fetched: ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>])) {
+        assignIfChanged(\.schedules, fetched.0)
+        assignIfChanged(\.scheduleStatuses, fetched.1)
+        assignIfChanged(\.schedulePaymentDates, fetched.2)
+    }
+
+    private func fetchSchedules(database: BudgetDatabase, upcomingLength: String?) async
+        -> ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>]) {
         do {
             let loaded = try await database.fetchSchedules()
             let today = DayDate.today()
             let paid = try await database.fetchPaidScheduleIds(for: loaded, today: today)
             let paymentDates = try await database.fetchSchedulePaymentDates(for: loaded)
-
             var statuses: [String: ScheduleStatus] = [:]
             for schedule in loaded {
                 statuses[schedule.id] = ScheduleStatusCalculator.status(
                     nextDate: schedule.nextDate,
                     completed: schedule.completed,
                     hasTransaction: paid.contains(schedule.id),
-                    upcomingLength: schedule.customUpcomingLength ?? upcomingScheduledTransactionLength,
+                    upcomingLength: schedule.customUpcomingLength ?? upcomingLength,
                     today: today
                 )
             }
-
-            schedules = loaded.sorted(by: Self.scheduleOrder)
-            scheduleStatuses = statuses
-            schedulePaymentDates = paymentDates
+            return (loaded.sorted(by: Self.scheduleOrder), statuses, paymentDates)
         } catch {
             logger.error("Failed to load schedules: \(error, privacy: .public)")
-            schedules = []
-            scheduleStatuses = [:]
-            schedulePaymentDates = [:]
+            return ([], [:], [:])
         }
     }
 
     /// Loads the latest statement dues for all active credit cards.
     func loadCreditCardStatementDues(today: DayDate = .today()) async {
         guard let database else {
-            creditCardStatementDues = [:]
+            assignIfChanged(\.creditCardStatementDues, [:])
             return
         }
+        let fetched = await fetchCreditCardStatementDues(database: database, accounts: accounts,
+                                                         configs: creditCardConfigs, today: today)
+        guard self.database === database else { return }
+        assignIfChanged(\.creditCardStatementDues, fetched)
+    }
+
+    private func fetchCreditCardStatementDues(database: BudgetDatabase, accounts: [Account],
+                                              configs: [String: CreditCardConfig], today: DayDate = .today()) async
+        -> [String: [CreditCardCycle.StatementDue]] {
         var requests: [(accountId: String, statementDate: DayDate, dueDate: DayDate, liveBalance: Int)] = []
         for account in accounts where !account.closed {
-            guard let cycle = activeCreditCardCycle(for: account.id) else { continue }
+            guard let config = configs[account.id] else { continue }
+            let cycle = CreditCardCycle(statementDay: config.statementDay, paymentDue: config.paymentDue)
             // Keep recent closed statements for the Bills history. The 60-day
             // maximum means these three cover every statement still pending.
             let recentStatements = cycle.recentStatementCycles(today: today).reversed()
@@ -6776,14 +6819,13 @@ final class BudgetStore: ObservableObject {
             }
         }
         guard !requests.isEmpty else {
-            creditCardStatementDues = [:]
-            return
+            return [:]
         }
         do {
-            creditCardStatementDues = try await database.fetchCreditCardStatementDues(for: requests)
+            return try await database.fetchCreditCardStatementDues(for: requests)
         } catch {
             logger.error("Failed to load credit card statement dues: \(error, privacy: .public)")
-            creditCardStatementDues = [:]
+            return [:]
         }
     }
 
