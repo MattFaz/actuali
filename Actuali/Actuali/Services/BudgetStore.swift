@@ -6901,9 +6901,11 @@ final class BudgetStore: ObservableObject {
     }
 
     /// The sweep is CPU-bound and would stutter the UI on the main actor.
-    /// `nonisolated async` runs it on the generic executor without an ad-hoc
-    /// detached-task hop; `BudgetDatabase` serialises its own reads through
-    /// GRDB's queue, so calling it from here is safe.
+    /// `@concurrent` hops it to the concurrent executor — under
+    /// NONISOLATED_NONSENDING_BY_DEFAULT a plain `nonisolated async` function
+    /// would inherit the caller's (main) actor. `BudgetDatabase` serialises
+    /// its own reads through GRDB's queue, so calling it from here is safe.
+    @concurrent
     private nonisolated static func runDiscovery(
         accounts: [Account],
         database: BudgetDatabase
