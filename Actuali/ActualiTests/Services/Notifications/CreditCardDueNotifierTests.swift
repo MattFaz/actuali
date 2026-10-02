@@ -27,6 +27,7 @@ struct CreditCardDueNotifierTests {
     @Test func unchangedInputsSkipSchedulingButChangesStillSchedule() async {
         let notifier = CreditCardDueNotifier()
         let center = FakeCreditCardNotificationCenter()
+        center.status = .authorized
         let settings = makeDefaults(enabled: true)
         let calendar = fixedCalendar()
         let now = calendar.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 8))!
@@ -36,24 +37,23 @@ struct CreditCardDueNotifierTests {
                                              settings: settings, center: center, now: now, calendar: calendar)
         #expect(center.added.count == 4)
         let removals = center.removedIdentifiers
-        center.status = .authorized
         await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
                                              settings: settings, center: center, now: now.addingTimeInterval(60), calendar: calendar)
         #expect(center.added.count == 4)
         #expect(center.removedIdentifiers == removals)
-        #expect(center.authorizationRequests == 1)
+        #expect(center.authorizationRequests == 0)
 
         card.balance = -6000
         await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
                                              settings: settings, center: center, now: now, calendar: calendar)
         #expect(center.added.count == 8)
         #expect(center.added.last?.content.body.contains("60.00") == true)
-        #expect(center.authorizationRequests == 1)
+        #expect(center.authorizationRequests == 0)
         settings.isEnabled = false
         await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
                                              settings: settings, center: center, now: now, calendar: calendar)
         #expect(center.removedIdentifiers.count == 4)
-        #expect(center.authorizationRequests == 1)
+        #expect(center.authorizationRequests == 0)
     }
 
     @Test func dateTimeAndPermissionsInvalidateNotificationCache() async {
@@ -361,6 +361,7 @@ private final class FakeCreditCardNotificationCenter: NotificationPosting, @unch
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
         authorizationRequested = true
         authorizationRequests += 1
+        status = .authorized
         return true
     }
 

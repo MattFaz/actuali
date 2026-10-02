@@ -2862,6 +2862,12 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    private func assignIfChanged<T: Equatable>(_ keyPath: ReferenceWritableKeyPath<BudgetStore, T>, _ value: T) {
+        if self[keyPath: keyPath] != value {
+            self[keyPath: keyPath] = value
+        }
+    }
+
     /// Refresh just the data without recreating SyncClient
     /// Use this after local changes to update the UI
     private func refreshDataOnly() async {
@@ -2931,87 +2937,53 @@ final class BudgetStore: ObservableObject {
             // A card saved while these reads were in flight is newer than
             // this snapshot; its write comes back on the next refresh.
             if creditCardConfigs == creditCardsBefore {
-                if creditCardConfigs != fetchedCreditCards {
-                    creditCardConfigs = fetchedCreditCards
-                }
+                assignIfChanged(\.creditCardConfigs, fetchedCreditCards)
             }
             if loanConfigs == loansBefore {
-                if loanConfigs != fetchedLoans {
-                    loanConfigs = fetchedLoans
-                }
+                assignIfChanged(\.loanConfigs, fetchedLoans)
             }
             if depositConfigs == depositsBefore {
-                if depositConfigs != fetchedDeposits {
-                    depositConfigs = fetchedDeposits
-                }
+                assignIfChanged(\.depositConfigs, fetchedDeposits)
             }
             if cardAccountMappings == cardMappingsBefore {
-                if cardAccountMappings != fetchedCardMappings {
-                    cardAccountMappings = fetchedCardMappings
-                }
+                assignIfChanged(\.cardAccountMappings, fetchedCardMappings)
             }
 
-            if accounts != fetchedAccounts {
-                accounts = fetchedAccounts
-            }
-            if transactions != fetchedTransactions {
-                transactions = fetchedTransactions
-            }
-            if uncategorizedCount != fetchedUncategorizedCount {
-                uncategorizedCount = fetchedUncategorizedCount
-            }
-            if categoryGroups != fetchedGroups {
-                categoryGroups = fetchedGroups
-            }
-            if payees != fetchedPayees {
-                payees = fetchedPayees
-            }
-            if tags != fetchedTags {
-                tags = fetchedTags
-            }
-            if tagSummaries != fetchedTagSummaries {
-                tagSummaries = fetchedTagSummaries
-            }
+            assignIfChanged(\.accounts, fetchedAccounts)
+            assignIfChanged(\.transactions, fetchedTransactions)
+            assignIfChanged(\.uncategorizedCount, fetchedUncategorizedCount)
+            assignIfChanged(\.categoryGroups, fetchedGroups)
+            assignIfChanged(\.payees, fetchedPayees)
+            assignIfChanged(\.tags, fetchedTags)
+            assignIfChanged(\.tagSummaries, fetchedTagSummaries)
             // A month selected while these reads were in flight owns the
             // Budget tab now. Its fetch publishes separately, while the rest
             // of this valid refresh snapshot must still reach the app.
             if requestedBudgetMonth == displayedMonth {
-                if currentBudgetMonth != fetchedBudgetMonth {
-                    currentBudgetMonth = fetchedBudgetMonth
-                }
+                assignIfChanged(\.currentBudgetMonth, fetchedBudgetMonth)
             }
             widgetBudgetMonth = fetchedWidgetBudgetMonth
-            if upcomingScheduledTransactionLength != fetchedUpcomingLength {
-                upcomingScheduledTransactionLength = fetchedUpcomingLength
-            }
-            if goalTemplatesEnabled != fetchedGoalTemplatesFlag {
-                goalTemplatesEnabled = fetchedGoalTemplatesFlag
-            }
-            if goalTemplatesUIEnabled != fetchedGoalTemplatesUIFlag {
-                goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
-            }
+            assignIfChanged(\.upcomingScheduledTransactionLength, fetchedUpcomingLength)
+            assignIfChanged(\.goalTemplatesEnabled, fetchedGoalTemplatesFlag)
+            assignIfChanged(\.goalTemplatesUIEnabled, fetchedGoalTemplatesUIFlag)
             // Keep a currency chosen while the reads were in flight. The
             // widget publishes once below, after the entire batch is applied.
             if let fetchedCurrencyCode, currencyCode == currencyCodeBefore {
-                if currencyCode != fetchedCurrencyCode {
-                    currencyCode = fetchedCurrencyCode
-                }
+                assignIfChanged(\.currencyCode, fetchedCurrencyCode)
                 if let budgetId {
                     cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
                 }
             }
             if let fetchedNumberFormat, numberFormat == numberFormatBefore {
                 let parsed = ActualNumberFormat(rawValue: fetchedNumberFormat) ?? .commaDot
-                if numberFormat != parsed {
-                    numberFormat = parsed
-                }
+                assignIfChanged(\.numberFormat, parsed)
             }
             publishSchedules(fetchedSchedules)
-            if creditCardConfigs == duesConfigs, creditCardStatementDues != fetchedDues {
-                creditCardStatementDues = fetchedDues
+            if creditCardConfigs == duesConfigs {
+                assignIfChanged(\.creditCardStatementDues, fetchedDues)
             }
-            if let fetchedBankAccounts, bankSyncAccounts != fetchedBankAccounts {
-                bankSyncAccounts = fetchedBankAccounts
+            if let fetchedBankAccounts {
+                assignIfChanged(\.bankSyncAccounts, fetchedBankAccounts)
             }
             dataVersion += 1
             isPublishingReload = false
@@ -3235,9 +3207,7 @@ final class BudgetStore: ObservableObject {
         guard let database else { return }
         let fetched = await (try? database.fetchTagSummaries()) ?? []
         guard self.database === database else { return }
-        if tagSummaries != fetched {
-            tagSummaries = fetched
-        }
+        assignIfChanged(\.tagSummaries, fetched)
     }
 
     /// Transactions carrying the given tag in their notes.
@@ -3995,8 +3965,8 @@ final class BudgetStore: ObservableObject {
     }
 
     func loadBankSyncAccounts() async {
-        if let fetched = await fetchBankSyncAccounts(), bankSyncAccounts != fetched {
-            bankSyncAccounts = fetched
+        if let fetched = await fetchBankSyncAccounts() {
+            assignIfChanged(\.bankSyncAccounts, fetched)
         }
     }
 
@@ -6789,15 +6759,9 @@ final class BudgetStore: ObservableObject {
     }
 
     private func publishSchedules(_ fetched: ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>])) {
-        if schedules != fetched.0 {
-            schedules = fetched.0
-        }
-        if scheduleStatuses != fetched.1 {
-            scheduleStatuses = fetched.1
-        }
-        if schedulePaymentDates != fetched.2 {
-            schedulePaymentDates = fetched.2
-        }
+        assignIfChanged(\.schedules, fetched.0)
+        assignIfChanged(\.scheduleStatuses, fetched.1)
+        assignIfChanged(\.schedulePaymentDates, fetched.2)
     }
 
     private func fetchSchedules(database: BudgetDatabase, upcomingLength: String?) async
@@ -6827,17 +6791,13 @@ final class BudgetStore: ObservableObject {
     /// Loads the latest statement dues for all active credit cards.
     func loadCreditCardStatementDues(today: DayDate = .today()) async {
         guard let database else {
-            if !creditCardStatementDues.isEmpty {
-                creditCardStatementDues = [:]
-            }
+            assignIfChanged(\.creditCardStatementDues, [:])
             return
         }
         let fetched = await fetchCreditCardStatementDues(database: database, accounts: accounts,
                                                          configs: creditCardConfigs, today: today)
         guard self.database === database else { return }
-        if creditCardStatementDues != fetched {
-            creditCardStatementDues = fetched
-        }
+        assignIfChanged(\.creditCardStatementDues, fetched)
     }
 
     private func fetchCreditCardStatementDues(database: BudgetDatabase, accounts: [Account],

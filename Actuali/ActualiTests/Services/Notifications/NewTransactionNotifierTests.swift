@@ -221,10 +221,16 @@ struct NewTransactionNotifierTests {
 
 private final class NotificationCenterSpy: NotificationPosting, @unchecked Sendable {
     var authorizationRequested = false
+    var status: UNAuthorizationStatus = .notDetermined
     var added: [UNNotificationRequest] = []
+
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        status
+    }
 
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
         authorizationRequested = true
+        status = .authorized
         return true
     }
 

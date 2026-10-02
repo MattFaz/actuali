@@ -20,11 +20,10 @@ final class CreditCardDueNotifier {
         let beforeReminderTime: Bool
         let calendar: Calendar
         let locale: String
-        var authorizationStatus: UNAuthorizationStatus
+        let authorizationStatus: UNAuthorizationStatus
     }
 
     private var lastInputs: Inputs?
-    private var authorizationGranted: Bool?
 
     /// Reminders scheduled at 7, 5, 3, and 1 day before due date.
     nonisolated static let reminderOffsets = [7, 5, 3, 1]
@@ -56,26 +55,17 @@ final class CreditCardDueNotifier {
         calendar: Calendar = .current
     ) async {
         let authorizationStatus = settings.isEnabled ? await center.authorizationStatus() : .notDetermined
-        // A successful prompt and an already-authorized center are the same
-        // permission state, so granting the prompt doesn't force a second rebuild.
-        let effectiveAuthorization: UNAuthorizationStatus = switch authorizationStatus {
-        case .authorized, .provisional, .ephemeral: .authorized
-        case .notDetermined where settings.isEnabled && authorizationGranted != nil:
-            authorizationGranted == true ? .authorized : .denied
-        default: authorizationStatus
-        }
-        var inputs = Inputs(accounts: accounts, cycles: cycles, statementDues: statementDues,
+        let inputs = Inputs(accounts: accounts, cycles: cycles, statementDues: statementDues,
                             currencyCode: currencyCode, narrowSymbol: narrowSymbol,
                             enabled: settings.isEnabled, today: DayDate.today(calendar: calendar, now: now),
                             beforeReminderTime: calendar.component(.hour, from: now) < 9,
-                            calendar: calendar, locale: Locale.current.identifier, authorizationStatus: effectiveAuthorization)
+                            calendar: calendar, locale: Locale.current.identifier, authorizationStatus: authorizationStatus)
         guard inputs != lastInputs else { return }
         let previous = lastInputs
         lastInputs = inputs
         let accountIds = Set(accounts.map(\.id)).union(cycles.keys)
             .union(previous?.accounts.map(\.id) ?? []).union(previous?.cycles.keys.map(\.self) ?? [])
         guard settings.isEnabled else {
-            authorizationGranted = nil
             // Setting is disabled: clear any pending due-date reminders for known accounts.
             let allIds = accountIds.flatMap { accountId in
                 Self.reminderOffsets.map { Self.requestIdentifier(accountId: accountId, offsetDays: $0) }
@@ -86,19 +76,14 @@ final class CreditCardDueNotifier {
             return
         }
 
+        let granted: Bool
         switch authorizationStatus {
-        case .authorized, .provisional, .ephemeral: authorizationGranted = true
-        case .denied: authorizationGranted = false
-        case .notDetermined: break
-        @unknown default: authorizationGranted = false
-        }
-        if authorizationGranted == nil {
+        case .authorized, .provisional, .ephemeral:
+            granted = true
+        case .notDetermined:
             do {
-                let granted = try await center.requestAuthorization(options: [.alert, .sound])
+                granted = try await center.requestAuthorization(options: [.alert, .sound])
                 guard lastInputs == inputs else { return }
-                authorizationGranted = granted
-                inputs.authorizationStatus = granted ? .authorized : .denied
-                lastInputs = inputs
             } catch {
                 if lastInputs == inputs {
                     lastInputs = nil
@@ -106,8 +91,10 @@ final class CreditCardDueNotifier {
                 notifLog.error("Notification authorization failed: \(error.localizedDescription, privacy: .public)")
                 return
             }
+        default:
+            return
         }
-        guard lastInputs == inputs, authorizationGranted == true else { return }
+        guard granted else { return }
         var succeeded = true
 
         let accountsById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })

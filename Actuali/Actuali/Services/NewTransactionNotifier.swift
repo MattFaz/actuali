@@ -12,12 +12,6 @@ protocol NotificationPosting: Sendable {
     func removePendingNotificationRequests(withIdentifiers identifiers: [String])
 }
 
-extension NotificationPosting {
-    func authorizationStatus() async -> UNAuthorizationStatus {
-        .notDetermined
-    }
-}
-
 extension UNUserNotificationCenter: NotificationPosting {
     func authorizationStatus() async -> UNAuthorizationStatus {
         await notificationSettings().authorizationStatus
