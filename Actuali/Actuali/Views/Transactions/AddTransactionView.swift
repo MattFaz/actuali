@@ -154,7 +154,7 @@ struct AddTransactionView: View {
         editing?.transferId != nil
     }
 
-    struct AutomaticCategoryInput: Equatable {
+    private struct AutomaticCategoryInput: Equatable {
         var accountId: String
         var type: TransactionType
         var amount: String
@@ -347,10 +347,6 @@ struct AddTransactionView: View {
               input == automaticCategoryInput else { return }
         automaticCategoryPreview = preview
         selectedCategoryId = preview.resultCategoryId
-    }
-
-    nonisolated static func debounceAutomaticCategory() async throws {
-        try await Task.sleep(for: .milliseconds(300))
     }
 
     private func applyEditCategoryFromHistory(payeeId: String) {
@@ -714,7 +710,7 @@ struct AddTransactionView: View {
                 // Keep every rule input; cancellation skips lookup while typing.
                 // Save calls applyAutomaticCategory directly without this delay.
                 do {
-                    try await Self.debounceAutomaticCategory()
+                    try await Task.sleep(for: .milliseconds(300))
                 } catch { return }
                 await applyAutomaticCategory(for: input)
             }
