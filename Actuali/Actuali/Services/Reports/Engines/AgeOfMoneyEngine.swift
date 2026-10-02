@@ -18,15 +18,24 @@ struct AgeOfMoneyData: Equatable {
 }
 
 enum ReportMonthYearFormatting {
-    static func formatter(locale: Locale) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = DateFormatter.dateFormat(
-            fromTemplate: "yMMM", options: 0, locale: locale
-        )
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter
+    private static let formatterCache = FormatterCache<DateFormatter>()
+
+    /// The formatter is shared and cached, so only this string API is exposed.
+    static func string(from date: Date, locale: Locale) -> String {
+        formatter(locale: locale).string(from: date)
+    }
+
+    private static func formatter(locale: Locale) -> DateFormatter {
+        formatterCache.value("ReportMonthYear|\(locale.identifier)") {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: locale.identifier)
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.dateFormat = DateFormatter.dateFormat(
+                fromTemplate: "yMMM", options: 0, locale: locale
+            )
+            formatter.timeZone = TimeZone(identifier: "UTC")
+            return formatter
+        }
     }
 }
 
@@ -129,7 +138,6 @@ enum AgeOfMoneyEngine {
         // still emit a point (the average carries forward).
         var points: [AgeOfMoneyData.Point] = []
         var agesSoFar: [Int] = []
-        let labelFormatter = ReportMonthYearFormatting.formatter(locale: locale)
         var month = monthStart(of: start)
         let lastMonth = monthStart(of: resolvedEnd)
         while month <= lastMonth {
@@ -138,7 +146,10 @@ enum AgeOfMoneyEngine {
             if !agesSoFar.isEmpty {
                 let lastTen = agesSoFar.suffix(10)
                 let avg = Int((Double(lastTen.reduce(0, +)) / Double(lastTen.count)).rounded())
-                points.append(.init(monthLabel: labelFormatter.string(from: month), age: avg))
+                points.append(.init(
+                    monthLabel: ReportMonthYearFormatting.string(from: month, locale: locale),
+                    age: avg
+                ))
             }
             guard let next = cal.date(byAdding: .month, value: 1, to: month) else { break }
             month = next

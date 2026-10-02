@@ -14,19 +14,28 @@ enum ReportStrings {
         ))
     }
 
+    // Bundle(path:) hits disk and runs on every chart label and axis tick, so
+    // resolved bundles are cached per parent bundle + language. Keying on the
+    // locale identifier keeps a language change resolving to the right bundle.
+    private static let bundleCache = FormatterCache<Bundle>()
+
     static func localizedBundle(for locale: Locale, in bundle: Bundle) -> Bundle {
-        let identifiers = [
-            locale.identifier,
-            locale.identifier.replacingOccurrences(of: "_", with: "-"),
-            locale.language.languageCode?.identifier ?? locale.identifier,
-        ]
-        for identifier in identifiers {
-            if let path = bundle.path(forResource: identifier, ofType: "lproj"),
-               let localizedBundle = Bundle(path: path) {
-                return localizedBundle
+        bundleCache.value("\(bundle.bundlePath)|\(locale.identifier)") {
+            let identifiers = [
+                locale.identifier,
+                locale.identifier.replacingOccurrences(of: "_", with: "-"),
+                locale.language.languageCode?.identifier ?? locale.identifier,
+            ]
+            var resolved = bundle
+            for identifier in identifiers {
+                if let path = bundle.path(forResource: identifier, ofType: "lproj"),
+                   let localizedBundle = Bundle(path: path) {
+                    resolved = localizedBundle
+                    break
+                }
             }
+            return resolved
         }
-        return bundle
     }
 
     static func text(

@@ -7,6 +7,24 @@ struct ReportStringsTests {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
 
+    /// Marker class so Bundle(for:) resolves to the test bundle.
+    private final class BundleMarker {}
+
+    @Test func localizedBundleKeysOnParentBundleAndLocale() {
+        // The test bundle carries no fr.lproj, so fr falls back to the bundle
+        // itself and must not inherit the app bundle's cached fr entry — the
+        // cache key includes the parent bundle as well as the locale.
+        let testBundle = Bundle(for: BundleMarker.self)
+        let fallback = ReportStrings.localizedBundle(for: Locale(identifier: "fr_FR"), in: testBundle)
+
+        #expect(fallback == testBundle)
+        #expect(fallback != ReportStrings.localizedBundle(for: Locale(identifier: "fr_FR"), in: appBundle))
+        #expect(
+            ReportStrings.localizedBundle(for: Locale(identifier: "en_US"), in: appBundle)
+                != ReportStrings.localizedBundle(for: Locale(identifier: "fr_FR"), in: appBundle)
+        )
+    }
+
     @Test func fixedReportLabelsResolveForSupportedLocales() {
         let english = ReportStrings.text("This month", locale: Locale(identifier: "en_US"), bundle: appBundle)
         let french = ReportStrings.text("This month", locale: Locale(identifier: "fr_FR"), bundle: appBundle)

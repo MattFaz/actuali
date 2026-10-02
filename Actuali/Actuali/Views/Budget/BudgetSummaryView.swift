@@ -120,10 +120,23 @@ struct BudgetSummarySheet: View {
               (1...12).contains(monthNumber) else {
             return String(localized: "Overspent", locale: locale)
         }
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        let monthName = formatter.shortMonthSymbols[monthNumber - 1]
+        let symbols = Self.shortMonthSymbols(locale)
+        guard symbols.indices.contains(monthNumber - 1) else {
+            return String(localized: "Overspent", locale: locale)
+        }
+        let monthName = symbols[monthNumber - 1]
         return String(format: String(localized: "Overspent in %@", locale: locale), monthName)
+    }
+
+    private nonisolated static let formatterCache = FormatterCache<DateFormatter>()
+
+    private nonisolated static func shortMonthSymbols(_ locale: Locale) -> [String] {
+        let formatter = formatterCache.value("BudgetSummary|\(locale.identifier)") {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: locale.identifier)
+            return formatter
+        }
+        return formatter.shortMonthSymbols ?? []
     }
 
     var body: some View {

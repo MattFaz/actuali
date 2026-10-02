@@ -5,6 +5,8 @@ import Foundation
 /// note-line renderer (port of template-notes.ts `unparse`) used by the
 /// un-migrate flow.
 enum AutomationSentences {
+    private static let formatterCache = FormatterCache<DateFormatter>()
+
     private static func localized(
         _ value: String.LocalizationValue, locale: Locale, bundle: Bundle
     ) -> String {
@@ -19,9 +21,12 @@ enum AutomationSentences {
     static func monthLabel(_ month: String?, locale: Locale = .autoupdatingCurrent) -> String {
         guard let month, !month.isEmpty else { return "—" }
         guard let (year, monthNumber) = BudgetMonthMath.yearAndMonth(month) else { return month }
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.dateFormat = "MMM yyyy"
+        let formatter = formatterCache.value("AutomationMonthLabel|\(locale.identifier)") {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: locale.identifier)
+            formatter.dateFormat = "MMM yyyy"
+            return formatter
+        }
         let components = DateComponents(year: year, month: monthNumber, day: 1)
         guard let date = Calendar.current.date(from: components) else { return month }
         return formatter.string(from: date)
