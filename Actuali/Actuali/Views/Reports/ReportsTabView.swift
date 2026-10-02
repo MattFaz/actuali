@@ -1,8 +1,8 @@
+import GRDB
 import SwiftUI
 
 struct ReportsLoadRequest: Equatable {
     let databaseID: ObjectIdentifier?
-    let dataVersion: Int
     let generation: Int
 }
 
@@ -14,9 +14,9 @@ struct ReportsTabView: View {
     @State private var widgets: [DashboardWidget] = []
     /// The page `widgets` actually came from, which is not `selectedPageId`:
     /// that one flips the instant the picker is tapped, while the widgets
-    /// arrive a fetch later. See the dashboard's `.id` for what goes wrong
-    /// when the two are conflated.
+    /// arrive a fetch later. Keep it alongside the fetched widgets when resolving dashboard identity.
     @State private var loadedPageId: String?
+    @State private var dashboardGeneration = 0
     @State private var loadError: String?
     @State private var hasLoaded = false
     @State private var loadGeneration = 0
@@ -46,18 +46,10 @@ struct ReportsTabView: View {
                             // carry 6 pt of horizontal padding of their own.
                             .padding(.horizontal, 6)
                             .padding(.top, 8)
-                        // Keyed so per-widget @State (computed card values)
-                        // resets when switching dashboards instead of showing
-                        // the previous dashboard's numbers. Keyed to the page
-                        // the widgets came from, not the selection: keying on
-                        // the selection re-creates the dashboard around the
-                        // outgoing page's widgets, and DashboardView's load
-                        // runs once per identity — so it would fetch the
-                        // inputs that widget set needs (budgets, schedules,
-                        // custom report configs) and never re-run for the
-                        // widgets that actually land.
+                        // Recreate cards when the page or widget definitions change,
+                        // so their inputs and computed state belong to that dashboard.
                         DashboardView(widgets: widgets)
-                            .id(loadedPageId)
+                            .id(dashboardGeneration)
                     }
                 }
             }
@@ -69,7 +61,21 @@ struct ReportsTabView: View {
             // the budget finishes opening (launching straight onto this tab
             // races loadLocalBudget) and when the budget is switched.
             .task(id: currentLoadRequest) {
-                await reload(request: currentLoadRequest)
+                let request = currentLoadRequest
+                guard let database = budgetStore.databaseForLogger else {
+                    await reload(request: request)
+                    return
+                }
+                do {
+                    for try await _ in database.dashboardChanges() {
+                        await reload(request: request)
+                    }
+                } catch {
+                    guard Self.shouldPublish(request: request, currentRequest: currentLoadRequest,
+                                             taskIsCancelled: Task.isCancelled) else { return }
+                    loadError = error.localizedDescription
+                    hasLoaded = true
+                }
             }
             // This is a resident tab: nothing rebuilds it on the way back from
             // Settings, and `reload` has already written the resolved page into
@@ -83,7 +89,7 @@ struct ReportsTabView: View {
             }
             .refreshable {
                 await budgetStore.sync()
-                await reload(request: currentLoadRequest)
+                requestReload()
             }
         }
         .initialSyncBanner()
@@ -139,7 +145,6 @@ struct ReportsTabView: View {
     private var currentLoadRequest: ReportsLoadRequest {
         ReportsLoadRequest(
             databaseID: budgetStore.databaseForLogger.map(ObjectIdentifier.init),
-            dataVersion: budgetStore.dataVersion,
             generation: loadGeneration
         )
     }
@@ -199,9 +204,10 @@ struct ReportsTabView: View {
             ) else { return }
             self.pages = fetchedPages
             self.selectedPageId = pageId
+            if widgets != fetched || loadedPageId != pageId {
+                dashboardGeneration += 1
+            }
             self.widgets = fetched
-            // Same render pass as the widgets it identifies, so the dashboard
-            // is re-created around them rather than around their predecessor.
             self.loadedPageId = pageId
             self.loadError = nil
         } catch is CancellationError {

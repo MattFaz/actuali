@@ -111,6 +111,41 @@ struct BudgetDatabaseReportsFetchTests {
         #expect(ids == ["live-c1", "live-c2", "main"])
     }
 
+    @Test func boundedFetchPreservesReportRowsAndResults() async throws {
+        let (db, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+            INSERT INTO transactions (id, acct, amount, date, isParent, isChild, parent_id, tombstone) VALUES
+                ('before', 'a', 10000, 20260430, 0, 0, NULL, 0),
+                ('first', 'a', 20000, 20260501, 0, 0, NULL, 0),
+                ('parent', 'a', -600, 20260514, 1, 0, NULL, 0),
+                ('child', 'a', -600, 20260514, 0, 1, 'parent', 0),
+                ('deleted-parent', 'a', -800, 20260514, 1, 0, NULL, 1),
+                ('orphan', 'a', -800, 20260514, 0, 1, 'deleted-parent', 0),
+                ('last', 'a', -200, 20260531, 0, 0, NULL, 0),
+                ('after', 'a', -300, 20260601, 0, 0, NULL, 0);
+            """)
+        }
+        let today = CanonicalDateParser.parse("2026-05-14")!
+        let summary = SummaryMeta(name: nil, timeFrame: nil, conditions: nil, conditionsOp: nil, content: nil)
+        let widgets: [DashboardWidget] = [.summary(id: "s", meta: summary), .cashFlow(id: "c", meta: nil),
+                                          .calendar(id: "d", meta: nil), .sankey(id: "k", meta: nil)]
+        let range = try #require(DashboardView.transactionRange(widgets: widgets, today: today))
+        let all = try await db.fetchTransactionsForReports()
+        let bounded = try await db.fetchTransactionsForReports(dateRange: range)
+        #expect(bounded.map(\.id).sorted() == ["child", "first", "last"])
+        #expect(bounded.sorted { $0.id < $1.id } == all.filter { range.contains($0.date) }.sorted { $0.id < $1.id })
+        #expect(SummaryEngine.compute(meta: summary, transactions: bounded, today: today)
+            == SummaryEngine.compute(meta: summary, transactions: all, today: today))
+        #expect(CashFlowEngine.compute(meta: nil, transactions: bounded, today: today)
+            == CashFlowEngine.compute(meta: nil, transactions: all, today: today))
+        #expect(CalendarEngine.compute(meta: nil, transactions: bounded, today: today, firstDayOfWeekIdx: 1)
+            == CalendarEngine.compute(meta: nil, transactions: all, today: today, firstDayOfWeekIdx: 1))
+        #expect(SankeyEngine.compute(meta: nil, transactions: bounded, categoryGroups: [], today: today)
+            == SankeyEngine.compute(meta: nil, transactions: all, categoryGroups: [], today: today))
+    }
+
     // MARK: - custom_reports configs
 
     @Test func fetchesCustomReportConfigs() async throws {

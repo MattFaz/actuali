@@ -2639,8 +2639,10 @@ final class BudgetDatabase: Sendable {
     ///   including both would double-count, and parents have no category which
     ///   breaks category-based conditions)
     /// - Includes split children (where category lives) and standalone txs
-    func fetchTransactionsForReports() async throws -> [Transaction] {
+    func fetchTransactionsForReports(dateRange: ClosedRange<Int>? = nil) async throws -> [Transaction] {
         try await dbQueue.read { db in
+            let datePredicate = dateRange == nil ? "" : "AND t.date BETWEEN ? AND ?"
+            let arguments: StatementArguments = dateRange.map { [$0.lowerBound, $0.upperBound] } ?? []
             let rows = try Row.fetchAll(db, sql: """
             SELECT
                 t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
@@ -2673,7 +2675,8 @@ final class BudgetDatabase: Sendable {
               AND \(Self.aliveChildPredicate(parent: "par"))
               AND t.date IS NOT NULL
               AND t.acct IS NOT NULL
-            """)
+              \(datePredicate)
+            """, arguments: arguments)
 
             return rows.map { row in
                 Transaction(
@@ -2719,6 +2722,12 @@ final class BudgetDatabase: Sendable {
                 return (id: id, type: type, metaJSON: meta)
             }
         }
+    }
+
+    /// Includes an initial event, then only dashboard definition writes (including sync).
+    func dashboardChanges() -> AsyncValueObservation<Void> {
+        ValueObservation.tracking(region: Table("dashboard"), Table("dashboard_pages"), fetch: { _ in () })
+            .values(in: dbQueue, bufferingPolicy: .bufferingNewest(1))
     }
 
     /// Live dashboard pages in table order — the same order the web app's
