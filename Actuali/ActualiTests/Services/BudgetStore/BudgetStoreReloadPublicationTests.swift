@@ -69,7 +69,7 @@ struct BudgetStoreReloadPublicationTests {
         #expect(counts["dataVersion"] == 2)
     }
 
-    @Test func refreshSkipsUnchangedWidgetFileAndWritesRealChanges() async throws {
+    @Test func refreshUpdatesWidgetTimestampAndWritesRealChanges() async throws {
         let (database, url) = try await makeTestDatabase(TestSchema.core + [TestSchema.preferences, """
         INSERT INTO category_groups (id, name, sort_order) VALUES ('g', 'Expenses', 1);
         INSERT INTO categories (id, name, cat_group, sort_order) VALUES ('c', 'Food', 'g', 1);
@@ -85,11 +85,17 @@ struct BudgetStoreReloadPublicationTests {
         await store.sync()
         #expect(store.error == nil)
         let original = try Data(contentsOf: snapshotStore.fileURL)
+        let originalSnapshot = try #require(snapshotStore.read())
         let marker = Date(timeIntervalSince1970: 1000)
         try FileManager.default.setAttributes([.modificationDate: marker], ofItemAtPath: snapshotStore.fileURL.path)
+        try await Task.sleep(for: .milliseconds(20))
         await store.sync()
-        #expect(try Data(contentsOf: snapshotStore.fileURL) == original)
-        #expect(try snapshotStore.fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate == marker)
+        let refreshedSnapshot = try #require(snapshotStore.read())
+        #expect(refreshedSnapshot.generatedAt > originalSnapshot.generatedAt)
+        #expect(refreshedSnapshot.categories == originalSnapshot.categories)
+        #expect(refreshedSnapshot.month == originalSnapshot.month)
+        #expect(refreshedSnapshot.balancesHidden == originalSnapshot.balancesHidden)
+        #expect(try snapshotStore.fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate != marker)
         try await DatabaseQueue(path: url.path).write { db in
             try db.execute(sql: "UPDATE categories SET name = 'Groceries' WHERE id = 'c'")
             try db.execute(sql: "UPDATE preferences SET value = 'EUR' WHERE id = 'defaultCurrencyCode'")

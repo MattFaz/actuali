@@ -14,18 +14,19 @@ extension BudgetStore {
             from: month.categoryBudgets,
             month: month.month,
             balancesHidden: hideBalances,
-            generatedAt: previous?.generatedAt ?? Date(),
+            generatedAt: Date(),
             format: displayBalance
         )
-        // The timestamp describes the last content change; refreshing it on
-        // every read would defeat equality and force another timeline reload.
-        guard snapshot != previous else { return }
-        let updated = WidgetSnapshot(month: snapshot.month, generatedAt: Date(),
-                                     balancesHidden: snapshot.balancesHidden, categories: snapshot.categories)
+        // Keep the footer's refresh time current without reloading unchanged balances.
+        let contentChanged = snapshot.month != previous?.month
+            || snapshot.balancesHidden != previous?.balancesHidden
+            || snapshot.categories != previous?.categories
         do {
-            try store.write(updated)
-            lastWidgetSnapshot = (store.fileURL, updated)
-            WidgetCenter.shared.reloadAllTimelines()
+            try store.write(snapshot)
+            lastWidgetSnapshot = (store.fileURL, snapshot)
+            if contentChanged {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
         } catch {
             // Leave the last successful snapshot intact and retry next refresh.
         }
