@@ -17,32 +17,16 @@ struct AgeOfMoneyData: Equatable {
                                       insufficientData: false)
 }
 
-/// Shared get-or-create cache for locale-keyed DateFormatters: constructing
-/// one is slow and several call sites do it per redraw. NSCache is
-/// thread-safe, as is DateFormatter use on iOS 7+, so handing the shared
-/// formatter out is safe. Keys must fully determine the construction — freeze
-/// a runtime locale to its identifier so a cached entry can't drift when
-/// .autoupdatingCurrent follows a system language change. Keys must be
-/// namespaced per call site (prefix with the caller's name): two sites using
-/// the same locale may still configure their formatters differently.
-enum DateFormatterCache {
-    /// The one nonisolated(unsafe) here: NSCache is thread-safe but not marked
-    /// Sendable in the SDK.
-    private nonisolated(unsafe) static let cache = NSCache<NSString, DateFormatter>()
-
-    static func cached(_ key: String, _ make: () -> DateFormatter) -> DateFormatter {
-        if let cached = cache.object(forKey: key as NSString) {
-            return cached
-        }
-        let created = make()
-        cache.setObject(created, forKey: key as NSString)
-        return created
-    }
-}
-
 enum ReportMonthYearFormatting {
-    static func formatter(locale: Locale) -> DateFormatter {
-        DateFormatterCache.cached("ReportMonthYear|\(locale.identifier)") {
+    private static let formatterCache = FormatterCache<DateFormatter>()
+
+    /// The formatter is shared and cached, so only this string API is exposed.
+    static func string(from date: Date, locale: Locale) -> String {
+        formatter(locale: locale).string(from: date)
+    }
+
+    private static func formatter(locale: Locale) -> DateFormatter {
+        formatterCache.value("ReportMonthYear|\(locale.identifier)") {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: locale.identifier)
             formatter.calendar = Calendar(identifier: .gregorian)
@@ -154,7 +138,6 @@ enum AgeOfMoneyEngine {
         // still emit a point (the average carries forward).
         var points: [AgeOfMoneyData.Point] = []
         var agesSoFar: [Int] = []
-        let labelFormatter = ReportMonthYearFormatting.formatter(locale: locale)
         var month = monthStart(of: start)
         let lastMonth = monthStart(of: resolvedEnd)
         while month <= lastMonth {
@@ -163,7 +146,10 @@ enum AgeOfMoneyEngine {
             if !agesSoFar.isEmpty {
                 let lastTen = agesSoFar.suffix(10)
                 let avg = Int((Double(lastTen.reduce(0, +)) / Double(lastTen.count)).rounded())
-                points.append(.init(monthLabel: labelFormatter.string(from: month), age: avg))
+                points.append(.init(
+                    monthLabel: ReportMonthYearFormatting.string(from: month, locale: locale),
+                    age: avg
+                ))
             }
             guard let next = cal.date(byAdding: .month, value: 1, to: month) else { break }
             month = next

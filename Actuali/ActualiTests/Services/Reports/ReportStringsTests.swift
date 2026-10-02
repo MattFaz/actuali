@@ -7,13 +7,22 @@ struct ReportStringsTests {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
 
-    @Test func localizedBundleCacheKeepsPerLanguageBundlesDistinct() {
-        let english = ReportStrings.localizedBundle(for: Locale(identifier: "en_US"), in: appBundle)
-        let french = ReportStrings.localizedBundle(for: Locale(identifier: "fr_FR"), in: appBundle)
+    /// Marker class so Bundle(for:) resolves to the test bundle.
+    private final class BundleMarker {}
 
-        #expect(english != french)
-        // Repeat calls resolve through the cache to the same bundle.
-        #expect(ReportStrings.localizedBundle(for: Locale(identifier: "fr_FR"), in: appBundle) == french)
+    @Test func localizedBundleKeysOnParentBundleAndLocale() {
+        // The test bundle carries no fr.lproj, so fr falls back to the bundle
+        // itself and must not inherit the app bundle's cached fr entry — the
+        // cache key includes the parent bundle as well as the locale.
+        let testBundle = Bundle(for: BundleMarker.self)
+        let fallback = ReportStrings.localizedBundle(for: Locale(identifier: "fr_FR"), in: testBundle)
+
+        #expect(fallback == testBundle)
+        #expect(fallback != ReportStrings.localizedBundle(for: Locale(identifier: "fr_FR"), in: appBundle))
+        #expect(
+            ReportStrings.localizedBundle(for: Locale(identifier: "en_US"), in: appBundle)
+                != ReportStrings.localizedBundle(for: Locale(identifier: "fr_FR"), in: appBundle)
+        )
     }
 
     @Test func fixedReportLabelsResolveForSupportedLocales() {

@@ -120,15 +120,18 @@ struct BudgetSummarySheet: View {
               (1...12).contains(monthNumber) else {
             return String(localized: "Overspent", locale: locale)
         }
-        let monthName = Self.shortMonthSymbols(locale)[monthNumber - 1]
+        let symbols = Self.shortMonthSymbols(locale)
+        guard symbols.indices.contains(monthNumber - 1) else {
+            return String(localized: "Overspent", locale: locale)
+        }
+        let monthName = symbols[monthNumber - 1]
         return String(format: String(localized: "Overspent in %@", locale: locale), monthName)
     }
 
-    /// DateFormatter construction is slow and this runs per redraw, so the
-    /// month symbols are cached per locale. NSCache is thread-safe; the locale
-    /// is frozen to its identifier like the other formatter caches.
+    private nonisolated static let formatterCache = FormatterCache<DateFormatter>()
+
     private nonisolated static func shortMonthSymbols(_ locale: Locale) -> [String] {
-        let formatter = DateFormatterCache.cached("BudgetSummary|\(locale.identifier)") {
+        let formatter = formatterCache.value("BudgetSummary|\(locale.identifier)") {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: locale.identifier)
             return formatter

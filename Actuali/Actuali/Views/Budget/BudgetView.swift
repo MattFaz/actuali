@@ -2277,13 +2277,12 @@ struct MonthPicker: View {
         return Self.formatter(template: "yMMM", locale: locale).string(from: date)
     }
 
-    /// DateFormatter construction is slow and this runs per row per redraw, so
-    /// formatters are cached per (template, locale). NSCache is thread-safe, as
-    /// is DateFormatter use on iOS 7+. The locale is frozen to its identifier so
-    /// a cached entry can't drift when .autoupdatingCurrent follows a system
-    /// language change.
+    /// Cached per (template, locale): construction is slow and this runs per
+    /// row per redraw.
+    private nonisolated static let formatterCache = FormatterCache<DateFormatter>()
+
     private nonisolated static func formatter(template: String, locale: Locale) -> DateFormatter {
-        DateFormatterCache.cached("MonthPicker|\(template)|\(locale.identifier)") {
+        formatterCache.value("MonthPicker|\(template)|\(locale.identifier)") {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: locale.identifier)
             formatter.calendar = Calendar(identifier: .gregorian)
