@@ -4956,7 +4956,12 @@ final class BudgetStore: ObservableObject {
         of parent: Transaction,
         originalPayeeId: String?
     ) async throws {
-        guard let database else { return }
+        guard let database, let syncClient else { return }
+        // Batch by distinct changed-field set like restoreTransactions — one
+        // SQLite write, clock save and reload for the whole cascade instead
+        // of one per child. Grouping (not a field union) keeps a child whose
+        // payee didn't change from getting a fresh timestamp stamped on it.
+        var batches: [Set<String>: [Transaction]] = [:]
         for child in try await database.fetchChildTransactions(parentId: parent.id) {
             var updated = child
             updated.accountId = parent.accountId
@@ -4965,10 +4970,15 @@ final class BudgetStore: ObservableObject {
             if child.payeeId == originalPayeeId {
                 updated.payeeId = parent.payeeId
             }
-            if updated != child {
-                try await updateTransaction(updated, original: child)
-            }
+            let fields = Self.changedFields(original: child, updated: updated)
+            guard !fields.isEmpty else { continue }
+            batches[fields, default: []].append(updated)
         }
+        guard !batches.isEmpty else { return }
+        for (fields, rows) in batches {
+            try await syncClient.updateTransactions(rows, changedFields: fields)
+        }
+        await refreshDataOnly()
     }
 
     /// Split children of a parent, for the edit sheet's editable split lines.
