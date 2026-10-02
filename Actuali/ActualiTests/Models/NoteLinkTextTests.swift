@@ -81,4 +81,21 @@ struct NoteLinkTextTests {
         #expect(NoteLinkText.links(in: "just words").isEmpty)
         #expect(NoteLinkText.links(in: "").isEmpty)
     }
+
+    @Test func sharedDetectorHandlesConcurrentNotesWithoutLeakingMatches() async {
+        await withTaskGroup(of: Bool.self) { group in
+            for index in 0..<20 {
+                group.addTask {
+                    let url = "https://example.com/receipt/\(index)"
+                    let links = NoteLinkText.links(in: "🧾 [Order](https://example.com/order) and \(url)")
+                    return links.map(\.label) == ["Order", url] &&
+                        links.map(\.url) == [URL(string: "https://example.com/order")!, URL(string: url)!] &&
+                        NoteLinkText.links(in: "no links here").isEmpty
+                }
+            }
+            for await correct in group {
+                #expect(correct)
+            }
+        }
+    }
 }

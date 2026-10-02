@@ -154,7 +154,7 @@ struct AddTransactionView: View {
         editing?.transferId != nil
     }
 
-    private struct AutomaticCategoryInput: Equatable {
+    struct AutomaticCategoryInput: Equatable {
         var accountId: String
         var type: TransactionType
         var amount: String
@@ -347,6 +347,10 @@ struct AddTransactionView: View {
               input == automaticCategoryInput else { return }
         automaticCategoryPreview = preview
         selectedCategoryId = preview.resultCategoryId
+    }
+
+    nonisolated static func debounceAutomaticCategory() async throws {
+        try await Task.sleep(for: .milliseconds(300))
     }
 
     private func applyEditCategoryFromHistory(payeeId: String) {
@@ -594,7 +598,7 @@ struct AddTransactionView: View {
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
                     // full view of a transaction's note.
-                    NoteLinkRows(text: notes)
+                    AddTransactionNoteLinkRows(text: notes).equatable()
 
                     Toggle("Cleared", isOn: $cleared)
                     // Only the paths that record locations (adds and split
@@ -706,7 +710,13 @@ struct AddTransactionView: View {
                 await loadSplitChildren()
             }
             .task(id: automaticCategoryInput) {
-                await applyAutomaticCategory(for: automaticCategoryInput)
+                let input = automaticCategoryInput
+                // Keep every rule input; cancellation skips lookup while typing.
+                // Save calls applyAutomaticCategory directly without this delay.
+                do {
+                    try await Self.debounceAutomaticCategory()
+                } catch { return }
+                await applyAutomaticCategory(for: input)
             }
         }
     }
@@ -962,6 +972,15 @@ struct AddTransactionView: View {
     }
 }
 
+/// Only changed notes need another markdown/detector pass.
+struct AddTransactionNoteLinkRows: View, nonisolated Equatable {
+    let text: String
+
+    var body: some View {
+        NoteLinkRows(text: text)
+    }
+}
+
 /// Resign whatever field is focused. Pickers call this before they open: UIKit
 /// remembers the first responder across a sheet or push and restores it on the
 /// way back, which would bring the amount keypad up again with its text
@@ -1132,7 +1151,7 @@ private struct SplitLineRow: View {
             TextField(String(localized: AddTransactionLocalization.optionalNotes, locale: locale), text: $line.notes)
                 .font(.subheadline)
             TagSuggestionBar(text: $line.notes, availableTags: budgetStore.tags)
-            NoteLinkRows(text: line.notes)
+            AddTransactionNoteLinkRows(text: line.notes).equatable()
                 .font(.subheadline)
         }
         .sheet(isPresented: $showCategoryPicker) {
