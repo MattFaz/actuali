@@ -10,9 +10,7 @@ import Testing
 @MainActor
 struct BudgetStoreScheduleDiscoveryTests {
     private func makeStore(_ database: BudgetDatabase) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = try await makeTestSyncClient(database: database)
-        store.configureForTesting(database: database, syncClient: syncClient)
+        let store = try await makeTestStore(database: database)
         store.accounts = [Account(
             id: "acct-1", name: "Checking", type: .checking,
             offBudget: false, closed: false, sortOrder: 0, balance: 0
