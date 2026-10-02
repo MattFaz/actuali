@@ -1,0 +1,56 @@
+name: TestFlight nightly distribution
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/testflight-distribute.yml"
+      - ".github/workflows/testflight.yml"
+      - "dev/scripts/distribute-testflight.rb"
+      - "dev/scripts/test_distribute_testflight.rb"
+      - "dev/scripts/asc_jwt.rb"
+  schedule:
+    - cron: "0 23 * * *"
+      timezone: Australia/Melbourne
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight-distribute-${{ github.event.pull_request.number || 'release' }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: TestFlight script tests
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: ruby dev/scripts/test_distribute_testflight.rb
+
+  distribute:
+    if: github.repository == 'MattFaz/actuali' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Build numbers are 100 + commit count; full history maps them back to
+      # the exact merged PR titles included in each uploaded build.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Reuses the upload workflow's API key secrets.
+      - name: Distribute latest build with PR notes
+        env:
+          TESTFLIGHT_GROUP_NAME: Pre-Release
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/AuthKey.p8"' EXIT
+          echo -n "$ASC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          ASC_KEY_PATH="$RUNNER_TEMP/AuthKey.p8" ruby dev/scripts/distribute-testflight.rb
