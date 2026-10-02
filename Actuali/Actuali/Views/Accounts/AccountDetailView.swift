@@ -41,8 +41,30 @@ struct AccountDetailView: View {
     @State private var cycleSpend: Int = 0
     @AppStorage("showAccountRunningBalance") private var showRunningBalance = true
     @State private var loadedFullHistory = false
+    @State private var transactionsForDisplay: [Transaction] = []
+    @State private var dateGroups: [TransactionDateGroup] = []
+    @State private var previousSearchText = ""
+    @State private var loadedReloadID: ReloadID?
     @State private var recentStatements: [CreditCardCycle.StatementRecord] = []
     @State private var selectedStatement: CreditCardCycle.StatementRecord? = nil
+
+    private struct ReloadID: Equatable {
+        let accountId: String
+        let dataVersion: Int
+        let search: String
+        let statusFilter: TransactionStatusFilter
+        let cycle: CreditCardCycle?
+    }
+
+    private var reloadID: ReloadID {
+        ReloadID(
+            accountId: account.id,
+            dataVersion: budgetStore.dataVersion,
+            search: searchText,
+            statusFilter: budgetStore.transactionStatusFilter,
+            cycle: budgetStore.activeCreditCardCycle(for: account.id)
+        )
+    }
 
     private var statementDue: CreditCardCycle.StatementDue? {
         guard let dues = budgetStore.creditCardStatementDues[account.id] else { return nil }
@@ -68,9 +90,22 @@ struct AccountDetailView: View {
         !isSearching && statusFilter == .all
     }
 
-    private var transactionsForDisplay: [Transaction] {
-        guard shouldShowRunningBalance else { return pager?.transactions ?? [] }
-        return (pager?.transactions ?? []).withRunningBalances(startingAt: currentBalance)
+    nonisolated static func transactionDisplay(
+        _ transactions: [Transaction], startingBalance: Int?
+    ) -> (transactions: [Transaction], groups: [TransactionDateGroup]) {
+        let rows = startingBalance.map { transactions.withRunningBalances(startingAt: $0) }
+            ?? transactions
+        return (rows, rows.groupedByDate())
+    }
+
+    private func updateTransactionDisplay() {
+        guard loadedReloadID == reloadID else { return }
+        let display = Self.transactionDisplay(
+            pager?.transactions ?? [],
+            startingBalance: shouldShowRunningBalance ? currentBalance : nil
+        )
+        transactionsForDisplay = display.transactions
+        dateGroups = display.groups
     }
 
     /// Limit and headroom for a tracked card with a limit set, else nil. Read
@@ -146,33 +181,34 @@ struct AccountDetailView: View {
     }
 
     private func reload() async {
-        breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
-        await reloadNote()
-        await reloadCycleSpend()
-        await reloadRecentStatements()
-        // Captured right before the fetch, which reads the same store flags,
-        // so a filter flipped mid-fetch can't label that page unfiltered.
-        // Assigned only after the page lands: resetting it up front is what
-        // made the column flicker on every reload.
+        let id = reloadID
+        loadedReloadID = nil
+        let pager = currentPager()
         let fullHistory = Self.allowsRunningBalance(
             isSearching: searchQuery != nil,
             statusFilter: budgetStore.transactionStatusFilter
         )
-        await currentPager().loadFirstPage(search: searchQuery)
+        async let newBreakdown = budgetStore.balanceBreakdown(accountId: account.id)
+        async let newNote = budgetStore.fetchNote(id: EntityNote.accountNoteId(account.id))
+        async let newCycleSpend = fetchCycleSpend()
+        async let newStatements = budgetStore.fetchRecentStatements(accountId: account.id)
+        async let page: Void = pager.loadFirstPage(search: searchQuery)
+        let result = await (newBreakdown, newNote, newCycleSpend, newStatements, page)
+        guard !Task.isCancelled else { return }
+        breakdown = result.0
+        note = result.1
+        cycleSpend = result.2
+        recentStatements = result.3
+        // Keep the previous column visible until the replacement page lands.
         loadedFullHistory = fullHistory
+        loadedReloadID = id
+        updateTransactionDisplay()
     }
 
-    private func reloadRecentStatements() async {
-        recentStatements = await budgetStore.fetchRecentStatements(accountId: account.id)
-    }
-
-    private func reloadCycleSpend() async {
-        guard let cycle = budgetStore.activeCreditCardCycle(for: account.id) else {
-            cycleSpend = 0
-            return
-        }
+    private func fetchCycleSpend() async -> Int {
+        guard let cycle = budgetStore.activeCreditCardCycle(for: account.id) else { return 0 }
         let range = cycle.cycleRange()
-        cycleSpend = await budgetStore.fetchCycleSpend(
+        return await budgetStore.fetchCycleSpend(
             accountId: account.id,
             start: range.start,
             end: range.end
@@ -771,10 +807,8 @@ struct AccountDetailView: View {
 
     @ViewBuilder private var transactionSection: some View {
         if let pager, !pager.transactions.isEmpty {
-            let displayedTransactions = transactionsForDisplay
             if budgetStore.transactionDisplayMode == .groupedByDate {
-                let groups = displayedTransactions.groupedByDate()
-                ForEach(groups) { group in
+                ForEach(dateGroups) { group in
                     Section(group.title) {
                         ForEach(group.transactions) { transaction in
                             transactionRow(transaction, showDate: false)
@@ -782,14 +816,14 @@ struct AccountDetailView: View {
                         // The sentinel rides in the last date section so
                         // grouped mode doesn't grow a headerless section
                         // (and its gap) of its own.
-                        if pager.hasMore, group.id == groups.last?.id {
+                        if pager.hasMore, group.id == dateGroups.last?.id {
                             TransactionPagingSentinel(pager: pager)
                         }
                     }
                 }
             } else {
                 Section("Recent Transactions") {
-                    ForEach(displayedTransactions) { transaction in
+                    ForEach(transactionsForDisplay) { transaction in
                         transactionRow(transaction)
                     }
                     if pager.hasMore {
@@ -1009,23 +1043,24 @@ struct AccountDetailView: View {
             CreditCardStatementDetailView(account: account, statement: statement)
                 .environmentObject(budgetStore)
         }
-        // Keyed on the account as well as the search: selecting another
-        // account in the iPad split layout reuses this view, and without the
-        // account in the key nothing would reload — the previous account's
-        // rows would sit under the new one's name and balance.
-        .task(id: [account.id, searchText]) {
+        .task(id: reloadID) {
+            let searchChanged = previousSearchText != searchText
+            previousSearchText = searchText
             if pagerAccountId != account.id {
                 // Drop the previous account's page and balance split rather
                 // than showing them while the new ones load — and its
                 // selection state, which was scoped to its rows.
                 pager = nil
+                transactionsForDisplay = []
+                dateGroups = []
+                loadedFullHistory = false
                 breakdown = nil
                 showingBreakdown = false
                 cycleSpend = 0
                 recentStatements = []
                 isSelecting = false
                 selectedTransactionIds.removeAll()
-            } else if searchQuery != nil {
+            } else if searchChanged, searchQuery != nil {
                 // Debounce keystrokes; the initial (empty) load and account
                 // switches run immediately.
                 try? await Task.sleep(for: .milliseconds(250))
@@ -1035,28 +1070,16 @@ struct AccountDetailView: View {
             }
             await reload()
         }
-        .onChange(of: budgetStore.dataVersion) {
-            // The store republished its data — refresh the cached page. This
-            // is the single reload path for every mutation (row toggles,
-            // deletes, sheet edits, sync, scheduled posts), so those sites
-            // carry no reload calls of their own. Concurrent reloads are
-            // safe: the pager's generation counter keeps the newest.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.transactionStatusFilter) {
-            // The pager's fetch closure reads the chip, so a reload is all a
-            // chip tap needs.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.creditCardStatementDays[account.id]) {
-            Task {
-                await reloadCycleSpend()
-                await reloadRecentStatements()
+        .onChange(of: pager?.transactions.count) {
+            // Appended pages change the loaded prefix without a reload.
+            if transactionsForDisplay.count != pager?.transactions.count {
+                updateTransactionDisplay()
             }
         }
+        .onChange(of: showRunningBalance) { updateTransactionDisplay() }
+        .onChange(of: currentBalance) { updateTransactionDisplay() }
         .refreshable {
             await budgetStore.sync()
-            await reload()
         }
     }
 }

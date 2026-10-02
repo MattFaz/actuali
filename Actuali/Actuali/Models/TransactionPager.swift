@@ -33,7 +33,7 @@ final class TransactionPager {
         generation += 1
         let started = generation
         let page = await fetchPage(0, pageSize, search)
-        guard started == generation else { return }
+        guard started == generation, !Task.isCancelled else { return }
         transactions = page
         hasMore = page.count >= pageSize
     }
@@ -45,7 +45,7 @@ final class TransactionPager {
         defer { isLoadingMore = false }
         let started = generation
         let page = await fetchPage(transactions.count, pageSize, search)
-        guard started == generation else { return }
+        guard started == generation, !Task.isCancelled else { return }
         transactions.append(contentsOf: page)
         hasMore = page.count >= pageSize
     }
