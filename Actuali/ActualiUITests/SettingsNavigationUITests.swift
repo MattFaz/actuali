@@ -79,10 +79,12 @@ final class SettingsNavigationUITests: XCTestCase {
                 "\(destination) screen did not open"
             )
             assertExpectedContent(for: destination, in: app)
+            navigationBar.buttons.element(boundBy: 0).tap()
             if destination == "Support" {
                 // GH #533: Privacy Policy and Version moved into the Information
-                // section beside Support; assert them while the section is on
-                // screen so a regression can't silently drop either row.
+                // section beside Support; assert them once back on the hub, where
+                // that section is on screen, so a regression can't silently drop
+                // either row.
                 XCTAssertTrue(
                     app.descendants(matching: .any)["settings.privacyPolicy"].waitForExistence(timeout: 5),
                     "Privacy Policy row missing from the Information section"
@@ -92,7 +94,6 @@ final class SettingsNavigationUITests: XCTestCase {
                     "Version row missing from the Information section"
                 )
             }
-            navigationBar.buttons.element(boundBy: 0).tap()
         }
     }
 

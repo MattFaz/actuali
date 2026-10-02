@@ -647,7 +647,7 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    /// Income and expenses for one "yyyy-MM" month.
+    /// Income and spending for one "yyyy-MM" month.
     ///
     /// Same scope as the budget month's income/spent so the two tabs agree
     /// (GH #256): categorised transactions in on-budget accounts only, with
@@ -662,12 +662,22 @@ final class BudgetDatabase: Sendable {
     /// tombstones an account's transactions along with it, so a live
     /// transaction left on a tombstoned account is a sync-race orphan the
     /// all-accounts balance above the card doesn't count either.
-    func fetchAccountsMonthSummary(month: String) async throws -> AccountsMonthSummary {
+    func fetchAccountsMonthSummary(
+        month: String,
+        excludingCategoryIds: Set<String> = []
+    ) async throws -> AccountsMonthSummary {
         try await dbQueue.read { db in
+            // Categories the user left out of Spent drop out of expense only,
+            // so Net stays Income less the Spent shown beside it, as the
+            // Budget tab's Saved does.
+            let excluded = excludingCategoryIds.sorted()
+            let excludedClause = excluded.isEmpty
+                ? ""
+                : " OR c.id IN (\(Array(repeating: "?", count: excluded.count).joined(separator: ", ")))"
             guard let row = try Row.fetchOne(db, sql: """
             SELECT
                 COALESCE(SUM(CASE WHEN c.is_income = 1 THEN t.amount ELSE 0 END), 0) AS income,
-                COALESCE(SUM(CASE WHEN c.is_income = 1 THEN 0 ELSE -t.amount END), 0) AS expense
+                COALESCE(SUM(CASE WHEN c.is_income = 1\(excludedClause) THEN 0 ELSE -t.amount END), 0) AS expense
             FROM transactions t
             LEFT JOIN category_mapping cm ON cm.id = t.category
             JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
@@ -684,7 +694,7 @@ final class BudgetDatabase: Sendable {
               AND a.offbudget = 0
               AND (a.tombstone = 0 OR a.tombstone IS NULL)
               AND (t.date / 100) = ?
-            """, arguments: [Self.monthStringToInt(month)]) else {
+            """, arguments: StatementArguments(excluded) + [Self.monthStringToInt(month)]) else {
                 return AccountsMonthSummary()
             }
             let income: Int = row["income"] ?? 0
@@ -774,12 +784,8 @@ final class BudgetDatabase: Sendable {
     /// account and/or filtered by a free-text search. `search` applies the
     /// TransactionSearchMatcher semantics (payee, category, notes, and
     /// progressive amount matching) in SQL so it covers full history, not
-    /// just the loaded page. `statusFilter`, `unclearedOnly`, and
-    /// `hideReconciled` filter in SQL for the same reason: pages stay
-    /// full-sized and cover full history. A status chip other than `.all`
-    /// takes precedence over the two legacy hide flags — an explicit filter
-    /// is its own visibility rule, the same precedent as the Budget tab's
-    /// category chips.
+    /// just the loaded page. `statusFilter` filters in SQL for the same
+    /// reason: pages stay full-sized and cover full history.
     func fetchTransactions(
         accountId: String? = nil,
         startDate: Int? = nil,
@@ -787,9 +793,7 @@ final class BudgetDatabase: Sendable {
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
-        statusFilter: TransactionStatusFilter = .all,
-        unclearedOnly: Bool = false,
-        hideReconciled: Bool = false
+        statusFilter: TransactionStatusFilter = .all
     ) async throws -> [Transaction] {
         try await dbQueue.read { db in
             // The list's display payee: own payee first (transfer payees show
@@ -860,14 +864,7 @@ final class BudgetDatabase: Sendable {
 
             switch statusFilter {
             case .all:
-                // The legacy toggles only shape the unfiltered list; a chip
-                // selection overrides them (GH #439).
-                if unclearedOnly {
-                    sql += " AND (t.cleared = 0 OR t.cleared IS NULL)"
-                }
-                if hideReconciled {
-                    sql += " AND (t.reconciled = 0 OR t.reconciled IS NULL)"
-                }
+                break
             case .uncategorized:
                 // The chip also surfaces split parents the dedicated list
                 // excludes: the list renders a split as one collapsed parent
@@ -882,6 +879,8 @@ final class BudgetDatabase: Sendable {
                 sql += " AND t.cleared = 1 AND (t.reconciled = 0 OR t.reconciled IS NULL)"
             case .reconciled:
                 sql += " AND t.reconciled = 1"
+            case .unreconciled:
+                sql += " AND (t.reconciled = 0 OR t.reconciled IS NULL)"
             }
 
             if let search {

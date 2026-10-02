@@ -16,10 +16,14 @@ enum DemoDataSeeder {
     /// than the default envelope (`zero_budgets`) one. `seedUncategorized` adds
     /// one on-budget uncategorized transaction — demo data is otherwise fully
     /// categorized on-budget, so the Budget screen's uncategorized bar never
-    /// renders (UI tests use this to see the bar).
+    /// renders (UI tests use this to see the bar). `seedUnsupportedBankSync`
+    /// links Chase Checking to GoCardless and Ally Savings to Pluggy — providers
+    /// Actuali can't refresh — so bank sync's explanation can be exercised
+    /// without a real bank link (GH #499).
     static func seed(
         tracking: Bool = false,
         seedUncategorized: Bool = false,
+        seedUnsupportedBankSync: Bool = false,
         now: Date = Date()
     ) throws {
         let fileManager = BudgetFileManager.shared
@@ -51,9 +55,48 @@ enum DemoDataSeeder {
         try dbQueue.write { db in
             try createSchema(db, tracking: tracking)
             try insertSeedData(db, tracking: tracking, seedUncategorized: seedUncategorized, now: now)
+            if seedUnsupportedBankSync {
+                try db.execute(sql: """
+                UPDATE accounts SET account_id = 'demo-' || id,
+                    account_sync_source = CASE name
+                        WHEN 'Chase Checking' THEN 'goCardless'
+                        WHEN 'Ally Savings' THEN 'pluggyai'
+                    END
+                WHERE name IN ('Chase Checking', 'Ally Savings')
+                """)
+            }
         }
 
         logger.info("Demo data seeded successfully at \(dbPath.path, privacy: .public)")
+    }
+
+    /// Fixed so cleanup removes only the sample. Shortcut imports queued while
+    /// the demo is open also carry the demo's budget id, and those are real
+    /// bank messages the user can still adopt into another budget.
+    static let samplePendingImportId = UUID(uuidString: "6D3C1F0E-8B5A-4E2D-9C47-1A2B3C4D5E6F")!
+
+    /// Seeds a sample pending import whose INR currency differs from the demo
+    /// budget's USD, so the currency mismatch review flow can be explored.
+    @MainActor
+    static func seedPendingImports(store: PendingImportStore = .shared) throws {
+        guard !store.imports.contains(where: { $0.id == samplePendingImportId }) else { return }
+        try store.add(PendingImport(
+            id: samplePendingImportId,
+            originBudgetId: budgetId,
+            amount: 156.00,
+            sourceCurrencyCode: "INR",
+            payee: "SWIGGY INST",
+            cardHint: "Apple Card",
+            rawText: "Paid INR 156.00 with Apple Card at SWIGGY INST"
+        ))
+    }
+
+    /// Removes the sample seeded by `seedPendingImports`, leaving every other
+    /// import alone.
+    @MainActor
+    static func removeSamplePendingImport(store: PendingImportStore = .shared) throws {
+        guard store.imports.contains(where: { $0.id == samplePendingImportId }) else { return }
+        try store.remove(id: samplePendingImportId)
     }
 
     // MARK: - Schema
@@ -69,6 +112,7 @@ enum DemoDataSeeder {
             tombstone INTEGER DEFAULT 0,
             sort_order REAL,
             account_id TEXT,
+            account_sync_source TEXT,
             balance_current INTEGER,
             balance_available INTEGER,
             balance_limit INTEGER,

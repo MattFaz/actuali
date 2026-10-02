@@ -12,99 +12,6 @@ import Testing
 /// or any pull-to-refresh / background-push sync — never posted anything.
 @MainActor
 struct BudgetStoreSchedulePostingTriggerTests {
-    /// Upstream-shaped schema for everything the fetch + post + local-apply
-    /// pipeline touches (matches SchedulePosterTests, plus messages_crdt so
-    /// the real SyncClient can store the CRDT messages it generates).
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    parent_id TEXT,
-                    schedule TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-
-                CREATE TABLE rules (
-                    id TEXT PRIMARY KEY,
-                    stage TEXT,
-                    conditions_op TEXT DEFAULT 'and',
-                    conditions TEXT,
-                    actions TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE schedules (
-                    id TEXT PRIMARY KEY,
-                    rule TEXT,
-                    active INTEGER DEFAULT 0,
-                    completed INTEGER DEFAULT 0,
-                    posts_transaction INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0,
-                    name TEXT
-                );
-
-                CREATE TABLE schedules_next_date (
-                    id TEXT PRIMARY KEY,
-                    schedule_id TEXT,
-                    local_next_date INTEGER,
-                    local_next_date_ts INTEGER,
-                    base_next_date INTEGER,
-                    base_next_date_ts INTEGER
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
     /// A postable monthly schedule whose next date is already in the past.
     /// The monthly recurrence is anchored to the due date itself, not a fixed
     /// calendar day: with a fixed start (e.g. the 15th) the catch-up loop
@@ -149,14 +56,17 @@ struct BudgetStoreSchedulePostingTriggerTests {
     /// visible only as the client's .syncing → .idle state transition. That
     /// transition must trigger posting.
     @Test func syncSuccessStateTransitionPostsDueSchedules() async throws {
-        let (database, url) = try makeDatabase()
-        defer { try? FileManager.default.removeItem(at: url) }
+        let (database, url) = try await makeTestDatabase(
+            TestSchema.core + [TestSchema.rules, TestSchema.schedules, TestSchema.schedulesNextDate]
+        )
+        defer { cleanup(url) }
         let yesterday = DayDate.today().adding(days: -1)
         try insertDueSchedule(database, dueOn: yesterday.yyyymmdd)
 
+        // Built by hand rather than via makeTestStore: the test needs the
+        // client itself to fake the state transition below.
         let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+        let syncClient = try await makeTestSyncClient(database: database)
         store.configureForTesting(database: database, syncClient: syncClient)
 
         // Unique budget id per run so the poster's once-per-day gate can't

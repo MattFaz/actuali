@@ -199,23 +199,34 @@ struct AddTransactionView: View {
         isTransfer && canConvertToTransfer
     }
 
-    /// A transfer leg takes a category only when it sits in an on-budget
-    /// account and the other side is off-budget — money leaving the budget
-    /// still needs one (Actual's rule). Tracks the live picker selections so
-    /// re-targeting the accounts shows/hides the row immediately.
-    private var editedTransferLegIsCategorizable: Bool {
-        guard let editing, isTransfer else { return false }
-        // The edited row's own account is the one in the account picker,
-        // except on an existing transfer opened from its receiving leg —
-        // there the form shows the pair as From/To and the opened row is To.
-        let openedOnDestinationLeg = editing.transferId != nil && editing.amount >= 0
-        let legAccountId = openedOnDestinationLeg ? transferToAccountId : selectedAccountId
-        let otherAccountId = openedOnDestinationLeg ? selectedAccountId : transferToAccountId
-        guard let leg = budgetStore.accounts.first(where: { $0.id == legAccountId }),
-              let other = budgetStore.accounts.first(where: { $0.id == otherAccountId }) else {
-            return false
+    /// Whether the transfer being entered takes a category. Tracks the live
+    /// picker selections so re-targeting the accounts shows/hides the row
+    /// immediately.
+    private var transferTakesCategory: Bool {
+        guard isTransfer else { return false }
+        let offBudgetIds = budgetStore.offBudgetAccountIds
+        func takes(leg: String?, partner: String?) -> Bool {
+            BudgetStore.transferLegTakesCategory(leg: leg, partner: partner, offBudgetAccountIds: offBudgetIds)
         }
-        return !leg.offBudget && other.offBudget
+        guard let editing else {
+            // `createTransfer` puts it on whichever leg is on-budget.
+            return takes(leg: selectedAccountId, partner: transferToAccountId)
+                || takes(leg: transferToAccountId, partner: selectedAccountId)
+        }
+        // An edit writes the form's category to the opened row alone. That
+        // row's account is the one in the account picker, except on an
+        // existing transfer opened from its receiving leg — there the form
+        // shows the pair as From/To and the opened row is To.
+        return editing.transferId != nil && editing.amount >= 0
+            ? takes(leg: transferToAccountId, partner: selectedAccountId)
+            : takes(leg: selectedAccountId, partner: transferToAccountId)
+    }
+
+    /// Whether the single-category row belongs on the form. A hidden pick is
+    /// kept (so it reappears with the row) but never saved: every save path
+    /// drops a category the row hides (GH #561).
+    private var showsCategoryRow: Bool {
+        isTransfer ? transferTakesCategory : showsStandardCategoryFields
     }
 
     private var isSplitting: Bool {
@@ -491,9 +502,6 @@ struct AddTransactionView: View {
                                 Text(account.name).tag(String?.some(account.id))
                             }
                         }
-                        if editedTransferLegIsCategorizable {
-                            categoryRow
-                        }
                     }
 
                     if !isTransfer {
@@ -548,7 +556,7 @@ struct AddTransactionView: View {
                             Text("Split")
                                 .foregroundStyle(.secondary)
                         }
-                    } else if showsStandardCategoryFields, !isSplitting {
+                    } else if showsCategoryRow, !isSplitting {
                         categoryRow
                         if canSplitIntoCategories, !isPendingImportReview {
                             Button {
@@ -1788,6 +1796,7 @@ struct CategoryPickerView: View {
             }
         }
         .navigationTitle("Category")
+        .tint(.primary)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top, spacing: 0) {
             PickerSearchBar(text: $searchText, clearButtonIdentifier: "categoryPicker.clearSearch") {

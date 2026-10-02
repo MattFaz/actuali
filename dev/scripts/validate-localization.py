@@ -41,7 +41,9 @@ ACCESSIBILITY_COPY_NAME = re.compile(r".*(?:accessibility|badge).*value|.*value.
 CHART_TECHNICAL_VALUES = {"p10", "p25", "p75", "p90"}
 NON_PLURAL_COUNT_KEY = re.compile(
     r"(?:\b(?:HTTP|status)(?:\s+error|\s+code)?\b.*%lld\b|%lld(?:st|nd|rd|th)\b|"
-    r"\b(?:day[ -]of[ -]month|month[ -]day|day\s+%lld\s+of\s+the\s+month)\b|%lldd\b|%lld\s*(?:%%|percent(?:age)?))",
+    r"\b(?:day[ -]of[ -]month|month[ -]day|day\s+%lld\s+of\s+the\s+month)\b|%lldd\b|%lld\s*(?:%%|percent(?:age)?)|"
+    # A ratio ("Cleared 3 / 5") has no counted noun to inflect.
+    r"%lld\s*/\s*%lld)",
     re.IGNORECASE,
 )
 COMPACT_COUNT_BADGE = re.compile(

@@ -9,82 +9,25 @@ import Testing
 /// hidden categories and groups left out, split parents excluded.
 @MainActor
 struct BudgetDatabaseAccountsSummaryTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.accounts, TestSchema.transactions, TestSchema.categories,
+            TestSchema.categoryGroups, TestSchema.categoryMapping,
+            """
+            INSERT INTO category_groups (id, name, is_income, sort_order) VALUES
+                ('grp-income', 'Income',     1, 1.0),
+                ('grp-usual',  'Usual',      0, 2.0);
 
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    type TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    date INTEGER,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    parent_id TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    cat_group TEXT,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_groups (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                INSERT INTO category_groups (id, name, is_income, sort_order) VALUES
-                    ('grp-income', 'Income',     1, 1.0),
-                    ('grp-usual',  'Usual',      0, 2.0);
-
-                INSERT INTO categories (id, name, is_income, cat_group, sort_order) VALUES
-                    ('cat-salary', 'Salary',   1, 'grp-income', 1.0),
-                    ('cat-rent',   'Rent',     0, 'grp-usual',  1.0),
-                    ('cat-food',   'Food',     0, 'grp-usual',  2.0);
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+            INSERT INTO categories (id, name, is_income, cat_group, sort_order) VALUES
+                ('cat-salary', 'Salary',   1, 'grp-income', 1.0),
+                ('cat-rent',   'Rent',     0, 'grp-usual',  1.0),
+                ('cat-food',   'Food',     0, 'grp-usual',  2.0);
+            """
+        )
     }
 
     @Test func sumsIncomeAndExpensesForTheRequestedMonthOnly() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -107,6 +50,15 @@ struct BudgetDatabaseAccountsSummaryTests {
         #expect(summary.incomeCents == 400_000)
         #expect(summary.expenseCents == 150_000)
         #expect(summary.netCents == 250_000)
+
+        let withoutRent = try await db.fetchAccountsMonthSummary(
+            month: "2026-08",
+            excludingCategoryIds: ["cat-rent"]
+        )
+        // Net follows the Spent beside it, as the Budget tab's Saved does.
+        #expect(withoutRent.incomeCents == 400_000)
+        #expect(withoutRent.expenseCents == 0)
+        #expect(withoutRent.netCents == 400_000)
     }
 
     @Test func aMonthOfRefundsGoesNegativeLikeTheBudgetTabsSpent() async throws {
@@ -114,7 +66,7 @@ struct BudgetDatabaseAccountsSummaryTests {
         // month that got more back than it spent reports negative expenses —
         // the same figure the budget tab's Spent shows (GH #212) — and the
         // refund lands in Net as money kept.
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -140,7 +92,7 @@ struct BudgetDatabaseAccountsSummaryTests {
         // ignores off-budget accounts entirely (GH #256 follow-up). Closed
         // on-budget accounts still count; a deleted one doesn't, so a
         // transaction orphaned on it can't leak into every future month.
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -169,7 +121,7 @@ struct BudgetDatabaseAccountsSummaryTests {
         // Transfers between on-budget accounts carry no category, so they drop
         // out with everything else uncategorised. A categorised leg into an
         // off-budget account is spending, the way upstream counts it.
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -198,7 +150,7 @@ struct BudgetDatabaseAccountsSummaryTests {
     @Test func excludesHiddenCategoriesAndGroups() async throws {
         // The budget tab's totals skip hidden categories and hidden groups, so
         // these have to skip them too or the two tabs disagree.
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -230,7 +182,7 @@ struct BudgetDatabaseAccountsSummaryTests {
     }
 
     @Test func countsSplitChildrenButNotTheirParent() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -260,7 +212,7 @@ struct BudgetDatabaseAccountsSummaryTests {
     }
 
     @Test func emptyMonthIsZero() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in

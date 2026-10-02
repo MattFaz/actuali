@@ -22,8 +22,9 @@ concurrency:
 
 jobs:
   upload:
-    # Forks don't get secrets, so runs there always fail at cert import.
-    if: github.repository == 'MattFaz/actuali'
+    # Forks don't get secrets. Manual runs must also archive main: off-main
+    # commit counts can collide with main builds and produce incorrect notes.
+    if: github.repository == 'MattFaz/actuali' && github.ref == 'refs/heads/main'
     runs-on: macos-26
     timeout-minutes: 60
     steps:

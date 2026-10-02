@@ -43,9 +43,7 @@ struct TransactionsListView: View {
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
                 limit: limit, offset: offset, search: search,
-                statusFilter: store.transactionStatusFilter,
-                unclearedOnly: store.hideClearedTransactions,
-                hideReconciled: store.hideReconciledTransactions
+                statusFilter: store.transactionStatusFilter
             )
         }
         pager = created
@@ -71,18 +69,6 @@ struct TransactionsListView: View {
                             budgetStore.transactionStatusFilter = .all
                         }
                     }
-                } else if budgetStore.hideClearedTransactions {
-                    ContentUnavailableView(
-                        "No Uncleared Transactions",
-                        systemImage: "checkmark.circle",
-                        description: Text("Everything is cleared. Turn off Hide Cleared Transactions to see the rest.")
-                    )
-                } else if budgetStore.hideReconciledTransactions {
-                    ContentUnavailableView(
-                        "No Unreconciled Transactions",
-                        systemImage: "lock.fill",
-                        description: Text("Everything is reconciled. Turn off Hide Reconciled Transactions to see the rest.")
-                    )
                 } else {
                     ContentUnavailableView(
                         "No Transactions",
@@ -154,22 +140,6 @@ struct TransactionsListView: View {
             ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
             }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideClearedTransactions) {
-                    Label(
-                        "Hide Cleared Transactions",
-                        systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
-                    )
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideReconciledTransactions) {
-                    Label(
-                        "Hide Reconciled Transactions",
-                        systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
-                    )
-                }
-            }
         }
         .safeAreaInset(edge: .bottom) {
             if isSelecting, let pager {
@@ -197,14 +167,6 @@ struct TransactionsListView: View {
             // deletes, sheet edits, sync, scheduled posts), so those sites
             // carry no reload calls of their own. Concurrent reloads are
             // safe: the pager's generation counter keeps the newest.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.hideClearedTransactions) {
-            // The pager's fetch closure reads the flag, so a reload is all a
-            // toggle flip needs.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.hideReconciledTransactions) {
             Task { await reload() }
         }
         .onChange(of: budgetStore.transactionStatusFilter) {
@@ -341,7 +303,7 @@ struct TransactionPagingSentinel: View {
 ///
 /// A Toggle rather than the Picker Settings uses: `.secondaryAction` silently
 /// drops a Picker when it collapses into the `…` menu (inline or not), while a
-/// Toggle renders — same as the "Hide Cleared Transactions" switch beside it.
+/// Toggle renders — same as the "Status Filters" switch beside it.
 /// The mode only has two cases, so nothing is lost.
 struct TransactionGroupingToggle: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -391,31 +353,74 @@ struct TransactionRow: View {
         transaction.transferId != nil || transaction.transferAcct != nil
     }
 
+    /// Split parents may resolve no payee (mixed child payees) — label them
+    /// "Split" like the desktop app, not "Unknown". Off-budget rows say
+    /// "No payee": they're commonly payee-less (balance adjustments) and
+    /// "Unknown" read as a bug (GH #123).
+    nonisolated static func payeeLabel(
+        payeeName: String?,
+        isParent: Bool,
+        isInOffBudgetAccount: Bool,
+        locale: Locale
+    ) -> String {
+        payeeName ?? (isParent
+            ? String(localized: TransactionsListLocalization.split, locale: locale)
+            : (isInOffBudgetAccount
+                ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
+                : String(localized: TransactionsListLocalization.unknown, locale: locale)))
+    }
+
     /// Caption under the payee. Off-budget accounts aren't categorized at all
-    /// ("Off budget", GH #123); split parents show their children's breakdown
-    /// ("Food $6.00, Refund +$4.00" — outflows unsigned, inflows keep a "+"
-    /// so a credit line inside a spend split stays distinguishable, GH #216);
-    /// transfers that can't take a category show "Transfer" instead of
-    /// nagging "Uncategorized" (GH #104).
-    private var categoryLabel: String {
+    /// ("Off budget", GH #123); split parents say "Split" (as the PWA does)
+    /// followed by their children's breakdown, so the split reads at a glance
+    /// without opening it (GH #552); transfers that can't take a category
+    /// show "Transfer" instead of nagging "Uncategorized" (GH #104).
+    nonisolated static func categoryLabel(
+        categoryName: String?,
+        isParent: Bool,
+        splitBreakdown: String?,
+        isInOffBudgetAccount: Bool,
+        isTransfer: Bool,
+        needsCategory: Bool,
+        locale: Locale
+    ) -> String {
         if isInOffBudgetAccount {
             return String(localized: TransactionsListLocalization.offBudget, locale: locale)
         }
-        if let portions = transaction.splitPortions, !portions.isEmpty {
-            return portions.map { portion in
-                let name = portion.categoryName
-                    ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
-                return "\(name) \(budgetStore.displaySpentCaption(portion.amount))"
-            }.joined(separator: ", ")
+        if isParent {
+            let split = String(localized: TransactionsListLocalization.split, locale: locale)
+            return splitBreakdown.map { "\(split)・\($0)" } ?? split
         }
-        if transaction.categoryName == nil, isTransfer,
-           !transaction.needsCategory(offBudgetAccountIds: budgetStore.offBudgetAccountIds) {
+        if categoryName == nil, isTransfer, !needsCategory {
             return String(localized: TransactionsListLocalization.transfer, locale: locale)
         }
-        return transaction.categoryName
-            ?? (transaction.isParent
-                ? String(localized: TransactionsListLocalization.split, locale: locale)
-                : String(localized: TransactionsListLocalization.uncategorized, locale: locale))
+        return categoryName
+            ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
+    }
+
+    /// "Food $6.00, Refund +$4.00": outflows unsigned, inflows keep a "+" so a
+    /// credit line inside a spend split stays distinguishable (GH #216).
+    private var splitBreakdown: String? {
+        guard let portions = transaction.splitPortions, !portions.isEmpty else { return nil }
+        return portions.map { portion in
+            let name = portion.categoryName
+                ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
+            return "\(name) \(budgetStore.displaySpentCaption(portion.amount))"
+        }.joined(separator: ", ")
+    }
+
+    private var categoryLabel: String {
+        Self.categoryLabel(
+            categoryName: transaction.categoryName,
+            isParent: transaction.isParent,
+            splitBreakdown: splitBreakdown,
+            isInOffBudgetAccount: isInOffBudgetAccount,
+            isTransfer: isTransfer,
+            needsCategory: transaction.needsCategory(
+                offBudgetAccountIds: budgetStore.offBudgetAccountIds
+            ),
+            locale: locale
+        )
     }
 
     var body: some View {
@@ -465,17 +470,13 @@ struct TransactionRow: View {
                     .frame(width: 28, height: 28)
             }
             VStack(alignment: .leading, spacing: 2) {
-                // Split parents may resolve no payee (mixed child payees) —
-                // label them "Split" like the desktop app, not "Unknown".
-                // Off-budget rows say "No payee": they're commonly payee-less
-                // (balance adjustments) and "Unknown" read as a bug (GH #123).
-                Text(transaction.payeeName
-                    ?? (transaction.isParent
-                        ? String(localized: TransactionsListLocalization.split, locale: locale)
-                        : (isInOffBudgetAccount
-                            ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
-                            : String(localized: TransactionsListLocalization.unknown, locale: locale))))
-                    .font(.body)
+                Text(Self.payeeLabel(
+                    payeeName: transaction.payeeName,
+                    isParent: transaction.isParent,
+                    isInOffBudgetAccount: isInOffBudgetAccount,
+                    locale: locale
+                ))
+                .font(.body)
                 HStack(spacing: 4) {
                     if transaction.isParent {
                         Image(systemName: "arrow.triangle.branch")

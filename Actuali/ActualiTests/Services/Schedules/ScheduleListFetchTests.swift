@@ -10,63 +10,20 @@ import Testing
 /// from the phone.
 @MainActor
 struct ScheduleListFetchTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY, name TEXT,
-                    offbudget INTEGER DEFAULT 0, closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY, name TEXT,
-                    transfer_acct TEXT, tombstone INTEGER DEFAULT 0
-                );
-                CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT);
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY, name TEXT, tombstone INTEGER DEFAULT 0
-                );
-                CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT);
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY, isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0, acct TEXT, category TEXT,
-                    description TEXT, amount INTEGER, notes TEXT, date INTEGER,
-                    imported_description TEXT, transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0, reconciled INTEGER DEFAULT 0,
-                    sort_order REAL, parent_id TEXT, schedule TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL, row TEXT NOT NULL,
-                    column TEXT NOT NULL, value BLOB NOT NULL
-                );
-                CREATE TABLE rules (
-                    id TEXT PRIMARY KEY, stage TEXT,
-                    conditions_op TEXT DEFAULT 'and', conditions TEXT,
-                    actions TEXT, tombstone INTEGER DEFAULT 0
-                );
-                CREATE TABLE schedules (
-                    id TEXT PRIMARY KEY, rule TEXT, active INTEGER DEFAULT 0,
-                    completed INTEGER DEFAULT 0, posts_transaction INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0, name TEXT,
-                    sort_order REAL, custom_upcoming_length TEXT
-                );
-                CREATE TABLE schedules_next_date (
-                    id TEXT PRIMARY KEY, schedule_id TEXT,
-                    local_next_date INTEGER, local_next_date_ts INTEGER,
-                    base_next_date INTEGER, base_next_date_ts INTEGER
-                );
-            """)
-            try db.execute(sql: "INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking')")
-            try db.execute(sql: "INSERT INTO payee_mapping (id, targetId) VALUES ('payee-1', 'payee-1')")
-            try db.execute(sql: "INSERT INTO payee_mapping (id, targetId) VALUES ('payee-old', 'payee-1')")
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
+    /// `schedules` stays hand-rolled: `fetchSchedules` reads `sort_order`,
+    /// which the shared schema omits.
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.core + [TestSchema.rules, TestSchema.schedulesNextDate, """
+        CREATE TABLE schedules (
+            id TEXT PRIMARY KEY, rule TEXT, active INTEGER DEFAULT 0,
+            completed INTEGER DEFAULT 0, posts_transaction INTEGER DEFAULT 0,
+            tombstone INTEGER DEFAULT 0, name TEXT,
+            sort_order REAL, custom_upcoming_length TEXT
+        );
+        INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking');
+        INSERT INTO payee_mapping (id, targetId) VALUES ('payee-1', 'payee-1');
+        INSERT INTO payee_mapping (id, targetId) VALUES ('payee-old', 'payee-1');
+        """])
     }
 
     /// Inserts a schedule + rule + next-date row. Pass `ruleId: nil` to model a
@@ -110,7 +67,7 @@ struct ScheduleListFetchTests {
     }
 
     @Test func readsEveryFieldOffTheLinkedRule() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", name: "Rent")
 
@@ -133,7 +90,7 @@ struct ScheduleListFetchTests {
     /// Completed and manual schedules are excluded by the poster's fetch but
     /// must appear on the list screen.
     @Test func includesCompletedAndManualSchedules() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", name: "Done", ruleId: "rule-1", completed: true)
         try insertSchedule(database, id: "sched-2", name: "Manual", ruleId: "rule-2")
@@ -143,7 +100,7 @@ struct ScheduleListFetchTests {
     }
 
     @Test func brokenSchedulesStayVisible() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", name: "No rule", ruleId: nil)
         try insertSchedule(database, id: "sched-2", name: "No next date",
@@ -156,7 +113,7 @@ struct ScheduleListFetchTests {
     }
 
     @Test func tombstonedSchedulesAreExcluded() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1")
         try await database.dbQueueForTesting.write { db in
@@ -166,7 +123,7 @@ struct ScheduleListFetchTests {
     }
 
     @Test func mergedPayeesResolveThroughPayeeMapping() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", conditions: """
         [{"op":"is","field":"account","value":"acct-1"},
@@ -181,7 +138,7 @@ struct ScheduleListFetchTests {
     }
 
     @Test func recurringDateConditionIsParsed() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", conditions: """
         [{"op":"is","field":"account","value":"acct-1"},
@@ -202,7 +159,7 @@ struct ScheduleListFetchTests {
     /// would replace the stored pattern with a one-off. Both read as
     /// `.unsupported`, so the distinction has to survive the fetch.
     @Test func anUnreadableRecurrenceKeepsItsDateOp() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         // A legacy config with a string interval: RecurConfig rejects it.
         try insertSchedule(database, id: "sched-1", conditions: """
@@ -218,7 +175,7 @@ struct ScheduleListFetchTests {
     }
 
     @Test func aMissingDateConditionHasNoDateOp() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", conditions: """
         [{"op":"is","field":"account","value":"acct-1"},
@@ -231,7 +188,7 @@ struct ScheduleListFetchTests {
     }
 
     @Test func extraConditionsMarkTheScheduleCustom() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", conditions: """
         [{"op":"is","field":"account","value":"acct-1"},
@@ -243,7 +200,7 @@ struct ScheduleListFetchTests {
     }
 
     @Test func extraActionsMarkTheScheduleCustom() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", actions: """
         [{"op":"link-schedule","value":"sched-1"},
@@ -255,7 +212,7 @@ struct ScheduleListFetchTests {
     // MARK: - Paid status
 
     @Test func paidRespectsEachSchedulesOwnLowerBound() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         // Exact-date schedule: no lookback allowed.
         try insertSchedule(database, id: "sched-exact", conditions: """
@@ -296,7 +253,7 @@ struct ScheduleListFetchTests {
     }
 
     @Test func tombstonedTransactionsDoNotCountAsPaid() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1")
         try await database.dbQueueForTesting.write { db in
@@ -310,7 +267,7 @@ struct ScheduleListFetchTests {
     }
 
     @Test func paymentDatesIncludeOnlyLiveLinkedTransactions() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1")
         try await database.dbQueueForTesting.write { db in
@@ -328,7 +285,7 @@ struct ScheduleListFetchTests {
     }
 
     @Test func noSchedulesMeansNoQuery() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         #expect(try await database.fetchPaidScheduleIds(for: []).isEmpty)
     }

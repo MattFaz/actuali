@@ -266,6 +266,7 @@ final class BudgetStore: ObservableObject {
                 loanConfigs = [:]
                 depositConfigs = [:]
                 cardAccountMappings = [:]
+                excludedFromSpentCategoryIds = Self.loadExcludedFromSpentCategoryIds(for: currentBudgetId)
             }
         }
     }
@@ -293,6 +294,19 @@ final class BudgetStore: ObservableObject {
     /// Statement dues (statement balance, payments since closing, remaining due) for active credit card accounts.
     @Published var creditCardStatementDues: [String: [CreditCardCycle.StatementDue]] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
+
+    /// Categories left out of the Spent (and so Saved/Net) summaries on the
+    /// Budget and Accounts tabs. This
+    /// is intentionally local to the device and budget: it is a presentation
+    /// preference, not a change to Actual's synced budget data.
+    @Published var excludedFromSpentCategoryIds: Set<String> = [] {
+        didSet {
+            guard let budgetId = currentBudgetId else { return }
+            let key = Self.excludedFromSpentDefaultsKey(for: budgetId)
+            UserDefaults.standard.set(Array(excludedFromSpentCategoryIds), forKey: key)
+        }
+    }
+
     /// Accounts wired up to a bank feed, refreshed alongside the rest of the
     /// budget so the accounts tab knows which rows can be synced.
     @Published private(set) var bankSyncAccounts: [BankSyncAccount] = []
@@ -470,9 +484,23 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether the Budget tab shows budgeted amounts (row captions/columns,
+    /// group totals, summary). Display-only, for people who use Actual to
+    /// track spending rather than to budget (GH #562). Defaults on.
+    @Published var showBudgetedAmounts: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showBudgetedAmounts, forKey: "showBudgetedAmounts")
+        }
+    }
+
+    /// Default for `showCompactSpentColumn` (GH #452), shared by the
+    /// property declaration and the init's persisted-restore path so the
+    /// two can't drift.
+    static let defaultShowCompactSpentColumn = true
+
     /// Whether the Compact Budget view style includes the Spent column.
-    /// The narrower two-amount layout is the default.
-    @Published var showCompactSpentColumn: Bool = false {
+    /// Defaults on (GH #452); the narrower two-amount layout is opt-out.
+    @Published var showCompactSpentColumn: Bool = BudgetStore.defaultShowCompactSpentColumn {
         didSet {
             UserDefaults.standard.set(
                 showCompactSpentColumn,
@@ -503,6 +531,41 @@ final class BudgetStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(showBudgetProgressBars, forKey: "showBudgetProgressBars")
         }
+    }
+
+    /// Whether Budget progress bars are inverted so they start full and
+    /// decrease as category spending is used up. Persisted to UserDefaults,
+    /// defaults to off to preserve the existing progress-bar behavior.
+    @Published var showInverseBudgetProgressBars: Bool = false {
+        didSet {
+            UserDefaults.standard.set(
+                showInverseBudgetProgressBars,
+                forKey: "showInverseBudgetProgressBars"
+            )
+        }
+    }
+
+    /// Whether individual Budget categories have their progress bar hidden.
+    /// Device-local presentation preference; category IDs are stable within Actual.
+    @Published private(set) var hiddenBudgetProgressCategoryIDs: Set<String> = [] {
+        didSet {
+            UserDefaults.standard.set(
+                hiddenBudgetProgressCategoryIDs.sorted(),
+                forKey: "hiddenBudgetProgressCategoryIDs"
+            )
+        }
+    }
+
+    func setBudgetProgressBarHidden(_ hidden: Bool, for categoryId: String) {
+        if hidden {
+            hiddenBudgetProgressCategoryIDs.insert(categoryId)
+        } else {
+            hiddenBudgetProgressCategoryIDs.remove(categoryId)
+        }
+    }
+
+    private static func loadHiddenBudgetProgressCategoryIDs(from defaults: UserDefaults) -> Set<String> {
+        Set(defaults.stringArray(forKey: "hiddenBudgetProgressCategoryIDs") ?? [])
     }
 
     /// Whether Budget rows show their compact category-status dot.
@@ -701,23 +764,6 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether transaction lists show only uncleared transactions, so long
-    /// histories don't bury the items that still need attention (GH #133).
-    /// Persisted to UserDefaults, defaults to off.
-    @Published var hideClearedTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(hideClearedTransactions, forKey: "hideClearedTransactions")
-        }
-    }
-
-    /// Whether transaction lists hide transactions locked by reconciliation.
-    /// Persisted to UserDefaults, defaults to off (GH #355).
-    @Published var hideReconciledTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(hideReconciledTransactions, forKey: "hideReconciledTransactions")
-        }
-    }
-
     /// The status preset selected by the transaction lists' chip strip
     /// (GH #439). Persisted so the choice survives a relaunch, and shared so
     /// the All Accounts list and every account list agree.
@@ -766,6 +812,29 @@ final class BudgetStore: ObservableObject {
         return showHiddenCategories
             ? filtered + categories.filter(\.isEffectivelyHidden)
             : filtered
+    }
+
+    func isCategoryIncludedInSpent(_ categoryId: String) -> Bool {
+        !excludedFromSpentCategoryIds.contains(categoryId)
+    }
+
+    func setCategoryIncludedInSpent(_ included: Bool, categoryId: String) {
+        if included {
+            excludedFromSpentCategoryIds.remove(categoryId)
+        } else {
+            excludedFromSpentCategoryIds.insert(categoryId)
+        }
+    }
+
+    private static func excludedFromSpentDefaultsKey(for budgetId: String) -> String {
+        "excludedFromSpentCategoryIds.\(budgetId)"
+    }
+
+    private static func loadExcludedFromSpentCategoryIds(for budgetId: String?) -> Set<String> {
+        guard let budgetId,
+              let values = UserDefaults.standard.array(forKey: excludedFromSpentDefaultsKey(for: budgetId)) as? [String]
+        else { return [] }
+        return Set(values)
     }
 
     /// Closed accounts the Accounts list should show — none when the hide
@@ -1462,6 +1531,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// `id` if that category still exists, else nil — so a category deleted
+    /// since a shortcut was configured is dropped instead of written as a
+    /// dangling id.
+    func existingCategoryId(_ id: String?) async -> String? {
+        guard let id else { return nil }
+        return await categoriesForIntent().contains { $0.id == id } ? id : nil
+    }
+
     func categoryBudgetForIntent(categoryId: String) async -> CategoryBudget? {
         let currentMonth = currentMonthString()
         if let currentBudgetMonth, currentBudgetMonth.month == currentMonth {
@@ -1662,6 +1739,9 @@ final class BudgetStore: ObservableObject {
         _currentBudgetId = Published(
             initialValue: defaults.string(forKey: "currentBudgetId")
         )
+        _excludedFromSpentCategoryIds = Published(
+            initialValue: Self.loadExcludedFromSpentCategoryIds(for: defaults.string(forKey: "currentBudgetId"))
+        )
         _currencyCode = Published(
             initialValue: defaults.string(forKey: "currencyCode") ?? "USD"
         )
@@ -1680,12 +1760,24 @@ final class BudgetStore: ObservableObject {
             initialValue: persistedBool("showCompactBudgetOverview", default: true)
         )
         _showCompactSpentColumn = Published(
-            initialValue: persistedBool("showCompactSpentColumn", default: false)
+            initialValue: persistedBool(
+                "showCompactSpentColumn",
+                default: BudgetStore.defaultShowCompactSpentColumn
+            )
+        )
+        _showBudgetedAmounts = Published(
+            initialValue: persistedBool("showBudgetedAmounts", default: true)
         )
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(
             initialValue: persistedBool("showBudgetProgressBars", default: true)
+        )
+        _showInverseBudgetProgressBars = Published(
+            initialValue: persistedBool("showInverseBudgetProgressBars", default: false)
+        )
+        _hiddenBudgetProgressCategoryIDs = Published(
+            initialValue: Self.loadHiddenBudgetProgressCategoryIDs(from: defaults)
         )
         _showCategoryStatusDots = Published(
             initialValue: persistedBool("showCategoryStatusDots", default: true)
@@ -1730,10 +1822,6 @@ final class BudgetStore: ObservableObject {
             .bool(forKey: "hideZeroBudgetCategories"))
         _showHiddenCategories = Published(initialValue: defaults
             .bool(forKey: "showHiddenCategories"))
-        _hideClearedTransactions = Published(initialValue: defaults
-            .bool(forKey: "hideClearedTransactions"))
-        _hideReconciledTransactions = Published(initialValue: defaults
-            .bool(forKey: "hideReconciledTransactions"))
         _hideClosedAccounts = Published(initialValue: defaults
             .bool(forKey: "hideClosedAccounts"))
 
@@ -1789,6 +1877,9 @@ final class BudgetStore: ObservableObject {
         case .loadPersistedPreferences:
             _categoryStatusDotColors = Published(
                 initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard)
+            )
+            _hiddenBudgetProgressCategoryIDs = Published(
+                initialValue: Self.loadHiddenBudgetProgressCategoryIDs(from: UserDefaults.standard)
             )
         }
     }
@@ -2444,6 +2535,13 @@ final class BudgetStore: ObservableObject {
     }
 
     func loadLocalBudget(_ budgetId: String) async {
+        if budgetId != DemoDataSeeder.budgetId {
+            do {
+                try DemoDataSeeder.removeSamplePendingImport()
+            } catch {
+                logger.error("Demo pending import cleanup failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
         isLoading = true
         isBudgetLoaded = false
         error = nil
@@ -2727,21 +2825,33 @@ final class BudgetStore: ObservableObject {
     /// Populate a local "demo" budget with curated data, for screenshots and for
     /// letting users (and App Review) explore the app without configuring a server.
     /// Logs out any active server session so sync cannot fire against a real server.
-    func loadDemoData(tracking: Bool = false, seedUncategorized: Bool = false) async {
+    func loadDemoData(tracking: Bool = false, seedUncategorized: Bool = false, seedUnsupportedBankSync: Bool = false) async {
         // Log out any active session so sync doesn't try to fire against a
         // real server — but keep local budget files: trying the demo must
         // never destroy a user's synced data.
         logout(clearLocalData: false)
         do {
-            try DemoDataSeeder.seed(tracking: tracking, seedUncategorized: seedUncategorized)
+            try DemoDataSeeder.seed(
+                tracking: tracking,
+                seedUncategorized: seedUncategorized,
+                seedUnsupportedBankSync: seedUnsupportedBankSync
+            )
             currentBudgetId = DemoDataSeeder.budgetId
             // Reseeding rebuilds the budget directory, but history persists in
             // UserDefaults keyed by budget id and survives it. Clear it so a
             // reseeded demo opens pristine (this also keeps UI tests
             // deterministic: they share the simulator's defaults across
             // launches, and earlier tests record demo-budget history).
-            await HistoryStore.shared.clearPersistedActions(budgetID: DemoDataSeeder.budgetId)
+            HistoryStore.shared.clearPersistedActions(budgetID: DemoDataSeeder.budgetId)
+            UserDefaults.standard.removeObject(
+                forKey: Self.excludedFromSpentDefaultsKey(for: DemoDataSeeder.budgetId)
+            )
             await loadLocalBudget(DemoDataSeeder.budgetId)
+            do {
+                try DemoDataSeeder.seedPendingImports()
+            } catch {
+                logger.error("Demo pending import seed failed: \(error.localizedDescription, privacy: .public)")
+            }
             // The seeder recreates the budget directory mid-launch, so any
             // loadLocalBudget already running from init() may have captured an
             // I/O error. A successful demo seed supersedes it.
@@ -3338,7 +3448,10 @@ final class BudgetStore: ObservableObject {
     /// flashing zeroes.
     func fetchAccountsMonthSummary(month: String) async -> BudgetDatabase.AccountsMonthSummary? {
         do {
-            return try await database?.fetchAccountsMonthSummary(month: month)
+            return try await database?.fetchAccountsMonthSummary(
+                month: month,
+                excludingCategoryIds: excludedFromSpentCategoryIds
+            )
         } catch is CancellationError {
             // The caller's task was cancelled (tab switch, a superseded
             // refresh). Nothing failed — never alarm the user.
@@ -3359,15 +3472,12 @@ final class BudgetStore: ObservableObject {
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
-        statusFilter: TransactionStatusFilter = .all,
-        unclearedOnly: Bool = false,
-        hideReconciled: Bool = false
+        statusFilter: TransactionStatusFilter = .all
     ) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
-                statusFilter: statusFilter,
-                unclearedOnly: unclearedOnly, hideReconciled: hideReconciled
+                statusFilter: statusFilter
             ) ?? []
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a superseded .task(id:)
@@ -3682,6 +3792,33 @@ final class BudgetStore: ObservableObject {
         ) -> String {
             ReportStrings.localized(
                 "\(accountName): Skipped \(count) transactions because the bank returned conflicting details for the same transaction.",
+                locale: locale,
+                bundle: bundle
+            )
+        }
+
+        /// The message for linked accounts Actuali can't refresh — a run that
+        /// finds only those should explain why instead of claiming nothing is
+        /// linked. `nil` when a supported account is present (the run syncs it)
+        /// or nothing is linked, leaving the usual messages in charge.
+        static func unsupportedSourceMessage(
+            for accounts: [BankSyncAccount],
+            locale: Locale = .autoupdatingCurrent,
+            bundle: Bundle = .main
+        ) -> String? {
+            guard !accounts.isEmpty, accounts.allSatisfy({ $0.source == nil }) else { return nil }
+            // Upstream writes exactly 'goCardless' into account_sync_source
+            // (app.ts); pluggyai, akahu, enableBanking and future sources
+            // stay generic rather than guess a provider name.
+            if Set(accounts.map(\.syncSource)) == ["goCardless"] {
+                return ReportStrings.text(
+                    "Actuali can't refresh GoCardless accounts yet. Refresh them from the Actual web app.",
+                    locale: locale,
+                    bundle: bundle
+                )
+            }
+            return ReportStrings.text(
+                "Actuali can't refresh accounts from this bank provider yet. Refresh them from the Actual web app.",
                 locale: locale,
                 bundle: bundle
             )
@@ -4106,7 +4243,12 @@ final class BudgetStore: ObservableObject {
         }
         let simpleFinTargets = linked.filter { $0.source == .simpleFin }
         var walletTargets = linked.filter { $0.source == .financeKit }
-        guard !(simpleFinTargets.isEmpty && walletTargets.isEmpty) else { return BankSyncResult() }
+        guard !(simpleFinTargets.isEmpty && walletTargets.isEmpty) else {
+            if let message = BankSyncResult.unsupportedSourceMessage(for: linked) {
+                return BankSyncResult(problems: [message])
+            }
+            return BankSyncResult()
+        }
 
         // Nothing may suspend between the isBankSyncing guard above and this
         // write — an await in that window would let a second call slip past
@@ -4578,9 +4720,8 @@ final class BudgetStore: ObservableObject {
 
         let offBudgetIds = offBudgetAccountIds
         func categorizable(_ accountId: String, partner: String) -> String? {
-            guard !offBudgetIds.contains(accountId),
-                  offBudgetIds.contains(partner) else { return nil }
-            return categoryId
+            Self.transferLegTakesCategory(leg: accountId, partner: partner, offBudgetAccountIds: offBudgetIds)
+                ? categoryId : nil
         }
 
         let source = Transaction(
@@ -4662,6 +4803,20 @@ final class BudgetStore: ObservableObject {
         Set(accounts.filter(\.offBudget).map(\.id))
     }
 
+    /// Actual's rule: a transfer leg carries a category only when its account
+    /// is on-budget and its partner's is off-budget — money entering or
+    /// leaving the budget. Two on-budget (or two off-budget) accounts never
+    /// do (`clearCategory` in loot-core's transfer.ts). A missing account
+    /// (partner not picked yet) takes none.
+    nonisolated static func transferLegTakesCategory(
+        leg: String?,
+        partner: String?,
+        offBudgetAccountIds: Set<String>
+    ) -> Bool {
+        guard let leg, let partner else { return false }
+        return !offBudgetAccountIds.contains(leg) && offBudgetAccountIds.contains(partner)
+    }
+
     /// Re-save an existing transfer: both legs take the new accounts, amount,
     /// date, notes and cleared state, with payees remapped to the (possibly
     /// re-targeted) accounts' transfer payees. `original` is whichever leg the
@@ -4703,8 +4858,9 @@ final class BudgetStore: ObservableObject {
         /// then both are cleared unless that leg is the categorizable side.
         func resolvedCategory(for leg: Transaction, accountId: String,
                               otherAccountId: String) -> String? {
-            guard !offBudgetIds.contains(accountId),
-                  offBudgetIds.contains(otherAccountId) else { return nil }
+            guard Self.transferLegTakesCategory(
+                leg: accountId, partner: otherAccountId, offBudgetAccountIds: offBudgetIds
+            ) else { return nil }
             return leg.id == original.id ? categoryId : leg.categoryId
         }
 
@@ -5468,7 +5624,8 @@ final class BudgetStore: ObservableObject {
                 amountCents: amountCents,
                 date: date,
                 notes: notes,
-                cleared: form.cleared
+                cleared: form.cleared,
+                categoryId: form.categoryId
             )
             return nil
 
@@ -5542,8 +5699,9 @@ final class BudgetStore: ObservableObject {
                 }
                 let partnerId = transferAccountId.map { _ in UUID().uuidString }
                 let childCategoryId = transferAccountId.map { destinationId in
-                    !offBudgetAccountIds.contains(form.accountId)
-                        && offBudgetAccountIds.contains(destinationId) ? line.categoryId : nil
+                    Self.transferLegTakesCategory(
+                        leg: form.accountId, partner: destinationId, offBudgetAccountIds: offBudgetAccountIds
+                    ) ? line.categoryId : nil
                 } ?? line.categoryId
                 children.append(Transaction(
                     id: childId,
@@ -5871,8 +6029,9 @@ final class BudgetStore: ObservableObject {
                 payeeId: resolvedPayee.id,
                 payeeName: resolvedPayee.name,
                 categoryId: resolvedPayee.transferAccountId.map { destinationId in
-                    !offBudgetAccountIds.contains(form.accountId)
-                        && offBudgetAccountIds.contains(destinationId) ? line.categoryId : nil
+                    Self.transferLegTakesCategory(
+                        leg: form.accountId, partner: destinationId, offBudgetAccountIds: offBudgetAccountIds
+                    ) ? line.categoryId : nil
                 } ?? line.categoryId,
                 categoryName: nil,
                 notes: line.notes,
@@ -6009,12 +6168,10 @@ final class BudgetStore: ObservableObject {
         }
 
         let signedAmount = original.amount < 0 ? -amountCents : amountCents
-        // Actual's rule: a transfer leg takes a category only when it sits in
-        // an on-budget account and the other side is off-budget. The new
-        // partner leg has no category of its own to keep either way.
-        let offBudgetIds = offBudgetAccountIds
-        let legCategoryId = !offBudgetIds.contains(form.accountId)
-            && offBudgetIds.contains(otherAccountId) ? form.categoryId : nil
+        // The new partner leg has no category of its own to keep either way.
+        let legCategoryId = Self.transferLegTakesCategory(
+            leg: form.accountId, partner: otherAccountId, offBudgetAccountIds: offBudgetAccountIds
+        ) ? form.categoryId : nil
 
         let partnerId = UUID().uuidString
         var leg = original
@@ -6129,8 +6286,9 @@ final class BudgetStore: ObservableObject {
                 payeeId: resolvedPayee.id,
                 payeeName: resolvedPayee.name,
                 categoryId: resolvedPayee.transferAccountId.map { destinationId in
-                    !offBudgetAccountIds.contains(form.accountId)
-                        && offBudgetAccountIds.contains(destinationId) ? line.categoryId : nil
+                    Self.transferLegTakesCategory(
+                        leg: form.accountId, partner: destinationId, offBudgetAccountIds: offBudgetAccountIds
+                    ) ? line.categoryId : nil
                 } ?? line.categoryId,
                 categoryName: nil,
                 notes: line.notes,

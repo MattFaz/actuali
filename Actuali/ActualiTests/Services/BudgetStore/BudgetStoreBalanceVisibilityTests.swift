@@ -20,50 +20,29 @@ struct BudgetStoreBalanceVisibilityTests {
         store.hideBalances = true
         #expect(store.displayBalance(123_456) == BudgetStore.hiddenBalanceText)
         #expect(store.displayBalanceWholeUnits(123_456) == BudgetStore.hiddenBalanceText)
-        #expect(store.displayBudgetCell(123_456) == BudgetStore.hiddenBalanceText)
     }
 
-    @Test func budgetCellsUseCurrencyNativePrecision() {
+    /// GH #585: Compact cells showed no currency anywhere on screen. They must
+    /// carry the symbol, narrowed when Symbol Only is on, exactly like Clean.
+    @Test func budgetCellsShowCurrencySymbol() {
         let store = BudgetStore.previewInstance()
+        let enUS = Locale(identifier: "en_US")
+        store.currencyCode = "AUD"
         store.hideBalances = false
         store.hideDecimalPlaces = false
-
-        for currencyCode in ["JPY", "KWD"] {
-            store.currencyCode = currencyCode
-            #expect(
-                store.displayBudgetCell(123_450)
-                    == CurrencyAmountFormat.symbolLessString(
-                        cents: 123_450,
-                        currencyCode: currencyCode
-                    )
-            )
-        }
-    }
-
-    @Test func budgetCellsRespectDecimalPlacePreference() {
-        let store = BudgetStore.previewInstance()
-        store.currencyCode = "USD"
-        store.hideBalances = false
-        store.hideDecimalPlaces = true
-
-        #expect(
-            store.displayBudgetCell(123_456)
-                == CurrencyAmountFormat.symbolLessString(
-                    cents: 123_456,
-                    currencyCode: "USD",
-                    wholeUnits: true
-                )
-        )
+        store.useNarrowCurrencySymbol = true
+        #expect(store.displayBalance(3_602_718, locale: enUS) == "$36,027.18")
+        store.useNarrowCurrencySymbol = false
+        #expect(store.displayBalance(3_602_718, locale: enUS) == "A$36,027.18")
     }
 
     /// The mask must never leak a digit, sign, or currency symbol for any
     /// amount, including the values most likely to hit formatter edge cases.
-    @Test func maskIsAmountIndependent() {
+    @Test(arguments: [0, -1, 1, Int.max, Int.min + 1, -987_654_321])
+    func maskIsAmountIndependent(cents: Int) {
         let store = BudgetStore.previewInstance()
         store.hideBalances = true
-        for cents in [0, -1, 1, Int.max, Int.min + 1, -987_654_321] {
-            #expect(store.displayBalance(cents) == BudgetStore.hiddenBalanceText)
-        }
+        #expect(store.displayBalance(cents) == BudgetStore.hiddenBalanceText)
     }
 
     @Test func togglePersistsToUserDefaults() {

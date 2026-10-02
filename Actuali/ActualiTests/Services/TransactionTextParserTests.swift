@@ -179,6 +179,60 @@ struct TransactionTextParserTests {
 
         #expect(pending.originBudgetId == "budget-a")
     }
+
+    @Test func resolvesCardHintOverridingHallucinatedDigits() {
+        let text = "Rs 1,234.00 spent on Sample Bank Card XX6419 on 01-01-2026 at Coffee Shop."
+        // LLM returned transposed "1964"; resolveCardHint must pick "6419" from the text
+        let hint = TransactionTextParser.resolveCardHint("1964", in: text)
+        #expect(hint == "6419")
+    }
+
+    @Test func resolvesCardHintAcceptingGroundedCandidateWhenRegexMisses() {
+        let text = "Transaction approved on device 9988 for purchase"
+        let hint = TransactionTextParser.resolveCardHint("9988", in: text)
+        #expect(hint == "9988")
+    }
+
+    @Test func rejectsHallucinatedCardHintNotInText() {
+        let text = "Paid $15 at Store"
+        let hint = TransactionTextParser.resolveCardHint("1234", in: text)
+        #expect(hint == nil)
+    }
+
+    @Test func parsesAccountKeywordCardHint() {
+        let text = "Account ending 1234 charged USD 20.00 at Store"
+        #expect(TransactionTextParser.parseWithFallback(text).cardHint == "1234")
+    }
+
+    @Test func doesNotTreatReferenceNumberAsCardHint() {
+        let text = "Rs 500 spent on card. Ref no 987654321. A/C XX6419 on 01-01-2026"
+        #expect(TransactionTextParser.parseWithFallback(text).cardHint == "6419")
+    }
+
+    @Test func doesNotTreatBalanceOrAmountAsCardHint() {
+        let balance = "Account balance 1234.56. Card XX6419 debited USD 20 at Coffee Shop"
+        #expect(TransactionTextParser.parseWithFallback(balance).cardHint == "6419")
+
+        let amount = "Card txn of Rs.2500.00 at Amazon on 12-01-26 using Card XX6419"
+        #expect(TransactionTextParser.parseWithFallback(amount).cardHint == "6419")
+    }
+
+    @Test func parsesCardHintAfterFillerWords() {
+        #expect(TransactionTextParser.parseWithFallback("Card ending with 1234 used").cardHint == "1234")
+        #expect(TransactionTextParser.parseWithFallback("Account number 4321 debited").cardHint == "4321")
+    }
+
+    @Test func keepsGroundedModelCardHintOverRegex() {
+        // The regex takes the first keyword match (1111); the model's answer is in the text, so it wins.
+        let text = "Card XX1111 was replaced. Rs 500 charged on card XX6419"
+        #expect(TransactionTextParser.resolveCardHint("6419", in: text) == "6419")
+    }
+
+    @Test func keepsGroundedNonNumericCardHint() {
+        // Mapping keywords are free text, so a bank name the text contains still routes.
+        let text = "HSBC: Rs 500 spent at Store"
+        #expect(TransactionTextParser.resolveCardHint("HSBC", in: text) == "HSBC")
+    }
 }
 
 extension TransactionTextParserTests {

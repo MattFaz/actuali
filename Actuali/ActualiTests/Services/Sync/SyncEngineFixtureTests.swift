@@ -22,33 +22,29 @@ struct MurmurHash3FixtureTests {
     // The first two also appear in
     // actual/packages/crdt/src/crdt/__snapshots__/merkle.test.ts.snap
     // ("adding an item works": hashes 1983295247 / 1469038940).
-    @Test func timestampStringVectors() {
-        let vectors: [(String, UInt32)] = [
-            ("2018-11-12T13:21:40.122Z-0000-0123456789ABCDEF", 1_983_295_247),
-            ("2018-11-13T13:21:40.122Z-0000-0123456789ABCDEF", 1_469_038_940),
-            ("1970-01-01T00:00:00.000Z-0000-0000000000000000", 4_179_357_717),
-            ("2015-04-24T22:23:42.123Z-1000-0123456789ABCDEF", 2_838_536_857),
-            ("9999-12-31T23:59:59.999Z-FFFF-FFFFFFFFFFFFFFFF", 1_359_285_735),
-            ("2019-06-03T16:40:53.876Z-0000-9f66d38cba0ef956", 779_909_595),
-        ]
-        for (input, expected) in vectors {
-            #expect(MurmurHash3.hash(input) == expected, "hash mismatch for \(input)")
-        }
+    @Test(arguments: [
+        ("2018-11-12T13:21:40.122Z-0000-0123456789ABCDEF", 1_983_295_247),
+        ("2018-11-13T13:21:40.122Z-0000-0123456789ABCDEF", 1_469_038_940),
+        ("1970-01-01T00:00:00.000Z-0000-0000000000000000", 4_179_357_717),
+        ("2015-04-24T22:23:42.123Z-1000-0123456789ABCDEF", 2_838_536_857),
+        ("9999-12-31T23:59:59.999Z-FFFF-FFFFFFFFFFFFFFFF", 1_359_285_735),
+        ("2019-06-03T16:40:53.876Z-0000-9f66d38cba0ef956", 779_909_595),
+    ] as [(String, UInt32)])
+    func timestampStringVectors(input: String, expected: UInt32) {
+        #expect(MurmurHash3.hash(input) == expected, "hash mismatch for \(input)")
     }
 
     /// Tail-length coverage (0..3 trailing bytes plus a full block).
     /// Computed-by-node with the murmurhash package used by upstream.
-    @Test func tailLengthVectors() {
-        let vectors: [(String, UInt32)] = [
-            ("", 0),
-            ("abc", 3_017_643_002),
-            ("abcd", 1_139_631_978),
-            ("abcde", 3_902_511_862),
-            ("abcdef", 1_635_893_381),
-        ]
-        for (input, expected) in vectors {
-            #expect(MurmurHash3.hash(input) == expected, "hash mismatch for \(input)")
-        }
+    @Test(arguments: [
+        ("", 0),
+        ("abc", 3_017_643_002),
+        ("abcd", 1_139_631_978),
+        ("abcde", 3_902_511_862),
+        ("abcdef", 1_635_893_381),
+    ] as [(String, UInt32)])
+    func tailLengthVectors(input: String, expected: UInt32) {
+        #expect(MurmurHash3.hash(input) == expected, "hash mismatch for \(input)")
     }
 
     /// Upstream's murmurhash package encodes input with TextEncoder (UTF-8),
@@ -511,38 +507,9 @@ struct SyncEncoderFixtureTests {
 
 struct SyncConvergenceFixtureTests {
     /// accounts and messages_crdt normally come from the downloaded budget
-    /// file, so create them with the upstream schema (matches
-    /// BudgetDatabaseApplyMessagesTests).
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                offbudget INTEGER DEFAULT 0,
-                closed INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    /// file, so create them with the upstream schema.
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.accounts, TestSchema.messagesCrdt)
     }
 
     private func accounts(path: URL) throws -> [(id: String, name: String?)] {
@@ -575,7 +542,7 @@ struct SyncConvergenceFixtureTests {
     /// reversed ordering) through the real insert/apply path and must converge
     /// to identical merkle hashes and identical table state — the invariant the
     /// upstream CRDT design guarantees (actual/packages/crdt).
-    @Test func twoClientsConvergeToIdenticalState() throws {
+    @Test func twoClientsConvergeToIdenticalState() async throws {
         func message(
             _ isoTimestamp: String, node: String,
             row: String, column: String, value: String
@@ -606,9 +573,9 @@ struct SyncConvergenceFixtureTests {
                     row: "acct-3", column: "name", value: "S:Brokerage"),
         ]
 
-        let (clientA, pathA) = try makeDatabase()
+        let (clientA, pathA) = try await makeDatabase()
         defer { cleanup(pathA) }
-        let (clientB, pathB) = try makeDatabase()
+        let (clientB, pathB) = try await makeDatabase()
         defer { cleanup(pathB) }
         var merkleA = MerkleTree()
         var merkleB = MerkleTree()

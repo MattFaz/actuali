@@ -1,14 +1,21 @@
 import Foundation
 import GRDB
+import Synchronization
 import Testing
 @testable import Actuali
 
-private enum WalletCallCounter {
-    nonisolated(unsafe) static var accounts = 0
-}
-
-private struct CountingWalletStore: AppleWalletReading {
+/// Counts how often a sync asks Wallet for its accounts.
+private final class CountingWalletStore: AppleWalletReading {
     let base: StubWalletStore
+    private let calls = Mutex(0)
+
+    init(base: StubWalletStore) {
+        self.base = base
+    }
+
+    var accountCalls: Int {
+        calls.withLock { $0 }
+    }
 
     func availability() async -> AppleWalletAvailability {
         await base.availability()
@@ -19,7 +26,7 @@ private struct CountingWalletStore: AppleWalletReading {
     }
 
     func accounts() async throws -> [AppleWalletAccount] {
-        WalletCallCounter.accounts += 1
+        calls.withLock { $0 += 1 }
         return try await base.accounts()
     }
 
@@ -29,7 +36,6 @@ private struct CountingWalletStore: AppleWalletReading {
 }
 
 @MainActor
-@Suite(.serialized)
 struct BudgetStoreAppleWalletSyncTests {
     private static let accountId = "acct-card"
     /// FinanceKit account UUID, lowercased, the way linking stores it.
@@ -67,89 +73,25 @@ struct BudgetStoreAppleWalletSyncTests {
         )
     }
 
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    type TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    account_id TEXT,
-                    account_sync_source TEXT,
-                    bank TEXT,
-                    balance_current INTEGER,
-                    balance_available INTEGER,
-                    balance_limit INTEGER
-                )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                starting_balance_flag INTEGER DEFAULT 0,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                acct TEXT,
-                category TEXT,
-                amount INTEGER,
-                description TEXT,
-                notes TEXT,
-                date INTEGER,
-                imported_description TEXT,
-                financial_id TEXT,
-                transferred_id TEXT,
-                schedule TEXT,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0,
-                parent_id TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payees (
-                id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)")
-            try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
-            // Every display read joins through these; a backfill fetches the
-            // opening balance back to correct it, so this fixture needs them.
-            try db.execute(sql: """
-            CREATE TABLE categories (
-                id TEXT PRIMARY KEY, name TEXT, cat_group TEXT,
-                is_income INTEGER DEFAULT 0, hidden INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: "CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT)")
-            try db.execute(sql: """
-            CREATE TABLE banks (
-                id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-            try db.execute(sql: """
-            INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
-            VALUES (?, 'Apple Card', 'credit', 0, 0, 0, 1)
-            """, arguments: [Self.accountId])
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.core + [TestSchema.preferences, """
+        CREATE TABLE banks (
+            id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
+        )
+        """, """
+        INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+        VALUES ('\(Self.accountId)', 'Apple Card', 'credit', 0, 0, 0, 1)
+        """])
+    }
+
+    /// One defaults suite per budget file, so Wallet links never leak between
+    /// tests and `cleanup` removes them along with the file.
+    private static func defaultsSuite(for url: URL) -> String {
+        "BudgetStoreAppleWalletSyncTests-\(url.lastPathComponent)"
+    }
+
+    private func walletDefaults(for url: URL) throws -> UserDefaults {
+        try #require(UserDefaults(suiteName: Self.defaultsSuite(for: url)))
     }
 
     private func makeStore(
@@ -157,12 +99,8 @@ struct BudgetStoreAppleWalletSyncTests {
         walletStore: any AppleWalletReading,
         linked: Bool = true
     ) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
-        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
-        defaults.removePersistentDomain(forName: "BudgetStoreAppleWalletSyncTests")
+        let store = try await makeTestStore(database: database)
+        let defaults = try walletDefaults(for: URL(fileURLWithPath: database.dbQueueForTesting.path))
         store.configureAppleWalletLinksForTesting(defaults: defaults, budgetId: "wallet-tests")
         store.setAppleWalletStoreForTesting(walletStore)
         if linked {
@@ -208,6 +146,8 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     private func cleanup(_ url: URL) {
+        UserDefaults(suiteName: Self.defaultsSuite(for: url))?
+            .removePersistentDomain(forName: Self.defaultsSuite(for: url))
         try? FileManager.default.removeItem(at: url)
     }
 
@@ -216,7 +156,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// Budget load, foregrounding and pull-to-refresh import Wallet feeds
     /// without a button press — and without popping the sync summary alert.
     @Test func autoSyncImportsQuietly() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
 
@@ -227,7 +167,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func pullToRefreshImportsWalletTransactions() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
 
@@ -237,7 +177,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func foregroundSyncImportsWalletTransactions() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
 
@@ -247,7 +187,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func backgroundSyncImportsWalletTransactions() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
 
@@ -262,7 +202,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// began — the day of its earliest CRDT message, which travels with the
     /// file to every device.
     @Test func importStartDefaultsToTheDayTheBudgetBegan() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let queue = try DatabaseQueue(path: url.path)
         try await queue.write { db in
@@ -281,7 +221,7 @@ struct BudgetStoreAppleWalletSyncTests {
 
     /// A budget with no messages yet falls back to the shared 90-day lookback.
     @Test func importStartFallsBackToTheLookbackWindow() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(
             database: database, walletStore: appleCard(), linked: false
@@ -294,7 +234,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// The chosen day bounds the first import: anything older stays out, and
     /// what it did to the balance lands in the opening balance instead.
     @Test func aChosenDayLimitsTheFirstImport() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         store.setBankSyncImportStartDay(Self.expectedDay(2))
@@ -315,7 +255,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// pulls the older transactions in — on the next ordinary sync, with no
     /// special "backfill" call.
     @Test func movingTheDayEarlierReachesPastExistingHistory() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         store.setBankSyncImportStartDay(Self.expectedDay(2))
@@ -336,7 +276,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// rows their own lines must leave the account reconciling exactly as it
     /// did — otherwise it drifts from the card by the backfilled amount.
     @Test func aBackfillLeavesTheAccountBalanceAlone() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         store.setBankSyncImportStartDay(Self.expectedDay(2))
@@ -361,7 +301,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// happens — dropped because another was in flight, failed, or killed —
     /// leaves the next sync reaching just as far, whichever path kicks it.
     @Test func theReachSurvivesARunThatNeverHappens() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         store.setBankSyncImportStartDay(Self.expectedDay(2))
@@ -382,7 +322,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// account never counted, and the balance is right to move — inventing an
     /// opening to hold it still would push a made-up row to every device.
     @Test func aBackfillMovesAnAccountThatHasNoOpeningBalance() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         var wallet = appleCard()
         wallet.accountsValue = [AppleWalletAccount(
@@ -405,7 +345,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// Once the reach has landed, ordinary syncs stop asking for it — and
     /// nothing is imported or removed twice.
     @Test func aPaidBackfillDoesNotRepeat() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         store.setBankSyncImportStartDay(Self.expectedDay(30))
@@ -421,7 +361,7 @@ struct BudgetStoreAppleWalletSyncTests {
 
     /// Moving the day later removes nothing — the footer promises it.
     @Test func movingTheDayLaterKeepsWhatWasImported() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         store.setBankSyncImportStartDay(Self.expectedDay(30))
@@ -440,7 +380,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// sees rows authored by other devices, which these are not. The opening
     /// balance stays out; nobody needs a banner for it.
     @Test func theResultCarriesInsertedRowsForNotification() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
 
@@ -459,7 +399,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// preference must not fall back to Actual's reimport-everything default
     /// the way a SimpleFIN account's does (GH #435).
     @Test func aDeletedWalletTransactionStaysDeletedOnTheNextSync() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         let first = try await store.syncBankAccounts()
@@ -483,7 +423,7 @@ struct BudgetStoreAppleWalletSyncTests {
 
     /// The synced preference still has the last word when someone did set it.
     @Test func anExplicitReimportPreferenceStillReimportsDeletedWalletTransactions() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let queue = try DatabaseQueue(path: url.path)
         let accountId = Self.accountId
@@ -511,7 +451,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// adopts them into the device-local store and clears the columns like an
     /// unlink would — the link itself must survive the move.
     @Test func strayColumnLinksMigrateToTheDeviceLocalStore() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let queue = try DatabaseQueue(path: url.path)
         let accountId = Self.accountId
@@ -549,7 +489,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func failedLegacyColumnMigrationPreservesSyncedIdentityAndSkipsCleanup() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let queue = try DatabaseQueue(path: url.path)
         let externalAccountId = Self.externalAccountId
@@ -587,7 +527,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// A device that can't serve the feed skips the automatic pass entirely —
     /// no import, and no alert nobody asked for.
     @Test func autoSyncStaysQuietWhenWalletCantAnswer() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         var wallet = appleCard()
         wallet.availabilityValue = .denied
@@ -600,7 +540,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func firstSyncImportsTransactionsAndACreditCardOpeningBalance() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
 
@@ -640,7 +580,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func emptyFinanceKitFirstSyncCreatesOpeningBalanceOnImportStartDay() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let wallet = StubWalletStore(
             accountsValue: [AppleWalletAccount(
@@ -668,7 +608,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func syncingAgainImportsNothingTwice() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
 
@@ -682,7 +622,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func duplicateStableWalletIdImportsOneRowAndSubtractsItOnce() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let duplicateId = "44444444-4444-4444-4444-444444444444"
         let wallet = StubWalletStore(
@@ -716,7 +656,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func linkingStaysDeviceLocal() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
         let remote = try #require(try await store.fetchAppleWalletAccounts().first)
@@ -738,10 +678,10 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func legacyWalletDefaultsMigrateOnceAndAreRemoved() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
-        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        let defaults = try walletDefaults(for: url)
         defaults.set(
             [Self.accountId: Self.externalAccountId],
             forKey: "appleWalletLinks_wallet-tests"
@@ -760,10 +700,10 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func legacyWalletDefaultsMigrateLiveLinksAndDiscardStaleLinks() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
-        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        let defaults = try walletDefaults(for: url)
         let tombstonedAccountId = "acct-tombstoned"
         let missingAccountId = "acct-missing"
         try await database.dbQueueForTesting.write { db in
@@ -792,10 +732,10 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func staleLegacyWalletDefaultsDoNotBlockUnlinkingAValidLocalLink() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
-        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        let defaults = try walletDefaults(for: url)
         defaults.set(
             ["acct-missing": "missing-wallet-id"],
             forKey: "appleWalletLinks_wallet-tests"
@@ -809,10 +749,10 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func failedLegacyWalletDefaultsMigrationPreservesDefaultsAndLocalLinks() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
-        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        let defaults = try walletDefaults(for: url)
         let originalDefaults = [
             Self.accountId: Self.externalAccountId,
             "acct-missing": "missing-wallet-id",
@@ -836,10 +776,10 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func legacyWalletDefaultsAdoptOverStaleFinanceKitColumns() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
-        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        let defaults = try walletDefaults(for: url)
         let localExternalId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
         let externalAccountId = Self.externalAccountId
         let accountId = Self.accountId
@@ -874,7 +814,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func newerSQLiteWalletRelinkWinsOverStaleDefaults() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
         let newerExternalId = "99999999-9999-9999-9999-999999999999"
@@ -883,7 +823,7 @@ struct BudgetStoreAppleWalletSyncTests {
             institutionName: "Apple", balanceCents: nil, source: .financeKit
         )
         try await store.linkBankAccount(accountId: Self.accountId, to: newer)
-        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        let defaults = try walletDefaults(for: url)
         defaults.set(
             [Self.accountId: Self.externalAccountId],
             forKey: "appleWalletLinks_wallet-tests"
@@ -902,7 +842,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func unlinkingRemovesTheDeviceLocalLink() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
 
@@ -918,7 +858,7 @@ struct BudgetStoreAppleWalletSyncTests {
     func unlinkingFinanceKitCleansUpArrivedLegacyFinanceKitColumns(
         synchronizedExternalId: String
     ) async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         let accountId = Self.accountId
@@ -945,7 +885,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func synchronizedSimpleFINWinsAndReconcilesHiddenFinanceKitLink() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         let accountId = Self.accountId
@@ -968,7 +908,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func relinkingFinanceKitAfterSynchronizedProviderArrivalPreservesProvider() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         let accountId = Self.accountId
@@ -997,7 +937,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func loadingSynchronizedSimpleFINRemovesHiddenFinanceKitLink() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         let accountId = Self.accountId
@@ -1018,7 +958,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func unlinkThenReloadCannotResurrectLegacyWalletLink() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         try await store.unlinkBankAccount(accountId: Self.accountId)
@@ -1026,12 +966,12 @@ struct BudgetStoreAppleWalletSyncTests {
         await store.loadBankSyncAccounts()
 
         #expect(store.bankSyncAccount(forAccountId: Self.accountId) == nil)
-        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        let defaults = try walletDefaults(for: url)
         #expect(defaults.object(forKey: "appleWalletLinks_wallet-tests") == nil)
     }
 
     @Test func staleFinanceKitUnlinkPreservesRelinkedIdentity() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
         let newer = ExpectedBankSyncLink(
@@ -1050,7 +990,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func replacingSimpleFINWithFinanceKitLeavesOnlyLocalAuthority() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
         try await store.linkBankAccount(
             accountId: Self.accountId,
@@ -1108,7 +1048,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func replacingFinanceKitWithSimpleFINRemovesLocalAuthorityAfterReload() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
         try await store.linkBankAccount(
             accountId: Self.accountId,
@@ -1152,9 +1092,8 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func walletWritesAfterAccountTombstoneMaterializeNothing() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        WalletCallCounter.accounts = 0
         let wallet = CountingWalletStore(base: appleCard())
         let store = try await makeStore(database: database, walletStore: wallet)
         let accountId = Self.accountId
@@ -1164,7 +1103,7 @@ struct BudgetStoreAppleWalletSyncTests {
 
         let result = try await store.syncBankAccounts()
 
-        #expect(WalletCallCounter.accounts == 1)
+        #expect(wallet.accountCalls == 1)
         #expect(result.problems.count == 1)
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").isEmpty)
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
@@ -1172,12 +1111,12 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func linkingFinanceKitAfterAccountTombstoneIsRejected() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
         let remote = try #require(try await store.fetchAppleWalletAccounts().first).remoteAccount
         let accountId = Self.accountId
-        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        let defaults = try walletDefaults(for: url)
         defaults.set(
             [accountId: Self.externalAccountId],
             forKey: "appleWalletLinks_wallet-tests"
@@ -1199,7 +1138,7 @@ struct BudgetStoreAppleWalletSyncTests {
     /// A device without FinanceKit can't service its local Wallet link. That
     /// is a quiet skip, not an error on every sync.
     @Test func anUnsupportedDeviceSkipsWalletAccountsQuietly() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         var wallet = appleCard()
         wallet.availabilityValue = .unsupported
@@ -1213,7 +1152,7 @@ struct BudgetStoreAppleWalletSyncTests {
 
     /// Access someone turned off is theirs to turn back on — say so.
     @Test func deniedWalletAccessIsReported() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         var wallet = appleCard()
         wallet.availabilityValue = .denied
@@ -1227,7 +1166,7 @@ struct BudgetStoreAppleWalletSyncTests {
     }
 
     @Test func anAccountThisWalletDoesntHaveIsSkippedQuietly() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         var wallet = appleCard()
         wallet.accountsValue = []

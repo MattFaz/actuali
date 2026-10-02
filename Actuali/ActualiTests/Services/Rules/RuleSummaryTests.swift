@@ -75,20 +75,19 @@ struct RuleSummaryTests {
         ) == "définir catégorie sur Groceries")
     }
 
-    @Test func ruleRowFragmentsUseRequestedLocale() {
-        let expected: [(String, String, String, String, String)] = [
-            ("en_US", "IF", "THEN", "and", "or"),
-            ("fr_FR", "SI", "ALORS", "et", "ou"),
-            ("de_DE", "WENN", "DANN", "und", "oder"),
-            ("pt_BR", "SE", "ENTÃO", "e", "ou"),
-        ]
-
-        for (identifier, ifValue, thenValue, andValue, orValue) in expected {
-            let locale = Locale(identifier: identifier)
-            #expect(RuleRowLocalization.fragment("IF", locale: locale) == ifValue)
-            #expect(RuleRowLocalization.fragment("THEN", locale: locale) == thenValue)
-            #expect(RuleRowLocalization.joiner(isAnd: true, locale: locale) == andValue)
-            #expect(RuleRowLocalization.joiner(isAnd: false, locale: locale) == orValue)
-        }
+    @Test(arguments: [
+        ("en_US", "IF", "THEN", "and", "or"),
+        ("fr_FR", "SI", "ALORS", "et", "ou"),
+        ("de_DE", "WENN", "DANN", "und", "oder"),
+        ("pt_BR", "SE", "ENTÃO", "e", "ou"),
+    ])
+    func ruleRowFragmentsUseRequestedLocale(
+        identifier: String, ifValue: String, thenValue: String, andValue: String, orValue: String
+    ) {
+        let locale = Locale(identifier: identifier)
+        #expect(RuleRowLocalization.fragment("IF", locale: locale) == ifValue)
+        #expect(RuleRowLocalization.fragment("THEN", locale: locale) == thenValue)
+        #expect(RuleRowLocalization.joiner(isAnd: true, locale: locale) == andValue)
+        #expect(RuleRowLocalization.joiner(isAnd: false, locale: locale) == orValue)
     }
 }

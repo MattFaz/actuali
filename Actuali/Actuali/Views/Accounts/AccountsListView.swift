@@ -21,6 +21,13 @@ struct AccountsMonthTotals: Equatable {
     let totals: BudgetDatabase.AccountsMonthSummary
 }
 
+/// What the month summary is fetched from, so one `.task(id:)` reloads it
+/// when either changes.
+private struct MonthSummaryInputs: Equatable {
+    let dataVersion: Int
+    let excludedFromSpent: Set<String>
+}
+
 struct AccountsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @StateObject private var notificationRouter = NotificationRouter.shared
@@ -96,6 +103,14 @@ struct AccountsListView: View {
             }
         }
         .initialSyncBanner()
+        // Outside both navigation containers, not on the list root: a pushed
+        // account screen (where Sync from Bank lives) covers the root, and an
+        // alert there waits until the user backs out to present.
+        .alert("Bank Sync", isPresented: bankSyncAlertBinding) {
+            Button(String(localized: "common.ok"), role: .cancel) { budgetStore.bankSyncSummary = nil }
+        } message: {
+            Text(budgetStore.bankSyncSummary ?? "")
+        }
     }
 
     /// The phone layout: tap an account, push its transactions.
@@ -412,14 +427,6 @@ struct AccountsListView: View {
                 AddAccountView()
                     .environmentObject(budgetStore)
             }
-            // Attached here, not on the menu item that starts the sync: the
-            // menu is long gone by the time the download finishes, and this
-            // stack's pushed account views sit above this alert anyway.
-            .alert("Bank Sync", isPresented: bankSyncAlertBinding) {
-                Button(String(localized: "common.ok"), role: .cancel) { budgetStore.bankSyncSummary = nil }
-            } message: {
-                Text(budgetStore.bankSyncSummary ?? "")
-            }
             .sheet(isPresented: $showingPendingImports) {
                 PendingImportsView()
                     .environmentObject(budgetStore)
@@ -483,8 +490,12 @@ struct AccountsListView: View {
                 }
             }
             // Keyed to dataVersion so the summary's month totals follow every
-            // edit and sync, like the account balances beneath them.
-            .task(id: budgetStore.dataVersion) { await loadMonthSummary() }
+            // edit and sync, like the account balances beneath them, and to
+            // the Spent exclusions, which change the totals without an edit.
+            .task(id: MonthSummaryInputs(
+                dataVersion: budgetStore.dataVersion,
+                excludedFromSpent: budgetStore.excludedFromSpentCategoryIds
+            )) { await loadMonthSummary() }
             // Nothing above re-runs when only the date changes, so a phone
             // left on this tab overnight would keep showing last month's
             // totals. Foregrounding is when that becomes visible, and the
@@ -648,7 +659,7 @@ struct AccountsSummaryCard: View {
                 SummaryStat(label: "Income", value: amount(summary?.incomeCents))
                 Spacer(minLength: 4)
                 SummaryStat(
-                    label: "Expenses",
+                    label: "Spent",
                     value: amount(summary?.expenseCents),
                     alignment: .center
                 )

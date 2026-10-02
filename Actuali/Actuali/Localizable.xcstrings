@@ -189,6 +189,52 @@
         }
       }
     },
+    "%@, %@, spent %@, balance %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, ausgegeben %@, Saldo %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, spent %@, balance %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, gastado %@, saldo %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, dépensé %@, solde %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, speso %@, saldo %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, uitgegeven %@, saldo %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, gasto %@, saldo %@"
+          }
+        }
+      }
+    },
     "%lld mos" : {
       "comment" : "Loan payoff duration; %lld is the number of months",
       "extractionState" : "stale",
@@ -782,6 +828,53 @@
         }
       }
     },
+    "Budgeted Amounts" : {
+      "comment" : "Budget view toggle that shows or hides budgeted amounts",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budgetierte Beträge"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budgeted Amounts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importes presupuestados"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Montants prévus"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importi previsti"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gebudgetteerde bedragen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valores orçados"
+          }
+        }
+      }
+    },
     "Change Paired Category" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -966,6 +1059,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Empréstimos configurados"
+          }
+        }
+      }
+    },
+    "Currency Settings" : {
+      "comment" : "Button linking to display currency settings from transaction currency warning",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Währungseinstellungen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Currency Settings"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes de moneda"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paramètres de devise"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impostazioni valuta"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valuta-instellingen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurações de moeda"
           }
         }
       }
@@ -1440,6 +1581,52 @@
         }
       }
     },
+    "Edit Note" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notiz bearbeiten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Note"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editar nota"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifier la note"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifica nota"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notitie bewerken"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editar nota"
+          }
+        }
+      }
+    },
     "Edit Payment Target" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1671,6 +1858,150 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Oculta os detalhes do empréstimo"
+          }
+        }
+      }
+    },
+    "I confirm this amount should be saved as %@ without conversion from %@." : {
+      "comment" : "Confirmation toggle when saving an import in another currency into budget currency",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ich bestätige, dass dieser Betrag als %@ ohne Umrechnung aus %@ gespeichert werden soll."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I confirm this amount should be saved as %@ without conversion from %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este importe se debe guardar como %@ sin conversión de %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je confirme que ce montant doit être enregistré en %@ sans conversion depuis %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confermo che questo importo deve essere salvato come %@ senza conversione da %@."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ik bevestig dat dit bedrag als %@ zonder conversie uit %@ moet worden opgeslagen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este valor deve ser salvo como %@ sem conversão de %@."
+          }
+        }
+      }
+    },
+    "I confirm this amount should be saved directly without conversion from %@." : {
+      "comment" : "Confirmation toggle when saving an import without conversion into an unconfigured budget currency",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ich bestätige, dass dieser Betrag direkt ohne Umrechnung aus %@ gespeichert werden soll."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I confirm this amount should be saved directly without conversion from %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este importe se debe guardar directamente sin conversión de %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je confirme que ce montant doit être enregistré directement sans conversion depuis %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confermo che questo importo deve essere salvato direttamente senza conversione da %@."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ik bevestig dat dit bedrag direct zonder conversie uit %@ moet worden opgeslagen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este valor deve ser salvo diretamente sem conversão de %@."
+          }
+        }
+      }
+    },
+    "I confirm this amount should be saved without currency conversion." : {
+      "comment" : "Confirmation toggle when saving an import without identified currency",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ich bestätige, dass dieser Betrag ohne Währungsumrechnung gespeichert werden soll."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I confirm this amount should be saved without currency conversion."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este importe se debe guardar sin conversión de moneda."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je confirme que ce montant doit être enregistré sans conversion de devise."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confermo che questo importo deve essere salvato senza conversione di valuta."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ik bevestig dat dit bedrag zonder valutaconversie moet worden opgeslagen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmo que este valor deve ser salvo sem conversão de moeda."
           }
         }
       }
@@ -4212,6 +4543,102 @@
         }
       }
     },
+    "This import is in %@, but the active budget has no currency set. No currency conversion will be performed." : {
+      "comment" : "Pending import banner when active budget has no currency configured",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Import ist in %@, aber für das aktive Budget ist keine Währung festgelegt. Es wird keine Währungsumrechnung durchgeführt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This import is in %@, but the active budget has no currency set. No currency conversion will be performed."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta importación está en %@, pero el presupuesto activo no tiene una moneda configurada. No se realizará ninguna conversión de moneda."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette importation est en %@, mais le budget actif n'a pas de devise configurée. Aucune conversion de devise ne sera effectuée."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa importazione è in %@, ma il budget attivo non ha una valuta impostata. Non verrà eseguita alcuna conversione di valuta."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze import staat in %@, maar voor het actieve budget is geen valuta ingesteld. Er wordt geen valutaconversie uitgevoerd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta importação está em %@, mas o orçamento ativo não tem moeda definida. Nenhuma conversão de moeda será realizada."
+          }
+        }
+      }
+    },
+    "This import is in %@, but the active budget uses %@. No currency conversion will be performed." : {
+      "comment" : "Pending import banner when active budget uses a different currency",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Import ist in %@, aber das aktive Budget verwendet %@. Es wird keine Währungsumrechnung durchgeführt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This import is in %@, but the active budget uses %@. No currency conversion will be performed."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta importación está en %@, pero el presupuesto activo usa %@. No se realizará ninguna conversión de moneda."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette importation est en %@, mais le budget actif utilise %@. Aucune conversion de devise ne sera effectuée."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa importazione è in %@, ma il budget attivo usa %@. Non verrà eseguita alcuna conversione di valuta."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze import staat in %@, maar het actieve budget gebruikt %@. Er wordt geen valutaconversie uitgevoerd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta importação está em %@, mas o orçamento ativo usa %@. Nenhuma conversão de moeda será realizada."
+          }
+        }
+      }
+    },
     "This payment doesn't cover the interest and fees, so the balance will grow this month." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6591,6 +7018,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@, %@, %@"
+          }
+        }
+      }
+    },
+    "%@, %@, balance %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, Saldo %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, balance %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, saldo %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, solde %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, saldo %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, saldo %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@, saldo %@"
           }
         }
       }
@@ -11243,6 +11716,98 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "O Actuali só pode se conectar por um endereço seguro. Verifique se a URL começa com https://. Consulte %@."
+          }
+        }
+      }
+    },
+    "Actuali can't refresh GoCardless accounts yet. Refresh them from the Actual web app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali kann GoCardless-Konten noch nicht aktualisieren. Aktualisieren Sie sie in der Actual-Webapp."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali can't refresh GoCardless accounts yet. Refresh them from the Actual web app."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali aún no puede actualizar las cuentas de GoCardless. Actualícelas desde la aplicación web de Actual."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali ne peut pas encore actualiser les comptes GoCardless. Actualisez-les depuis l'application web Actual."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali non può ancora aggiornare i conti GoCardless. Aggiornali dalla webapp di Actual."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali kan GoCardless-accounts nog niet vernieuwen. Vernieuw ze in de Actual webapp."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Actuali ainda não consegue atualizar contas do GoCardless. Atualize-as pelo app web do Actual."
+          }
+        }
+      }
+    },
+    "Actuali can't refresh accounts from this bank provider yet. Refresh them from the Actual web app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali kann Konten dieses Bankanbieters noch nicht aktualisieren. Aktualisieren Sie sie in der Actual-Webapp."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali can't refresh accounts from this bank provider yet. Refresh them from the Actual web app."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali aún no puede actualizar las cuentas de este proveedor bancario. Actualícelas desde la aplicación web de Actual."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali ne peut pas encore actualiser les comptes de ce fournisseur bancaire. Actualisez-les depuis l'application web Actual."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali non può ancora aggiornare i conti di questo provider bancario. Aggiornali dalla webapp di Actual."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali kan accounts van deze bankprovider nog niet vernieuwen. Vernieuw ze in de Actual webapp."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Actuali ainda não consegue atualizar contas deste provedor bancário. Atualize-as pelo app web do Actual."
           }
         }
       }
@@ -23746,6 +24311,53 @@
         }
       }
     },
+    "Inverse Progress Bars" : {
+      "comment" : "Settings toggle for inverse budget progress bars",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umgekehrte Fortschrittsbalken"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inverse Progress Bars"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barras de progreso inversas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barres de progression inversées"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barre di avanzamento inverse"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Omgekeerde voortgangsbalken"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barras de progresso inversas"
+          }
+        }
+      }
+    },
     "Category Status Dots" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -24638,129 +25250,45 @@
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Beglichen %lld / %lld"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Beglichen %lld / %lld"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beglichen %lld / %lld"
           }
         },
         "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Cleared %lld / %lld"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Cleared %lld / %lld"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cleared %lld / %lld"
           }
         },
         "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Pagadas %lld / %lld"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Pagadas %lld / %lld"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pagadas %lld / %lld"
           }
         },
         "fr" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Réglés %lld / %lld"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Réglés %lld / %lld"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réglés %lld / %lld"
           }
         },
         "it" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Saldate %lld / %lld"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Saldate %lld / %lld"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saldate %lld / %lld"
           }
         },
         "nl" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Betaald %lld / %lld"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Betaald %lld / %lld"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Betaald %lld / %lld"
           }
         },
         "pt-BR" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Quitadas %lld / %lld"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Quitadas %lld / %lld"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitadas %lld / %lld"
           }
         }
       }
@@ -37478,100 +38006,6 @@
         }
       }
     },
-    "Everything is cleared. Turn off Hide Cleared Transactions to see the rest." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle Transaktionen sind gebucht. Deaktivieren Sie „Gebuchte Transaktionen ausblenden“, um die übrigen anzuzeigen."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Everything is cleared. Turn off Hide Cleared Transactions to see the rest."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Todo está conciliado. Desactive Ocultar transacciones conciliadas para ver el resto."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tout est pointé. Désactivez Masquer les transactions pointées pour voir le reste."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tutte le transazioni sono contabilizzate. Disattiva Nascondi transazioni contabilizzate per vedere le altre."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle transacties zijn geboekt. Schakel Geboekte transacties verbergen uit om de rest te zien."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tudo está conciliado. Desative Ocultar transações conciliadas para ver o restante."
-          }
-        }
-      }
-    },
-    "Everything is reconciled. Turn off Hide Reconciled Transactions to see the rest." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alles ist abgeglichen. Deaktivieren Sie „Abgeglichene Transaktionen ausblenden“, um den Rest zu sehen."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Everything is reconciled. Turn off Hide Reconciled Transactions to see the rest."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Todo está conciliado. Desactive Ocultar transacciones conciliadas para ver el resto."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tout est rapproché. Désactivez Masquer les transactions rapprochées pour voir le reste."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tutto è riconciliato. Disattiva Nascondi transazioni riconciliate per vedere il resto."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alles is afgestemd. Schakel Afgestemde transacties verbergen uit om de rest te zien."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tudo está reconciliado. Desative Ocultar transações reconciliadas para ver o restante."
-          }
-        }
-      }
-    },
     "Example: https://actual.example.com" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -41261,49 +41695,48 @@
         }
       }
     },
-    "Group Totals are available in Compact view." : {
-      "extractionState" : "stale",
+    "Group Totals and Show Spent are available in Compact view." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gruppensummen sind in der kompakten Ansicht verfügbar."
+            "value" : "Gruppensummen und „Ausgegebenes anzeigen“ sind in der kompakten Ansicht verfügbar."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Group Totals are available in Compact view."
+            "value" : "Group Totals and Show Spent are available in Compact view."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Los totales de grupo están disponibles en la vista Compacta."
+            "value" : "Los totales de grupos y Mostrar gastado están disponibles en la vista Compacta."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les totaux des groupes sont disponibles dans la vue Compacte."
+            "value" : "Les totaux des groupes et Afficher les dépenses sont disponibles dans la vue Compacte."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I totali del gruppo sono disponibili nella vista Compatta."
+            "value" : "I totali del gruppo e Mostra speso sono disponibili nella vista Compatta."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Groepstotalen zijn beschikbaar in de compacte weergave."
+            "value" : "Groepstotalen en Uitgegeven tonen zijn beschikbaar in de compacte weergave."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Os totais dos grupos estão disponíveis na visualização Compacta."
+            "value" : "Os totais dos grupos e Mostrar gasto estão disponíveis na visualização Compacta."
           }
         }
       }
@@ -41590,6 +42023,54 @@
         }
       }
     },
+    "Hide progress bar" : {
+      "comment" : "Context menu action for category progress bar visibility",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fortschrittsbalken ausblenden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide progress bar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar barra de progreso"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masquer la barre de progression"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nascondi barra di avanzamento"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voortgangsbalk verbergen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar barra de progresso"
+          }
+        }
+      }
+    },
     "Hide" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -41775,54 +42256,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ocultar categoria"
-          }
-        }
-      }
-    },
-    "Hide Cleared Transactions" : {
-      "comment" : "Toggle for hiding cleared transactions",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gebuchte Transaktionen ausblenden"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hide Cleared Transactions"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ocultar transacciones conciliadas"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Masquer les transactions lettrées"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nascondi transazioni contabilizzate"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verberg geboekte transacties"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ocultar transações compensadas"
           }
         }
       }
@@ -42105,53 +42538,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ocultar senha"
-          }
-        }
-      }
-    },
-    "Hide Reconciled Transactions" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Abgeglichene Transaktionen ausblenden"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hide Reconciled Transactions"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ocultar transacciones conciliadas"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Masquer les transactions rapprochées"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nascondi transazioni riconciliate"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Afgestemde transacties verbergen"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ocultar transações reconciliadas"
           }
         }
       }
@@ -53104,195 +53490,6 @@
         }
       }
     },
-    "No uncleared transactions" : {
-      "comment" : "Empty state when uncleared transactions are hidden",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine ausstehenden Transaktionen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No uncleared transactions"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No hay transacciones no conciliadas"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aucune transaction non lettrée"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nessuna transazione non liquidata"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geen openstaande transacties"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nenhuma transação não compensada"
-          }
-        }
-      }
-    },
-    "No Uncleared Transactions" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine ausstehenden Transaktionen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Uncleared Transactions"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No hay transacciones sin conciliar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aucune transaction non pointée"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nessuna transazione non liquidata"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geen openstaande transacties"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nenhuma transação não conciliada"
-          }
-        }
-      }
-    },
-    "No unreconciled transactions" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine nicht abgeglichenen Transaktionen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No unreconciled transactions"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No hay transacciones sin conciliar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aucune transaction non rapprochée"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nessuna transazione non riconciliata"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geen niet-afgestemde transacties"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nenhuma transação não conciliada"
-          }
-        }
-      }
-    },
-    "No Unreconciled Transactions" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine nicht abgeglichenen Transaktionen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Unreconciled Transactions"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No hay transacciones sin conciliar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aucune transaction non rapprochée"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nessuna transazione non riconciliata"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geen niet-afgestemde transacties"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nenhuma transação não reconciliada"
-          }
-        }
-      }
-    },
     "No Wallet accounts found on this device." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -63310,6 +63507,28 @@
         }
       }
     },
+    "Include in Spent" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "In Ausgaben einbeziehen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Include in Spent" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Incluir en Gastado" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Inclure dans Dépensé" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Includi nelle spese" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Opgenomen in Uitgaven" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Incluir em Gasto" } }
+      }
+    },
+    "Excluded categories stay in the budget and transaction totals, but are left out of Spent, Saved, and Net on the Budget and Accounts tabs." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Ausgeschlossene Kategorien bleiben im Budget und in den Transaktionssummen, werden aber bei Ausgegeben, Gespart und Netto im Budget- und Konten-Tab nicht berücksichtigt." } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Excluded categories stay in the budget and transaction totals, but are left out of Spent, Saved, and Net on the Budget and Accounts tabs." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Las categorías excluidas permanecen en el presupuesto y los totales de transacciones, pero no se incluyen en Gastado, Ahorrado y Neto de las pestañas Presupuesto y Cuentas." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Les catégories exclues restent dans le budget et les totaux des transactions, mais ne sont pas comptées dans Dépensé, Épargné et Net des onglets Budget et Comptes." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Le categorie escluse restano nel budget e nei totali delle transazioni, ma non vengono conteggiate in Speso, Risparmiato e Netto nelle schede Budget e Conti." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Uitgesloten categorieën blijven in het budget en de transactietotalen, maar tellen niet mee voor Besteed, Gespaard en Netto op de tabbladen Begroting en Rekeningen." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "As categorias excluídas permanecem no orçamento e nos totais de transações, mas ficam fora de Gasto, Economizado e Líquido nas abas Orçamento e Contas." } }
+      }
+    },
     "Routes to %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -70116,6 +70335,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Compartilhar fundos restantes para orçamento (peso %@)"
+          }
+        }
+      }
+    },
+    "Show progress bar" : {
+      "comment" : "Context menu action for category progress bar visibility",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fortschrittsbalken anzeigen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show progress bar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar barra de progreso"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher la barre de progression"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra barra di avanzamento"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voortgangsbalk tonen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar barra de progresso"
           }
         }
       }
@@ -81361,6 +81628,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cartões não mapeados encontrados em transações pendentes. Toque para criar um mapeamento."
+          }
+        }
+      }
+    },
+    "Unreconciled" : {
+      "comment" : "Transaction status filter: uncleared and cleared, not yet locked by reconciliation",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht abgeglichen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unreconciled"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No reconciliado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non rapproché"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non riconciliato"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niet afgestemd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não conciliado"
           }
         }
       }

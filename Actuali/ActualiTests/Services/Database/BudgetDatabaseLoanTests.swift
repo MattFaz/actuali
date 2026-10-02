@@ -8,21 +8,6 @@ import Testing
 /// what these cover.
 @MainActor
 struct BudgetDatabaseLoanTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     private func encoded(_ value: some Encodable) throws -> String {
         try String(decoding: JSONEncoder().encode(value), as: UTF8.self)
     }
@@ -37,7 +22,7 @@ struct BudgetDatabaseLoanTests {
     }
 
     @Test func fetchLoanConfigsReturnsDecodedConfigs() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.preferences)
         defer { cleanup(url) }
 
         let car = LoanConfig(
@@ -64,7 +49,7 @@ struct BudgetDatabaseLoanTests {
     }
 
     @Test func fetchLoanConfigsIgnoresNullEmptyAndInvalidRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.preferences)
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -89,7 +74,7 @@ struct BudgetDatabaseLoanTests {
     /// The two config types share one decode helper, so a loan must never show
     /// up as a card or the reverse.
     @Test func loanAndCreditCardConfigsDoNotBleedIntoEachOther() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.preferences)
         defer { cleanup(url) }
 
         let loan = LoanConfig(

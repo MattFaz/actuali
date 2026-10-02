@@ -24,101 +24,6 @@ struct BudgetStoreReconciliationTests {
         ) == "2 transactions rapprochées sont restées verrouillées. Déverrouillez-les depuis le point d’état pour les modifier.")
     }
 
-    /// transactions, payees and messages_crdt normally come from the
-    /// downloaded budget file, so create them with the upstream schema
-    /// (matches BudgetStoreSaveTransactionTests).
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                starting_balance_flag INTEGER DEFAULT 0,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                acct TEXT,
-                category TEXT,
-                amount INTEGER,
-                description TEXT,
-                notes TEXT,
-                date INTEGER,
-                imported_description TEXT,
-                financial_id TEXT,
-                transferred_id TEXT,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0,
-                parent_id TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payees (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                transfer_acct TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payee_mapping (
-                id TEXT PRIMARY KEY,
-                targetId TEXT
-            )
-            """)
-            // The split cascade reads children via fetchChildTransactions,
-            // whose display joins touch these three tables.
-            try db.execute(sql: """
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                transfer_acct TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE category_mapping (
-                id TEXT PRIMARY KEY,
-                transferId TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE categories (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    /// Store wired to a real database and sync client. The server client is
-    /// unconfigured, so the post-write automatic sync fails fast and locally.
-    private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
-        return store
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     private func insertRow(
         _ url: URL,
         id: String,
@@ -198,7 +103,7 @@ struct BudgetStoreReconciliationTests {
     // MARK: - Cleared balance
 
     @Test func clearedBalanceSumsOnlyClearedRowsForTheAccount() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
 
         try insertRow(url, id: "t1", amount: -1000, cleared: true)
@@ -211,7 +116,7 @@ struct BudgetStoreReconciliationTests {
     }
 
     @Test func clearedBalanceCountsChildrenNotParents() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
 
         // Split: parent carries the total, children the portions. Counting
@@ -226,7 +131,7 @@ struct BudgetStoreReconciliationTests {
     // MARK: - Balance breakdown
 
     @Test func balanceBreakdownSplitsClearedUnclearedAndReconciled() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
 
         try insertRow(url, id: "t1", amount: -1000, cleared: true)
@@ -242,7 +147,7 @@ struct BudgetStoreReconciliationTests {
     }
 
     @Test func balanceBreakdownCountsChildrenNotParents() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
 
         // Split: parent carries the total, children the portions. Counting
@@ -257,7 +162,7 @@ struct BudgetStoreReconciliationTests {
     }
 
     @Test func balanceBreakdownIsZeroForEmptyAccount() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
 
         let breakdown = try await database.balanceBreakdown(accountId: "acct-1")
@@ -267,9 +172,9 @@ struct BudgetStoreReconciliationTests {
     // MARK: - Dot tap: toggleCleared
 
     @Test func toggleClearedFlipsTheFlagAndEmitsMessage() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try insertRow(url, id: "t1", amount: -500, cleared: false)
         let transaction = makeTransaction(id: "t1", amount: -500, cleared: false)
@@ -283,9 +188,9 @@ struct BudgetStoreReconciliationTests {
     }
 
     @Test func toggleClearedOnReconciledRowUnlocksInstead() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try insertRow(url, id: "t1", amount: -500, cleared: true, reconciled: true)
         let transaction = makeTransaction(id: "t1", amount: -500, cleared: true, reconciled: true)
@@ -300,9 +205,9 @@ struct BudgetStoreReconciliationTests {
     }
 
     @Test func toggleClearedOnSplitParentCascadesToChildren() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try insertRow(url, id: "parent", amount: -1000, cleared: false, isParent: true)
         try insertRow(url, id: "child-a", amount: -600, cleared: false, parentId: "parent")
@@ -320,9 +225,9 @@ struct BudgetStoreReconciliationTests {
     // MARK: - Locking
 
     @Test func lockClearedTransactionsMarksClearedUnreconciledRowsOnly() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try insertRow(url, id: "cleared-1", amount: -500, cleared: true)
         try insertRow(url, id: "cleared-parent", amount: -1000, cleared: true, isParent: true)
@@ -350,9 +255,9 @@ struct BudgetStoreReconciliationTests {
     // MARK: - Adjustment transaction
 
     @Test func adjustmentTransactionIsClearedWithDifferenceAmount() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         try insertRow(url, id: "t1", amount: -12000, cleared: true)
         // Bank says -100.00, cleared balance is -120.00 → adjustment of +20.00.

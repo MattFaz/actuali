@@ -4,49 +4,14 @@ import Testing
 @testable import Actuali
 
 struct SyncClientTagTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            );
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                acct TEXT,
-                amount INTEGER,
-                notes TEXT,
-                date INTEGER,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            );
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        return syncClient
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.messagesCrdt, TestSchema.transactions)
     }
 
     @Test func createTagInsertsRowAndEmitsMessages() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         let tag = try await syncClient.createTag(name: "vacation", color: "#3b82f6", description: "Holiday")
         #expect(tag.tag == "vacation")
@@ -64,9 +29,9 @@ struct SyncClientTagTests {
     }
 
     @Test func updateTagUpdatesRowAndEmitsMessages() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         var tag = try await syncClient.createTag(name: "travel")
         tag.color = "#00ff00"
@@ -85,9 +50,9 @@ struct SyncClientTagTests {
     }
 
     @Test func deleteTagTombstonesAndEmitsMessage() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         let tag = try await syncClient.createTag(name: "temporary")
         try await syncClient.deleteTag(id: tag.id)
@@ -103,9 +68,9 @@ struct SyncClientTagTests {
     }
 
     @Test func createTagRevivesTombstonedTagWithSameName() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         let original = try await syncClient.createTag(name: "coffee", color: "#ff0000")
         try await syncClient.deleteTag(id: original.id)
@@ -124,9 +89,9 @@ struct SyncClientTagTests {
     }
 
     @Test func renameTagOntoTombstonedNameThrows() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         let alpha = try await syncClient.createTag(name: "alpha")
         let beta = try await syncClient.createTag(name: "beta")
@@ -144,9 +109,9 @@ struct SyncClientTagTests {
     }
 
     @Test func updateTagSkipsUnchangedFields() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
 
         let tag = try await syncClient.createTag(name: "metrics")
         let tagId = tag.id
@@ -170,7 +135,7 @@ struct SyncClientTagTests {
     }
 
     @Test func renameTagUpdatesTagAndRewritesTransactions() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
 
         try await database.dbQueueForTesting.write { db in
@@ -180,7 +145,7 @@ struct SyncClientTagTests {
             """)
         }
 
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
         let tag = try await syncClient.createTag(name: "work")
 
         try await syncClient.renameTag(id: tag.id, oldName: "work", newName: "business")

@@ -100,11 +100,12 @@ enum TransactionTextParser {
         let extracted = response.content
         let date = extractDate(from: text)
         let payee = resolvePayee(extracted.payee, in: text, isIncome: extracted.isIncome)
+        let cardHint = resolveCardHint(extracted.cardHint, in: text)
         return ParsedMessage(
             amount: extracted.amount,
             sourceCurrencyCode: normalizeCurrencyCode(extracted.sourceCurrencyCode),
             payee: payee,
-            cardHint: extracted.cardHint,
+            cardHint: cardHint,
             date: date,
             isIncome: extracted.isIncome,
             rawText: text
@@ -237,14 +238,27 @@ enum TransactionTextParser {
     /// Extract the last 4 digits of a card / account number.
     private static func extractCardHint(from text: String) -> String? {
         // ponytail: simple pattern covering "card ending 1234", "XX9876",
-        // "A/C ...4321", "a/c no 1234".
-        let pattern = #"(?:card|a/c|ending|acct|xx|x{2,})[^\d]*(\d{4})"#
+        // "A/C ...4321", "account number 4321", "a/c no 1234". Only filler words
+        // and masking may sit between keyword and digits, so "Account balance
+        // 1234.56" isn't a hint; the tail rejects longer runs and amounts.
+        let pattern = #"(?:card|account|a/c|acct|ending|x{2,})(?:\s*(?:no\.?|number|with|in|#))*[^\dA-Za-z]{0,6}(\d{4})(?![.,]?\d)"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
               let range = Range(match.range(at: 1), in: text) else {
             return nil
         }
         return String(text[range])
+    }
+
+    /// Keeps the model's card hint only when the text contains it; otherwise
+    /// falls back to the regex. On-device models can transpose digits
+    /// (XX6419 -> "1964"), but the regex is rougher than a grounded model answer.
+    static func resolveCardHint(_ candidate: String?, in text: String) -> String? {
+        if let candidate = candidate?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !candidate.isEmpty, text.localizedCaseInsensitiveContains(candidate) {
+            return candidate
+        }
+        return extractCardHint(from: text)
     }
 
     /// Extract the first date found via NSDataDetector.

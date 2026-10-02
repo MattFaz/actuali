@@ -7,36 +7,11 @@ import Testing
 /// (GH #147): list every payee that has recorded locations, and clear them
 /// one at a time or all at once.
 struct PayeeLocationManagementTests {
-    private func makeDatabasePath() -> URL {
-        FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-    }
-
     /// Minimal legacy schema: payees exists, payee_locations comes from our
     /// migration. messages_crdt normally arrives with the downloaded budget
-    /// file, so create it with the upstream schema.
-    private func makeFixture(_ path: URL) throws {
-        let queue = try DatabaseQueue(path: path.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE payees (id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0);
-            CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT);
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-        }
-    }
-
-    private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        return syncClient
+    /// file, so it is created too.
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.payees, TestSchema.payeeMapping, TestSchema.messagesCrdt)
     }
 
     // MARK: - Listing
@@ -44,10 +19,8 @@ struct PayeeLocationManagementTests {
     /// The screen's top level: one row per payee that still has at least one
     /// location, name-ordered, with a live count.
     @Test func fetchPayeesWithLocationsCountsAndOrders() async throws {
-        let path = makeDatabasePath()
-        try makeFixture(path)
-        defer { try? FileManager.default.removeItem(at: path) }
-        let database = try BudgetDatabase(path: path)
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
 
         try database.insertPayee(Payee(id: "p-b", name: "Bakery", transferAccountId: nil))
         try database.insertPayee(Payee(id: "p-a", name: "Apple Store", transferAccountId: nil))
@@ -75,10 +48,8 @@ struct PayeeLocationManagementTests {
     /// tombstoned drops off the list entirely — otherwise clearing a payee
     /// would leave an empty row behind.
     @Test func fetchPayeesWithLocationsExcludesTombstones() async throws {
-        let path = makeDatabasePath()
-        try makeFixture(path)
-        defer { try? FileManager.default.removeItem(at: path) }
-        let database = try BudgetDatabase(path: path)
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
 
         try database.insertPayee(Payee(id: "p-live", name: "Live", transferAccountId: nil))
         try database.insertPayee(Payee(id: "p-cleared", name: "Cleared", transferAccountId: nil))
@@ -109,10 +80,8 @@ struct PayeeLocationManagementTests {
     /// payee_id set. It must not be counted (the detail fetch already skips it,
     /// so counting it would show "1 location" over an empty list).
     @Test func fetchPayeesWithLocationsSkipsPartiallySyncedRows() async throws {
-        let path = makeDatabasePath()
-        try makeFixture(path)
-        defer { try? FileManager.default.removeItem(at: path) }
-        let database = try BudgetDatabase(path: path)
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
 
         try database.insertPayee(Payee(id: "p1", name: "P1", transferAccountId: nil))
         let queue = try DatabaseQueue(path: path.path)
@@ -137,10 +106,8 @@ struct PayeeLocationManagementTests {
     /// "Clear All Locations" tombstones every row for the payee and replicates
     /// one tombstone message each, in a single sync — not one sync per row.
     @Test func deletePayeeLocationsTombstonesAllAndEmitsOneMessageEach() async throws {
-        let path = makeDatabasePath()
-        try makeFixture(path)
-        defer { try? FileManager.default.removeItem(at: path) }
-        let database = try BudgetDatabase(path: path)
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
 
         try database.insertPayee(Payee(id: "p1", name: "P1", transferAccountId: nil))
         try database.insertPayee(Payee(id: "p2", name: "P2", transferAccountId: nil))
@@ -155,43 +122,30 @@ struct PayeeLocationManagementTests {
             id: "other", payeeId: "p2", latitude: 3, longitude: 3, createdAt: 300
         ))
 
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeTestSyncClient(database: database)
         try await syncClient.deletePayeeLocations(doomed)
 
         #expect(try await database.fetchPayeeLocations(payeeId: "p1").isEmpty)
         // Untouched payees keep their locations.
         #expect(try await database.fetchPayeeLocations(payeeId: "p2").map(\.id) == ["other"])
 
-        let queue = try DatabaseQueue(path: path.path)
-        let messages = try await queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
-                .map { (row: $0["row"] as String,
-                        dataset: $0["dataset"] as String,
-                        column: $0["column"] as String,
-                        value: $0["value"] as String) }
-        }
+        let messages = try messageRows(path: path)
         #expect(messages.count == 2)
-        #expect(Set(messages.map(\.row)) == ["a", "b"])
-        #expect(Set(messages.map(\.dataset)) == ["payee_locations"])
-        #expect(Set(messages.map(\.column)) == ["tombstone"])
-        #expect(Set(messages.map(\.value)) == ["N:1"])
+        #expect(Set(messages.map { $0["row"] as String }) == ["a", "b"])
+        #expect(Set(messages.map { $0["dataset"] as String }) == ["payee_locations"])
+        #expect(Set(messages.map { $0["column"] as String }) == ["tombstone"])
+        #expect(Set(messages.map { $0["value"] as String }) == ["N:1"])
     }
 
     /// Nothing to clear is a no-op, not an error and not a spurious sync.
     @Test func deletePayeeLocationsWithEmptyListIsANoOp() async throws {
-        let path = makeDatabasePath()
-        try makeFixture(path)
-        defer { try? FileManager.default.removeItem(at: path) }
-        let database = try BudgetDatabase(path: path)
-        let syncClient = try await makeSyncClient(database: database)
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeTestSyncClient(database: database)
 
         try await syncClient.deletePayeeLocations([])
 
-        let queue = try DatabaseQueue(path: path.path)
-        let count = try await queue.read { db in
-            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt")
-        }
-        #expect(count == 0)
+        #expect(try messageRows(path: path).isEmpty)
     }
 
     @Test func deletePayeeLocationsThrowsWhenNotConfigured() async throws {

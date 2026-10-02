@@ -163,9 +163,6 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
 }
 
 enum CurrencyAmountFormat {
-    @MainActor
-    private static var symbolLessFormatters: [String: NumberFormatter] = [:]
-
     /// - Parameters:
     ///   - cents: Signed amount in cents (e.g., 1050 = $10.50).
     ///   - currencyCode: ISO code; empty means no currency — amounts render
@@ -252,50 +249,5 @@ enum CurrencyAmountFormat {
         )
 
         return prefix + numericString + suffix
-    }
-
-    /// Formats with the budget currency's native precision while omitting its
-    /// symbol. The budget tables supply the currency and meaning through their
-    /// column headers, leaving more horizontal room for category names.
-    @MainActor
-    static func symbolLessString(
-        cents: Int,
-        currencyCode: String,
-        wholeUnits: Bool = false,
-        numberFormat: ActualNumberFormat = .commaDot
-    ) -> String {
-        let amount = Double(cents) / 100.0
-
-        guard !currencyCode.isEmpty else {
-            return numberFormat.format(
-                number: NSNumber(value: amount),
-                wholeUnits: wholeUnits,
-                currencyCode: nil
-            )
-        }
-
-        let key = "\(currencyCode)|\(wholeUnits)|\(numberFormat.rawValue)"
-
-        let formatter: NumberFormatter
-
-        if let cached = symbolLessFormatters[key] {
-            formatter = cached
-        } else {
-            let created = numberFormat.numberFormatter(
-                currencyCode: currencyCode,
-                wholeUnits: wholeUnits
-            )
-
-            symbolLessFormatters[key] = created
-            formatter = created
-        }
-
-        return numberFormat
-            .normalize(
-                formatter.string(
-                    from: NSNumber(value: amount)
-                ) ?? ""
-            )
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

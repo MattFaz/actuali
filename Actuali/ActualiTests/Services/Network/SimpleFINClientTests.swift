@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Actuali
 
@@ -223,67 +224,38 @@ struct SimpleFINDecodingTests {
 
 // MARK: - Transport
 
-private final class SimpleFINTransport: URLProtocol {
-    nonisolated(unsafe) static var requestedURLs: [URL] = []
-    nonisolated(unsafe) static var requestedHeaders: [[String: String]] = []
-    nonisolated(unsafe) static var status = 200
-    nonisolated(unsafe) static var body = ""
+/// The requests one stubbed bridge session received.
+private final class BridgeRequests: Sendable {
+    let all = Mutex<[URLRequest]>([])
 
-    static func reset(status: Int = 200, body: String = "") {
-        requestedURLs = []
-        requestedHeaders = []
-        Self.status = status
-        Self.body = body
+    var urls: [URL] {
+        all.withLock { $0.compactMap(\.url) }
     }
-
-    static func makeSession() -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [SimpleFINTransport.self]
-        return URLSession(configuration: configuration)
-    }
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        Self.requestedURLs.append(request.url!)
-        Self.requestedHeaders.append(request.allHTTPHeaderFields ?? [:])
-
-        let response = HTTPURLResponse(
-            url: request.url!, statusCode: Self.status, httpVersion: "HTTP/1.1", headerFields: nil
-        )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(Self.body.utf8))
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
 }
 
-@Suite(.serialized)
 struct SimpleFINClientTests {
     private let accessKey = try! SimpleFINAccessKey.parse(
         "https://demo:demo@bridge.example.com/simplefin"
     )
 
-    private func makeClient() -> SimpleFINClient {
-        SimpleFINClient(session: SimpleFINTransport.makeSession())
+    private func makeClient(status: Int = 200, body: String = "") -> (SimpleFINClient, BridgeRequests) {
+        let requests = BridgeRequests()
+        let session = StubTransport.session { request in
+            requests.all.withLock { $0.append(request) }
+            return StubTransport.Response(status: status, body: Data(body.utf8))
+        }
+        return (SimpleFINClient(session: session), requests)
     }
 
     @Test func claimingPostsToTheTokensURLAndReturnsTheKey() async throws {
         let claim = "https://bridge.example.com/simplefin/claim/abc"
-        SimpleFINTransport.reset(body: "https://user:pass@bridge.example.com/simplefin")
+        let (client, requests) = makeClient(body: "https://user:pass@bridge.example.com/simplefin")
 
-        let key = try await makeClient().claimAccessKey(
+        let key = try await client.claimAccessKey(
             setupToken: Data(claim.utf8).base64EncodedString()
         )
 
-        #expect(SimpleFINTransport.requestedURLs.map(\.absoluteString) == [claim])
+        #expect(requests.urls.map(\.absoluteString) == [claim])
         #expect(key.username == "user")
         #expect(key.password == "pass")
     }
@@ -291,69 +263,67 @@ struct SimpleFINClientTests {
     /// The bridge answers a re-used token with 200 and a "Forbidden" body, so
     /// the status code alone doesn't settle it.
     @Test func claimingRejectsAnAlreadyClaimedToken() async {
-        SimpleFINTransport.reset(body: "Forbidden: token already claimed")
+        let (client, _) = makeClient(body: "Forbidden: token already claimed")
         let token = Data("https://bridge.example.com/claim/abc".utf8).base64EncodedString()
 
         await #expect(throws: SimpleFINError.claimRejected) {
-            _ = try await makeClient().claimAccessKey(setupToken: token)
+            _ = try await client.claimAccessKey(setupToken: token)
         }
     }
 
     @Test func claimingRejectsAForbiddenResponse() async {
-        SimpleFINTransport.reset(status: 403, body: "")
+        let (client, _) = makeClient(status: 403)
         let token = Data("https://bridge.example.com/claim/abc".utf8).base64EncodedString()
 
         await #expect(throws: SimpleFINError.claimRejected) {
-            _ = try await makeClient().claimAccessKey(setupToken: token)
+            _ = try await client.claimAccessKey(setupToken: token)
         }
     }
 
     @Test func transactionFetchAsksForPendingAndTheNamedAccounts() async throws {
-        SimpleFINTransport.reset(body: #"{"errors":[],"accounts":[]}"#)
+        let (client, requests) = makeClient(body: #"{"errors":[],"accounts":[]}"#)
 
-        _ = try await makeClient().fetchAccounts(
+        _ = try await client.fetchAccounts(
             accessKey: accessKey, accountIds: ["a1", "a2"], startDate: 20_240_301
         )
 
-        let url = try #require(SimpleFINTransport.requestedURLs.first)
-        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let request = try #require(requests.all.withLock { $0.first })
+        let components = try #require(URLComponents(url: request.url!, resolvingAgainstBaseURL: false))
         let items = components.queryItems ?? []
         #expect(components.path == "/simplefin/accounts")
         #expect(items.contains(URLQueryItem(name: "start-date", value: "1709251200")))
         #expect(items.contains(URLQueryItem(name: "pending", value: "1")))
         #expect(items.filter { $0.name == "account" }.map(\.value) == ["a1", "a2"])
         #expect(!items.contains { $0.name == "balances-only" })
-        #expect(
-            SimpleFINTransport.requestedHeaders.first?["Authorization"] == accessKey.basicAuthHeader
-        )
+        #expect(request.value(forHTTPHeaderField: "Authorization") == accessKey.basicAuthHeader)
     }
 
     /// The account picker only needs balances, and asking for transactions
     /// makes the bridge do work nobody looks at.
     @Test func balanceOnlyFetchSkipsTransactions() async throws {
-        SimpleFINTransport.reset(body: #"{"errors":[],"accounts":[]}"#)
+        let (client, requests) = makeClient(body: #"{"errors":[],"accounts":[]}"#)
 
-        _ = try await makeClient().fetchAccounts(accessKey: accessKey)
+        _ = try await client.fetchAccounts(accessKey: accessKey)
 
-        let url = try #require(SimpleFINTransport.requestedURLs.first)
+        let url = try #require(requests.urls.first)
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         #expect(items == [URLQueryItem(name: "balances-only", value: "1")])
     }
 
     @Test(arguments: [401, 403])
     func rejectedCredentialsSurfaceAsForbidden(_ status: Int) async {
-        SimpleFINTransport.reset(status: status, body: "")
+        let (client, _) = makeClient(status: status)
 
         await #expect(throws: SimpleFINError.forbidden) {
-            _ = try await makeClient().fetchAccounts(accessKey: accessKey)
+            _ = try await client.fetchAccounts(accessKey: accessKey)
         }
     }
 
     @Test func unreadableBodySurfacesAsAnInvalidResponse() async {
-        SimpleFINTransport.reset(body: "<html>not json</html>")
+        let (client, _) = makeClient(body: "<html>not json</html>")
 
         await #expect(throws: SimpleFINError.invalidResponse) {
-            _ = try await makeClient().fetchAccounts(accessKey: accessKey)
+            _ = try await client.fetchAccounts(accessKey: accessKey)
         }
     }
 }

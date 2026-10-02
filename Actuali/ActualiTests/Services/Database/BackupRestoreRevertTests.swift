@@ -39,7 +39,7 @@ struct BackupRestoreRevertTests {
 
     @Test func restoreDetachesAndRevertRestoresOriginal() async throws {
         let (manager, root) = makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b", note: "backup-state")
 
         let service = BackupService(fileManager: manager)
@@ -81,7 +81,7 @@ struct BackupRestoreRevertTests {
 
     @Test func secondRestoreKeepsOriginalBaseline() async throws {
         let (manager, root) = makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b", note: "v1")
 
         let service = BackupService(fileManager: manager)
@@ -106,7 +106,7 @@ struct BackupRestoreRevertTests {
 
     @Test func restoreOfMissingBackupThrows() async throws {
         let (manager, root) = makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b", note: "v1")
 
         let service = BackupService(fileManager: manager)
@@ -121,7 +121,7 @@ struct BackupRestoreRevertTests {
 
     @Test func revertWithoutBaselineThrows() async throws {
         let (manager, root) = makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b", note: "v1")
 
         let service = BackupService(fileManager: manager)
@@ -140,7 +140,7 @@ struct BackupRestoreRevertTests {
     /// orphan and builds a fresh, consistent pair.
     @Test func restoreSweepsOrphanedBaselineMetadata() async throws {
         let (manager, root) = makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b", note: "live")
 
         let service = BackupService(fileManager: manager)
@@ -158,7 +158,7 @@ struct BackupRestoreRevertTests {
 
     @Test func reimportPreservesBackupsAndClearsBaseline() async throws {
         let (manager, root) = makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b", note: "v1")
 
         let service = BackupService(fileManager: manager)

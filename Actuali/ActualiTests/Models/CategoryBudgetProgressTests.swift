@@ -40,6 +40,32 @@ struct CategoryBudgetProgressTests {
         #expect(category.progressFraction == 0.0)
     }
 
+    @Test func inverseProgressFollowsTheFlag() {
+        let funded = makeCategory(budgeted: 10000, spent: 0, available: 10000)
+        let quarterSpent = makeCategory(budgeted: 10000, spent: -2500, available: 7500)
+        let fullySpent = makeCategory(budgeted: 10000, spent: -10000, available: 0)
+        let overspent = makeCategory(budgeted: 10000, spent: -12000, available: -2000)
+
+        #expect(funded.progressFraction(inverted: false) == 0.0)
+        #expect(funded.progressFraction(inverted: true) == 1.0)
+        #expect(quarterSpent.progressFraction(inverted: false) == 0.25)
+        #expect(quarterSpent.progressFraction(inverted: true) == 0.75)
+        #expect(fullySpent.progressFraction(inverted: true) == 0.0)
+        #expect(overspent.progressFraction(inverted: true) == 0.0)
+    }
+
+    @Test func inverseProgressHandlesZeroCapacity() {
+        let category = makeCategory(
+            budgeted: 10000,
+            spent: 0,
+            available: 0,
+            carryover: -10000
+        )
+
+        #expect(category.progressFraction(inverted: false) == 0.0)
+        #expect(category.progressFraction(inverted: true) == 0.0)
+    }
+
     @Test func overspentIsCappedAtFull() {
         let category = makeCategory(budgeted: 10000, spent: -12000, available: -2000)
         #expect(category.progressFraction == 1.0)

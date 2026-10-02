@@ -6,88 +6,13 @@ import Testing
 /// Pins the status-filter chips on the transaction lists (GH #439):
 /// All / Uncategorized / Uncleared / Cleared / Reconciled. The filter runs in
 /// SQL so pages stay full-sized and cover full history, composes with the
-/// account scope, search, and paging, and takes precedence over the legacy
-/// hide-cleared / hide-reconciled toggles — an explicit filter is its own
-/// visibility rule, the same precedent as the Budget tab. `cleared` means
+/// account scope, search, and paging. `.all` hides nothing: the legacy
+/// hide-cleared / hide-reconciled toggles that used to narrow it were removed
+/// (GH #573) because the chips cover both. `cleared` means
 /// cleared-but-not-reconciled: with `uncleared` and `reconciled` the three
 /// status chips partition the list, matching the row status dot.
 @MainActor
 struct BudgetDatabaseTransactionStatusFilterTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    parent_id TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     private func seedLookups(_ db: BudgetDatabase) async throws {
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -122,17 +47,21 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func allReturnsEveryStatus() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
         try await seedStatuses(db)
 
         let all = try await db.fetchTransactions(statusFilter: .all)
         #expect(all.map(\.id) == ["t-pending", "t-cleared", "t-reconciled"])
+
+        // The account register takes the same path (GH #573).
+        let account = try await db.fetchTransactions(accountId: "acct-1", statusFilter: .all)
+        #expect(account.map(\.id) == ["t-pending", "t-cleared", "t-reconciled"])
     }
 
     @Test func unclearedKeepsOnlyUnclearedRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
         try await seedStatuses(db)
@@ -142,7 +71,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func clearedExcludesReconciledRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
         try await seedStatuses(db)
@@ -152,7 +81,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func reconciledKeepsOnlyReconciledRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
         try await seedStatuses(db)
@@ -161,34 +90,18 @@ struct BudgetDatabaseTransactionStatusFilterTests {
         #expect(reconciled.map(\.id) == ["t-reconciled"])
     }
 
-    @Test func explicitStatusFilterOverridesLegacyHideToggles() async throws {
-        let (db, url) = try makeDatabase()
+    @Test func unreconciledKeepsUnclearedAndClearedRows() async throws {
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
         try await seedStatuses(db)
 
-        // Uncleared chip with "hide cleared" already on (a no-op on an
-        // uncleared-only list) still shows the uncleared row.
-        let uncleared = try await db.fetchTransactions(
-            statusFilter: .uncleared, unclearedOnly: true, hideReconciled: true
-        )
-        #expect(uncleared.map(\.id) == ["t-pending"])
-
-        // Reconciled chip beats both legacy hide flags.
-        let reconciled = try await db.fetchTransactions(
-            statusFilter: .reconciled, unclearedOnly: true, hideReconciled: true
-        )
-        #expect(reconciled.map(\.id) == ["t-reconciled"])
-
-        // Cleared chip beats hide-reconciled and does not drag reconciled in.
-        let cleared = try await db.fetchTransactions(
-            statusFilter: .cleared, unclearedOnly: true, hideReconciled: true
-        )
-        #expect(cleared.map(\.id) == ["t-cleared"])
+        let unreconciled = try await db.fetchTransactions(statusFilter: .unreconciled)
+        #expect(unreconciled.map(\.id) == ["t-pending", "t-cleared"])
     }
 
     @Test func uncategorizedMatchesTheUncategorizedListFilter() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
 
@@ -219,7 +132,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     /// The transfer rule belongs to each child: an on-budget transfer needs
     /// no category, regardless of the parent's payee.
     @Test func uncategorizedChipIncludesSplitParentsWithUncategorizedChildren() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
 
@@ -253,7 +166,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func uncategorizedComposesWithSearchAndPaging() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
 
@@ -294,7 +207,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
     }
 
     @Test func statusFilterComposesWithAccountScope() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         try await seedLookups(db)
 

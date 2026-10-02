@@ -124,10 +124,12 @@ final class BudgetSummaryPinUITests: XCTestCase {
                        "the summary boxes should share a trailing inset")
     }
 
-    /// The uncategorized bar sits above the pinned summary and keeps the
-    /// standardized 8 pt top gutter. Demo data is fully categorized on-budget,
-    /// so `-seedUncategorized` seeds the transaction that makes the bar
-    /// render — no other test in the suite can see it.
+    /// The uncategorized bar sits above the pinned summary. With the status
+    /// strip hidden the bar is the top surface, so it keeps the standardized
+    /// 8 pt top gutter; `testStatusStripKeepsTheTopGutter` covers the default
+    /// layout where the strip is on top. Demo data is fully categorized
+    /// on-budget, so `-seedUncategorized` seeds the transaction that makes the
+    /// bar render — no other test in the suite can see it.
     @MainActor
     func testUncategorizedBarSitsAboveTheSummary() {
         let app = XCUIApplication()
@@ -135,6 +137,9 @@ final class BudgetSummaryPinUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
             "-seedUncategorized",
+            // The status strip sits above the bar (GH #546); hide it so the
+            // bar is the top surface whose gutter this test measures.
+            "-showBudgetCheckInStrip", "NO",
         ]
         app.launch()
 
@@ -155,5 +160,29 @@ final class BudgetSummaryPinUITests: XCTestCase {
         XCTAssertTrue(navBar.exists)
         XCTAssertEqual(bar.frame.minY - navBar.frame.maxY, 8, accuracy: 2,
                        "the bar must keep the standardized top gutter (TopBoxLayout.verticalContentMargin)")
+    }
+
+    /// The status strip is shown by default and has been the top surface
+    /// since GH #546, so it keeps the same 8 pt top gutter as every other
+    /// top box.
+    @MainActor
+    func testStatusStripKeepsTheTopGutter() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-budgetDisplayStyle", "clean",
+            "-showBudgetCheckInStrip", "YES",
+        ]
+        app.launch()
+
+        app.tabBars.buttons["Budget"].tap()
+
+        let chip = app.buttons["budgetFilter-all"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 10),
+                      "the status strip should be the top surface")
+        let navBar = app.navigationBars.firstMatch
+        XCTAssertTrue(navBar.exists)
+        XCTAssertEqual(chip.frame.minY - navBar.frame.maxY, 8, accuracy: 2,
+                       "the strip must keep the standardized top gutter (TopBoxLayout.verticalContentMargin)")
     }
 }

@@ -9,23 +9,8 @@ import Testing
 /// Actual preferences without schema alterations.
 @MainActor
 struct BudgetDatabaseCreditCardTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     @Test func fetchCreditCardConfigsReturnsDecodedConfigs() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.preferences)
         defer { cleanup(url) }
 
         let chaseConfig = CreditCardConfig(statementDay: 18, dueOffsetDays: 25, limit: 500_000)
@@ -65,7 +50,7 @@ struct BudgetDatabaseCreditCardTests {
     }
 
     @Test func fetchCreditCardConfigsIgnoresNullEmptyAndInvalidRows() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeTestDatabase(TestSchema.preferences)
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in

@@ -5,13 +5,6 @@ import Testing
 
 @MainActor
 struct BudgetDatabaseDashboardTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
     private func insertWidget(
         path: URL,
         id: String,
@@ -47,13 +40,13 @@ struct BudgetDatabaseDashboardTests {
     }
 
     @Test func returnsEmptyForFreshDatabase() async throws {
-        let (database, _) = try makeDatabase()
+        let (database, _) = try await makeTestDatabase()
         let widgets = try await database.fetchWidgets(pageId: nil)
         #expect(widgets.isEmpty)
     }
 
     @Test func returnsParsedWidgets() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase()
         try insertWidget(path: path, id: "a", type: "summary-card",
                          meta: #"{"name":"Spent"}"#)
         try insertWidget(path: path, id: "b", type: "net-worth-card",
@@ -66,7 +59,7 @@ struct BudgetDatabaseDashboardTests {
     }
 
     @Test func excludesTombstonedWidgets() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase()
         try insertWidget(path: path, id: "alive", type: "summary-card", meta: "{}")
         try insertWidget(path: path, id: "dead", type: "summary-card", meta: "{}",
                          tombstone: 1)
@@ -77,7 +70,7 @@ struct BudgetDatabaseDashboardTests {
     }
 
     @Test func returnsInYXOrder() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase()
         try insertWidget(path: path, id: "bottom", type: "summary-card", x: 0, y: 4, meta: "{}")
         try insertWidget(path: path, id: "top-right", type: "summary-card", x: 4, y: 0, meta: "{}")
         try insertWidget(path: path, id: "top-left", type: "summary-card", x: 0, y: 0, meta: "{}")
@@ -90,7 +83,7 @@ struct BudgetDatabaseDashboardTests {
     /// filtered (AQL `q('dashboard_pages').select('*')`); a null name renders
     /// as an empty string upstream.
     @Test func fetchDashboardPagesReturnsLivePagesInInsertionOrder() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase()
         try insertPage(path: path, id: "page-main", name: "Main")
         try insertPage(path: path, id: "page-deleted", name: "Old", tombstone: 1)
         try insertPage(path: path, id: "page-second", name: "Second")
@@ -101,7 +94,7 @@ struct BudgetDatabaseDashboardTests {
     }
 
     @Test func fetchDashboardPagesIsEmptyForFreshDatabase() async throws {
-        let (database, _) = try makeDatabase()
+        let (database, _) = try await makeTestDatabase()
         let pages = try await database.fetchDashboardPages()
         #expect(pages.isEmpty)
     }
@@ -112,7 +105,7 @@ struct BudgetDatabaseDashboardTests {
     /// widgets from other pages, deleted pages, orphaned page ids, or
     /// pageless rows.
     @Test func fetchWidgetsForPageFiltersToThatPageInYXOrder() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase()
         try insertPage(path: path, id: "page-main", name: "Main")
         try insertPage(path: path, id: "page-second", name: "Second")
         try insertPage(path: path, id: "page-deleted", name: "Old", tombstone: 1)
@@ -141,7 +134,7 @@ struct BudgetDatabaseDashboardTests {
     /// rows; their widgets carry no page id and must still render. Widgets
     /// pointing at a page that no longer exists stay hidden, matching the web.
     @Test func nilPageIdReturnsOnlyPagelessWidgets() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase()
         try insertPage(path: path, id: "page-deleted", name: "Old", tombstone: 1)
 
         try insertWidget(path: path, id: "pageless", type: "summary-card", meta: "{}")
@@ -153,7 +146,7 @@ struct BudgetDatabaseDashboardTests {
     }
 
     @Test func unknownTypeReturnsAsUnsupported() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase()
         try insertWidget(path: path, id: "x", type: "future-card", meta: "{}")
 
         let widgets = try await database.fetchWidgets(pageId: nil)

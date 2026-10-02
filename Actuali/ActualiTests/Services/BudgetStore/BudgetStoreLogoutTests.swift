@@ -1,6 +1,5 @@
 import CryptoKit
 import Foundation
-import GRDB
 import Testing
 @testable import Actuali
 
@@ -15,12 +14,8 @@ struct BudgetStoreLogoutTests {
     /// *all* local budgets, and suites run in parallel against the shared
     /// Budgets directory, so isolation is mandatory for these tests.
     private func makeIsolatedStore() throws -> (BudgetStore, BudgetFileManager) {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("logout-tests-\(UUID().uuidString)", isDirectory: true)
+        let (store, manager, root) = makeFileBackedStore()
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
-        let store = BudgetStore.previewInstance()
-        store.setFileManagerForTesting(manager)
         return (store, manager)
     }
 
@@ -44,12 +39,6 @@ struct BudgetStoreLogoutTests {
             encryptKeyId: encryptKeyId
         )
         try JSONEncoder().encode(metadata).write(to: manager.metadataPath(for: id))
-    }
-
-    private func makeOpenDatabase() throws -> BudgetDatabase {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("logout-db-\(UUID().uuidString).sqlite")
-        return try BudgetDatabase(path: url)
     }
 
     private func makeSyncClient() -> SyncClient {
@@ -79,7 +68,7 @@ struct BudgetStoreLogoutTests {
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
         try seedBudget(id: "budget-a", in: manager)
-        try store.configureForTesting(database: makeOpenDatabase(), syncClient: makeSyncClient())
+        try await store.configureForTesting(database: makeTestDatabase().0, syncClient: makeSyncClient())
 
         store.logout()
 
@@ -141,12 +130,12 @@ struct BudgetStoreLogoutTests {
     /// The demo entry point (loadDemoData) clears the session so sync can't
     /// fire against a real server, but it must not destroy locally-synced
     /// budgets — only an explicit Disconnect wipes data.
-    @Test func preservesLocalDataWhenAskedTo() throws {
+    @Test func preservesLocalDataWhenAskedTo() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
         try seedBudget(id: "budget-a", in: manager)
-        try store.configureForTesting(database: makeOpenDatabase(), syncClient: makeSyncClient())
+        try await store.configureForTesting(database: makeTestDatabase().0, syncClient: makeSyncClient())
 
         store.logout(clearLocalData: false)
 

@@ -5,94 +5,11 @@ import Testing
 
 @MainActor
 struct BudgetStoreSaveTransactionTests {
-    /// transactions, payees and messages_crdt normally come from the
-    /// downloaded budget file, so create them with the upstream schema
-    /// (matches BudgetDatabaseTransferAtomicityTests).
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                starting_balance_flag INTEGER DEFAULT 0,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                acct TEXT,
-                category TEXT,
-                amount INTEGER,
-                description TEXT,
-                notes TEXT,
-                date INTEGER,
-                imported_description TEXT,
-                financial_id TEXT,
-                transferred_id TEXT,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0,
-                parent_id TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payees (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                transfer_acct TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payee_mapping (
-                id TEXT PRIMARY KEY,
-                targetId TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE rules (
-                id TEXT PRIMARY KEY,
-                stage TEXT,
-                conditions_op TEXT,
-                conditions TEXT,
-                actions TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    /// Store wired to a real database and sync client so saveTransaction can
-    /// run end-to-end. The server client is unconfigured, so the post-write
-    /// automatic sync fails fast and locally without touching the network.
-    private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
-        let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
-        store.configureForTesting(database: database, syncClient: syncClient)
-        return store
-    }
-
     private func transactionRows(path: URL) throws -> [Row] {
         let queue = try DatabaseQueue(path: path.path)
         return try queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM transactions ORDER BY id")
         }
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
     }
 
     private func form(
@@ -221,9 +138,9 @@ struct BudgetStoreSaveTransactionTests {
     // MARK: - End-to-end save (create and edit)
 
     @Test func savingANewTransactionPersistsRowAndReturnsCreatedID() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         let id = try await store.saveTransaction(
             form(type: .expense, amount: "10.50", payeeName: "Trader Joe's")
@@ -245,9 +162,9 @@ struct BudgetStoreSaveTransactionTests {
     }
 
     @Test func ruleCategoryOnlyReplacesSuggestedCategory() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         store.payees = [payee(id: "payee-amazon", name: "Amazon")]
         try await database.dbQueueForTesting.write { db in
             try db.execute(
@@ -280,9 +197,9 @@ struct BudgetStoreSaveTransactionTests {
     }
 
     @Test func automaticCategoryShowsRuleResultInsteadOfPayeeHistory() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         store.payees = [payee(id: "payee-cafe", name: "Cafe")]
         try await database.dbQueueForTesting.write { db in
             try db.execute(
@@ -317,9 +234,9 @@ struct BudgetStoreSaveTransactionTests {
     }
 
     @Test func automaticCategoryPreviewDoesNotChangeTheSaveRuleInput() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         store.payees = [payee(id: "payee-cafe", name: "Cafe")]
         try await database.dbQueueForTesting.write { db in
             try db.execute(
@@ -357,9 +274,9 @@ struct BudgetStoreSaveTransactionTests {
     }
 
     @Test func editingATransactionReturnsNoCreatedID() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         let original = transaction(payeeId: nil, payeeName: nil)
         try database.insertTransaction(original)
 
@@ -371,9 +288,9 @@ struct BudgetStoreSaveTransactionTests {
     }
 
     @Test func savingANewOffBudgetTransactionDropsCategoriesAndSplits() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         store.accounts = [
             Account(id: "acct-1", name: "Brokerage", type: .investment,
                     offBudget: true, closed: false, sortOrder: 0, balance: 0),
@@ -395,9 +312,9 @@ struct BudgetStoreSaveTransactionTests {
     }
 
     @Test func editingAnOffBudgetTransactionDropsCategoriesAndSplits() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
         store.accounts = [
             Account(id: "acct-1", name: "Brokerage", type: .investment,
                     offBudget: true, closed: false, sortOrder: 0, balance: 0),
@@ -421,10 +338,67 @@ struct BudgetStoreSaveTransactionTests {
         #expect(row["isParent"] == 0)
     }
 
-    @Test func editingATransactionPreservesImportedPayeeAndCarriedFields() async throws {
-        let (database, path) = try makeDatabase()
+    /// A new transfer's category survives only on the on-budget leg of an
+    /// on/off-budget pair, as Actual's `clearCategory` does (GH #561).
+    private func saveNewTransfer(toOffBudget: Bool) async throws -> [Row] {
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
+        store.accounts = [
+            Account(id: "acct-1", name: "Checking", type: .checking,
+                    offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "acct-2", name: "Other", type: .investment,
+                    offBudget: toOffBudget, closed: false, sortOrder: 1, balance: 0),
+        ]
+        store.payees = [
+            Payee(id: "payee-1", name: "", transferAccountId: "acct-1", tombstone: false),
+            Payee(id: "payee-2", name: "", transferAccountId: "acct-2", tombstone: false),
+        ]
+
+        try await store.saveTransaction(
+            form(type: .transfer, amount: "25.00", transferToAccountId: "acct-2", categoryId: "cat-food")
+        )
+        return try transactionRows(path: path)
+    }
+
+    @Test func newOnBudgetTransferDropsCategory() async throws {
+        let rows = try await saveNewTransfer(toOffBudget: false)
+        #expect(rows.count == 2)
+        #expect(rows.allSatisfy { $0["category"] as String? == nil })
+    }
+
+    @Test func newTransferOffBudgetKeepsCategoryOnOnBudgetLeg() async throws {
+        let rows = try await saveNewTransfer(toOffBudget: true)
+        #expect(rows.count == 2)
+        let source = try #require(rows.first { $0["acct"] as String == "acct-1" })
+        let target = try #require(rows.first { $0["acct"] as String == "acct-2" })
+        #expect(source["category"] == "cat-food")
+        #expect(target["category"] as String? == nil)
+    }
+
+    @Test func categoryHiddenByATransferRoundTripSurvivesTheEdit() async throws {
+        // The form keeps a pick while an on-budget transfer hides it, so
+        // Expense → Transfer → Expense on an edit still carries the category
+        // and must not write null over it (GH #561). The same form saved as
+        // an on-budget transfer drops it — newOnBudgetTransferDropsCategory.
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
+        defer { cleanup(path) }
+        let store = try await makeTestStore(database: database)
+        var original = transaction(payeeId: nil, payeeName: nil)
+        original.categoryId = "cat-food"
+        try database.insertTransaction(original)
+
+        try await store.saveTransaction(form(amount: "7.25", categoryId: "cat-food"), editing: original)
+
+        let row = try #require(try transactionRows(path: path).first)
+        #expect(row["amount"] == -725)
+        #expect(row["category"] == "cat-food")
+    }
+
+    @Test func editingATransactionPreservesImportedPayeeAndCarriedFields() async throws {
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
+        defer { cleanup(path) }
+        let store = try await makeTestStore(database: database)
 
         // Seed an existing transaction the way a bank import would leave it:
         // reconciled, linked to a transfer leg, with an imported payee memo.
@@ -457,9 +431,9 @@ struct BudgetStoreSaveTransactionTests {
     }
 
     @Test func editingASplitParentIntoATransferIsRejectedAndLeavesOriginalIntact() async throws {
-        let (database, path) = try makeDatabase()
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
-        let store = try await makeStore(database: database)
+        let store = try await makeTestStore(database: database)
 
         // An ordinary row converts in place (GH #259, covered in
         // BudgetStoreConvertToTransferTests), but a split parent's amount is

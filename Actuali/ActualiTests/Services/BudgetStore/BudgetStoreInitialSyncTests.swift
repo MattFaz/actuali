@@ -4,39 +4,6 @@ import GRDB
 import Testing
 @testable import Actuali
 
-/// Answers the budget download with a canned ZIP and fails every other request,
-/// so `downloadBudget` can run end to end without a server while the sync leg
-/// that follows it fails fast and locally.
-private final class BudgetDownloadTransport: URLProtocol {
-    nonisolated(unsafe) static var zipData = Data()
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        guard request.url?.path.contains("download-user-file") == true else {
-            client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
-            return
-        }
-        let response = HTTPURLResponse(
-            url: request.url!,
-            statusCode: 200,
-            httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/zip"]
-        )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Self.zipData)
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
-}
-
 /// GH #126: a first-time setup downloaded the budget, showed the snapshot's
 /// balances, and then just sat there — nothing synced until the user
 /// pull-to-refreshed or backgrounded and reopened the app, and nothing on
@@ -59,7 +26,7 @@ struct BudgetStoreInitialSyncTests {
         do {
             let queue = try DatabaseQueue(path: dbURL.path)
             try queue.write { db in
-                try db.execute(sql: Self.upstreamSchema)
+                try db.execute(sql: TestSchema.upstream)
                 try db.execute(sql: """
                 INSERT INTO accounts (id, name, type, sort_order)
                 VALUES ('acct-1', 'Checking', 'checking', 1.0);
@@ -82,14 +49,19 @@ struct BudgetStoreInitialSyncTests {
         ])
     }
 
-    /// Store wired to a disposable Budgets directory and a stubbed transport,
-    /// so `downloadBudget` exercises the real download → import → load → sync
-    /// path without touching the shared app-support directory or a server.
+    /// Store wired to a disposable Budgets directory and a stubbed transport
+    /// that answers the budget download with `zip` and fails every other
+    /// request, so `downloadBudget` exercises the real download → import →
+    /// load → sync path without a server while the sync leg that follows
+    /// fails fast and locally.
     private func makeStore(zip: Data, root rootDirectory: URL) async throws -> BudgetStore {
-        BudgetDownloadTransport.zipData = zip
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [BudgetDownloadTransport.self]
-        let serverClient = ActualServerClient(session: URLSession(configuration: config))
+        let session = StubTransport.session { request in
+            guard request.url?.path.contains("download-user-file") == true else {
+                throw URLError(.cannotConnectToHost)
+            }
+            return StubTransport.Response(contentType: "application/zip", body: zip)
+        }
+        let serverClient = ActualServerClient(session: session)
         try await serverClient.configure(serverURL: "https://budget.example.com")
         await serverClient.setToken("test-token")
 
@@ -204,55 +176,6 @@ struct BudgetStoreInitialSyncTests {
         let watermark = (UserDefaults.standard.object(forKey: key) as? NSNumber)?.int64Value
         #expect(watermark != 500)
     }
-
-    // MARK: - Upstream schema
-
-    /// The tables `loadLocalBudget` reads and `SyncClient.configure` needs,
-    /// matching the schema an Actual server ships in a budget ZIP. Internal:
-    /// BudgetStoreBackupTests seeds the same schema to drive loadLocalBudget.
-    nonisolated static let upstreamSchema = """
-    CREATE TABLE accounts (
-        id TEXT PRIMARY KEY, name TEXT, type TEXT, offbudget INTEGER DEFAULT 0,
-        closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0, sort_order REAL,
-        account_id TEXT, balance_current INTEGER, balance_available INTEGER,
-        balance_limit INTEGER, mask TEXT, official_name TEXT, subtype TEXT, bank TEXT
-    );
-    CREATE TABLE transactions (
-        id TEXT PRIMARY KEY, isParent INTEGER DEFAULT 0, isChild INTEGER DEFAULT 0,
-        acct TEXT, category TEXT, amount INTEGER, description TEXT, notes TEXT,
-        date INTEGER, financial_id TEXT, type TEXT, location TEXT, error TEXT,
-        imported_description TEXT, starting_balance_flag INTEGER DEFAULT 0,
-        transferred_id TEXT, sort_order REAL, tombstone INTEGER DEFAULT 0,
-        cleared INTEGER DEFAULT 0, reconciled INTEGER DEFAULT 0, parent_id TEXT,
-        schedule TEXT
-    );
-    CREATE TABLE categories (
-        id TEXT PRIMARY KEY, name TEXT, is_income INTEGER DEFAULT 0, cat_group TEXT,
-        sort_order REAL, tombstone INTEGER DEFAULT 0, hidden BOOLEAN NOT NULL DEFAULT 0
-    );
-    CREATE TABLE category_groups (
-        id TEXT PRIMARY KEY, name TEXT UNIQUE, is_income INTEGER DEFAULT 0,
-        sort_order REAL, tombstone INTEGER DEFAULT 0, hidden BOOLEAN NOT NULL DEFAULT 0
-    );
-    CREATE TABLE payees (
-        id TEXT PRIMARY KEY, name TEXT, category TEXT, tombstone INTEGER DEFAULT 0,
-        transfer_acct TEXT
-    );
-    CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT);
-    CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT);
-    CREATE TABLE zero_budgets (
-        id TEXT PRIMARY KEY, month INTEGER, category TEXT, amount INTEGER DEFAULT 0,
-        carryover INTEGER DEFAULT 0
-    );
-    CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
-    CREATE TABLE messages_crdt (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL UNIQUE,
-        dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL
-    );
-    CREATE TABLE messages_clock (id INTEGER PRIMARY KEY, clock TEXT);
-    CREATE TABLE db_version (version TEXT PRIMARY KEY);
-    CREATE TABLE __migrations__ (id INT PRIMARY KEY NOT NULL);
-    """
 }
 
 /// Builds an uncompressed ZIP in memory. Hand-rolled because ZIPFoundation is

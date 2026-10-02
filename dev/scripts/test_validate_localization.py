@@ -663,7 +663,7 @@ class SourceExtractionTests(unittest.TestCase):
             "HTTP %lld", "Status code %lld", "%lldth item", "Day-of-month %lld", "%lldd", "%lld%%",
             "%lld pending", "%lld overspent", "%lld uncategorized", "%lld without a budget",
             "%lld not funded", "%lld nearing the limit", "%lld over budget", "String %@",
-            "%%lld",
+            "%%lld", "Cleared %lld / %lld",
         ]
         for key in true_keys:
             self.assertTrue(VALIDATOR._is_plural_count_key(key), key)

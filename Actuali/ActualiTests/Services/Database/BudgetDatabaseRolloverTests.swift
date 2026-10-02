@@ -5,90 +5,24 @@ import Testing
 
 @MainActor
 struct BudgetDatabaseRolloverTests {
-    private func makeDatabase(envelope: Bool = true) throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    date INTEGER,
-                    transferred_id TEXT,
-                    parent_id TEXT,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    cat_group TEXT,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_groups (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                -- Actual resolves a transaction's category through category_mapping
-                -- (every category gets a self-mapping row; merged categories point
-                -- the old id at the surviving one). "spent" must group by the mapped
-                -- id, not the raw one.
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                -- Budget "spent" only counts on-budget accounts (offbudget = 0).
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                INSERT INTO category_groups (id, name) VALUES ('grp-1', 'Daily');
-                INSERT INTO categories (id, name, cat_group) VALUES ('cat-groceries', 'Groceries', 'grp-1');
-                INSERT INTO category_mapping (id, transferId) VALUES ('cat-groceries', 'cat-groceries');
-                INSERT INTO accounts (id, name, offbudget, sort_order) VALUES
-                    ('acct-1', 'Checking', 0, 1.0),
-                    ('acct-off', 'Brokerage', 1, 2.0);
-            """)
-
-            let table = envelope ? "zero_budgets" : "reflect_budgets"
-            try db.execute(sql: """
-                CREATE TABLE \(table) (
-                    id TEXT PRIMARY KEY,
-                    month INTEGER,
-                    category TEXT,
-                    amount INTEGER DEFAULT 0,
-                    carryover INTEGER DEFAULT 0
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    private func makeDatabase(envelope: Bool = true) async throws -> (BudgetDatabase, URL) {
+        // Actual resolves a transaction's category through category_mapping
+        // (every category gets a self-mapping row; merged categories point
+        // the old id at the surviving one). "spent" must group by the mapped
+        // id, not the raw one, and only counts on-budget accounts (offbudget = 0).
+        try await makeTestDatabase(
+            TestSchema.transactions, TestSchema.categories, TestSchema.categoryGroups,
+            TestSchema.categoryMapping, TestSchema.accounts,
+            envelope ? TestSchema.zeroBudgets : TestSchema.reflectBudgets,
+            """
+            INSERT INTO category_groups (id, name) VALUES ('grp-1', 'Daily');
+            INSERT INTO categories (id, name, cat_group) VALUES ('cat-groceries', 'Groceries', 'grp-1');
+            INSERT INTO category_mapping (id, transferId) VALUES ('cat-groceries', 'cat-groceries');
+            INSERT INTO accounts (id, name, offbudget, sort_order) VALUES
+                ('acct-1', 'Checking', 0, 1.0),
+                ('acct-off', 'Brokerage', 1, 2.0);
+            """
+        )
     }
 
     private func insertBudget(
@@ -188,7 +122,7 @@ struct BudgetDatabaseRolloverTests {
         // April: budgeted 5000, spent 4000 (=$40 of $50). Leftover = 1000.
         // May:   budgeted 5000, spent 0.
         // Expected May available = 5000 (May budget) + 1000 (Apr leftover) = 6000.
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "zero_budgets", month: 202_604, category: "cat-groceries", amount: 5000)
@@ -208,7 +142,7 @@ struct BudgetDatabaseRolloverTests {
         // Carryover flag = false on April (default).
         // May:   budgeted 5000, spent 0.
         // Expected: envelope clamps the negative and starts fresh -> May available = 5000.
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "zero_budgets", month: 202_604, category: "cat-groceries", amount: 5000, carryover: false)
@@ -225,7 +159,7 @@ struct BudgetDatabaseRolloverTests {
         // April: budgeted 5000, spent 6000. Carryover flag ON.
         // May:   budgeted 5000.
         // Expected: full -1000 carries forward -> May available = 4000.
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "zero_budgets", month: 202_604, category: "cat-groceries", amount: 5000, carryover: true)
@@ -242,7 +176,7 @@ struct BudgetDatabaseRolloverTests {
         // Feb: budget 1000, spent 200 -> leftover 800
         // Mar: budget 1000, spent 0    -> leftover 800 + 1000 = 1800
         // Apr: budget 1000, spent 500  -> leftover 1800 + 1000 - 500 = 2300
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "zero_budgets", month: 202_602, category: "cat-groceries", amount: 1000)
@@ -261,7 +195,7 @@ struct BudgetDatabaseRolloverTests {
         // Mar: no budget, but spent -500 -> leftover -500, clamps to 0 next month.
         // Apr: no budget, no spend       -> leftover 0.
         // May: budget 2000, spend 0      -> leftover 0 + 2000 = 2000.
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertSpend(db, date: 20_260_314, category: "cat-groceries", amount: -500)
@@ -278,7 +212,7 @@ struct BudgetDatabaseRolloverTests {
         // May:   budget 5000.
         // Tracking semantics: drops prior leftover entirely when flag is off.
         // Expected May available = 5000 (no rollover).
-        let (db, url) = try makeDatabase(envelope: false)
+        let (db, url) = try await makeDatabase(envelope: false)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "reflect_budgets", month: 202_604, category: "cat-groceries", amount: 5000, carryover: false)
@@ -292,7 +226,7 @@ struct BudgetDatabaseRolloverTests {
     }
 
     @Test func trackingBudgetCarriesWhenFlagOn() async throws {
-        let (db, url) = try makeDatabase(envelope: false)
+        let (db, url) = try await makeDatabase(envelope: false)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "reflect_budgets", month: 202_604, category: "cat-groceries", amount: 5000, carryover: true)
@@ -308,7 +242,7 @@ struct BudgetDatabaseRolloverTests {
     @Test func onBudgetTransferLegsWithoutCategoryAreNotCounted() async throws {
         // Transfers between two on-budget accounts carry no category in Actual,
         // so they never touch a category's "spent" (excluded by category IS NOT NULL).
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
@@ -325,7 +259,7 @@ struct BudgetDatabaseRolloverTests {
         // A categorized transfer leg in an ON-budget account is Actual's way of
         // budgeting money moved to an OFF-budget account (e.g. investments). Actual
         // counts it as spent — filtering all transferred_id rows wrongly drops it.
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
@@ -341,7 +275,7 @@ struct BudgetDatabaseRolloverTests {
     @Test func spendInOffBudgetAccountIsExcluded() async throws {
         // Categorized transactions living in an off-budget account must not count
         // toward the budget (Actual filters accounts.offbudget = 0).
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
@@ -358,7 +292,7 @@ struct BudgetDatabaseRolloverTests {
         // When a category is merged/renamed, transactions keep the OLD id but
         // category_mapping points it at the surviving id. "spent" must group by the
         // mapped id or the surviving category shows too little (and the old id, hidden).
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertCategoryMapping(db, from: "cat-old-food", to: "cat-groceries")
@@ -377,7 +311,7 @@ struct BudgetDatabaseRolloverTests {
         // parent row (Actual's splitTransaction never clears it; the view masks
         // it with CASE WHEN isParent = 1 THEN NULL). Only the children may count
         // toward "spent" — counting the parent too doubles the month.
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
@@ -398,7 +332,7 @@ struct BudgetDatabaseRolloverTests {
         // balance is off via the corrupted leftover chain.
         // May: budget 5000, split spend -3000 -> leftover 2000.
         // June: budget 5000, spent 0 -> available = 5000 + 2000 = 7000.
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
@@ -421,7 +355,7 @@ struct BudgetDatabaseRolloverTests {
         // same figure Actual's web UI totals — a gross outflow-only sum
         // disagrees with the server whenever a refund lands.
         // May: budget 5000, spend -2000, refund +500 -> net -1500.
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
@@ -437,7 +371,7 @@ struct BudgetDatabaseRolloverTests {
 
     @Test func totalSpentOnlyCountsTargetMonth() async throws {
         // April activity must not bleed into May's summary Spent.
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertSpend(db, date: 20_260_415, category: "cat-groceries", amount: -4000)
@@ -452,7 +386,7 @@ struct BudgetDatabaseRolloverTests {
     @Test func splitChildrenOfTombstonedParentAreNotCounted() async throws {
         // Deleting a split tombstones the parent but leaves the child rows with
         // tombstone = 0. Those orphans must not count toward "spent".
-        let (db, url) = try makeDatabase(envelope: true)
+        let (db, url) = try await makeDatabase(envelope: true)
         defer { cleanup(url) }
 
         try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)

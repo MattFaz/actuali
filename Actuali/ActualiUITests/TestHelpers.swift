@@ -1,6 +1,22 @@
 import XCTest
 
 extension XCTestCase {
+    /// Retry a missed tap only while its expected result is absent, so a
+    /// successful toggle cannot be flipped back while its menu dismisses.
+    @MainActor
+    func tapControl(_ control: XCUIElement, until changed: () -> Bool) {
+        let inner = control.switches.firstMatch
+        let target = inner.exists ? inner : control
+        XCTAssertTrue(target.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        for _ in 0..<3 {
+            target.tap()
+            if changed() {
+                return
+            }
+        }
+        XCTFail("Control did not update after tapping \(control.label)")
+    }
+
     /// Open Settings > Budget View whether Settings last showed its hub or
     /// retained the destination from an earlier tab visit.
     @MainActor

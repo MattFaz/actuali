@@ -9,61 +9,29 @@ import Testing
 /// to the top of their group, and both refuse duplicate names.
 @MainActor
 struct BudgetDatabaseCategoryWriteTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    cat_group TEXT,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_groups (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                INSERT INTO category_groups (id, name, sort_order) VALUES
-                    ('grp-daily', 'Daily', 16384.0),
-                    ('grp-bills', 'Bills', 32768.0);
-                INSERT INTO category_groups (id, name, is_income, sort_order)
-                    VALUES ('grp-income', 'Income', 1, 49152.0);
-                INSERT INTO categories (id, name, cat_group, sort_order) VALUES
-                    ('cat-groceries', 'Groceries', 'grp-daily', 16384.0),
-                    ('cat-fuel', 'Fuel', 'grp-daily', 32768.0);
-                INSERT INTO category_mapping (id, transferId) VALUES
-                    ('cat-groceries', 'cat-groceries'),
-                    ('cat-fuel', 'cat-fuel');
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.categories, TestSchema.categoryGroups, TestSchema.categoryMapping,
+            """
+            INSERT INTO category_groups (id, name, sort_order) VALUES
+                ('grp-daily', 'Daily', 16384.0),
+                ('grp-bills', 'Bills', 32768.0);
+            INSERT INTO category_groups (id, name, is_income, sort_order)
+                VALUES ('grp-income', 'Income', 1, 49152.0);
+            INSERT INTO categories (id, name, cat_group, sort_order) VALUES
+                ('cat-groceries', 'Groceries', 'grp-daily', 16384.0),
+                ('cat-fuel', 'Fuel', 'grp-daily', 32768.0);
+            INSERT INTO category_mapping (id, transferId) VALUES
+                ('cat-groceries', 'cat-groceries'),
+                ('cat-fuel', 'cat-fuel');
+            """
+        )
     }
 
     // MARK: - Groups
 
     @Test func newGroupSortsAfterEveryExistingOne() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         let group = try db.insertCategoryGroup(id: "grp-fun", name: "Fun Money")
@@ -78,7 +46,7 @@ struct BudgetDatabaseCategoryWriteTests {
     }
 
     @Test func groupNamesAreUniqueRegardlessOfCase() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         #expect(throws: BudgetDatabase.CategoryWriteError.duplicateGroupName("Bills")) {
@@ -90,8 +58,8 @@ struct BudgetDatabaseCategoryWriteTests {
         #expect(groups.count == 3)
     }
 
-    @Test func groupNamesUseUnicodeCaseFolding() throws {
-        let (db, url) = try makeDatabase()
+    @Test func groupNamesUseUnicodeCaseFolding() async throws {
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         _ = try db.insertCategoryGroup(id: "grp-savings", name: "Épargne")
 
@@ -101,7 +69,7 @@ struct BudgetDatabaseCategoryWriteTests {
     }
 
     @Test func unnamedCRDTRowsDoNotBlockCategoryWrites() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: "INSERT INTO category_groups (id) VALUES ('grp-partial')")
@@ -117,7 +85,7 @@ struct BudgetDatabaseCategoryWriteTests {
     }
 
     @Test func aTombstonedGroupDoesNotBlockItsName() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -131,7 +99,7 @@ struct BudgetDatabaseCategoryWriteTests {
     // MARK: - Categories
 
     @Test func newCategoryLandsAtTheTopOfItsGroup() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         let insertion = try db.insertCategory(id: "cat-coffee", name: "Coffee", groupId: "grp-daily")
@@ -145,7 +113,7 @@ struct BudgetDatabaseCategoryWriteTests {
     }
 
     @Test func newCategoryTakesItsGroupsIncomeAndHiddenFlags() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -161,7 +129,7 @@ struct BudgetDatabaseCategoryWriteTests {
     }
 
     @Test func newCategoryGetsItsSelfMappingRow() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         _ = try db.insertCategory(id: "cat-coffee", name: "Coffee", groupId: "grp-daily")
@@ -177,7 +145,7 @@ struct BudgetDatabaseCategoryWriteTests {
     }
 
     @Test func aCrowdedGroupShovesItsCategoriesToMakeRoom() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
@@ -197,8 +165,8 @@ struct BudgetDatabaseCategoryWriteTests {
         #expect(daily?.categories.map(\.name) == ["Coffee", "Groceries", "Fuel"])
     }
 
-    @Test func categoryNamesAreUniqueWithinTheirGroup() throws {
-        let (db, url) = try makeDatabase()
+    @Test func categoryNamesAreUniqueWithinTheirGroup() async throws {
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         #expect(throws: BudgetDatabase.CategoryWriteError.duplicateCategoryName(
@@ -209,16 +177,16 @@ struct BudgetDatabaseCategoryWriteTests {
         }
     }
 
-    @Test func theSameNameIsFineInAnotherGroup() throws {
-        let (db, url) = try makeDatabase()
+    @Test func theSameNameIsFineInAnotherGroup() async throws {
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         let insertion = try db.insertCategory(id: "cat-groceries-2", name: "Groceries", groupId: "grp-bills")
         #expect(insertion.category.groupId == "grp-bills")
     }
 
-    @Test func categoryRenameValidationKeepsNamesUniqueWithinTheGroup() throws {
-        let (db, url) = try makeDatabase()
+    @Test func categoryRenameValidationKeepsNamesUniqueWithinTheGroup() async throws {
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try db.validateCategoryRename(id: "cat-groceries", name: "Food")
@@ -230,8 +198,8 @@ struct BudgetDatabaseCategoryWriteTests {
         }
     }
 
-    @Test func anUnknownCategoryCannotBeRenamed() throws {
-        let (db, url) = try makeDatabase()
+    @Test func anUnknownCategoryCannotBeRenamed() async throws {
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         #expect(throws: BudgetDatabase.CategoryWriteError.categoryNotFound) {
@@ -239,8 +207,8 @@ struct BudgetDatabaseCategoryWriteTests {
         }
     }
 
-    @Test func anUnknownGroupIsRefused() throws {
-        let (db, url) = try makeDatabase()
+    @Test func anUnknownGroupIsRefused() async throws {
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         #expect(throws: BudgetDatabase.CategoryWriteError.groupNotFound) {

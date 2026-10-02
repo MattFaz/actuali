@@ -5,16 +5,7 @@ import Testing
 
 @MainActor
 struct BudgetStoreBackupTests {
-    private func makeStore() throws -> (BudgetStore, BudgetFileManager, URL) {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
-        let store = BudgetStore.previewInstance()
-        store.setFileManagerForTesting(manager)
-        return (store, manager, root)
-    }
-
-    private func seedBudget(manager: BudgetFileManager, id: String) throws {
+    private func seedToyBudget(manager: BudgetFileManager, id: String) throws {
         let dir = manager.budgetDirectory(for: id)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
@@ -29,9 +20,9 @@ struct BudgetStoreBackupTests {
     }
 
     @Test func makeBackupNowPublishesList() async throws {
-        let (store, manager, root) = try makeStore()
+        let (store, manager, root) = makeFileBackedStore()
         defer { try? FileManager.default.removeItem(at: root) }
-        try seedBudget(manager: manager, id: "b")
+        try seedToyBudget(manager: manager, id: "b")
         store.currentBudgetId = "b"
 
         await store.makeBackupNow()
@@ -39,10 +30,10 @@ struct BudgetStoreBackupTests {
         #expect(store.backups.allSatisfy { !$0.isLatest })
     }
 
-    @Test func backupOnBackgroundSkipsWhileViewingABackup() async throws {
-        let (store, manager, root) = try makeStore()
+    @Test func backupOnBackgroundSkipsWhileViewingABackup() throws {
+        let (store, manager, root) = makeFileBackedStore()
         defer { try? FileManager.default.removeItem(at: root) }
-        try seedBudget(manager: manager, id: "b")
+        try seedToyBudget(manager: manager, id: "b")
         store.currentBudgetId = "b"
         try store.configureForTesting(
             database: BudgetDatabase(path: manager.databasePath(for: "b")),
@@ -51,8 +42,8 @@ struct BudgetStoreBackupTests {
 
         // Viewing a backup: the automatic trigger must not clear the baseline.
         try Data("baseline".utf8).write(to: manager.latestDatabasePath(for: "b"))
+        // The viewing-a-backup guard returns before any Task is spawned, so there is nothing to await.
         store.backupOnBackground()
-        try await Task.sleep(for: .milliseconds(300))
         #expect(FileManager.default.fileExists(atPath: manager.latestDatabasePath(for: "b").path))
         let zips = try FileManager.default
             .contentsOfDirectory(at: manager.backupsDirectory(for: "b"), includingPropertiesForKeys: nil)
@@ -64,19 +55,11 @@ struct BudgetStoreBackupTests {
     /// sync client: the server still has the old group, so any sync would earn
     /// a 400 file-has-reset and an endless retry loop.
     @Test func loadSkipsSyncConfigurationWhenDetachedByRestore() async throws {
-        let (store, manager, root) = try makeStore()
+        let (store, manager, root) = makeFileBackedStore()
         defer { try? FileManager.default.removeItem(at: root) }
 
         // loadLocalBudget reads the full budget schema, not just one table.
-        let dir = manager.budgetDirectory(for: "b")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: "b").path)
-        let schema = BudgetStoreInitialSyncTests.upstreamSchema
-        try await dbQueue.write { try $0.execute(sql: schema) }
-        try JSONEncoder().encode(BudgetMetadata(
-            id: "b", budgetName: "Seed", cloudFileId: "cf-1", groupId: "g-1",
-            resetClock: nil, lastUploaded: nil, encryptKeyId: nil
-        )).write(to: manager.metadataPath(for: "b"))
+        try seedBudget(id: "b", in: manager)
 
         // Attached metadata (groupId present): sync configures as usual.
         await store.loadLocalBudget("b")
@@ -96,9 +79,9 @@ struct BudgetStoreBackupTests {
     }
 
     @Test func backupFileURLPointsAtImportableArchive() async throws {
-        let (store, manager, root) = try makeStore()
+        let (store, manager, root) = makeFileBackedStore()
         defer { try? FileManager.default.removeItem(at: root) }
-        try seedBudget(manager: manager, id: "b")
+        try seedToyBudget(manager: manager, id: "b")
         store.currentBudgetId = "b"
 
         await store.makeBackupNow()

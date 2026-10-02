@@ -21,9 +21,9 @@ private final class RecordingActions: SchedulePostingActions {
         var advances: [(rowId: String, newNextDate: Int, baseTs: Int64?)] = []
         /// Schedule ids whose createTransaction should throw (schedule-level error).
         var failingScheduleIds: Set<String> = []
-        /// Suspension before each create, simulating the network round-trip so
-        /// the concurrency test can force an overlap window.
-        var createDelayNanos: UInt64 = 0
+        /// Runs once, before the next create's write — the network round-trip
+        /// — so the concurrency test can hold a pass mid-flight.
+        var beforeNextCreate: (@Sendable () async -> Void)?
     }
 
     private let state = Mutex(State())
@@ -41,9 +41,9 @@ private final class RecordingActions: SchedulePostingActions {
         set { state.withLock { $0.failingScheduleIds = newValue } }
     }
 
-    var createDelayNanos: UInt64 {
-        get { state.withLock { $0.createDelayNanos } }
-        set { state.withLock { $0.createDelayNanos = newValue } }
+    var beforeNextCreate: (@Sendable () async -> Void)? {
+        get { state.withLock { $0.beforeNextCreate } }
+        set { state.withLock { $0.beforeNextCreate = newValue } }
     }
 
     struct FakeError: Error {}
@@ -56,9 +56,11 @@ private final class RecordingActions: SchedulePostingActions {
         if let schedule = transaction.schedule, failingScheduleIds.contains(schedule) {
             throw FakeError()
         }
-        let delay = createDelayNanos
-        if delay > 0 {
-            try await Task.sleep(nanoseconds: delay)
+        if let hook = state.withLock({ state in
+            defer { state.beforeNextCreate = nil }
+            return state.beforeNextCreate
+        }) {
+            await hook()
         }
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -122,103 +124,14 @@ struct SchedulePosterTests {
     /// monthly fixtures, which start 2026-01-15).
     private static let today = DayDate(yyyymmdd: 20_260_715)!
 
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
-
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    transferred_id TEXT,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    parent_id TEXT,
-                    schedule TEXT,
-                    financial_id TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-
-                CREATE TABLE rules (
-                    id TEXT PRIMARY KEY,
-                    stage TEXT,
-                    conditions_op TEXT DEFAULT 'and',
-                    conditions TEXT,
-                    actions TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE schedules (
-                    id TEXT PRIMARY KEY,
-                    rule TEXT,
-                    active INTEGER DEFAULT 0,
-                    completed INTEGER DEFAULT 0,
-                    posts_transaction INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0,
-                    name TEXT
-                );
-
-                CREATE TABLE schedules_next_date (
-                    id TEXT PRIMARY KEY,
-                    schedule_id TEXT,
-                    local_next_date INTEGER,
-                    local_next_date_ts INTEGER,
-                    base_next_date INTEGER,
-                    base_next_date_ts INTEGER
-                );
-            """)
-        }
-        let database = try BudgetDatabase(path: tempURL)
-        try database.dbQueueForTesting.write { db in
-            try db.execute(sql: "INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking')")
-            try db.execute(sql: "INSERT INTO payee_mapping (id, targetId) VALUES ('payee-1', 'payee-1')")
-        }
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(
+            TestSchema.core + [
+                TestSchema.rules, TestSchema.schedules, TestSchema.schedulesNextDate,
+                "INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking')",
+                "INSERT INTO payee_mapping (id, targetId) VALUES ('payee-1', 'payee-1')",
+            ]
+        )
     }
 
     /// Also returns the random suite name so every test can
@@ -234,12 +147,6 @@ struct SchedulePosterTests {
         let poster = SchedulePoster(database: db, actions: actions, defaults: UserDefaults(suiteName: suite)!)
         let defaults = UserDefaults(suiteName: suite)!
         return (poster, actions, defaults, suite)
-    }
-
-    private func makeSyncClient(_ db: BudgetDatabase) async throws -> SyncClient {
-        let client = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await client.configure(database: db, fileId: "test-file", groupId: "test-group")
-        return client
     }
 
     private static let monthlyDateJSON = """
@@ -293,7 +200,7 @@ struct SchedulePosterTests {
     // MARK: - Posting
 
     @Test func transferSchedulePostsBothLinkedLegs() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -330,7 +237,7 @@ struct SchedulePosterTests {
     }
 
     @Test func manualTransferSchedulePostsBothLinkedLegs() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -348,7 +255,7 @@ struct SchedulePosterTests {
          \(Self.monthlyDateJSON)]
         """, nextDate: 20_260_715)
         let schedule = try #require(await db.fetchSchedules().first)
-        let client = try await makeSyncClient(db)
+        let client = try await makeTestSyncClient(database: db)
 
         try await client.postScheduleTransaction(schedule, today: false)
 
@@ -377,11 +284,11 @@ struct SchedulePosterTests {
     }
 
     @Test func manualOrdinaryScheduleKeepsScheduleLink() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20_260_715)
         let schedule = try #require(await db.fetchSchedules().first)
-        let client = try await makeSyncClient(db)
+        let client = try await makeTestSyncClient(database: db)
 
         try await client.postScheduleTransaction(schedule, today: false)
 
@@ -396,7 +303,7 @@ struct SchedulePosterTests {
     }
 
     @Test func transferScheduleAppliesRuleActionsBeforePairing() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -434,7 +341,7 @@ struct SchedulePosterTests {
     }
 
     @Test func deletedTransferScheduleAdvancesWithoutCreatingLegs() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -463,7 +370,7 @@ struct SchedulePosterTests {
     }
 
     @Test func singleDueSchedulePostsOnceAndAdvancesPastToday() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
@@ -492,7 +399,7 @@ struct SchedulePosterTests {
     }
 
     @Test func postedTransactionCarriesScheduleCategory() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, actions: """
         [{"op":"link-schedule","value":"sched-1"},
@@ -508,7 +415,7 @@ struct SchedulePosterTests {
     }
 
     @Test func threeMissedMonthsCatchUpWithAdvancesBetweenEach() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20_260_515)
         let (poster, actions, defaults, suite) = makePoster(db)
@@ -522,7 +429,7 @@ struct SchedulePosterTests {
     }
 
     @Test func alreadyPaidOccurrenceAdvancesWithoutPosting() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20_260_715)
         try insertTransaction(db, id: "t-paid", schedule: "sched-1", date: 20_260_715)
@@ -546,7 +453,7 @@ struct SchedulePosterTests {
     """
 
     @Test func dueOneOffPostsOnceAndNeverAdvances() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: Self.oneOffConditions, nextDate: 20_260_701)
         let (poster, actions, defaults, suite) = makePoster(db)
@@ -560,7 +467,7 @@ struct SchedulePosterTests {
     }
 
     @Test func paidOneOffNeitherPostsNorAdvances() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: Self.oneOffConditions, nextDate: 20_260_701)
         try insertTransaction(db, id: "t-paid", schedule: "sched-1", date: 20_260_701)
@@ -579,7 +486,7 @@ struct SchedulePosterTests {
     /// next_date and only the advance throws (swallowed by the service). The
     /// paid dedup then keeps every later pass from re-posting.
     @Test func unsupportedDateConditionPostsStoredOccurrenceOnceAndNeverAdvances() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: """
         [{"op":"is","field":"acct","value":"acct-1"},
@@ -606,7 +513,7 @@ struct SchedulePosterTests {
     /// the advance writes local_next_date_ts = base_next_date_ts (NULL), the
     /// same cell values loot-core's setNextDate writes.
     @Test func nullBaseNextDateTsPostsAndAdvancesWithNullTs() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20_260_715, nextDateTs: nil)
         let (poster, actions, defaults, suite) = makePoster(db)
@@ -623,7 +530,7 @@ struct SchedulePosterTests {
     // MARK: - Gate
 
     @Test func nothingDueDoesNothingButStillSetsGate() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20_260_815)
         let (poster, actions, defaults, suite) = makePoster(db)
@@ -638,7 +545,7 @@ struct SchedulePosterTests {
     }
 
     @Test func secondRunSameDayIsGatedButNextDayRunsAgain() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
@@ -665,19 +572,25 @@ struct SchedulePosterTests {
     // MARK: - Reentrancy
 
     @Test func overlappingRunsPostExactlyOnce() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
-        // Suspend inside createTransaction so the second call arrives while
-        // the first pass is mid-flight — before its transaction commits, i.e.
+        // Hold the first pass inside createTransaction so the second call
+        // arrives while it is mid-flight — before its transaction commits, i.e.
         // inside the window where the dedup guard can't see the post yet.
-        actions.createDelayNanos = 50_000_000
+        let createStarted = Gate(), release = Gate()
+        actions.beforeNextCreate = {
+            createStarted.open()
+            await release.wait()
+        }
 
         async let a = poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
-        async let b = poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
-        let (first, second) = await (a, b)
+        await createStarted.wait()
+        let second = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
+        release.open()
+        let first = await a
 
         // The in-flight guard turns the overlapping call into a 0-post no-op.
         #expect(first + second == 1)
@@ -688,7 +601,7 @@ struct SchedulePosterTests {
     // MARK: - Failure isolation
 
     @Test func fetchErrorReturnsZeroAndLeavesGateUnset() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
@@ -714,15 +627,7 @@ struct SchedulePosterTests {
 
         // Gate untouched: same day, DB repaired, the pass runs and posts.
         try await db.dbQueueForTesting.write { conn in
-            try conn.execute(sql: """
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                offbudget INTEGER DEFAULT 0,
-                closed INTEGER DEFAULT 0,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
+            try conn.execute(sql: TestSchema.accounts)
             try conn.execute(sql: "INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking')")
         }
         let retried = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
@@ -731,7 +636,7 @@ struct SchedulePosterTests {
     }
 
     @Test func scheduleErrorSkipsGateButOtherSchedulesStillProcess() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, id: "sched-a", nextDate: 20_260_715)
         try insertSchedule(db, id: "sched-b", nextDate: 20_260_715)
@@ -758,7 +663,7 @@ struct SchedulePosterTests {
     // MARK: - Iteration cap
 
     @Test func dailySchedule300DaysBehindStopsAtIterationCap() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         let start = Self.today.adding(days: -300)
         try insertSchedule(db, conditions: """
@@ -781,7 +686,7 @@ struct SchedulePosterTests {
     // MARK: - Amounts
 
     @Test func rangeAmountPostsJSRoundedMidpoint() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         // JS Math.round((-3 + -4) / 2) == -3 (half rounds toward +∞).
         try insertSchedule(db, conditions: """
@@ -799,7 +704,7 @@ struct SchedulePosterTests {
     }
 
     @Test func missingAmountConditionPostsZero() async throws {
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: """
         [{"op":"is","field":"acct","value":"acct-1"},

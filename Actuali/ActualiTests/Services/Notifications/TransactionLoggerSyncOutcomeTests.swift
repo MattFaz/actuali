@@ -1,79 +1,31 @@
 import Foundation
 import GRDB
+import Synchronization
 import Testing
 @testable import Actuali
 
-/// Answers /sync/sync either with a valid in-sync response or with a network
-/// failure, so the headless write path can be exercised against a reachable
-/// and an unreachable server.
-private final class SyncOutcomeTransport: URLProtocol {
-    nonisolated(unsafe) static var failWithOffline = false
-    /// Timestamps the client has pushed. A real server folds the messages it
-    /// receives into its own tree before answering, so answering with a merkle
-    /// over these is what lets the client see itself as in sync — a stub that
-    /// always claimed an empty tree would leave every sync out of sync.
-    nonisolated(unsafe) static var absorbed: Set<String> = []
+/// Answers /sync/sync the way a real server does: it folds the messages it
+/// receives into its own tree before answering, so answering with a merkle
+/// over those is what lets the client see itself as in sync — a stub that
+/// always claimed an empty tree would leave every sync out of sync.
+private final class SyncServer: Sendable {
+    private let absorbed = Mutex<Set<String>>([])
 
-    static func reset(failWithOffline: Bool) {
-        self.failWithOffline = failWithOffline
-        absorbed = []
-    }
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        if Self.failWithOffline {
-            client?.urlProtocol(self, didFailWithError: NSError(
-                domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet
-            ))
-            return
+    func respond(to request: URLRequest) -> StubTransport.Response {
+        if let decoded = try? SyncRequest(serializedData: request.bodyData) {
+            absorbed.withLock { $0.formUnion(decoded.messages.map(\.timestamp)) }
         }
-
         var response = SyncResponse()
-        if let decoded = try? SyncRequest(serializedData: Self.readBody(request)) {
-            Self.absorbed.formUnion(decoded.messages.map(\.timestamp))
-        }
-        response.merkle = Self.merkleJSON()
-        let data = (try? response.serializedData()) ?? Data()
-        let httpResponse = HTTPURLResponse(
-            url: request.url!,
-            statusCode: 200,
-            httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/actual-sync"]
-        )!
-        client?.urlProtocol(self, didReceive: httpResponse, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: data)
-        client?.urlProtocolDidFinishLoading(self)
+        response.merkle = merkleJSON()
+        return StubTransport.Response(
+            contentType: "application/actual-sync",
+            body: (try? response.serializedData()) ?? Data()
+        )
     }
 
-    override func stopLoading() {}
-
-    /// URLSession hands POST bodies to URLProtocol as a stream, not httpBody.
-    private static func readBody(_ request: URLRequest) -> Data {
-        guard let stream = request.httpBodyStream else { return request.httpBody ?? Data() }
-        stream.open()
-        defer { stream.close() }
-        var body = Data()
-        let bufferSize = 16 * 1024
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
-        defer { buffer.deallocate() }
-        while stream.hasBytesAvailable {
-            let read = stream.read(buffer, maxLength: bufferSize)
-            guard read > 0 else { break }
-            body.append(buffer, count: read)
-        }
-        return body
-    }
-
-    private static func merkleJSON() -> String {
+    private func merkleJSON() -> String {
         var tree = MerkleTree()
-        for timestamp in absorbed.sorted() {
+        for timestamp in absorbed.withLock({ $0.sorted() }) {
             guard let parsed = HLCTimestamp.parse(timestamp) else { continue }
             tree = tree.inserting(parsed)
         }
@@ -88,90 +40,23 @@ private final class SyncOutcomeTransport: URLProtocol {
 /// never left the phone. `logTransaction` now reports whether the push landed
 /// so `LogTransactionIntent` can say "Saved locally" instead.
 @MainActor
-@Suite(.serialized)
 struct TransactionLoggerSyncOutcomeTests {
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY,
-                starting_balance_flag INTEGER DEFAULT 0,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
-                acct TEXT,
-                category TEXT,
-                amount INTEGER,
-                description TEXT,
-                notes TEXT,
-                date INTEGER,
-                imported_description TEXT,
-                financial_id TEXT,
-                transferred_id TEXT,
-                sort_order REAL,
-                tombstone INTEGER DEFAULT 0,
-                cleared INTEGER DEFAULT 0,
-                reconciled INTEGER DEFAULT 0,
-                parent_id TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payees (
-                id TEXT PRIMARY KEY,
-                name TEXT,
-                transfer_acct TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE payee_mapping (
-                id TEXT PRIMARY KEY,
-                targetId TEXT
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE accounts (
-                id TEXT PRIMARY KEY, name TEXT, offbudget INTEGER DEFAULT 0,
-                closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT)
-            """)
-            try db.execute(sql: """
-            CREATE TABLE categories (
-                id TEXT PRIMARY KEY, name TEXT, cat_group TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE rules (
-                id TEXT PRIMARY KEY, stage TEXT, conditions TEXT,
-                actions TEXT, tombstone INTEGER DEFAULT 0,
-                conditions_op TEXT DEFAULT 'and'
-            )
-            """)
-            try db.execute(sql: """
-            CREATE TABLE messages_crdt (
-                id INTEGER PRIMARY KEY,
-                timestamp TEXT NOT NULL UNIQUE,
-                dataset TEXT NOT NULL,
-                row TEXT NOT NULL,
-                column TEXT NOT NULL,
-                value BLOB NOT NULL
-            )
-            """)
-        }
-        return try (BudgetDatabase(path: tempURL), tempURL)
+    private func makeDatabase() async throws -> (BudgetDatabase, URL) {
+        try await makeTestDatabase(TestSchema.core + [TestSchema.rules, """
+        INSERT INTO category_groups (id, name) VALUES ('grp-1', 'Daily');
+        INSERT INTO categories (id, name, cat_group) VALUES
+            ('cat-coffee', 'Coffee', 'grp-1'), ('cat-treats', 'Treats', 'grp-1');
+        """])
     }
 
+    /// A store whose sync client talks to `SyncServer`, or to nothing at all.
     private func makeStore(database: BudgetDatabase, serverReachable: Bool) async throws -> BudgetStore {
-        SyncOutcomeTransport.reset(failWithOffline: !serverReachable)
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [SyncOutcomeTransport.self]
-        let serverClient = ActualServerClient(session: URLSession(configuration: config))
+        let server = SyncServer()
+        let session = StubTransport.session { request in
+            guard serverReachable else { throw URLError(.notConnectedToInternet) }
+            return server.respond(to: request)
+        }
+        let serverClient = ActualServerClient(session: session)
         try await serverClient.configure(serverURL: "https://budget.example.com")
         await serverClient.setToken("test-token")
 
@@ -183,22 +68,19 @@ struct TransactionLoggerSyncOutcomeTests {
         return store
     }
 
-    private func log(to store: BudgetStore) async throws -> TransactionLogger.Result {
+    private func log(to store: BudgetStore, categoryId: String? = nil) async throws -> TransactionLogger.Result {
         try await TransactionLogger(store: store).logTransaction(
             accountId: "acct-1",
             amountCents: -820,
             rawMerchant: "BLUE BOTTLE COFFEE",
             notes: nil,
-            date: Date(timeIntervalSince1970: 1_750_000_000)
+            date: Date(timeIntervalSince1970: 1_750_000_000),
+            categoryId: categoryId
         )
     }
 
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
-    }
-
     @Test func reachableServerReportsTheWriteAsSynced() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, serverReachable: true)
 
@@ -208,7 +90,7 @@ struct TransactionLoggerSyncOutcomeTests {
     }
 
     @Test func unrelatedPendingMessagesDoNotChangeThisTransactionOutcome() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, serverReachable: true)
 
@@ -227,7 +109,7 @@ struct TransactionLoggerSyncOutcomeTests {
     }
 
     @Test func partialDeterministicImportIsRecoverableWithoutAppendingMessages() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, serverReachable: true)
         let transactionId = UUID().uuidString
@@ -266,7 +148,7 @@ struct TransactionLoggerSyncOutcomeTests {
     }
 
     @Test func resultContainsTheRuleModifiedPersistedTransaction() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, serverReachable: true)
         try await database.dbQueueForTesting.write { db in
@@ -287,10 +169,56 @@ struct TransactionLoggerSyncOutcomeTests {
         #expect(persistedCategory == "cat-rule")
     }
 
+    /// #283: a category pinned on the Shortcut is the user's choice, so it
+    /// beats a category-setting rule, same as picking one in the add form.
+    @Test func explicitCategoryWinsOverRules() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+            VALUES ('set-category', NULL, 'and',
+                '[{"op":"contains","field":"imported_description","value":"BLUE"}]',
+                '[{"op":"set","field":"category","value":"cat-rule","type":"id"}]', 0)
+            """)
+        }
+
+        let result = try await log(to: store, categoryId: "cat-treats")
+
+        #expect(result.transaction.categoryId == "cat-treats")
+    }
+
+    @Test func explicitCategoryWinsOverPayeeHistoryAndNilKeepsTheAutoPick() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+
+        _ = try await log(to: store, categoryId: "cat-coffee")
+        let pinned = try await log(to: store, categoryId: "cat-treats")
+        let unpinned = try await log(to: store)
+
+        #expect(pinned.transaction.categoryId == "cat-treats")
+        #expect(unpinned.transaction.categoryId == "cat-treats")
+    }
+
+    /// A category deleted since the Shortcut was built must not be written as
+    /// a dangling id; the payee auto-pick takes over instead.
+    @Test func unknownCategoryFallsBackToTheAutoPick() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+
+        _ = try await log(to: store, categoryId: "cat-coffee")
+        let result = try await log(to: store, categoryId: "cat-deleted")
+
+        #expect(result.transaction.categoryId == "cat-coffee")
+    }
+
     /// Unreachable server: the row is still written (nothing is lost), but the
     /// caller is told it hasn't landed so the banner can say so.
     @Test func unreachableServerReportsTheWriteAsUnsynced() async throws {
-        let (database, url) = try makeDatabase()
+        let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, serverReachable: false)
 

@@ -10,7 +10,7 @@ Budget, log transactions, and check balances from your iPhone or iPad — offlin
 
 [![App Store](https://img.shields.io/badge/App_Store-Download-0D96F6?logo=appstore&logoColor=white)](https://apps.apple.com/app/actuali/id6764063765)
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join_the_beta-0D96F6?logo=apple&logoColor=white)](https://testflight.apple.com/join/NsYntuXB)
-[![Discord](https://img.shields.io/badge/Discord-Join_the_chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/UeAYv9Zu4)
+[![Discord](https://img.shields.io/badge/Discord-Join_the_chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/3wGTKwnPz)
 [![Website](https://img.shields.io/badge/Website-actuali.mfazz.com-7C3AED)](https://actuali.mfazz.com)
 [![License](https://img.shields.io/badge/License-MIT-neutral)](LICENSE)
 

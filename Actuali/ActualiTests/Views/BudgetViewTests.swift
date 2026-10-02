@@ -29,6 +29,27 @@ struct BudgetViewTests {
         #expect(ids == ["essentials", "lifestyle"])
     }
 
+    // MARK: - Month note (GH #567)
+
+    @Test func monthNoteOffersTheNoteReadForTheSelectedMonth() {
+        let note = EntityNote(supported: true, text: "Holiday month")
+
+        #expect(BudgetView.monthNote(note, loadedFor: "2026-09", selectedMonth: "2026-09") == note)
+    }
+
+    /// Right after a month change the previous month's note is still in
+    /// state; offering it would let a save overwrite the new month's note.
+    @Test func monthNoteHidesAnotherMonthsNote() {
+        let note = EntityNote(supported: true, text: "Holiday month")
+
+        #expect(BudgetView.monthNote(note, loadedFor: "2026-08", selectedMonth: "2026-09") == .unsupported)
+        #expect(BudgetView.monthNote(note, loadedFor: nil, selectedMonth: "2026-09") == .unsupported)
+    }
+
+    @Test func monthNoteStaysUnsupportedWithoutANotesTable() {
+        #expect(BudgetView.monthNote(.unsupported, loadedFor: "2026-09", selectedMonth: "2026-09") == .unsupported)
+    }
+
     @Test func monthPickerTitleUsesRequestedLocale() {
         #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "en_US")) == "September 2026")
         #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "fr_FR")) == "septembre 2026")
@@ -92,6 +113,19 @@ struct BudgetViewTests {
         #expect(BudgetCategoryAccessibility.contextVisibility(isHidden: false, locale: locale, bundle: actualiBundle) == "Hide Category")
     }
 
+    @Test func progressBarVisibilityIsLocalized() {
+        let expectations = [
+            ("en_US", "Show progress bar", "Hide progress bar"),
+            ("fr_FR", "Afficher la barre de progression", "Masquer la barre de progression"),
+        ]
+
+        for (identifier, show, hide) in expectations {
+            let locale = Locale(identifier: identifier)
+            #expect(BudgetCategoryAccessibility.progressBarVisibility(isHidden: true, locale: locale, bundle: actualiBundle) == show)
+            #expect(BudgetCategoryAccessibility.progressBarVisibility(isHidden: false, locale: locale, bundle: actualiBundle) == hide)
+        }
+    }
+
     @Test func categoryAccessibilityHelpersUseFrenchBundleForEveryArgumentShape() {
         let locale = Locale(identifier: "fr_FR")
         #expect(BudgetCategoryAccessibility.details(category: "Courses", locale: locale, bundle: actualiBundle) == "Détails de Courses")
@@ -112,18 +146,61 @@ struct BudgetViewTests {
         #expect(ReportStrings.text("Income", locale: Locale(identifier: "fr_FR"), bundle: actualiBundle) == "Revenus")
     }
 
-    @Test func transferCandidateLabelsUseRequestedLocaleAndGrammar() {
-        let cases: [(String, String, String, String, String)] = [
-            ("en_US", "Groceries", "$25.00", "Recommended: Groceries ($25.00)", "Groceries ($25.00)"),
-            ("fr_FR", "Courses", "25,00 €", "Recommandé : Courses (25,00 €)", "Courses (25,00 €)"),
-            ("de_DE", "Lebensmittel", "25,00 €", "Empfohlen: Lebensmittel (25,00 €)", "Lebensmittel (25,00 €)"),
-            ("pt_BR", "Mercado", "R$ 25,00", "Recomendado: Mercado (R$ 25,00)", "Mercado (R$ 25,00)"),
-        ]
+    @Test(arguments: [
+        ("en_US", "Groceries", "$25.00", "Recommended: Groceries ($25.00)", "Groceries ($25.00)"),
+        ("fr_FR", "Courses", "25,00 €", "Recommandé : Courses (25,00 €)", "Courses (25,00 €)"),
+        ("de_DE", "Lebensmittel", "25,00 €", "Empfohlen: Lebensmittel (25,00 €)", "Lebensmittel (25,00 €)"),
+        ("pt_BR", "Mercado", "R$ 25,00", "Recomendado: Mercado (R$ 25,00)", "Mercado (R$ 25,00)"),
+    ])
+    func transferCandidateLabelsUseRequestedLocaleAndGrammar(
+        identifier: String, categoryName: String, amount: String, recommended: String, ordinary: String
+    ) {
+        let locale = Locale(identifier: identifier)
+        #expect(BudgetTransferLocalization.candidateLabel(categoryName: categoryName, amount: amount, isRecommended: true, locale: locale, bundle: actualiBundle) == recommended)
+        #expect(BudgetTransferLocalization.candidateLabel(categoryName: categoryName, amount: amount, isRecommended: false, locale: locale, bundle: actualiBundle) == ordinary)
+    }
 
-        for (identifier, categoryName, amount, recommended, ordinary) in cases {
-            let locale = Locale(identifier: identifier)
-            #expect(BudgetTransferLocalization.candidateLabel(categoryName: categoryName, amount: amount, isRecommended: true, locale: locale, bundle: actualiBundle) == recommended)
-            #expect(BudgetTransferLocalization.candidateLabel(categoryName: categoryName, amount: amount, isRecommended: false, locale: locale, bundle: actualiBundle) == ordinary)
-        }
+    @Test func templateAlertMonthRunReportsUpToDateAsSuccess() {
+        let alert = BudgetView.templateAlert(
+            .upToDate,
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+
+        #expect(alert.title == "Templates Applied")
+        #expect(alert.message == "All templates are up to date.")
+    }
+
+    /// A single-category run on a templateless category must not read as a
+    /// month-wide success — GH #577 review.
+    @Test func templateAlertSingleCategoryUpToDateNamesTheCategory() {
+        let alert = BudgetView.templateAlert(
+            .upToDate,
+            singleCategory: true,
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+
+        #expect(alert.title == "Apply Budget Template")
+        #expect(alert.message == "No templates to apply for this category.")
+    }
+
+    @Test func templateAlertAppliedAndFailureCases() {
+        let applied = BudgetView.templateAlert(
+            .applied(3),
+            singleCategory: true,
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+        #expect(applied.title == "Templates Applied")
+        #expect(applied.message == "Successfully applied templates to 3 categories.")
+
+        let failed = BudgetView.templateAlert(
+            .failed("sync unavailable"),
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+        #expect(failed.title == "Template Error")
+        #expect(failed.message == "sync unavailable")
     }
 }

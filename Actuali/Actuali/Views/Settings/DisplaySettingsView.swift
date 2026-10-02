@@ -5,7 +5,7 @@ struct DisplaySettingsLoadRequest: Equatable {
     let databaseID: ObjectIdentifier?
 }
 
-private struct CurrencyOption: Identifiable, Sendable {
+struct CurrencyOption: Identifiable, Sendable {
     let symbol: String
     let code: String
     var id: String {
@@ -14,10 +14,10 @@ private struct CurrencyOption: Identifiable, Sendable {
 }
 
 /// Every currency in Actual's loot-core currencies list, plus a few
-/// user-requested extras Actual lacks (AMD, BDT, NOK, NZD, ZAR). Sorted by
+/// user-requested extras Actual lacks (AMD, BDT, NOK, NZD, VND, ZAR). Sorted by
 /// code. Display-only — all budget math is currency-agnostic integer
 /// cents, and rendering uses the system formatter for the ISO code.
-private let currencyOptions = [
+let currencyOptions = [
     CurrencyOption(symbol: "د.إ", code: "AED"),
     CurrencyOption(symbol: "֏", code: "AMD"),
     CurrencyOption(symbol: "Arg$", code: "ARS"),
@@ -72,6 +72,7 @@ private let currencyOptions = [
     CurrencyOption(symbol: "$", code: "USD"),
     CurrencyOption(symbol: "$U", code: "UYU"),
     CurrencyOption(symbol: "UZS", code: "UZS"),
+    CurrencyOption(symbol: "₫", code: "VND"),
     CurrencyOption(symbol: "R", code: "ZAR"),
 ]
 

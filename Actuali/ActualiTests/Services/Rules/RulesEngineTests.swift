@@ -612,28 +612,27 @@ struct RulesEngineTests {
         #expect(changed.contains("amount"))
     }
 
-    @Test func setAmountNonFiniteLeavesAmountUnchanged() {
-        for bad in [Double.infinity, -Double.infinity, Double.nan, 1e30] {
-            let rule = Rule(
-                id: "bad-amount",
-                stage: .default,
-                conditionsOp: .and,
-                conditions: [
-                    Rule.Condition(op: "contains", field: "imported_payee",
-                                   value: .string("X"), options: nil),
-                ],
-                actions: [
-                    Rule.Action(op: "set", field: "amount",
-                                value: .number(bad), options: nil),
-                ]
-            )
-            let tx = makeTransaction(importedPayee: "X-Co", amount: -500)
-            // Must not trap; garbage values are dropped, the original amount
-            // survives, and no change is reported for a write that never landed.
-            let (updated, changed) = applied(tx, rules: [rule])
-            #expect(updated.amount == -500)
-            #expect(!changed.contains("amount"))
-        }
+    @Test(arguments: [Double.infinity, -Double.infinity, Double.nan, 1e30])
+    func setAmountNonFiniteLeavesAmountUnchanged(bad: Double) {
+        let rule = Rule(
+            id: "bad-amount",
+            stage: .default,
+            conditionsOp: .and,
+            conditions: [
+                Rule.Condition(op: "contains", field: "imported_payee",
+                               value: .string("X"), options: nil),
+            ],
+            actions: [
+                Rule.Action(op: "set", field: "amount",
+                            value: .number(bad), options: nil),
+            ]
+        )
+        let tx = makeTransaction(importedPayee: "X-Co", amount: -500)
+        // Must not trap; garbage values are dropped, the original amount
+        // survives, and no change is reported for a write that never landed.
+        let (updated, changed) = applied(tx, rules: [rule])
+        #expect(updated.amount == -500)
+        #expect(!changed.contains("amount"))
     }
 
     // MARK: - Ordering
@@ -729,21 +728,20 @@ struct RulesEngineTests {
     /// A `set` carrying a Handlebars template or a formula is skipped whole —
     /// neither engine exists on iOS, and a half-applied template would be worse
     /// than no rule at all.
-    @Test func templateAndFormulaActionsAreSkipped() {
-        for options in [#"{"template":"{{payee}} auto"}"#, #"{"formula":"=amount*2"}"#] {
-            let rule = parseRule(
-                conditions: """
-                [{"op":"contains","field":"imported_description","value":"X"}]
-                """,
-                actions: """
-                [{"op":"set","field":"notes","value":"","options":\(options)}]
-                """
-            )
-            let (updated, changed) = applied(makeTransaction(importedPayee: "X-Co", notes: "keep"),
-                                             rules: [rule])
-            #expect(updated.notes == "keep")
-            #expect(changed.isEmpty)
-        }
+    @Test(arguments: [#"{"template":"{{payee}} auto"}"#, #"{"formula":"=amount*2"}"#])
+    func templateAndFormulaActionsAreSkipped(options: String) {
+        let rule = parseRule(
+            conditions: """
+            [{"op":"contains","field":"imported_description","value":"X"}]
+            """,
+            actions: """
+            [{"op":"set","field":"notes","value":"","options":\(options)}]
+            """
+        )
+        let (updated, changed) = applied(makeTransaction(importedPayee: "X-Co", notes: "keep"),
+                                         rules: [rule])
+        #expect(updated.notes == "keep")
+        #expect(changed.isEmpty)
     }
 
     @Test func unknownActionOpIsIgnored() {

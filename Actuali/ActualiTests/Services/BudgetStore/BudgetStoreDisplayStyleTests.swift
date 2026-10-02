@@ -61,6 +61,10 @@ struct BudgetStoreDisplayStyleTests {
         }
     }
 
+    /// GH #452: the compact Spent column defaults on, and turning it off
+    /// persists. `previewInstance()` reads no UserDefaults (see
+    /// BudgetStoreAmountEntryPreferenceTests), so the restore-from-defaults
+    /// read half stays covered by the shared property default.
     @Test func compactOptionsAndSharedProgressPreferencePersist() {
         let existingStyleKeys = [
             "showBudgetProgressBars",
@@ -73,7 +77,7 @@ struct BudgetStoreDisplayStyleTests {
 
             let store = BudgetStore.previewInstance()
             #expect(store.showCompactBudgetOverview)
-            #expect(!store.showCompactSpentColumn)
+            #expect(store.showCompactSpentColumn)
             #expect(store.showBudgetProgressBars)
 
             store.showCompactBudgetOverview = false
@@ -93,6 +97,64 @@ struct BudgetStoreDisplayStyleTests {
             #expect(UserDefaults.standard.object(forKey: compactOptionKeys[0]) as? Bool == true)
             #expect(UserDefaults.standard.object(forKey: compactOptionKeys[1]) as? Bool == false)
             #expect(UserDefaults.standard.object(forKey: existingStyleKeys[0]) as? Bool == true)
+        }
+    }
+
+    /// Per-category progress-bar overrides are device-local and independent,
+    /// so hiding one category never changes another.
+    @Test func categoryProgressBarVisibilityPersistsPerCategory() {
+        let key = "hiddenBudgetProgressCategoryIDs"
+        withSavedDefaults(for: [key]) {
+            let store = BudgetStore.previewInstance()
+            #expect(!store.hiddenBudgetProgressCategoryIDs.contains("food"))
+            #expect(!store.hiddenBudgetProgressCategoryIDs.contains("rent"))
+
+            store.setBudgetProgressBarHidden(true, for: "food")
+            #expect(store.hiddenBudgetProgressCategoryIDs.contains("food"))
+            #expect(!store.hiddenBudgetProgressCategoryIDs.contains("rent"))
+            #expect(UserDefaults.standard.stringArray(forKey: key) == ["food"])
+
+            store.setBudgetProgressBarHidden(true, for: "rent")
+            #expect(Set(UserDefaults.standard.stringArray(forKey: key) ?? []) == ["food", "rent"])
+
+            store.setBudgetProgressBarHidden(false, for: "food")
+            #expect(!store.hiddenBudgetProgressCategoryIDs.contains("food"))
+            #expect(store.hiddenBudgetProgressCategoryIDs.contains("rent"))
+            #expect(UserDefaults.standard.stringArray(forKey: key) == ["rent"])
+
+            let reloaded = BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting()
+            #expect(reloaded.hiddenBudgetProgressCategoryIDs == ["rent"])
+        }
+    }
+
+    /// GH #562: hiding budgeted amounts is a per-device display preference
+    /// that defaults on so existing users see no change.
+    @Test func budgetedAmountsPreferenceDefaultsOnAndPersists() {
+        let key = "showBudgetedAmounts"
+        withSavedDefaults(for: [key]) {
+            let store = BudgetStore.previewInstance()
+            #expect(store.showBudgetedAmounts)
+
+            store.showBudgetedAmounts = false
+            #expect(UserDefaults.standard.object(forKey: key) as? Bool == false)
+
+            store.showBudgetedAmounts = true
+            #expect(UserDefaults.standard.object(forKey: key) as? Bool == true)
+        }
+    }
+
+    @Test func inverseBudgetProgressPreferenceDefaultsOffAndPersists() {
+        let key = "showInverseBudgetProgressBars"
+
+        withSavedDefaults(for: [key]) {
+            let store = BudgetStore.previewInstance()
+            #expect(!store.showInverseBudgetProgressBars)
+
+            store.showInverseBudgetProgressBars = true
+            #expect(UserDefaults.standard.object(forKey: key) as? Bool == true)
+
+            store.showInverseBudgetProgressBars = false
+            #expect(UserDefaults.standard.object(forKey: key) as? Bool == false)
         }
     }
 

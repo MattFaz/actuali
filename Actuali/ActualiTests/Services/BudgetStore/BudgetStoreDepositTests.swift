@@ -14,26 +14,9 @@ struct BudgetStoreDepositTests {
         termMonths: 60
     )
 
-    private func makeStore() throws -> (BudgetStore, BudgetFileManager, String, URL) {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("deposit-tests-\(UUID().uuidString)", isDirectory: true)
-        let manager = BudgetFileManager(rootDirectoryForTesting: root)
-        let store = BudgetStore.previewInstance()
-        store.setFileManagerForTesting(manager)
+    private func makeStore() -> (BudgetStore, BudgetFileManager, String, URL) {
+        let (store, manager, root) = makeFileBackedStore()
         return (store, manager, "budget-\(UUID().uuidString)", root)
-    }
-
-    private func seedBudget(id: String, in manager: BudgetFileManager) async throws {
-        let dir = manager.budgetDirectory(for: id)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
-        try await dbQueue.write { db in
-            try db.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema)
-        }
-        try JSONEncoder().encode(BudgetMetadata(
-            id: id, budgetName: "Seed", cloudFileId: "cf-1", groupId: "group-1",
-            resetClock: nil, lastUploaded: nil, encryptKeyId: nil
-        )).write(to: manager.metadataPath(for: id))
     }
 
     private func seedDeposit(
@@ -51,10 +34,10 @@ struct BudgetStoreDepositTests {
     }
 
     @Test func budgetStoreReflectsSyncedDepositsFromDatabase() async throws {
-        let (store, manager, budgetId, root) = try makeStore()
+        let (store, manager, budgetId, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
 
-        try await seedBudget(id: budgetId, in: manager)
+        try seedBudget(id: budgetId, in: manager)
         try await seedDeposit(config, accountId: "acct_fd", budgetId: budgetId, in: manager)
 
         await store.loadLocalBudget(budgetId)
@@ -63,12 +46,12 @@ struct BudgetStoreDepositTests {
     }
 
     @Test func depositsAreScopedPerBudgetOnLoad() async throws {
-        let (store, manager, budgetA, root) = try makeStore()
+        let (store, manager, budgetA, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         let budgetB = "budget-\(UUID().uuidString)"
 
-        try await seedBudget(id: budgetA, in: manager)
-        try await seedBudget(id: budgetB, in: manager)
+        try seedBudget(id: budgetA, in: manager)
+        try seedBudget(id: budgetB, in: manager)
         try await seedDeposit(config, accountId: "acct_fd", budgetId: budgetA, in: manager)
 
         await store.loadLocalBudget(budgetA)
@@ -97,8 +80,7 @@ struct BudgetStoreDepositTests {
             """)
         }
         let database = try BudgetDatabase(path: tempURL)
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+        let syncClient = try await makeTestSyncClient(database: database)
         let store = BudgetStore.previewInstance()
         store.configureForTesting(database: database, syncClient: syncClient)
         store.currentBudgetId = "test-budget"

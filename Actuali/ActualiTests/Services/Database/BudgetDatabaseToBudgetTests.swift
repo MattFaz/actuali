@@ -13,110 +13,36 @@ struct BudgetDatabaseToBudgetTests {
         withBufferTable: Bool = true,
         withBothBudgetTables: Bool = false,
         budgetTypePref: String? = nil
-    ) throws -> (BudgetDatabase, URL) {
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
-
-        let queue = try DatabaseQueue(path: tempURL.path)
-        try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    acct TEXT,
-                    category TEXT,
-                    description TEXT,
-                    amount INTEGER,
-                    date INTEGER,
-                    transferred_id TEXT,
-                    parent_id TEXT,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    cat_group TEXT,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_groups (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
-
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-
-                INSERT INTO category_groups (id, name) VALUES ('grp-1', 'Daily');
-                INSERT INTO categories (id, name, cat_group) VALUES ('cat-groceries', 'Groceries', 'grp-1');
-                INSERT INTO category_mapping (id, transferId) VALUES ('cat-groceries', 'cat-groceries');
-                INSERT INTO category_groups (id, name, is_income) VALUES ('grp-income', 'Income', 1);
-                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-salary', 'Salary', 'grp-income', 1);
-                INSERT INTO category_mapping (id, transferId) VALUES ('cat-salary', 'cat-salary');
-                INSERT INTO accounts (id, name, offbudget, sort_order) VALUES
-                    ('acct-1', 'Checking', 0, 1.0);
-            """)
-
-            let tables = withBothBudgetTables
-                ? ["zero_budgets", "reflect_budgets"]
-                : [envelope ? "zero_budgets" : "reflect_budgets"]
-            for table in tables {
-                try db.execute(sql: """
-                    CREATE TABLE \(table) (
-                        id TEXT PRIMARY KEY,
-                        month INTEGER,
-                        category TEXT,
-                        amount INTEGER DEFAULT 0,
-                        carryover INTEGER DEFAULT 0
-                    );
-                """)
-            }
-
-            if let budgetTypePref {
-                try db.execute(sql: """
-                    CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
-                """)
-                try db.execute(
-                    sql: "INSERT INTO preferences (id, value) VALUES ('budgetType', ?)",
-                    arguments: [budgetTypePref]
-                )
-            }
-
-            if withBufferTable {
-                try db.execute(sql: """
-                    CREATE TABLE zero_budget_months (
-                        id TEXT PRIMARY KEY,
-                        buffered INTEGER DEFAULT 0
-                    );
-                """)
-            }
+    ) async throws -> (BudgetDatabase, URL) {
+        var sql = [
+            TestSchema.transactions, TestSchema.categories, TestSchema.categoryGroups,
+            TestSchema.categoryMapping, TestSchema.accounts,
+            """
+            INSERT INTO category_groups (id, name) VALUES ('grp-1', 'Daily');
+            INSERT INTO categories (id, name, cat_group) VALUES ('cat-groceries', 'Groceries', 'grp-1');
+            INSERT INTO category_mapping (id, transferId) VALUES ('cat-groceries', 'cat-groceries');
+            INSERT INTO category_groups (id, name, is_income) VALUES ('grp-income', 'Income', 1);
+            INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-salary', 'Salary', 'grp-income', 1);
+            INSERT INTO category_mapping (id, transferId) VALUES ('cat-salary', 'cat-salary');
+            INSERT INTO accounts (id, name, offbudget, sort_order) VALUES
+                ('acct-1', 'Checking', 0, 1.0);
+            """,
+        ]
+        if withBothBudgetTables {
+            sql += [TestSchema.zeroBudgets, TestSchema.reflectBudgets]
+        } else {
+            sql.append(envelope ? TestSchema.zeroBudgets : TestSchema.reflectBudgets)
         }
-        let database = try BudgetDatabase(path: tempURL)
-        return (database, tempURL)
-    }
-
-    private func cleanup(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+        if let budgetTypePref {
+            sql += [
+                TestSchema.preferences,
+                "INSERT INTO preferences (id, value) VALUES ('budgetType', '\(budgetTypePref)')",
+            ]
+        }
+        if withBufferTable {
+            sql.append(TestSchema.zeroBudgetMonths)
+        }
+        return try await makeTestDatabase(sql)
     }
 
     private func insertBudget(
@@ -170,7 +96,7 @@ struct BudgetDatabaseToBudgetTests {
     @Test func incomeMinusBudgeted() async throws {
         // June: salary +1000.00, groceries budgeted 300.00.
         // To Budget = 100000 - 30000 = 70000.
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 100_000)
@@ -183,7 +109,7 @@ struct BudgetDatabaseToBudgetTests {
     @Test func unbudgetedIncomeAccumulatesAcrossMonths() async throws {
         // May: income 500.00, budgeted 200.00 -> To Budget 300.00.
         // June: no income, budgeted 100.00 -> To Budget 300.00 - 100.00 = 200.00.
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try insertTransaction(db, date: 20_260_501, category: "cat-salary", amount: 50000)
@@ -201,7 +127,7 @@ struct BudgetDatabaseToBudgetTests {
         // May: income 500.00, budgeted 200.00, spent 300.00 (overspent 100.00).
         // The clamped -100.00 comes out of June's To Budget:
         // June = (500 - 200) - 100 = 200.00.
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try insertTransaction(db, date: 20_260_501, category: "cat-salary", amount: 50000)
@@ -218,7 +144,7 @@ struct BudgetDatabaseToBudgetTests {
     @Test func overspendingWithCarryoverFlagStaysInCategory() async throws {
         // Same as above but the carryover flag is ON for May: the -100.00
         // debt stays on the category, so June's To Budget is untouched.
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try insertTransaction(db, date: 20_260_501, category: "cat-salary", amount: 50000)
@@ -232,7 +158,7 @@ struct BudgetDatabaseToBudgetTests {
     @Test func bufferedHoldSubtractsAndCarriesForward() async throws {
         // May: income 500.00, hold 200.00 for next month -> To Budget 300.00.
         // June: from-last-month = 300.00 + 200.00 held -> To Budget 500.00.
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try insertTransaction(db, date: 20_260_501, category: "cat-salary", amount: 50000)
@@ -248,7 +174,7 @@ struct BudgetDatabaseToBudgetTests {
     @Test func hiddenCategoryBudgetStillCounts() async throws {
         // Hidden categories are filtered from the display list but their
         // budgeted money is still allocated (upstream includes them).
-        let (db, url) = try makeDatabase()
+        let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
 
         try insertHiddenCategory(db, id: "cat-hidden")
@@ -264,7 +190,7 @@ struct BudgetDatabaseToBudgetTests {
 
     @Test func trackingBudgetHasNoToBudget() async throws {
         // Tracking (reflect) budgets have no unallocated-funds concept.
-        let (db, url) = try makeDatabase(envelope: false, withBufferTable: false)
+        let (db, url) = try await makeDatabase(envelope: false, withBufferTable: false)
         defer { cleanup(url) }
 
         try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 50000)
@@ -279,7 +205,7 @@ struct BudgetDatabaseToBudgetTests {
     /// amounts live in reflect_budgets and must be read from there — not from
     /// the (empty) zero_budgets table that also exists in the file.
     @Test func trackingBudgetWithBothTablesReadsReflectAmounts() async throws {
-        let (db, url) = try makeDatabase(
+        let (db, url) = try await makeDatabase(
             withBothBudgetTables: true,
             budgetTypePref: "tracking"
         )
@@ -296,7 +222,7 @@ struct BudgetDatabaseToBudgetTests {
     /// Same as above with the pre-rename preference value written by
     /// Actual < 25.5 ("report" instead of "tracking").
     @Test func trackingBudgetWithLegacyReportPrefReadsReflectAmounts() async throws {
-        let (db, url) = try makeDatabase(
+        let (db, url) = try await makeDatabase(
             withBothBudgetTables: true,
             budgetTypePref: "report"
         )
@@ -313,7 +239,7 @@ struct BudgetDatabaseToBudgetTests {
     /// An envelope file that also has the (empty) reflect_budgets table keeps
     /// reading zero_budgets.
     @Test func envelopeBudgetWithBothTablesReadsZeroAmounts() async throws {
-        let (db, url) = try makeDatabase(
+        let (db, url) = try await makeDatabase(
             withBothBudgetTables: true,
             budgetTypePref: "envelope"
         )
@@ -330,7 +256,7 @@ struct BudgetDatabaseToBudgetTests {
 
     @Test func missingBufferTableIsTolerated() async throws {
         // Older/partial files may lack zero_budget_months entirely.
-        let (db, url) = try makeDatabase(withBufferTable: false)
+        let (db, url) = try await makeDatabase(withBufferTable: false)
         defer { cleanup(url) }
 
         try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 50000)
