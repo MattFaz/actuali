@@ -360,6 +360,12 @@ final class BudgetStore: ObservableObject {
     /// Synced card-to-account mappings loaded from the preferences table (keyword -> accountId).
     @Published var cardAccountMappings: [String: String] = [:]
 
+    /// Real-time market quotes keyed by symbol (symbol -> StockQuote).
+    @Published var stockQuotes: [String: StockQuote] = [:]
+
+    /// Client for querying live Yahoo Finance quotes and symbol searches.
+    var yahooFinanceClient = YahooFinanceClient()
+
     /// Currency code for formatting (e.g., "USD", "EUR", "GBP")
     /// Persisted to UserDefaults, defaults to "USD"
     @Published var currencyCode: String = "USD" {

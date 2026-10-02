@@ -274,6 +274,19 @@ struct DemoDataSeederTests {
         #expect(depositAccount.balance > deposit.amount)
     }
 
+    @Test func seedsStockHoldingsForBrokerageAccount() async throws {
+        let database = try seedAndOpen()
+        let accounts = try await database.fetchAccounts()
+        let vanguard = try #require(accounts.first { $0.name == "Vanguard Brokerage" })
+        let transactions = try await database.fetchTransactions()
+        let vanguardTx = transactions.filter { $0.accountId == vanguard.id }
+
+        let holdings = EquityTransactionParser.resolveHoldings(from: vanguardTx)
+        let symbols = holdings.map(\.symbol)
+
+        #expect(symbols == ["AAPL", "MSFT", "VOO"])
+    }
+
     @Test func seedsCardMappingsToOpenAccounts() async throws {
         let database = try open(Self.defaultSeed)
         let accountsByName = try await Dictionary(uniqueKeysWithValues: database.fetchAccounts().map { ($0.name, $0.id) })
