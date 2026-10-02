@@ -29,6 +29,34 @@ struct BudgetViewTests {
         #expect(ids == ["essentials", "lifestyle"])
     }
 
+    // MARK: - Hide Income Group
+
+    private func incomeMonth() -> BudgetMonth {
+        var month = BudgetMonth(month: "2026-10", categoryBudgets: [])
+        month.incomeCategories = [
+            IncomeCategory(month: "2026-10", categoryId: "salary", categoryName: "Salary", groupName: "Income", sortOrder: 0, budgeted: 0, received: 300_000),
+        ]
+        month.hiddenIncomeCategories = [
+            IncomeCategory(month: "2026-10", categoryId: "old", categoryName: "Old", groupName: "Income", sortOrder: 1, budgeted: 0, received: 0, hidden: true),
+        ]
+        return month
+    }
+
+    @Test func incomeRowsShowWhenGroupIsNotHidden() {
+        let rows = BudgetView.displayedIncomeCategories(in: incomeMonth(), showHidden: false, hideIncomeGroup: false)
+        #expect(rows.map(\.categoryId) == ["salary"])
+    }
+
+    @Test func incomeRowsIncludeHiddenCategoriesWhenRequested() {
+        let rows = BudgetView.displayedIncomeCategories(in: incomeMonth(), showHidden: true, hideIncomeGroup: false)
+        #expect(rows.map(\.categoryId) == ["salary", "old"])
+    }
+
+    @Test func hidingTheIncomeGroupRemovesEveryIncomeRow() {
+        #expect(BudgetView.displayedIncomeCategories(in: incomeMonth(), showHidden: false, hideIncomeGroup: true).isEmpty)
+        #expect(BudgetView.displayedIncomeCategories(in: incomeMonth(), showHidden: true, hideIncomeGroup: true).isEmpty)
+    }
+
     // MARK: - Month note (GH #567)
 
     @Test func monthNoteOffersTheNoteReadForTheSelectedMonth() {
