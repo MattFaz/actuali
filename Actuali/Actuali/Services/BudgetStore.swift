@@ -695,6 +695,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether the Budget tab leaves out the Income group. The summary card
+    /// still shows income. Persisted to UserDefaults, defaults to off.
+    @Published var hideIncomeGroup: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideIncomeGroup, forKey: "hideIncomeGroup")
+        }
+    }
+
     /// Whether amount fields accept conventional decimal entry. Persisted to
     /// UserDefaults and defaults to the established calculator-style entry.
     @Published var conventionalAmountEntry: Bool = false {
@@ -1795,6 +1803,9 @@ final class BudgetStore: ObservableObject {
         ))
         _showOverspentBadge = Published(
             initialValue: persistedBool("showOverspentBadge", default: true)
+        )
+        _hideIncomeGroup = Published(
+            initialValue: persistedBool("hideIncomeGroup", default: false)
         )
         _conventionalAmountEntry = Published(
             initialValue: persistedBool("conventionalAmountEntry", default: false)

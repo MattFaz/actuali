@@ -1059,7 +1059,22 @@ struct BudgetView: View {
     }
 
     private func displayedIncomeCategories(in budget: BudgetMonth) -> [IncomeCategory] {
-        budgetStore.showHiddenCategories ? budget.allIncomeCategories : budget.incomeCategories
+        Self.displayedIncomeCategories(
+            in: budget,
+            showHidden: budgetStore.showHiddenCategories,
+            hideIncomeGroup: budgetStore.hideIncomeGroup
+        )
+    }
+
+    /// The income rows to draw. Empty when the user hides the Income group,
+    /// which also drops it from the section list and Expand/Collapse All.
+    nonisolated static func displayedIncomeCategories(
+        in budget: BudgetMonth,
+        showHidden: Bool,
+        hideIncomeGroup: Bool
+    ) -> [IncomeCategory] {
+        guard !hideIncomeGroup else { return [] }
+        return showHidden ? budget.allIncomeCategories : budget.incomeCategories
     }
 
     private func setCategoryHidden(_ id: String, hidden: Bool) {
