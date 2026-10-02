@@ -19,7 +19,7 @@ enum AutomationSentences {
     static func monthLabel(_ month: String?, locale: Locale = .autoupdatingCurrent) -> String {
         guard let month, !month.isEmpty else { return "—" }
         guard let (year, monthNumber) = BudgetMonthMath.yearAndMonth(month) else { return month }
-        let formatter = DateFormatterCache.cached("MMM yyyy|\(locale.identifier)") {
+        let formatter = DateFormatterCache.cached("AutomationMonthLabel|\(locale.identifier)") {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: locale.identifier)
             formatter.dateFormat = "MMM yyyy"

@@ -2283,7 +2283,7 @@ struct MonthPicker: View {
     /// a cached entry can't drift when .autoupdatingCurrent follows a system
     /// language change.
     private nonisolated static func formatter(template: String, locale: Locale) -> DateFormatter {
-        DateFormatterCache.cached("\(template)|\(locale.identifier)") {
+        DateFormatterCache.cached("MonthPicker|\(template)|\(locale.identifier)") {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: locale.identifier)
             formatter.calendar = Calendar(identifier: .gregorian)

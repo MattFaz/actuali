@@ -114,7 +114,7 @@ private struct CalendarMonthGridView: View {
 
 enum CalendarWidgetFormatting {
     static func weekdaySymbols(locale: Locale, firstDayOfWeekIdx: Int) -> [String] {
-        let formatter = DateFormatterCache.cached("veryShortStandaloneWeekdaySymbols|\(locale.identifier)") {
+        let formatter = DateFormatterCache.cached("CalendarWeekday|\(locale.identifier)") {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: locale.identifier)
             return formatter

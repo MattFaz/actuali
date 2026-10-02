@@ -22,7 +22,9 @@ struct AgeOfMoneyData: Equatable {
 /// thread-safe, as is DateFormatter use on iOS 7+, so handing the shared
 /// formatter out is safe. Keys must fully determine the construction — freeze
 /// a runtime locale to its identifier so a cached entry can't drift when
-/// .autoupdatingCurrent follows a system language change.
+/// .autoupdatingCurrent follows a system language change. Keys must be
+/// namespaced per call site (prefix with the caller's name): two sites using
+/// the same locale may still configure their formatters differently.
 enum DateFormatterCache {
     /// The one nonisolated(unsafe) here: NSCache is thread-safe but not marked
     /// Sendable in the SDK.
@@ -40,7 +42,7 @@ enum DateFormatterCache {
 
 enum ReportMonthYearFormatting {
     static func formatter(locale: Locale) -> DateFormatter {
-        DateFormatterCache.cached("yMMM|\(locale.identifier)") {
+        DateFormatterCache.cached("ReportMonthYear|\(locale.identifier)") {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: locale.identifier)
             formatter.calendar = Calendar(identifier: .gregorian)

@@ -128,7 +128,7 @@ struct BudgetSummarySheet: View {
     /// month symbols are cached per locale. NSCache is thread-safe; the locale
     /// is frozen to its identifier like the other formatter caches.
     private nonisolated static func shortMonthSymbols(_ locale: Locale) -> [String] {
-        let formatter = DateFormatterCache.cached("shortMonthSymbols|\(locale.identifier)") {
+        let formatter = DateFormatterCache.cached("BudgetSummary|\(locale.identifier)") {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: locale.identifier)
             return formatter
