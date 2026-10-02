@@ -6,12 +6,23 @@ private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "NewTran
 
 /// Seam over UNUserNotificationCenter so notify's gating is testable.
 protocol NotificationPosting: Sendable {
+    func authorizationStatus() async -> UNAuthorizationStatus
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
     func add(_ request: UNNotificationRequest) async throws
     func removePendingNotificationRequests(withIdentifiers identifiers: [String])
 }
 
-extension UNUserNotificationCenter: NotificationPosting {}
+extension NotificationPosting {
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        .notDetermined
+    }
+}
+
+extension UNUserNotificationCenter: NotificationPosting {
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        await notificationSettings().authorizationStatus
+    }
+}
 
 /// Posts one local notification per sync cycle summarizing transactions that
 /// arrived from other devices (from NewTransactionDetector). Foreground and

@@ -3,6 +3,7 @@ import Testing
 import UserNotifications
 @testable import Actuali
 
+@MainActor
 struct CreditCardDueNotifierTests {
     private func makeDefaults(enabled: Bool) -> CreditCardNotificationSettings {
         let name = "CreditCardDueNotifierTests-\(UUID().uuidString)"
@@ -23,12 +24,99 @@ struct CreditCardDueNotifierTests {
         return cal
     }
 
+    @Test func unchangedInputsSkipSchedulingButChangesStillSchedule() async {
+        let notifier = CreditCardDueNotifier()
+        let center = FakeCreditCardNotificationCenter()
+        let settings = makeDefaults(enabled: true)
+        let calendar = fixedCalendar()
+        let now = calendar.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 8))!
+        var card = account(id: "card1", name: "Visa", balance: -5000)
+        let cycles = ["card1": CreditCardCycle(statementDay: 15)]
+        await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
+                                             settings: settings, center: center, now: now, calendar: calendar)
+        #expect(center.added.count == 4)
+        let removals = center.removedIdentifiers
+        center.status = .authorized
+        await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
+                                             settings: settings, center: center, now: now.addingTimeInterval(60), calendar: calendar)
+        #expect(center.added.count == 4)
+        #expect(center.removedIdentifiers == removals)
+        #expect(center.authorizationRequests == 1)
+
+        card.balance = -6000
+        await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
+                                             settings: settings, center: center, now: now, calendar: calendar)
+        #expect(center.added.count == 8)
+        #expect(center.added.last?.content.body.contains("60.00") == true)
+        #expect(center.authorizationRequests == 1)
+        settings.isEnabled = false
+        await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
+                                             settings: settings, center: center, now: now, calendar: calendar)
+        #expect(center.removedIdentifiers.count == 4)
+        #expect(center.authorizationRequests == 1)
+    }
+
+    @Test func dateTimeAndPermissionsInvalidateNotificationCache() async {
+        let notifier = CreditCardDueNotifier()
+        let center = FakeCreditCardNotificationCenter()
+        let settings = makeDefaults(enabled: true)
+        let calendar = fixedCalendar()
+        // The seven-day reminder fires today at 9am.
+        let now = calendar.date(from: DateComponents(year: 2026, month: 2, day: 23, hour: 8))!
+        let card = account(id: "card1", name: "Visa", balance: -5000)
+        let cycles = ["card1": CreditCardCycle(statementDay: 15)]
+        await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
+                                             settings: settings, center: center, now: now, calendar: calendar)
+        #expect(center.added.count == 4)
+        await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
+                                             settings: settings, center: center, now: now.addingTimeInterval(3600), calendar: calendar)
+        #expect(center.added.count == 7)
+        #expect(center.removedIdentifiers.count == 1)
+        await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
+                                             settings: settings, center: center, now: now.addingTimeInterval(86400), calendar: calendar)
+        #expect(center.added.count == 10)
+        center.status = .denied
+        await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
+                                             settings: settings, center: center, now: now.addingTimeInterval(86400), calendar: calendar)
+        #expect(center.added.count == 10)
+        center.status = .authorized
+        await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
+                                             settings: settings, center: center, now: now.addingTimeInterval(86400), calendar: calendar)
+        #expect(center.added.count == 13)
+        #expect(center.authorizationRequests == 1)
+        // Deleted accounts must lose their pending reminders too.
+        await notifier.scheduleNotifications(accounts: [], cycles: [:], currencyCode: "USD",
+                                             settings: settings, center: center, now: now, calendar: calendar)
+        #expect(center.removedIdentifiers.suffix(4) == [7, 5, 3, 1].map {
+            CreditCardDueNotifier.requestIdentifier(accountId: "card1", offsetDays: $0)
+        })
+    }
+
+    @Test func failedSchedulingIsRetriedWithoutRequestingAuthorizationAgain() async {
+        let notifier = CreditCardDueNotifier()
+        let center = FakeCreditCardNotificationCenter()
+        let settings = makeDefaults(enabled: true)
+        let calendar = fixedCalendar()
+        let now = calendar.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 8))!
+        let card = account(id: "card1", name: "Visa", balance: -5000)
+        let cycles = ["card1": CreditCardCycle(statementDay: 15)]
+        center.failAdds = true
+        await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
+                                             settings: settings, center: center, now: now, calendar: calendar)
+        #expect(center.added.isEmpty)
+        center.failAdds = false
+        await notifier.scheduleNotifications(accounts: [card], cycles: cycles, currencyCode: "USD",
+                                             settings: settings, center: center, now: now, calendar: calendar)
+        #expect(center.added.count == 4)
+        #expect(center.authorizationRequests == 1)
+    }
+
     @Test func disabledSettingRemovesPendingNotificationsAndSchedulesNothing() async {
         let center = FakeCreditCardNotificationCenter()
         let card = account(id: "card1", name: "Visa", balance: -5000)
         let cycle = CreditCardCycle(statementDay: 15)
 
-        await CreditCardDueNotifier.scheduleNotifications(
+        await CreditCardDueNotifier().scheduleNotifications(
             accounts: [card],
             cycles: ["card1": cycle],
             currencyCode: "USD",
@@ -47,7 +135,7 @@ struct CreditCardDueNotifierTests {
         let card = account(id: "card1", name: "Visa", balance: 0)
         let cycle = CreditCardCycle(statementDay: 15)
 
-        await CreditCardDueNotifier.scheduleNotifications(
+        await CreditCardDueNotifier().scheduleNotifications(
             accounts: [card],
             cycles: ["card1": cycle],
             currencyCode: "USD",
@@ -75,7 +163,7 @@ struct CreditCardDueNotifierTests {
         let card = account(id: "card1", name: "Visa", balance: -7500)
         let cycle = CreditCardCycle(statementDay: 15)
 
-        await CreditCardDueNotifier.scheduleNotifications(
+        await CreditCardDueNotifier().scheduleNotifications(
             accounts: [card],
             cycles: ["card1": cycle],
             currencyCode: "USD",
@@ -119,7 +207,7 @@ struct CreditCardDueNotifierTests {
         let card = account(id: "card1", name: "Visa", balance: -5000)
         let cycle = CreditCardCycle(statementDay: 15)
 
-        await CreditCardDueNotifier.scheduleNotifications(
+        await CreditCardDueNotifier().scheduleNotifications(
             accounts: [card],
             cycles: ["card1": cycle],
             currencyCode: "USD",
@@ -142,7 +230,7 @@ struct CreditCardDueNotifierTests {
         let center = FakeCreditCardNotificationCenter()
         let card = account(id: "card1", name: "Visa", balance: -5000)
 
-        await CreditCardDueNotifier.scheduleNotifications(
+        await CreditCardDueNotifier().scheduleNotifications(
             accounts: [card], cycles: [:], currencyCode: "USD",
             settings: makeDefaults(enabled: true), center: center
         )
@@ -165,7 +253,7 @@ struct CreditCardDueNotifierTests {
             dueDate: cycle.upcomingDueDate()
         )
 
-        await CreditCardDueNotifier.scheduleNotifications(
+        await CreditCardDueNotifier().scheduleNotifications(
             accounts: [card],
             cycles: ["card1": cycle],
             statementDues: ["card1": [statementDue]],
@@ -194,7 +282,7 @@ struct CreditCardDueNotifierTests {
         let cal = fixedCalendar()
         let now = cal.date(from: DateComponents(year: 2026, month: 2, day: 25, hour: 8, minute: 0))!
 
-        await CreditCardDueNotifier.scheduleNotifications(
+        await CreditCardDueNotifier().scheduleNotifications(
             accounts: [card],
             cycles: ["card1": cycle],
             statementDues: ["card1": [statementDue]],
@@ -235,7 +323,7 @@ struct CreditCardDueNotifierTests {
         let cal = fixedCalendar()
         let now = cal.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 8))!
 
-        await CreditCardDueNotifier.scheduleNotifications(
+        await CreditCardDueNotifier().scheduleNotifications(
             accounts: [card],
             cycles: ["card1": cycle],
             statementDues: ["card1": dues],
@@ -260,15 +348,26 @@ struct CreditCardDueNotifierTests {
 
 private final class FakeCreditCardNotificationCenter: NotificationPosting, @unchecked Sendable {
     var authorizationRequested = false
+    var authorizationRequests = 0
+    var failAdds = false
+    var status: UNAuthorizationStatus = .notDetermined
     var added: [UNNotificationRequest] = []
     var removedIdentifiers: [String] = []
 
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        status
+    }
+
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
         authorizationRequested = true
+        authorizationRequests += 1
         return true
     }
 
     func add(_ request: UNNotificationRequest) async throws {
+        if failAdds {
+            throw CocoaError(.fileWriteUnknown)
+        }
         added.append(request)
     }
 

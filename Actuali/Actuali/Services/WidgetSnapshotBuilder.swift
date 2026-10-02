@@ -7,22 +7,34 @@ extension BudgetStore {
     /// setting that changes amount formatting flips. No-op until a budget
     /// month is loaded, or when the build's provisioning lacks the app group.
     func publishWidgetSnapshot() {
-        guard let store = widgetSnapshotStore,
+        guard !isPublishingReload, let store = widgetSnapshotStore,
               let month = widgetBudgetMonth else { return }
+        let previous = lastWidgetSnapshot.flatMap { $0.url == store.fileURL ? $0.snapshot : nil }
         let snapshot = WidgetSnapshot.make(
             from: month.categoryBudgets,
             month: month.month,
             balancesHidden: hideBalances,
-            generatedAt: Date(),
+            generatedAt: previous?.generatedAt ?? Date(),
             format: displayBalance
         )
-        try? store.write(snapshot)
-        WidgetCenter.shared.reloadAllTimelines()
+        // The timestamp describes the last content change; refreshing it on
+        // every read would defeat equality and force another timeline reload.
+        guard snapshot != previous else { return }
+        let updated = WidgetSnapshot(month: snapshot.month, generatedAt: Date(),
+                                     balancesHidden: snapshot.balancesHidden, categories: snapshot.categories)
+        do {
+            try store.write(updated)
+            lastWidgetSnapshot = (store.fileURL, updated)
+            WidgetCenter.shared.reloadAllTimelines()
+        } catch {
+            // Leave the last successful snapshot intact and retry next refresh.
+        }
     }
 
     /// Removes the snapshot so a disconnected device's widget shows the
     /// empty state instead of the departed budget's balances.
     func clearWidgetSnapshot() {
+        lastWidgetSnapshot = nil
         guard let store = widgetSnapshotStore else { return }
         store.clear()
         WidgetCenter.shared.reloadAllTimelines()
