@@ -129,6 +129,64 @@ struct TransactionPagerTests {
         #expect(pager.transactions.map(\.id) == ["fast-1"])
     }
 
+    @Test(arguments: [false, true])
+    func cancelledLoadKeepsThePreviousPage(nextPage: Bool) async {
+        let initial = ["initial", "older"].map(makeTxn)
+        let replacement = [makeTxn("replacement")]
+        let started = Gate(), release = Gate()
+        let pager = TransactionPager(pageSize: 2) { offset, _, search in
+            if offset > 0 || search != nil {
+                started.open()
+                await release.wait()
+                return replacement
+            }
+            return initial
+        }
+        await pager.loadFirstPage()
+        let load = Task {
+            if nextPage {
+                await pager.loadNextPage()
+            } else {
+                await pager.loadFirstPage(search: "replacement")
+            }
+        }
+        await started.wait()
+        load.cancel()
+        release.open()
+        await load.value
+
+        #expect(pager.transactions == initial)
+        #expect(pager.hasMore)
+        await pager.loadFirstPage(search: "replacement")
+        #expect(pager.transactions == replacement)
+        #expect(!pager.hasMore)
+    }
+
+    /// After a dropped search load the next page must still page the old
+    /// query, not append the new query's rows onto the old ones.
+    @Test func cancelledSearchKeepsTheOldQueryForPaging() async {
+        let all = ["a-1", "a-2", "a-3", "b-1"].map(makeTxn)
+        let started = Gate(), release = Gate()
+        let pager = TransactionPager(pageSize: 2) { offset, limit, search in
+            if search == "b" {
+                started.open()
+                await release.wait()
+            }
+            let matching = search.map { s in all.filter { $0.id.contains(s) } } ?? all
+            return Array(matching.dropFirst(offset).prefix(limit))
+        }
+        await pager.loadFirstPage(search: "a")
+        let load = Task { await pager.loadFirstPage(search: "b") }
+        await started.wait()
+        load.cancel()
+        release.open()
+        await load.value
+
+        await pager.loadNextPage()
+        #expect(pager.transactions.map(\.id) == ["a-1", "a-2", "a-3"])
+        #expect(!pager.hasMore)
+    }
+
     /// Concurrent load-more triggers (e.g. the sentinel row re-appearing
     /// during a scroll bounce) must not fetch or append the same page twice.
     @Test func concurrentNextPageLoadsOnlyOnce() async {

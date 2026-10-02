@@ -29,11 +29,13 @@ final class TransactionPager {
 
     /// Replace the list with the first page for `search` (nil = no filter).
     func loadFirstPage(search: String? = nil) async {
-        self.search = search
         generation += 1
         let started = generation
         let page = await fetchPage(0, pageSize, search)
-        guard started == generation else { return }
+        guard started == generation, !Task.isCancelled else { return }
+        // Committed with its page: a dropped load must leave the old rows and
+        // the old query together, or the next page would mix result sets.
+        self.search = search
         transactions = page
         hasMore = page.count >= pageSize
     }
@@ -45,7 +47,7 @@ final class TransactionPager {
         defer { isLoadingMore = false }
         let started = generation
         let page = await fetchPage(transactions.count, pageSize, search)
-        guard started == generation else { return }
+        guard started == generation, !Task.isCancelled else { return }
         transactions.append(contentsOf: page)
         hasMore = page.count >= pageSize
     }
