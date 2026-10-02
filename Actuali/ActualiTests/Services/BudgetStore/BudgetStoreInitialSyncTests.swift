@@ -113,7 +113,7 @@ struct BudgetStoreInitialSyncTests {
         #expect(store.accounts.map(\.name) == ["Checking"])
         // ...and its first sync ran as part of opening it, rather than waiting
         // for a pull-to-refresh or a foreground transition.
-        #expect(store.lastSyncTime != nil)
+        #expect(store.syncStatus.lastSyncTime != nil)
     }
 
     /// The other half of the report — "no clear indication that a sync is still

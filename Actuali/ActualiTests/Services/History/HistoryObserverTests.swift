@@ -296,8 +296,8 @@ struct HistoryObserverTests {
         let observer = HistoryObserver(store: store)
         await observer.drainForTesting()
 
-        store.syncState = .syncing
-        store.syncState = .idle
+        store.syncStatus.state = .syncing
+        store.syncStatus.state = .idle
         try await execute("UPDATE transactions SET amount = -1200 WHERE id = 'local'", in: fixture)
         store.transactions = await page(["local"], in: fixture)
         await observer.drainForTesting()

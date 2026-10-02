@@ -338,15 +338,6 @@ final class BudgetStore: ObservableObject {
     /// Only views displaying sync status observe this object; status changes
     /// must not invalidate every view observing the budget data.
     let syncStatus = SyncStatus()
-    var syncState: SyncState {
-        get { syncStatus.state }
-        set { syncStatus.update(state: newValue, lastSyncTime: syncStatus.lastSyncTime) }
-    }
-
-    var lastSyncTime: Date? {
-        get { syncStatus.lastSyncTime }
-        set { syncStatus.update(state: syncStatus.state, lastSyncTime: newValue) }
-    }
 
     /// True from the moment a budget is opened until its first sync attempt
     /// finishes. Everything on screen until then comes from the downloaded
@@ -2205,7 +2196,8 @@ final class BudgetStore: ObservableObject {
         payees = []
         tags = []
         tagSummaries = []
-        syncStatus.update(state: .idle, lastSyncTime: nil)
+        syncStatus.state = .idle
+        syncStatus.lastSyncTime = nil
         // No budget left to catch up — an in-flight initial sync's banner must
         // not outlive the budget it described.
         isInitialSyncing = false
@@ -2705,7 +2697,7 @@ final class BudgetStore: ObservableObject {
                 syncStateCancellable?.cancel()
                 syncStateCancellable = nil
                 syncClient = nil
-                syncState = .idle
+                syncStatus.state = .idle
                 logger.notice("Budget detached by restore - sync not configured")
             } else {
                 logger.info("Configuring sync with fileId: \(fileId, privacy: .private), groupId: \(groupId, privacy: .private)")
@@ -6506,7 +6498,7 @@ final class BudgetStore: ObservableObject {
                 logger.notice("syncClient is nil, cannot sync!")
             }
             await syncClient?.syncNow()
-            lastSyncTime = Date()
+            syncStatus.lastSyncTime = Date()
             logger.debug("sync() completed, refreshing data...")
             await refreshDataOnly()
             // Pull-to-refresh doubles as the Wallet feed's refresh.
@@ -6521,7 +6513,7 @@ final class BudgetStore: ObservableObject {
     func resetSyncState() async {
         logger.notice("resetSyncState() called from BudgetStore")
         await syncClient?.resetSyncState()
-        lastSyncTime = Date()
+        syncStatus.lastSyncTime = Date()
         await refreshDataOnly()
     }
 
@@ -6557,7 +6549,7 @@ final class BudgetStore: ObservableObject {
         }
         logger.info("syncOnForeground() - app became active, syncing...")
         let success = await client.automaticSync()
-        lastSyncTime = Date()
+        syncStatus.lastSyncTime = Date()
         // Post due schedules between the sync and the data refresh so any
         // posted transactions appear in the same refresh. Only after a
         // successful sync: posting against stale data risks double-posting
@@ -6584,7 +6576,7 @@ final class BudgetStore: ObservableObject {
             return false
         }
         await client.automaticSync()
-        lastSyncTime = Date()
+        syncStatus.lastSyncTime = Date()
         await refreshDataOnly()
         // Wallet feeds import in the same background window, so a purchase
         // reaches the budget — and can notify — without the app being opened.
@@ -6679,9 +6671,11 @@ final class BudgetStore: ObservableObject {
         syncStateCancellable = syncClient?.statePublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
-                guard let self else { return }
-                let wasSyncing = syncState == .syncing
-                syncState = state
+                // The subject replays its current value on subscription; a
+                // same-value write would still redraw the Settings sync section.
+                guard let self, syncStatus.state != state else { return }
+                let wasSyncing = syncStatus.state == .syncing
+                syncStatus.state = state
                 if wasSyncing, state == .idle {
                     Task { await self.postDueSchedulesAfterSync() }
                 }
