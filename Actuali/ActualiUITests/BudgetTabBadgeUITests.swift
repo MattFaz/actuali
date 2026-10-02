@@ -3,7 +3,7 @@ import XCTest
 /// End-to-end check for the overspent-count badge on the Budget tab (GH #68).
 ///
 /// Demo data has no overspent categories, so the badge must start hidden.
-/// Lowering Coffee's budget below its month-to-date spend through the real
+/// Lowering Rent's budget below its month-to-date spend through the real
 /// edit sheet must make a "1" badge appear, the "Overspent Badge" Settings
 /// toggle must hide and restore it, and restoring the budget must hide it
 /// again.
@@ -14,7 +14,7 @@ final class BudgetTabBadgeUITests: XCTestCase {
         // Pin the style: setBudget finds the row by the Clean edit button's
         // exact label; Compact appends the budgeted amount to it.
         app.launchArguments = [
-            "-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1",
+            "-loadDemoData", "-budgetDisplayStyle", "clean", "-hideZeroBudgetCategories", "NO", "-initialTab", "1",
             "-showOverspentBadge", "YES",
         ]
         app.launch()
@@ -27,8 +27,8 @@ final class BudgetTabBadgeUITests: XCTestCase {
                        "badge value present with no overspent categories: \(budgetTab.debugDescription)")
         attachScreenshot(app, name: "1-no-badge-at-launch")
 
-        // Overspend Coffee by budgeting $1 against ~$19 already spent.
-        setBudget(app, category: "Coffee", centsKeystrokes: "100")
+        // Rent has a $1,850 payment even on day 1; Coffee has no spending then.
+        setBudget(app, category: "Rent", centsKeystrokes: "100")
         XCTAssertTrue(waitForBadgeValue(of: budgetTab, containing: "1 overspent category"),
                       "badge did not report 1 overspent category. Tab: \(budgetTab.debugDescription)")
         attachScreenshot(app, name: "2-badge-after-overspend")
@@ -51,7 +51,7 @@ final class BudgetTabBadgeUITests: XCTestCase {
 
         // Restore a healthy budget: badge must disappear again.
         budgetTab.tap()
-        setBudget(app, category: "Coffee", centsKeystrokes: "10000")
+        setBudget(app, category: "Rent", centsKeystrokes: "185000")
         XCTAssertTrue(waitForBadgeValue(of: budgetTab, containing: ""),
                       "badge still reported after restoring budget: \(budgetTab.debugDescription)")
         attachScreenshot(app, name: "4-badge-cleared")

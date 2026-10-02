@@ -4,8 +4,8 @@ import XCTest
 /// check-in card and its dedicated list are replaced by the status strip.
 ///
 /// Demo data has no overspent categories, so the Overspent filter must start
-/// empty. Overspending Coffee through the real edit sheet must make the filter
-/// isolate Coffee in the budget table; covering it from Coffee's own balance
+/// empty. Overspending Rent through the real edit sheet must make the filter
+/// isolate Rent in the budget table; covering it from Rent's own balance
 /// must empty the filter again.
 final class OverspentCategoriesUITests: XCTestCase {
     @MainActor
@@ -15,7 +15,7 @@ final class OverspentCategoriesUITests: XCTestCase {
         // values behind in UserDefaults: "compact" for the style (whose row
         // labels carry a trailing status/amount clause the assertions below
         // don't expect — nightly run 34151727684), and the strip switched off.
-        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean",
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean", "-hideZeroBudgetCategories", "NO",
                                "-showBudgetCheckInStrip", "YES", "-initialTab", "1"]
         app.launch()
 
@@ -31,28 +31,28 @@ final class OverspentCategoriesUITests: XCTestCase {
                       "overspent filter matched something with nothing overspent")
         attachScreenshot(app, name: "1-overspent-filter-empty")
 
-        // Overspend Coffee by budgeting $1 against ~$19 already spent.
+        // Rent has a $1,850 payment even on day 1; Coffee has no spending then.
         tapBudgetFilter(app, "all")
-        setBudget(app, category: "Coffee", centsKeystrokes: "100")
+        setBudget(app, category: "Rent", centsKeystrokes: "100")
         scrollToTop(app)
         tapBudgetFilter(app, "overspent")
 
-        // The filter must explain itself: Coffee in the table, nothing else.
-        let coffeeRow = app.buttons["Details for Coffee"].firstMatch
-        XCTAssertTrue(coffeeRow.waitForExistence(timeout: 10),
-                      "Coffee missing from the overspent filter")
+        // The filter must explain itself: Rent in the table, nothing else.
+        let rentRow = app.buttons["Details for Rent"].firstMatch
+        XCTAssertTrue(rentRow.waitForExistence(timeout: 10),
+                      "Rent missing from the overspent filter")
         XCTAssertFalse(app.buttons["Details for Groceries"].exists,
                        "the overspent filter left a healthy category in the table")
         attachScreenshot(app, name: "2-overspent-filtered")
 
         // Rows still drill into the month's transactions.
-        coffeeRow.tap()
+        rentRow.tap()
         XCTAssertTrue(app.navigationBars["Edit Category"].waitForExistence(timeout: 5),
                       "tapping the category name did not open the compact editor")
         app.buttons["Cancel"].tap()
 
         // Resolving is a visible action on the row's own balance.
-        let cover = app.buttons["Cover overspending for Coffee"]
+        let cover = app.buttons["Cover overspending for Rent"]
         XCTAssertTrue(cover.waitForExistence(timeout: 5),
                       "an overspent balance should offer a visible resolution action")
         cover.tap()
@@ -61,7 +61,7 @@ final class OverspentCategoriesUITests: XCTestCase {
         app.buttons["Move"].tap()
 
         XCTAssertTrue(emptyState.waitForExistence(timeout: 10),
-                      "Coffee still matched the overspent filter after covering it")
+                      "Rent still matched the overspent filter after covering it")
         attachScreenshot(app, name: "3-overspent-filter-cleared")
     }
 
