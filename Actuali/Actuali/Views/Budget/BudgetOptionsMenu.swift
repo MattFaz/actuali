@@ -35,6 +35,9 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
 /// visible check-in strip rather than in here; only whether that strip is
 /// shown is a view option.
 ///
+/// Budget actions (copy last month, set to zero, templates, cleanup) live in
+/// the separate `BudgetActionsMenu` beside this button.
+///
 /// New Category / New Group used to be their own "+" toolbar button next to
 /// this menu. Creation is still not a "how this looks" preference, but it's
 /// the only other trailing-edge control the screen had, so folding it in here
@@ -56,13 +59,6 @@ struct BudgetOptionsMenu: View {
     /// groups to act on.
     var expandAllGroups: (() -> Void)?
     var collapseAllGroups: (() -> Void)?
-    var onCopyPreviousMonthBudget: (() -> Void)?
-    var onSetBudgetsToZero: (() -> Void)?
-    /// Month-level goal-template actions (GH #371). nil hides the section —
-    /// no budget loaded, or the goalTemplatesEnabled flag is off, mirroring
-    /// the web's month menu behind its feature flag.
-    var onTemplateAction: ((BudgetStore.GoalTemplateAction) -> Void)?
-    var onCleanup: (() -> Void)?
 
     var body: some View {
         Menu {
@@ -111,49 +107,6 @@ struct BudgetOptionsMenu: View {
                         Label("Collapse Groups", systemImage: "chevron.right")
                     }
                     .accessibilityLabel("Collapse All Groups")
-                }
-            }
-
-            if let onCopyPreviousMonthBudget {
-                Section {
-                    Button(action: onCopyPreviousMonthBudget) {
-                        Label("Copy last month's budget", systemImage: "doc.on.doc")
-                    }
-                    .accessibilityIdentifier("budget.copyPreviousMonthBudget")
-                }
-            }
-
-            if let onSetBudgetsToZero {
-                Section {
-                    Button(action: onSetBudgetsToZero) {
-                        Label("Set budgets to zero", systemImage: "0.circle")
-                    }
-                }
-            }
-
-            // The web month menu's three template actions, in its order.
-            if let onTemplateAction {
-                Section {
-                    Button {
-                        onTemplateAction(.check)
-                    } label: {
-                        Label("Check Templates", systemImage: "checkmark.seal")
-                    }
-                    Button {
-                        onTemplateAction(.apply)
-                    } label: {
-                        Label("Apply Budget Template", systemImage: "wand.and.stars")
-                    }
-                    Button {
-                        onTemplateAction(.overwrite)
-                    } label: {
-                        Label("Overwrite with Budget Template", systemImage: "wand.and.stars.inverse")
-                    }
-                    if let onCleanup {
-                        Button(action: onCleanup) {
-                            Label("End of Month Cleanup", systemImage: "arrow.3.trianglepath")
-                        }
-                    }
                 }
             }
 
