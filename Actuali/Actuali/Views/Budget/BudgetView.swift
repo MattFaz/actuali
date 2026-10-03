@@ -102,6 +102,9 @@ struct BudgetView: View {
     @State private var editingCategory: CategoryBudget?
     @State private var editingCategoryGroup: CategoryGroup?
     @State private var selectedCategory: CategoryBudget?
+    /// Reorder mode: every category and group shows a drag handle and can be
+    /// dragged within or between groups, in either table style.
+    @State private var isReordering = false
     @State private var transferContext: BudgetTransferContext?
     @State private var transactionsDestination: CategoryTransactionsDestination?
     @State private var newBudgetItem: NewBudgetItem?
@@ -428,6 +431,16 @@ struct BudgetView: View {
         // leading "back button" position where the previous-month chevron
         // used to be mistaken for one (it steps the month, not the
         // navigation stack).
+        ToolbarItem(placement: .topBarLeading) {
+            // Reordering is turned on from the options menu; this is its way out.
+            if isReordering {
+                Button("Done") {
+                    toggleReordering()
+                }
+                .fontWeight(.semibold)
+                .accessibilityIdentifier("budget.reorderDone")
+            }
+        }
         ToolbarItem(placement: .principal) {
             // UIKit centers a title view only while it stays under ~140pt
             // next to these two trailing buttons; one point over and it
@@ -488,6 +501,8 @@ struct BudgetView: View {
                 onNewCategory: hasBudget ? { newBudgetItem = .category } : nil,
                 canAddCategory: firstSelectableGroupId != nil,
                 onNewGroup: hasBudget ? { newBudgetItem = .group } : nil,
+                onToggleReorder: hasBudget ? { toggleReordering() } : nil,
+                isReordering: isReordering,
                 expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
                 collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil,
                 onCopyPreviousMonthBudget: hasBudget ? { copyPreviousMonthBudget() } : nil,
@@ -810,11 +825,19 @@ struct BudgetView: View {
     /// and the plain List in Compact.
     @ViewBuilder
     private func budgetTable(_ budget: BudgetMonth) -> some View {
-        switch budgetStore.budgetDisplayStyle {
-        case .clean:
-            cleanTable(budget)
-        case .compact:
-            compactTable(budget)
+        if isReordering {
+            CategoryReorderTable(
+                groups: groupedCategories,
+                onMove: { await persistMove($0) },
+                onMoveGroup: { await persistGroupMove($0) }
+            )
+        } else {
+            switch budgetStore.budgetDisplayStyle {
+            case .clean:
+                cleanTable(budget)
+            case .compact:
+                compactTable(budget)
+            }
         }
     }
 
@@ -1075,6 +1098,40 @@ struct BudgetView: View {
     ) -> [IncomeCategory] {
         guard !hideIncomeGroup else { return [] }
         return showHidden ? budget.allIncomeCategories : budget.incomeCategories
+    }
+
+    /// Entering reorder mode shows every group's categories, so a filter that
+    /// hides some is cleared first.
+    private func toggleReordering() {
+        if !isReordering {
+            categoryFilter = .all
+        }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isReordering.toggle()
+        }
+    }
+
+    /// Writes a drop (or a VoiceOver step) the way upstream's `category/move`
+    /// does, and shows the new order once it is saved.
+    private func persistMove(_ move: CategoryMove) async {
+        do {
+            try await budgetStore.moveCategory(
+                id: move.id,
+                toGroup: move.groupId,
+                before: move.before,
+                month: selectedMonth
+            )
+        } catch {
+            budgetStore.error = error.localizedDescription
+        }
+    }
+
+    private func persistGroupMove(_ move: CategoryGroupMove) async {
+        do {
+            try await budgetStore.moveCategoryGroup(id: move.id, before: move.before, month: selectedMonth)
+        } catch {
+            budgetStore.error = error.localizedDescription
+        }
     }
 
     private func setCategoryHidden(_ id: String, hidden: Bool) {

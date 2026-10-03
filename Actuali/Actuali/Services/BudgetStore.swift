@@ -3396,6 +3396,45 @@ final class BudgetStore: ObservableObject {
         await fetchBudgetMonth(month)
     }
 
+    /// Move a category into a group, immediately before `targetId` (last when
+    /// nil). `month` is restored afterwards for the same reason as in
+    /// `renameCategory`.
+    func moveCategory(id: String, toGroup groupId: String, before targetId: String?, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.moveCategory(id: id, categoryGroupId: groupId, before: targetId)
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
+    /// Move a category group before `targetId` (last when nil). `month` is
+    /// restored afterwards, as in `moveCategory`.
+    func moveCategoryGroup(id: String, before targetId: String?, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.moveCategoryGroup(id: id, before: targetId)
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
     func renameCategoryGroup(id: String, name: String, month: String) async throws {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {

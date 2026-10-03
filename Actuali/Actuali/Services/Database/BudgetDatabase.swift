@@ -1757,6 +1757,111 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Everything a category move wrote: where the category now sits, plus
+    /// the siblings the shove had to move to make room for it.
+    struct CategoryMove: Equatable {
+        let id: String
+        let groupId: String
+        let sortOrder: Double
+        let movedSiblings: [SortOrder.Position]
+    }
+
+    /// Where a category group sits after a move, plus the siblings the shove
+    /// had to move to make room for it.
+    struct CategoryGroupMove: Equatable {
+        let id: String
+        let sortOrder: Double
+        let movedSiblings: [SortOrder.Position]
+    }
+
+    /// Move a category group immediately before `targetId` (last when nil or
+    /// not a group). Mirrors upstream `db.moveCategoryGroup`: every other live
+    /// group, income included, is ordered by sort_order and the group takes a
+    /// midpoint or a shove, leaving the moving group out of the list so its
+    /// own old slot isn't measured against.
+    func moveCategoryGroup(id: String, before targetId: String?) throws -> CategoryGroupMove {
+        try dbQueue.write { db in
+            let exists = try Bool.fetchOne(db, sql: """
+            SELECT 1 FROM category_groups WHERE id = ? AND tombstone IS NOT 1
+            """, arguments: [id]) ?? false
+            guard exists else {
+                throw CategoryWriteError.groupNotFound
+            }
+
+            let siblings = try Row.fetchAll(db, sql: """
+            SELECT id, sort_order FROM category_groups
+            WHERE id != ? AND tombstone IS NOT 1
+            ORDER BY sort_order, id
+            """, arguments: [id]).map { row in
+                SortOrder.Position(id: row["id"], sortOrder: row["sort_order"] ?? 0)
+            }
+            let placement = SortOrder.shove(siblings, before: targetId)
+
+            for moved in placement.moved {
+                try db.execute(
+                    sql: "UPDATE category_groups SET sort_order = ? WHERE id = ?",
+                    arguments: [moved.sortOrder, moved.id]
+                )
+            }
+            try db.execute(
+                sql: "UPDATE category_groups SET sort_order = ? WHERE id = ?",
+                arguments: [placement.sortOrder, id]
+            )
+            return CategoryGroupMove(id: id, sortOrder: placement.sortOrder, movedSiblings: placement.moved)
+        }
+    }
+
+    /// Move a category into `groupId`, immediately before `targetId` (last
+    /// when nil or not in that group). Mirrors upstream `db.moveCategory`: the
+    /// target group's other categories are ordered by sort_order, the new
+    /// position is a midpoint or a shove, and the category takes the group
+    /// and position in one write. The moving category is left out of the
+    /// ordered list, so a move within a group is measured against its
+    /// neighbours rather than its own old slot.
+    func moveCategory(id: String, toGroup groupId: String, before targetId: String?) throws -> CategoryMove {
+        try dbQueue.write { db in
+            let groupExists = try Bool.fetchOne(db, sql: """
+            SELECT 1 FROM category_groups WHERE id = ? AND tombstone IS NOT 1
+            """, arguments: [groupId]) ?? false
+            guard groupExists else {
+                throw CategoryWriteError.groupNotFound
+            }
+            let categoryExists = try Bool.fetchOne(db, sql: """
+            SELECT 1 FROM categories WHERE id = ? AND tombstone IS NOT 1
+            """, arguments: [id]) ?? false
+            guard categoryExists else {
+                throw CategoryWriteError.categoryNotFound
+            }
+
+            let siblings = try Row.fetchAll(db, sql: """
+            SELECT id, sort_order FROM categories
+            WHERE cat_group = ? AND id != ? AND tombstone IS NOT 1
+            ORDER BY sort_order, id
+            """, arguments: [groupId, id]).map { row in
+                SortOrder.Position(id: row["id"], sortOrder: row["sort_order"] ?? 0)
+            }
+            let placement = SortOrder.shove(siblings, before: targetId)
+
+            for moved in placement.moved {
+                try db.execute(
+                    sql: "UPDATE categories SET sort_order = ? WHERE id = ?",
+                    arguments: [moved.sortOrder, moved.id]
+                )
+            }
+            try db.execute(
+                sql: "UPDATE categories SET cat_group = ?, sort_order = ? WHERE id = ?",
+                arguments: [groupId, placement.sortOrder, id]
+            )
+
+            return CategoryMove(
+                id: id,
+                groupId: groupId,
+                sortOrder: placement.sortOrder,
+                movedSiblings: placement.moved
+            )
+        }
+    }
+
     // MARK: - Payees
 
     func fetchPayees() async throws -> [Payee] {
