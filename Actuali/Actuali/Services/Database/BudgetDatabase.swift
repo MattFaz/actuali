@@ -2429,7 +2429,7 @@ final class BudgetDatabase: Sendable {
             let value = try String.fetchOne(
                 db, sql: "SELECT value FROM preferences WHERE id = 'budgetType'"
             )
-            isTracking = value == "tracking" || value == "report"
+            isTracking = BudgetType.fromPreference(value) == .tracking
         }
         return isTracking ? "reflect_budgets" : "zero_budgets"
     }

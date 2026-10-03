@@ -34,7 +34,7 @@ private struct BudgetTypeSettingsSection: View {
 
     var body: some View {
         Section {
-            Picker(String(localized: "Budget Selection"), selection: Binding(
+            Picker(String(localized: "Budget type"), selection: Binding(
                 get: { budgetStore.budgetType },
                 set: { budgetType in
                     Task { await budgetStore.setBudgetType(budgetType) }

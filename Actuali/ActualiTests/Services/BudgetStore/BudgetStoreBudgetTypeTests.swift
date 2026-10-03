@@ -101,6 +101,22 @@ struct BudgetStoreBudgetTypeTests {
         #expect(store.error != nil)
     }
 
+    @Test func openingTrackingBudgetPublishesTrackingType() async throws {
+        let (store, manager, root) = makeFileBackedStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let budgetId = "budget-" + UUID().uuidString
+        try seedBudget(
+            id: budgetId, in: manager,
+            sql: TestSchema.upstream
+                + "INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking');"
+        )
+
+        store.currentBudgetId = budgetId
+        await store.loadLocalBudget(budgetId)
+
+        #expect(store.budgetType == .tracking)
+    }
+
     @Test func budgetTypeChangeRequiresConfiguredSync() async throws {
         let detachedStore = BudgetStore.previewInstance()
         detachedStore.currentBudgetId = "budget-" + UUID().uuidString
