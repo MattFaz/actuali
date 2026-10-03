@@ -269,7 +269,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
             wasCollapsed,
             "revealing a group action must not toggle its collapse state"
         )
-        let action = app.buttons[hidden ? "Hide" : "Show"].firstMatch
+        let action = app.buttons[hidden ? "Hide Group" : "Show Group"].firstMatch
         XCTAssertTrue(action.waitForExistence(timeout: 5))
         action.tap()
     }
@@ -291,7 +291,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(income.waitForExistence(timeout: 5))
 
         income.press(forDuration: 1)
-        XCTAssertFalse(app.buttons["Hide"].waitForExistence(timeout: 2),
+        XCTAssertFalse(app.buttons["Hide Group"].waitForExistence(timeout: 2),
                        "the Income group must not offer a hide action")
     }
 

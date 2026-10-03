@@ -342,6 +342,8 @@ struct BudgetView: View {
                     setCategoryGroupHidden(group.id, hidden: $0)
                 },
                 onRename: { editCategoryGroup(group.id) },
+                onApplyTemplate: groupTemplateAction(.apply, for: group),
+                onOverwriteTemplate: groupTemplateAction(.overwrite, for: group),
                 totals: budgetStore.showGroupTotals ? group.totals : nil,
                 showsSpent: budgetStore.showCompactSpentColumn,
                 showsBudgeted: budgetStore.showBudgetedAmounts,
