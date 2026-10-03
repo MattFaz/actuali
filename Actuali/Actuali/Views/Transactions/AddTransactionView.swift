@@ -318,6 +318,22 @@ struct AddTransactionView: View {
         orderedOpenAccounts.filter { $0.id != selectedAccountId }
     }
 
+    /// Whether the payee list may offer accounts as transfers: the same cases
+    /// the Transfer type is offered in. A pending import, a split in progress
+    /// and an edit that couldn't become a transfer can't take one.
+    private var offersTransfer: Bool {
+        !isPendingImportReview && !isSplitting && !isEditingSplitParent
+            && (!isEditing || isEditingTransfer || canConvertToTransfer)
+    }
+
+    /// Choosing an account in the payee list makes this a transfer between the
+    /// form's account and that one.
+    private func selectTransferAccount(_ account: Account) {
+        transferToAccountId = account.id
+        txType = .transfer
+        showPayeePicker = false
+    }
+
     private func matchingPayee(for name: String) -> Payee? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -527,6 +543,10 @@ struct AddTransactionView: View {
                             PayeePickerView(
                                 payeeName: payeeName,
                                 nearbyPayees: $nearbyPayees,
+                                transferAccounts: offersTransfer ? transferEligibleAccounts : [],
+                                onSelectAccount: { account in
+                                    selectTransferAccount(account)
+                                },
                                 onSelect: { payee in
                                     payeeName = payee.name
                                     applyEditCategoryFromHistory(payeeId: payee.id)
