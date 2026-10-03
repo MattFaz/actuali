@@ -54,6 +54,9 @@ struct BudgetOptionsMenu: View {
     /// hiding it, matching how the old "+" menu behaved.
     var canAddCategory = true
     var onNewGroup: (() -> Void)?
+    /// Turns reorder mode on or off (nil hides the item).
+    var onToggleReorder: (() -> Void)?
+    var isReordering = false
 
     /// Group actions are omitted when no budget is loaded — there are no
     /// groups to act on.
@@ -74,6 +77,15 @@ struct BudgetOptionsMenu: View {
                         Label("New Group", systemImage: "folder")
                     }
                     .accessibilityLabel("New Category Group")
+                }
+                if let onToggleReorder {
+                    Button(action: onToggleReorder) {
+                        Label(
+                            isReordering ? "Done Reordering" : "Reorder Items",
+                            systemImage: isReordering ? "checkmark" : "arrow.up.arrow.down"
+                        )
+                    }
+                    .accessibilityIdentifier("budgetOptions.reorder")
                 }
             }
 
