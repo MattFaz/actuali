@@ -19,12 +19,12 @@ struct AddTransactionTransferTests {
             Payee(id: "payee-checking", name: "", transferAccountId: "checking", tombstone: false),
             Payee(id: "payee-savings", name: "", transferAccountId: "savings", tombstone: false),
         ]
-        let selection = AddTransactionView.transferAccountSelection(
-            accountId: "checking", otherAccountId: "savings", type: type, isEditing: false
+        let selection = AddTransactionView.transferEnds(
+            accountId: "checking", partnerId: "savings", isInflow: type == .income, keepsOwnSide: false
         )
         let form = BudgetStore.TransactionForm(
-            accountId: selection.accountId, type: .transfer, amount: "100.00", payeeName: "",
-            transferToAccountId: selection.partnerAccountId, categoryId: nil,
+            accountId: selection.from, type: .transfer, amount: "100.00", payeeName: "",
+            transferToAccountId: selection.to, categoryId: nil,
             notes: "", date: .now, cleared: false
         )
 
@@ -42,12 +42,12 @@ struct AddTransactionTransferTests {
 
     @Test(arguments: [TransactionType.expense, .income])
     func selectingAnAccountKeepsAnEditedRowInItsOwnAccount(type: TransactionType) {
-        let selection = AddTransactionView.transferAccountSelection(
-            accountId: "checking", otherAccountId: "savings", type: type, isEditing: true
+        let selection = AddTransactionView.transferEnds(
+            accountId: "checking", partnerId: "savings", isInflow: type == .income, keepsOwnSide: true
         )
 
-        #expect(selection.accountId == "checking")
-        #expect(selection.partnerAccountId == "savings")
+        #expect(selection.from == "checking")
+        #expect(selection.to == "savings")
     }
 
     @Test(arguments: [
