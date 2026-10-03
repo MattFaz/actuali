@@ -6,6 +6,15 @@ struct PayeePickerView: View {
 
     @Binding var nearbyPayees: [NearbyPayee]
     let transferFromAccountId: String?
+    /// Accounts offered as a transfer, the way Actual lists "Transfer to/from"
+    /// payees: choosing one makes the transaction a transfer to or from that
+    /// account. Empty hides the section (split lines, which can't transfer
+    /// through this list, use `transferFromAccountId` instead).
+    let transferAccounts: [Account]
+    let onSelectAccount: (Account) -> Void
+    /// An existing transfer can change its other account but can't turn back
+    /// into a regular payee, so only the accounts are offered.
+    let accountsOnly: Bool
     let onSelect: (Payee) -> Void
     let onCommit: (String) -> Void
     let onDeleteNearby: (NearbyPayee) -> Void
@@ -20,12 +29,18 @@ struct PayeePickerView: View {
         payeeName: String,
         nearbyPayees: Binding<[NearbyPayee]>,
         transferFromAccountId: String? = nil,
+        transferAccounts: [Account] = [],
+        accountsOnly: Bool = false,
+        onSelectAccount: @escaping (Account) -> Void = { _ in },
         onSelect: @escaping (Payee) -> Void,
         onCommit: @escaping (String) -> Void,
         onDeleteNearby: @escaping (NearbyPayee) -> Void
     ) {
         _nearbyPayees = nearbyPayees
         self.transferFromAccountId = transferFromAccountId
+        self.transferAccounts = transferAccounts
+        self.accountsOnly = accountsOnly
+        self.onSelectAccount = onSelectAccount
         self.onSelect = onSelect
         self.onCommit = onCommit
         self.onDeleteNearby = onDeleteNearby
@@ -49,6 +64,16 @@ struct PayeePickerView: View {
             transferFromAccountId: transferFromAccountId,
             searchText: trimmedSearchText
         )
+    }
+
+    /// The accounts matching the search, in the order given (callers pass them
+    /// on-budget first). An empty search lists them all.
+    nonisolated static func transferAccounts(
+        matching searchText: String,
+        in accounts: [Account]
+    ) -> [Account] {
+        guard !searchText.isEmpty else { return accounts }
+        return accounts.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
     nonisolated static func allowedPayees(_ payees: [Payee]) -> [Payee] {
@@ -192,10 +217,40 @@ struct PayeePickerView: View {
         }
     }
 
+    private var matchingTransferAccounts: [Account] {
+        Self.transferAccounts(matching: trimmedSearchText, in: transferAccounts)
+    }
+
+    private var transferAccountsSection: some View {
+        Section("Transfer to / from") {
+            ForEach(matchingTransferAccounts) { account in
+                Button {
+                    onSelectAccount(account)
+                } label: {
+                    Label {
+                        Text(account.name)
+                            .foregroundStyle(.primary)
+                    } icon: {
+                        Image(systemName: "arrow.left.arrow.right")
+                            .foregroundStyle(.secondary)
+                            .font(.footnote)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .accessibilityIdentifier("payeePicker.transfer.\(account.id)")
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             List {
-                if trimmedSearchText.isEmpty {
+                if !matchingTransferAccounts.isEmpty {
+                    transferAccountsSection
+                }
+                if accountsOnly {
+                    // Nothing else: an existing transfer stays a transfer.
+                } else if trimmedSearchText.isEmpty {
                     if !nearbyPayees.isEmpty {
                         Section("Nearby") {
                             ForEach(nearbyPayees.prefix(5)) { nearby in
@@ -248,7 +303,7 @@ struct PayeePickerView: View {
                     }
                 }
 
-                if canCommitCustomPayee {
+                if canCommitCustomPayee, !accountsOnly {
                     Section {
                         Button {
                             onCommit(trimmedSearchText)
