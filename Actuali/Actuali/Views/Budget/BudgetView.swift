@@ -745,8 +745,9 @@ struct BudgetView: View {
 
             // Keep the summary above the List so it stays pinned while the
             // table scrolls (GH #155).
-            if !isCompact
-                || budgetStore.showCompactBudgetOverview {
+            if isCompact
+                ? budgetStore.showCompactBudgetOverview
+                : budgetStore.showCleanBudgetOverview {
                 Group {
                     switch budgetStore.budgetDisplayStyle {
                     case .clean:

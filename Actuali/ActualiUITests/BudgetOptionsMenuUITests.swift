@@ -13,6 +13,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
             "-budgetDisplayStyle", "clean",
             "-hideZeroBudgetCategories", "NO",
             "-showCompactBudgetOverview", "YES",
+            "-showCleanBudgetOverview", "YES",
             "-showCompactSpentColumn", "NO",
             "-showBudgetProgressBars", "NO",
             "-showGroupTotals", "YES",
@@ -38,10 +39,9 @@ final class BudgetOptionsMenuUITests: XCTestCase {
                           "the options menu should offer '\(option)'")
         }
         XCTAssertFalse(app.buttons["Detailed"].exists)
-        for compactOption in ["Show Overview", "Show Spent Column"] {
-            XCTAssertFalse(app.buttons[compactOption].exists,
-                           "Clean should not offer the Compact-only '\(compactOption)' control")
-        }
+        XCTAssertTrue(app.buttons["Show Overview"].exists, "Show Overview applies to both styles")
+        XCTAssertFalse(app.buttons["Show Spent Column"].exists,
+                       "Clean should not offer the Compact-only 'Show Spent Column' control")
         XCTAssertFalse(app.buttons["Group Totals"].exists,
                        "Group Totals remains exclusive to Compact")
     }
@@ -72,7 +72,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         optionsMenu.tap()
         XCTAssertTrue(app.buttons["Compact"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Group Totals"].exists)
-        XCTAssertFalse(app.buttons["Show Overview"].exists)
+        XCTAssertTrue(app.buttons["Show Overview"].exists)
         XCTAssertFalse(app.buttons["Show Spent Column"].exists)
         XCTAssertFalse(app.buttons["Progress Indicators"].exists)
     }
@@ -80,6 +80,26 @@ final class BudgetOptionsMenuUITests: XCTestCase {
     /// The strip costs a row of vertical space on a phone, so it's optional.
     /// Flip the launch-seeded state and put it back so the persisted setting
     /// still cannot leak into another test.
+    @MainActor
+    func testCleanOverviewTogglesFromTheMenu() {
+        let app = XCUIApplication()
+        launchBudgetTab(app)
+
+        let topBox = app.otherElements["budget.topBox"]
+        XCTAssertTrue(topBox.waitForExistence(timeout: 10), "the clean summary shows by default")
+
+        app.buttons["Budget options"].tap()
+        let overview = app.buttons["budgetOptions.showCleanOverview"]
+        XCTAssertTrue(overview.waitForExistence(timeout: 5))
+        overview.tap()
+        XCTAssertTrue(topBox.waitForNonExistence(timeout: 5), "turning Show Overview off hides the summary")
+
+        app.buttons["Budget options"].tap()
+        XCTAssertTrue(overview.waitForExistence(timeout: 5))
+        overview.tap()
+        XCTAssertTrue(topBox.waitForExistence(timeout: 5), "turning it back on restores the summary")
+    }
+
     @MainActor
     func testStatusFilterStripTogglesFromTheMenu() {
         let app = XCUIApplication()
