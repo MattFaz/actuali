@@ -70,6 +70,13 @@ struct MainTabView: View {
                 notificationRouter.pendingTabNavigation = nil
             }
         }
+        // The scene delegate can receive a cold-launch shortcut before this
+        // view exists, so consume any pending navigation when the view starts.
+        .task {
+            guard let tab = notificationRouter.pendingTabNavigation else { return }
+            selectedTab = tab
+            notificationRouter.pendingTabNavigation = nil
+        }
     }
 
     /// The `Tab` value API rather than `tabItem`: `sidebarAdaptable` above only
