@@ -5,11 +5,9 @@ import UIKit
 @MainActor
 struct HomeScreenQuickActionsTests {
     @Test func addTransactionShortcutSelectsAddTab() {
-        let shortcut = UIApplicationShortcutItem(
-            type: ActualiHomeScreenShortcut.addTransactionType,
-            localizedTitle: "Add Transaction"
-        )
+        let shortcut = ActualiHomeScreenShortcut.addTransaction
         #expect(ActualiSceneDelegate.tab(for: shortcut) == StartTab.addTransaction.tabTag)
+        #expect(shortcut.localizedTitle == StartTab.addTransaction.label(locale: .current))
     }
 
     @Test func unrelatedShortcutIsIgnored() {
