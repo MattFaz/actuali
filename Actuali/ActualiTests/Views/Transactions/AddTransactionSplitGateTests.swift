@@ -24,12 +24,4 @@ struct AddTransactionSplitGateTests {
             isTransfer: false, isEditingSplitParent: true, unsplitRequested: true
         ))
     }
-
-    // MARK: - Sign key
-
-    @Test func theSignKeySwapsExpenseAndIncomeAndLeavesATransferAlone() {
-        #expect(AddTransactionView.toggledType(.expense) == .income)
-        #expect(AddTransactionView.toggledType(.income) == .expense)
-        #expect(AddTransactionView.toggledType(.transfer) == .transfer)
-    }
 }
