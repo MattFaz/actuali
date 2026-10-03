@@ -64,18 +64,13 @@ struct MainTabView: View {
             }
         }
         // Cancel in the tab-hosted add flow returns to the user's Start Page.
-        .onChange(of: notificationRouter.pendingTabNavigation) { _, tab in
+        // initial: true also covers a cold-launch Home Screen shortcut, which
+        // the scene delegate records before this view exists.
+        .onChange(of: notificationRouter.pendingTabNavigation, initial: true) { _, tab in
             if let tab {
                 selectedTab = tab
                 notificationRouter.pendingTabNavigation = nil
             }
-        }
-        // The scene delegate can receive a cold-launch shortcut before this
-        // view exists, so consume any pending navigation when the view starts.
-        .task {
-            guard let tab = notificationRouter.pendingTabNavigation else { return }
-            selectedTab = tab
-            notificationRouter.pendingTabNavigation = nil
         }
     }
 
