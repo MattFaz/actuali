@@ -3396,6 +3396,45 @@ final class BudgetStore: ObservableObject {
         await fetchBudgetMonth(month)
     }
 
+    /// Move a category into a group, immediately before `targetId` (last when
+    /// nil). `month` is restored afterwards for the same reason as in
+    /// `renameCategory`.
+    func moveCategory(id: String, toGroup groupId: String, before targetId: String?, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.moveCategory(id: id, categoryGroupId: groupId, before: targetId)
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
+    /// Move a category group before `targetId` (last when nil). `month` is
+    /// restored afterwards, as in `moveCategory`.
+    func moveCategoryGroup(id: String, before targetId: String?, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.moveCategoryGroup(id: id, before: targetId)
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
     func renameCategoryGroup(id: String, name: String, month: String) async throws {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
@@ -7165,11 +7204,14 @@ final class BudgetStore: ObservableObject {
     /// upstream's `budget/check-templates`, `budget/apply-goal-template` and
     /// `budget/overwrite-goal-template` handlers. Passing `categoryId` scopes
     /// the run to one category (`budget/apply-single-category-template`),
-    /// which always overwrites, hidden or not — same as the web.
+    /// which always overwrites, hidden or not — same as the web. `categoryIds`
+    /// scopes a month-style run (hidden categories skipped, apply vs overwrite
+    /// honored) to one group's categories.
     func runGoalTemplates(
         month: String,
         action: GoalTemplateAction,
-        categoryId: String? = nil
+        categoryId: String? = nil,
+        categoryIds: Set<String>? = nil
     ) async -> GoalTemplateOutcome {
         guard let database, let syncClient else {
             return .failed(BudgetStoreError.syncNotConfigured.localizedDescription)
@@ -7203,6 +7245,8 @@ final class BudgetStore: ObservableObject {
 
             let scope: (String) -> Bool = if let categoryId {
                 { $0 == categoryId }
+            } else if let categoryIds {
+                { categoryIds.contains($0) }
             } else {
                 { _ in true }
             }
@@ -7235,8 +7279,8 @@ final class BudgetStore: ObservableObject {
                     categoryTemplates[row.id] = stored
                 }
             }
-            if let categoryId {
-                categoryTemplates = categoryTemplates.filter { $0.key == categoryId }
+            if categoryId != nil || categoryIds != nil {
+                categoryTemplates = categoryTemplates.filter { scope($0.key) }
             }
 
             // A loan whose target is snoozed contributes nothing this month:
@@ -7258,7 +7302,7 @@ final class BudgetStore: ObservableObject {
                     .map { GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome) }
             } else {
                 rows
-                    .filter { !$0.hidden && !$0.groupHidden && (sheet.isTracking || !$0.isIncome) }
+                    .filter { scope($0.id) && !$0.hidden && !$0.groupHidden && (sheet.isTracking || !$0.isIncome) }
                     .map { GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome) }
             }
 
