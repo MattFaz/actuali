@@ -273,7 +273,8 @@ struct AddTransactionView: View {
     /// Transfers are excluded — they pair two accounts through `transferId`
     /// and splitting would orphan the partner leg (the store refuses it), so
     /// the button stays hidden rather than failing on save. Gated on the live
-    /// transfer state, so choosing an account as the payee hides it (GH #556).
+    /// payee, which also covers a saved transfer, so choosing an account as a
+    /// new transaction's payee hides it (GH #556).
     private var canSplitIntoCategories: Bool {
         Self.canSplitIntoCategories(
             isTransfer: isTransfer,
@@ -326,9 +327,9 @@ struct AddTransactionView: View {
         orderedOpenAccounts.filter { $0.id != selectedAccountId }
     }
 
-    /// Whether the payee list may offer accounts as transfers: the same cases
-    /// that can save a transfer. A pending import, a split in progress
-    /// and an edit that couldn't become a transfer can't take one.
+    /// Whether the payee list may offer accounts as transfers. A pending
+    /// import, a split in progress and an edit that couldn't become a
+    /// transfer (a split parent or child) can't take one.
     private var offersTransfer: Bool {
         Self.offersTransfer(
             isPendingImportReview: isPendingImportReview,
