@@ -127,13 +127,3 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
         [.banner, .list, .sound]
     }
 }
-
-final class AppDelegate: NSObject, UIApplicationDelegate {
-    func application(
-        _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
-    ) -> Bool {
-        UNUserNotificationCenter.current().delegate = NotificationRouter.shared
-        return true
-    }
-}
