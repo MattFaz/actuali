@@ -696,6 +696,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether the Budget tab leaves out the Income group. The summary card
+    /// still shows income. Persisted to UserDefaults, defaults to off.
+    @Published var hideIncomeGroup: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideIncomeGroup, forKey: "hideIncomeGroup")
+        }
+    }
+
     /// Whether amount fields accept conventional decimal entry. Persisted to
     /// UserDefaults and defaults to the established calculator-style entry.
     @Published var conventionalAmountEntry: Bool = false {
@@ -1796,6 +1804,9 @@ final class BudgetStore: ObservableObject {
         ))
         _showOverspentBadge = Published(
             initialValue: persistedBool("showOverspentBadge", default: true)
+        )
+        _hideIncomeGroup = Published(
+            initialValue: persistedBool("hideIncomeGroup", default: false)
         )
         _conventionalAmountEntry = Published(
             initialValue: persistedBool("conventionalAmountEntry", default: false)
@@ -6904,9 +6915,11 @@ final class BudgetStore: ObservableObject {
     }
 
     /// The sweep is CPU-bound and would stutter the UI on the main actor.
-    /// `nonisolated async` runs it on the generic executor without an ad-hoc
-    /// detached-task hop; `BudgetDatabase` serialises its own reads through
-    /// GRDB's queue, so calling it from here is safe.
+    /// `@concurrent` hops it to the concurrent executor — under
+    /// NONISOLATED_NONSENDING_BY_DEFAULT a plain `nonisolated async` function
+    /// would inherit the caller's (main) actor. `BudgetDatabase` serialises
+    /// its own reads through GRDB's queue, so calling it from here is safe.
+    @concurrent
     private nonisolated static func runDiscovery(
         accounts: [Account],
         database: BudgetDatabase
