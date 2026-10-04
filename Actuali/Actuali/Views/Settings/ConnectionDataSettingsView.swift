@@ -15,7 +15,7 @@ struct ConnectionDataSettingsView: View {
             }
 
             if budgetStore.currentBudgetId != nil {
-                SyncSettingsSection()
+                SyncSettingsSection(syncStatus: budgetStore.syncStatus)
                 BackupSettingsSection()
             }
         }
@@ -606,6 +606,7 @@ private struct DeleteServerBudgetSheet: View {
 
 private struct SyncSettingsSection: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @ObservedObject var syncStatus: SyncStatus
     @Environment(\.scenePhase) private var scenePhase
     @State private var lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
     @State private var refreshRequestError = BackgroundRefreshStatus().lastScheduleError
@@ -616,7 +617,7 @@ private struct SyncSettingsSection: View {
             HStack {
                 Text("Status")
                 Spacer()
-                switch budgetStore.syncState {
+                switch syncStatus.state {
                 case .idle:
                     Text("Idle").foregroundStyle(.secondary)
                 case .syncing:
@@ -631,7 +632,7 @@ private struct SyncSettingsSection: View {
                 }
             }
 
-            if case .error(let message) = budgetStore.syncState {
+            if case .error(let message) = syncStatus.state {
                 Text(message)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -644,7 +645,7 @@ private struct SyncSettingsSection: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let lastSync = budgetStore.lastSyncTime {
+            if let lastSync = syncStatus.lastSyncTime {
                 HStack {
                     Text("Last Sync")
                     Spacer()
@@ -682,13 +683,13 @@ private struct SyncSettingsSection: View {
             Button("Sync Now") {
                 Task { await budgetStore.sync() }
             }
-            .disabled(budgetStore.syncState == .syncing)
+            .disabled(syncStatus.state == .syncing)
 
-            if case .error = budgetStore.syncState {
+            if case .error = syncStatus.state {
                 Button("Reset Sync State", role: .destructive) {
                     showingResetSyncConfirm = true
                 }
-                .disabled(budgetStore.syncState == .syncing)
+                .disabled(syncStatus.state == .syncing)
             }
         }
         .task { reloadBackgroundRefreshStatus() }

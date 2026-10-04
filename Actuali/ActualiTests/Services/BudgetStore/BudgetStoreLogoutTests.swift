@@ -96,7 +96,7 @@ struct BudgetStoreLogoutTests {
         ]
         store.uncategorizedCount = 3
         store.payees = [Payee(id: "p1", name: "Grocer")]
-        store.lastSyncTime = Date()
+        store.syncStatus.lastSyncTime = Date()
 
         store.logout()
 
@@ -105,7 +105,7 @@ struct BudgetStoreLogoutTests {
         #expect(store.transactions.isEmpty)
         #expect(store.uncategorizedCount == 0)
         #expect(store.payees.isEmpty)
-        #expect(store.lastSyncTime == nil)
+        #expect(store.syncStatus.lastSyncTime == nil)
     }
 
     /// "Leave nothing behind" includes the Keychain: an encrypted budget's

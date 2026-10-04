@@ -28,7 +28,7 @@ struct BudgetStoreSyncCancellationTests {
         await task.value
 
         #expect(store.error == nil)
-        #expect(store.lastSyncTime != nil)
+        #expect(store.syncStatus.lastSyncTime != nil)
         // The post-sync data refresh must have completed, not been aborted.
         #expect(store.accounts.map(\.name) == ["Checking"])
     }
