@@ -74,6 +74,8 @@ struct BudgetView: View {
     @State private var editingCategory: CategoryBudget?
     @State private var editingCategoryGroup: CategoryGroup?
     @State private var selectedCategory: CategoryBudget?
+    @State private var renamingCategory: CategoryBudget?
+    @State private var renameText = ""
     @State private var transferContext: BudgetTransferContext?
     @State private var transactionsDestination: CategoryTransactionsDestination?
     @State private var newBudgetItem: NewBudgetItem?
@@ -278,6 +280,22 @@ struct BudgetView: View {
                     dismissButton: .default(Text("OK"))
                 )
             }
+            .alert("Rename Category", isPresented: Binding(
+                get: { renamingCategory != nil },
+                set: {
+                    if !$0 {
+                        renamingCategory = nil
+                    }
+                }
+            )) {
+                TextField("Category Name", text: $renameText)
+                    .accessibilityIdentifier("categoryRename.name")
+                Button("Cancel", role: .cancel) {}
+                    .accessibilityIdentifier("categoryRename.cancel")
+                Button("Save") { commitRename() }
+                    .disabled(Self.renameName(renameText) == nil)
+                    .accessibilityIdentifier("categoryRename.save")
+            }
         }
         .initialSyncBanner()
     }
@@ -314,7 +332,8 @@ struct BudgetView: View {
                         onShowTransactions: showTransactions,
                         onMoveMoney: moveMoney,
                         onApplyTemplate: budgetStore.goalTemplatesEnabled
-                            ? { runTemplates(.apply, for: $0) } : nil
+                            ? { runTemplates(.apply, for: $0) } : nil,
+                        onRename: { beginRenaming($0) }
                     )
                 }
             }
@@ -891,7 +910,8 @@ struct BudgetView: View {
                         onShowTransactions: showTransactions,
                         onMoveMoney: moveMoney,
                         onApplyTemplate: budgetStore.goalTemplatesEnabled
-                            ? { runTemplates(.apply, for: $0) } : nil
+                            ? { runTemplates(.apply, for: $0) } : nil,
+                        onRename: { beginRenaming($0) }
                     )
                 }
             }
@@ -1020,6 +1040,33 @@ struct BudgetView: View {
     ) -> [IncomeCategory] {
         guard !hideIncomeGroup else { return [] }
         return showHidden ? budget.allIncomeCategories : budget.incomeCategories
+    }
+
+    private func beginRenaming(_ category: CategoryBudget) {
+        renameText = category.categoryName
+        renamingCategory = category
+    }
+
+    nonisolated static func renameName(_ draft: String) -> String? {
+        let name = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+
+    private func commitRename() {
+        guard let category = renamingCategory,
+              let name = Self.renameName(renameText),
+              name != category.categoryName else { return }
+        Task {
+            do {
+                try await budgetStore.renameCategory(
+                    id: category.categoryId,
+                    name: name,
+                    month: category.month
+                )
+            } catch {
+                budgetStore.error = error.localizedDescription
+            }
+        }
     }
 
     private func setCategoryHidden(_ id: String, hidden: Bool) {
@@ -1264,6 +1311,7 @@ struct CleanCategoryBudgetRow: View {
     /// Apply this category's own templates (GH #495); nil hides the item —
     /// callers gate it on the goalTemplatesEnabled flag.
     var onApplyTemplate: ((CategoryBudget) -> Void)?
+    let onRename: (CategoryBudget) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1362,7 +1410,8 @@ struct CleanCategoryBudgetRow: View {
             onEditBudget: onEditBudget,
             onShowTransactions: onShowTransactions,
             onMoveMoney: onMoveMoney,
-            onApplyTemplate: onApplyTemplate
+            onApplyTemplate: onApplyTemplate,
+            onRename: onRename
         ))
     }
 
@@ -1385,12 +1434,17 @@ struct CategoryRowContextMenu: ViewModifier {
     let onShowTransactions: (CategoryBudget, String?) -> Void
     let onMoveMoney: (CategoryBudget) -> Void
     let onApplyTemplate: ((CategoryBudget) -> Void)?
+    let onRename: (CategoryBudget) -> Void
 
     func body(content: Content) -> some View {
         content.contextMenu {
             Button { onShowDetails(category) } label: {
                 Label("Category Details", systemImage: "info.circle")
             }
+            Button { onRename(category) } label: {
+                Label("Rename Category", systemImage: "pencil")
+            }
+            .accessibilityIdentifier("categoryRename.action")
             Button { onEditBudget(category) } label: {
                 Label("Edit Budgeted Amount", systemImage: "pencil")
             }
