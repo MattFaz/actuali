@@ -52,34 +52,6 @@ enum TopBoxLayout {
     static let verticalContentMargin: CGFloat = 8
 }
 
-/// Style-specific list metrics live behind one exhaustive switch so adding a
-/// display style cannot silently inherit another style's spacing or background.
-private struct BudgetListMetrics {
-    let sectionSpacing: ListSectionSpacing
-    let horizontalContentMargin: CGFloat
-    let topContentMargin: CGFloat
-    let showsTopFade: Bool
-
-    init(style: BudgetDisplayStyle) {
-        switch style {
-        case .clean:
-            // The group header is its own one-row section; its insets set the
-            // gap between groups, so the sections themselves touch.
-            sectionSpacing = .custom(0)
-            horizontalContentMargin = TopBoxLayout.horizontalContentMargin
-            // Tuned in GH #165. Independent of the navigation-bar gutter
-            // above the summary, so changing that gap doesn't move the table.
-            topContentMargin = 20
-            showsTopFade = true
-        case .compact:
-            sectionSpacing = .custom(0)
-            horizontalContentMargin = 0
-            topContentMargin = 0
-            showsTopFade = false
-        }
-    }
-}
-
 struct BudgetView: View {
     nonisolated static let incomeGroupCollapseID = "__income_group__"
 
@@ -130,10 +102,6 @@ struct BudgetView: View {
 
     private var collapsedGroups: Set<String> {
         Set(collapsedGroupsStorage.split(separator: ",").map(String.init))
-    }
-
-    private var listMetrics: BudgetListMetrics {
-        BudgetListMetrics(style: budgetStore.budgetDisplayStyle)
     }
 
     private func toggleCollapsed(_ groupId: String) {
@@ -372,18 +340,8 @@ struct BudgetView: View {
     @ViewBuilder
     private func incomeSection(_ budget: BudgetMonth) -> some View {
         let isCollapsed = collapsedGroups.contains(Self.incomeGroupCollapseID)
-        let group = budgetStore.categoryGroups.first(where: \.isIncome)
         let categories = displayedIncomeCategories(in: budget)
-        let rawName = group?.name ?? categories.first?.groupName ?? "Income"
-        let name = rawName == "Income"
-            ? ReportStrings.text("Income", locale: locale, bundle: .main)
-            : rawName
-        let onSetHidden = group.flatMap { group -> ((Bool) -> Void)? in
-            group.hidden ? { setCategoryGroupHidden(group.id, hidden: $0) } : nil
-        }
-        let onRename = group.map { group in
-            { editingCategoryGroup = group }
-        }
+        let header = incomeHeader(categories)
         Section {
             if !isCollapsed {
                 ForEach(categories) { income in
@@ -403,11 +361,11 @@ struct BudgetView: View {
             }
         } header: {
             CompactIncomeGroupHeader(
-                name: name,
+                name: header.name,
                 isCollapsed: isCollapsed,
-                isHidden: group?.hidden == true,
-                onSetHidden: onSetHidden,
-                onRename: onRename,
+                isHidden: header.isHidden,
+                onSetHidden: header.onSetHidden,
+                onRename: header.onRename,
                 totalBudgeted: budget.totalBudgetedIncome,
                 totalReceived: budget.totalIncome,
                 isTrackingBudget: budget.isTrackingBudget,
@@ -567,7 +525,7 @@ struct BudgetView: View {
     private func runTemplates(
         _ action: BudgetStore.GoalTemplateAction,
         for category: CategoryBudget? = nil,
-        inGroup group: CategoryGroupSection? = nil
+        inGroup groupCategoryIds: Set<String>? = nil
     ) {
         guard !isRunningBudgetAction else { return }
         isRunningBudgetAction = true
@@ -576,10 +534,9 @@ struct BudgetView: View {
                 await budgetStore.runGoalTemplates(
                     month: category.month, action: action, categoryId: category.categoryId
                 )
-            } else if let group {
+            } else if let groupCategoryIds {
                 await budgetStore.runGoalTemplates(
-                    month: selectedMonth, action: action,
-                    categoryIds: Set(group.categories.map(\.categoryId))
+                    month: selectedMonth, action: action, categoryIds: groupCategoryIds
                 )
             } else {
                 await budgetStore.runGoalTemplates(month: selectedMonth, action: action)
@@ -600,8 +557,18 @@ struct BudgetView: View {
         _ action: BudgetStore.GoalTemplateAction,
         for group: CategoryGroupSection
     ) -> (() -> Void)? {
-        guard budgetStore.goalTemplatesEnabled, !group.isHidden else { return nil }
-        return { runTemplates(action, inGroup: group) }
+        guard budgetStore.goalTemplatesEnabled, !group.isHidden,
+              let budget = budgetStore.currentBudgetMonth else { return nil }
+        let ids = Self.groupTemplateCategoryIds(groupId: group.id, in: budget)
+        return { runTemplates(action, inGroup: ids) }
+    }
+
+    /// Every category in the group, not just the rows the filters left on
+    /// screen: a zero-available category dropped by "Hide Spent Categories"
+    /// is exactly the one that needs its template. `runGoalTemplates` skips
+    /// hidden categories itself, as upstream's group menu does.
+    nonisolated static func groupTemplateCategoryIds(groupId: String, in budget: BudgetMonth) -> Set<String> {
+        Set(budget.allCategoryBudgets.filter { $0.groupId == groupId }.map(\.categoryId))
     }
 
     /// The web's template-run toasts as one alert; shared by the month and
@@ -783,8 +750,6 @@ struct BudgetView: View {
             }
 
             budgetTable(budget)
-                // A little air under the last row once scrolling ends.
-                .contentMargins(.bottom, 8, for: .scrollContent)
                 .gesture(
                     DragGesture(minimumDistance: 30)
                         .onEnded { value in
@@ -847,12 +812,9 @@ struct BudgetView: View {
         // animated from here, off the stored value, rather than at the
         // call site.
         .animation(AppAnimation.disclosure, value: collapsedGroupsStorage)
-        .listSectionSpacing(listMetrics.sectionSpacing)
-        .contentMargins(
-            .horizontal,
-            listMetrics.horizontalContentMargin,
-            for: .scrollContent
-        )
+        .listSectionSpacing(.custom(0))
+        // Edge to edge: the rows sit flush against the summary and the sides.
+        .contentMargins([.horizontal, .top], 0, for: .scrollContent)
         // Pull-to-refresh belongs to the table alone. Attached to the
         // container instead, SwiftUI also wires it to the check-in
         // strip's horizontal ScrollView, so dragging the chips down
@@ -860,40 +822,11 @@ struct BudgetView: View {
         .refreshable {
             await budgetStore.sync()
         }
-        // The rest of the gap under the pinned summary — this part
-        // scrolls away with the content, leaving the 8 pt gutter above.
-        // Together they sit a notch wider than the spacing between the
-        // group sections, so the summary reads as its own bar rather than
-        // a first group (GH #165).
-        .contentMargins(
-            .top,
-            listMetrics.topContentMargin,
-            for: .scrollContent
-        )
-        .budgetListStyle(for: budgetStore.budgetDisplayStyle)
+        .listStyle(.plain)
         // Let short rows (group headers) sit below the stock 44 pt
         // minimum; tap targets stay fine because the whole row is the
         // button.
         .environment(\.defaultMinListRowHeight, 32)
-        // Rows leaving the table used to be chopped off flat against the
-        // gutter under the summary, a hard grey line across mid-row. Fade
-        // them into it instead. The List's top content margin above is
-        // deeper than this fade, so at rest it covers empty background and
-        // nothing on screen looks washed out.
-        .overlay(alignment: .top) {
-            if listMetrics.showsTopFade {
-                LinearGradient(
-                    colors: [
-                        Color(.systemGroupedBackground),
-                        Color(.systemGroupedBackground).opacity(0),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 12)
-                .allowsHitTesting(false)
-            }
-        }
     }
 
     /// Clean style: each group is a pinned header bar over one rounded card,
@@ -930,6 +863,8 @@ struct BudgetView: View {
             // stored value.
             .animation(AppAnimation.disclosure, value: collapsedGroupsStorage)
         }
+        // A little air under the last row once scrolling ends.
+        .contentMargins(.bottom, 8, for: .scrollContent)
         // Pull-to-refresh belongs to the table alone, not the check-in strip.
         .refreshable {
             await budgetStore.sync()
@@ -980,12 +915,8 @@ struct BudgetView: View {
     @ViewBuilder
     private func cleanIncomeSection(_ budget: BudgetMonth) -> some View {
         let isCollapsed = collapsedGroups.contains(Self.incomeGroupCollapseID)
-        let group = budgetStore.categoryGroups.first(where: \.isIncome)
         let categories = displayedIncomeCategories(in: budget)
-        let rawName = group?.name ?? categories.first?.groupName ?? "Income"
-        let name = rawName == "Income"
-            ? ReportStrings.text("Income", locale: locale, bundle: .main)
-            : rawName
+        let header = incomeHeader(categories)
         Section {
             if !isCollapsed {
                 cleanCard(categories) { income in
@@ -1002,26 +933,40 @@ struct BudgetView: View {
                 }
             }
         } header: {
-            // The Income group can only be unhidden, never hidden: hiding
-            // it would drop the app's only income total from the table.
-            // Rename is safe, so its menu remains available. GH #130's
-            // collapse control still applies.
             BudgetGroupHeader(
-                name: name,
+                name: header.name,
                 isCollapsed: isCollapsed,
-                isHidden: group?.hidden == true,
-                onSetHidden: group.flatMap { group -> ((Bool) -> Void)? in
-                    group.hidden ? { setCategoryGroupHidden(group.id, hidden: $0) } : nil
-                },
-                onRename: group.map { group in
-                    { editingCategoryGroup = group }
-                },
+                isHidden: header.isHidden,
+                onSetHidden: header.onSetHidden,
+                onRename: header.onRename,
                 receivedTotal: budget.totalIncome,
                 onToggleCollapse: {
                     toggleCollapsed(Self.incomeGroupCollapseID)
                 }
             )
         }
+    }
+
+    /// The income group's name and header actions, shared by both styles.
+    /// The Income group can only be unhidden, never hidden: hiding it would
+    /// drop the app's only income total from the table. Rename is safe, so
+    /// it stays available. GH #130's collapse control still applies.
+    private func incomeHeader(_ categories: [IncomeCategory]) -> (
+        name: String,
+        isHidden: Bool,
+        onSetHidden: ((Bool) -> Void)?,
+        onRename: (() -> Void)?
+    ) {
+        let group = budgetStore.categoryGroups.first(where: \.isIncome)
+        let rawName = group?.name ?? categories.first?.groupName ?? "Income"
+        return (
+            rawName == "Income" ? ReportStrings.text("Income", locale: locale, bundle: .main) : rawName,
+            group?.hidden == true,
+            group.flatMap { group -> ((Bool) -> Void)? in
+                group.hidden ? { setCategoryGroupHidden(group.id, hidden: $0) } : nil
+            },
+            group.map { group in { editingCategoryGroup = group } }
+        )
     }
 
     /// One group's rows in a rounded card with inset dividers, matching the
@@ -1742,7 +1687,7 @@ struct BudgetGroupHeader: View {
         }
         if let onOverwriteTemplate {
             Button(action: onOverwriteTemplate) {
-                Label(ReportStrings.text("Overwrite with Budget Template", locale: locale, bundle: .main), systemImage: "arrow.counterclockwise")
+                Label(ReportStrings.text("Overwrite with Budget Template", locale: locale, bundle: .main), systemImage: "wand.and.stars.inverse")
             }
         }
         if let onRename {

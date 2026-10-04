@@ -15,12 +15,12 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
 
-        let expandedHeader = app.buttons["Essentials, expanded"]
+        let expandedHeader = groupHeader("Essentials, expanded", in: app)
         XCTAssertTrue(expandedHeader.waitForExistence(timeout: 10))
         expandedHeader.tap()
 
         // Collapsing hides the group's category rows but keeps the totals row.
-        let collapsedHeader = app.buttons["Essentials, collapsed"]
+        let collapsedHeader = groupHeader("Essentials, collapsed", in: app)
         XCTAssertTrue(collapsedHeader.waitForExistence(timeout: 10))
         XCTAssertFalse(groceries.exists,
                        "collapsing Essentials should hide its categories")
@@ -52,8 +52,8 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         collapseAll.tap()
 
         // Every group collapses, not just the first one.
-        XCTAssertTrue(app.buttons["Essentials, collapsed"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["Lifestyle, collapsed"].waitForExistence(timeout: 10),
+        XCTAssertTrue(groupHeader("Essentials, collapsed", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(groupHeader("Lifestyle, collapsed", in: app).waitForExistence(timeout: 10),
                       "collapse all should also collapse the other groups")
         XCTAssertFalse(groceries.exists,
                        "collapse all should hide the category rows")
@@ -64,11 +64,11 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(expandAll.waitForExistence(timeout: 10))
         expandAll.tap()
 
-        XCTAssertTrue(app.buttons["Essentials, expanded"].waitForExistence(timeout: 10))
+        XCTAssertTrue(groupHeader("Essentials, expanded", in: app).waitForExistence(timeout: 10))
         // Transport sits right below Essentials, so it stays on screen; the
         // lower groups scroll out of the lazy list's accessibility tree once
         // everything is expanded, so they can't be asserted here.
-        XCTAssertTrue(app.buttons["Transport, expanded"].waitForExistence(timeout: 10),
+        XCTAssertTrue(groupHeader("Transport, expanded", in: app).waitForExistence(timeout: 10),
                       "expand all should also expand the other groups")
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "expand all should restore the category rows")
@@ -231,13 +231,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         }
         XCTAssertTrue(header.isHittable, "\(oldName) group should be reachable")
 
-        if displayStyle == "clean" {
-            let options = app.buttons["Options for \(oldName)"]
-            XCTAssertTrue(options.waitForExistence(timeout: 5))
-            options.tap()
-        } else {
-            header.press(forDuration: 1)
-        }
+        header.press(forDuration: 1)
 
         let rename = app.descendants(matching: .any)["Rename Group"].firstMatch
         XCTAssertTrue(rename.waitForExistence(timeout: 5))
@@ -337,13 +331,15 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         ).firstMatch
         let salary = app.buttons["All transactions for Salary"]
 
+        // Scroll until hittable, not just present: collapse state persists
+        // across launches, and a collapsed header that only exists at the
+        // bottom edge would be skipped by the tap below.
         var scrollsLeft = 20
-        while !anyHeader.waitForExistence(timeout: 2), scrollsLeft > 0 {
+        while !(anyHeader.waitForExistence(timeout: 2) && anyHeader.isHittable), scrollsLeft > 0 {
             app.swipeUp(velocity: .slow)
             scrollsLeft -= 1
         }
-        XCTAssertTrue(anyHeader.waitForExistence(timeout: 10),
-                      "the income group header should be reachable")
+        XCTAssertTrue(anyHeader.isHittable, "the income group header should be reachable")
         if collapsedHeader.isHittable {
             collapsedHeader.tap()
         }
@@ -354,5 +350,12 @@ final class BudgetGroupCollapseUITests: XCTestCase {
 
         XCTAssertTrue(collapsedHeader.waitForExistence(timeout: 10))
         XCTAssertFalse(salary.exists, "collapsing Income should hide its categories")
+    }
+
+    /// Clean expense headers append the group balance to the label, so
+    /// match on the name-and-state prefix.
+    @MainActor
+    private func groupHeader(_ label: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", label)).firstMatch
     }
 }

@@ -57,6 +57,29 @@ struct BudgetViewTests {
         #expect(BudgetView.displayedIncomeCategories(in: incomeMonth(), showHidden: true, hideIncomeGroup: true).isEmpty)
     }
 
+    // MARK: - Group template scope
+
+    private func groupCategory(_ id: String, group: String, available: Int, hidden: Bool = false) -> CategoryBudget {
+        CategoryBudget(
+            month: "2026-10", categoryId: id, categoryName: id,
+            groupId: group, groupName: group, groupSortOrder: 0, categorySortOrder: 0,
+            budgeted: 0, spent: 0, available: available, carryover: 0, hidden: hidden
+        )
+    }
+
+    @Test func groupTemplateRunCoversRowsTheTableFiltersOut() {
+        // "Hide Spent Categories" drops the zero-available row from the table,
+        // but that row is the one that needs its template.
+        var month = BudgetMonth(month: "2026-10", categoryBudgets: [
+            groupCategory("rent", group: "bills", available: 0),
+            groupCategory("power", group: "bills", available: 500),
+            groupCategory("games", group: "fun", available: 0),
+        ])
+        month.hiddenCategoryBudgets = [groupCategory("old", group: "bills", available: 0, hidden: true)]
+
+        #expect(BudgetView.groupTemplateCategoryIds(groupId: "bills", in: month) == ["rent", "power", "old"])
+    }
+
     // MARK: - Month note (GH #567)
 
     @Test func monthNoteOffersTheNoteReadForTheSelectedMonth() {
