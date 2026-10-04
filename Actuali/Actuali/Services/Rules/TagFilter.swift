@@ -53,10 +53,11 @@ enum TagFilter {
         case tag(String)
     }
 
-    /// A note split into plain text and `#hashtags`, in reading order, so a
+    /// A note line split into plain text and `#hashtags`, in reading order, so a
     /// row can draw the tags in place (as chips) within the note's own line.
     /// `##hidden` and invalid tags stay in the text, mirroring
     /// `extractHashtags`; whitespace is collapsed and empty text is dropped.
+    /// The caller lays out each newline-separated line independently.
     /// E.g. "Lunch #food with Sam" → [.text("Lunch"), .tag("#food"), .text("with Sam")]
     static func noteSegments(_ notes: String) -> [NoteSegment] {
         var segments: [NoteSegment] = []

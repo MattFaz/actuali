@@ -371,50 +371,6 @@ private struct CardMappingEditor: View {
     }
 }
 
-/// A flow layout that wraps subviews to the next line when width is exceeded.
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.replacingUnspecifiedDimensions().width
-        var usedWidth: CGFloat = 0
-        var currentX: CGFloat = 0
-        var currentY: CGFloat = 0
-        var maxHeightInRow: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentX + size.width > maxWidth, currentX > 0 {
-                currentX = 0
-                currentY += maxHeightInRow + spacing
-                maxHeightInRow = 0
-            }
-            currentX += size.width + spacing
-            usedWidth = max(usedWidth, currentX - spacing)
-            maxHeightInRow = max(maxHeightInRow, size.height)
-        }
-        return CGSize(width: min(usedWidth, maxWidth), height: currentY + maxHeightInRow)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var currentX = bounds.minX
-        var currentY = bounds.minY
-        var maxHeightInRow: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentX + size.width > bounds.maxX, currentX > bounds.minX {
-                currentX = bounds.minX
-                currentY += maxHeightInRow + spacing
-                maxHeightInRow = 0
-            }
-            subview.place(at: CGPoint(x: currentX, y: currentY), proposal: ProposedViewSize(size))
-            currentX += size.width + spacing
-            maxHeightInRow = max(maxHeightInRow, size.height)
-        }
-    }
-}
-
 #Preview {
     NavigationStack {
         CardAccountMappingsView()

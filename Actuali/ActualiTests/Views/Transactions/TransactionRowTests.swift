@@ -88,15 +88,59 @@ struct TransactionRowTests {
         #expect(long.height > short.height)
     }
 
-    @Test @MainActor func tagChipsOnlyRenderWhenTheyFit() throws {
+    @Test @MainActor func tagChipsRenderOnceInlineAtNarrowAndWideWidths() throws {
         for width: CGFloat in [220, 600] {
             let red = try renderedRow(notes: "#reimbursable", width: width, tagColor: "#ff0000")
             let blue = try renderedRow(notes: "#reimbursable", width: width, tagColor: "#0000ff")
             let redPixels = try #require(red.dataProvider?.data as Data?)
             let bluePixels = try #require(blue.dataProvider?.data as Data?)
-            // Changing tag metadata changes only the chips, not the raw note.
-            #expect((redPixels != bluePixels) == (width == 600))
+            #expect(redPixels != bluePixels)
+            let changedRows = Set((0..<red.height).filter { row in
+                let start = row * red.bytesPerRow
+                let end = start + red.bytesPerRow
+                return redPixels[start..<end] != bluePixels[start..<end]
+            })
+            // One band of colored pixels means the tag is not also beside the category.
+            #expect(changedRows.filter { !changedRows.contains($0 - 1) }.count == 1)
         }
+    }
+
+    @Test @MainActor func longUnbrokenNotesWrapInNarrowRows() throws {
+        let short = try renderedRow(notes: "Memo", width: 320)
+        for note in [
+            "https://example.com/receipts/" + String(repeating: "abcdef", count: 20),
+            String(repeating: "食料品の領収書", count: 12),
+        ] {
+            let long = try renderedRow(notes: note, width: 320)
+            #expect(long.height > short.height)
+        }
+    }
+
+    @Test @MainActor func notesPreserveExplicitAndBlankLines() throws {
+        let oneLine = try renderedRow(notes: "First Second", width: 320)
+        let twoLines = try renderedRow(notes: "First\nSecond", width: 320)
+        let blankLine = try renderedRow(notes: "First\n\nSecond", width: 320)
+        #expect(twoLines.height > oneLine.height)
+        #expect(blankLine.height > twoLines.height)
+        let spacedBlankLine = try renderedRow(notes: "First\n \nSecond", width: 320)
+        #expect(spacedBlankLine.height == blankLine.height)
+        for newline in ["\r\n", "\u{2028}"] {
+            let alternate = try renderedRow(notes: "First" + newline + "Second", width: 320)
+            #expect(alternate.height == twoLines.height)
+        }
+        let taggedLines = try renderedRow(notes: "#reimbursable\nSecond", width: 320)
+        let taggedSingleLine = try renderedRow(notes: "#reimbursable Second", width: 320)
+        #expect(taggedLines.height > taggedSingleLine.height)
+    }
+
+    @Test @MainActor func overlongTagKeepsTheAmountVisible() throws {
+        let short = try renderedRow(notes: "#item", width: 220)
+        let long = try renderedRow(notes: "#" + String(repeating: "item", count: 100), width: 220)
+        #expect(long.height == short.height)
+        let amountBounds = CGRect(x: 172, y: 0, width: 48, height: short.height)
+        let shortAmount = try #require(short.cropping(to: amountBounds))
+        let longAmount = try #require(long.cropping(to: amountBounds))
+        #expect(UIImage(cgImage: longAmount).pngData() == UIImage(cgImage: shortAmount).pngData())
     }
 
     @MainActor
