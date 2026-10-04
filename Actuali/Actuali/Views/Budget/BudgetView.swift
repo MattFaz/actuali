@@ -289,8 +289,12 @@ struct BudgetView: View {
                 }
             )) {
                 TextField("Category Name", text: $renameText)
+                    .accessibilityIdentifier("categoryRename.name")
                 Button("Cancel", role: .cancel) {}
+                    .accessibilityIdentifier("categoryRename.cancel")
                 Button("Save") { commitRename() }
+                    .disabled(Self.renameName(renameText) == nil)
+                    .accessibilityIdentifier("categoryRename.save")
             }
         }
         .initialSyncBanner()
@@ -1043,12 +1047,15 @@ struct BudgetView: View {
         renamingCategory = category
     }
 
-    /// Same write path as the details sheet's name field, so the validation
-    /// (empty, duplicate in the group) and sync behave identically.
+    nonisolated static func renameName(_ draft: String) -> String? {
+        let name = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+
     private func commitRename() {
-        guard let category = renamingCategory else { return }
-        let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, name != category.categoryName else { return }
+        guard let category = renamingCategory,
+              let name = Self.renameName(renameText),
+              name != category.categoryName else { return }
         Task {
             do {
                 try await budgetStore.renameCategory(
@@ -1304,8 +1311,7 @@ struct CleanCategoryBudgetRow: View {
     /// Apply this category's own templates (GH #495); nil hides the item —
     /// callers gate it on the goalTemplatesEnabled flag.
     var onApplyTemplate: ((CategoryBudget) -> Void)?
-    /// Rename the category from its long-press menu; nil hides the item.
-    var onRename: ((CategoryBudget) -> Void)?
+    let onRename: (CategoryBudget) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1428,18 +1434,17 @@ struct CategoryRowContextMenu: ViewModifier {
     let onShowTransactions: (CategoryBudget, String?) -> Void
     let onMoveMoney: (CategoryBudget) -> Void
     let onApplyTemplate: ((CategoryBudget) -> Void)?
-    var onRename: ((CategoryBudget) -> Void)?
+    let onRename: (CategoryBudget) -> Void
 
     func body(content: Content) -> some View {
         content.contextMenu {
             Button { onShowDetails(category) } label: {
                 Label("Category Details", systemImage: "info.circle")
             }
-            if let onRename {
-                Button { onRename(category) } label: {
-                    Label("Rename Category", systemImage: "pencil")
-                }
+            Button { onRename(category) } label: {
+                Label("Rename Category", systemImage: "pencil")
             }
+            .accessibilityIdentifier("categoryRename.action")
             Button { onEditBudget(category) } label: {
                 Label("Edit Budgeted Amount", systemImage: "pencil")
             }
