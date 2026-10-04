@@ -530,7 +530,7 @@ struct TransactionRow: View {
                     Text(accountName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 120, alignment: .trailing)
                 }
                 if let runningBalance = transaction.runningBalance {
