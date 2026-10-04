@@ -423,6 +423,36 @@ struct TransactionRow: View {
         )
     }
 
+    private func categoryLine(showsTags: Bool) -> some View {
+        HStack(spacing: 4) {
+            if transaction.isParent {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Text(categoryLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: showsTags, vertical: false)
+            if showsTags, let notes = transaction.notes, !notes.isEmpty {
+                let extractedTags = TagFilter.extractHashtags(from: notes)
+                ForEach(extractedTags.prefix(2), id: \.self) { rawTag in
+                    let clean = Tag.normalizeTagName(rawTag)
+                    let match = budgetStore.tagsByName[clean.lowercased()]
+                    let tagColor = match?.swiftUIColor ?? .secondary
+                    Text(rawTag)
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(tagColor.opacity(0.15), in: Capsule())
+                        .foregroundStyle(tagColor)
+                }
+            }
+        }
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             if isSelectionMode {
@@ -477,51 +507,32 @@ struct TransactionRow: View {
                     locale: locale
                 ))
                 .font(.body)
-                HStack(spacing: 4) {
-                    if transaction.isParent {
-                        Image(systemName: "arrow.triangle.branch")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(categoryLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let notes = transaction.notes, !notes.isEmpty {
-                        let extractedTags = TagFilter.extractHashtags(from: notes)
-                        if !extractedTags.isEmpty {
-                            ForEach(extractedTags.prefix(2), id: \.self) { rawTag in
-                                let clean = Tag.normalizeTagName(rawTag)
-                                let match = budgetStore.tagsByName[clean.lowercased()]
-                                let tagColor = match?.swiftUIColor ?? .secondary
-                                Text(rawTag)
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 1.5)
-                                    .background(tagColor.opacity(0.15), in: Capsule())
-                                    .foregroundStyle(tagColor)
-                            }
-                        }
-                        Text("・")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(notes)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                // The tag chips only sit beside the category when they fit;
+                // otherwise they'd squeeze the category into a letter-by-letter
+                // wrap. The tags are still in the note below.
+                ViewThatFits(in: .horizontal) {
+                    categoryLine(showsTags: true)
+                    categoryLine(showsTags: false)
                 }
-                if showAccount {
-                    Text(accountName)
+                if let notes = transaction.notes, !notes.isEmpty {
+                    Text(notes)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            Spacer()
+            // Take all the width the amount column leaves. A trailing Spacer
+            // would claim half of it, wrapping notes well before the amount.
+            .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .trailing, spacing: 2) {
                 Text(budgetStore.displayBalance(transaction.amount))
                     .foregroundColor(transaction.isOutflow ? .primary : .green)
+                if showAccount {
+                    Text(accountName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 120, alignment: .trailing)
+                }
                 if let runningBalance = transaction.runningBalance {
                     Text(budgetStore.displayBalance(runningBalance))
                         .foregroundStyle(balanceColor(for: runningBalance))

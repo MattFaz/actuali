@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 @testable import Actuali
 
 struct TransactionRowTests {
@@ -62,5 +64,68 @@ struct TransactionRowTests {
     @Test func offBudgetTakesPrecedenceOverSplit() {
         #expect(category("Food", isParent: true, splitBreakdown: "Food $6.00", offBudget: true)
             == "Off budget")
+    }
+
+    @Test @MainActor func accountNamesWrapAtDefaultAndAccessibilitySizes() throws {
+        for (size, name) in [
+            (DynamicTypeSize.large, "Chase Checking Everyday Spending"),
+            (.accessibility5, "Chase Checking"),
+        ] {
+            let short = try renderedRow(accountName: "A", size: size)
+            let long = try renderedRow(accountName: name, size: size)
+            #expect(long.height > short.height)
+        }
+    }
+
+    @Test @MainActor func notesHaveTheirOwnLineAndWrapInNarrowRows() throws {
+        let empty = try renderedRow(width: 320)
+        let short = try renderedRow(notes: "Memo", width: 320)
+        let long = try renderedRow(
+            notes: "Paid for groceries and household supplies at the neighborhood market.",
+            width: 320
+        )
+        #expect(short.height > empty.height)
+        #expect(long.height > short.height)
+    }
+
+    @Test @MainActor func tagChipsOnlyRenderWhenTheyFit() throws {
+        for width: CGFloat in [220, 600] {
+            let red = try renderedRow(notes: "#reimbursable", width: width, tagColor: "#ff0000")
+            let blue = try renderedRow(notes: "#reimbursable", width: width, tagColor: "#0000ff")
+            let redPixels = try #require(red.dataProvider?.data as Data?)
+            let bluePixels = try #require(blue.dataProvider?.data as Data?)
+            // Changing tag metadata changes only the chips, not the raw note.
+            #expect((redPixels != bluePixels) == (width == 600))
+        }
+    }
+
+    @MainActor
+    private func renderedRow(
+        accountName: String = "A",
+        notes: String? = nil,
+        width: CGFloat = 390,
+        size: DynamicTypeSize = .large,
+        tagColor: String = "#ff0000"
+    ) throws -> CGImage {
+        let store = BudgetStore.previewInstance()
+        store.accounts = [Account(
+            id: "account", name: accountName, type: .checking,
+            offBudget: false, closed: false, sortOrder: 0, balance: 0
+        )]
+        store.tags = [Tag(tag: "reimbursable", color: tagColor)]
+        let transaction = Transaction(
+            id: "transaction", accountId: "account", date: 20_261_004, amount: -100,
+            payeeId: nil, payeeName: "Cafe", categoryId: "category", categoryName: "Food",
+            notes: notes, cleared: false, reconciled: false, transferId: nil,
+            isParent: false, parentId: nil, tombstone: false, sortOrder: nil, importedPayee: nil
+        )
+        let renderer = ImageRenderer(content: TransactionRow(transaction: transaction, showDate: false)
+            .environmentObject(store)
+            .environment(\.locale, locale)
+            .environment(\.colorScheme, .light)
+            .dynamicTypeSize(size)
+            .frame(width: width))
+        renderer.scale = 1
+        return try #require(renderer.uiImage?.cgImage)
     }
 }
