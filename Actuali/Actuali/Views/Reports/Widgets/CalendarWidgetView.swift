@@ -113,15 +113,20 @@ private struct CalendarMonthGridView: View {
 }
 
 enum CalendarWidgetFormatting {
+    private static let formatterCache = FormatterCache<DateFormatter>()
+
     static func weekdaySymbols(locale: Locale, firstDayOfWeekIdx: Int) -> [String] {
-        let formatter = DateFormatter()
-        formatter.locale = locale
+        let formatter = formatterCache.value("CalendarWeekday|\(locale.identifier)") {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: locale.identifier)
+            return formatter
+        }
         let symbols = formatter.veryShortStandaloneWeekdaySymbols ?? ["S", "M", "T", "W", "T", "F", "S"]
         return (0..<7).map { symbols[($0 + firstDayOfWeekIdx) % 7] }
     }
 
     static func monthTitle(_ date: Date, locale: Locale) -> String {
-        ReportMonthYearFormatting.formatter(locale: locale).string(from: date)
+        ReportMonthYearFormatting.string(from: date, locale: locale)
     }
 }
 

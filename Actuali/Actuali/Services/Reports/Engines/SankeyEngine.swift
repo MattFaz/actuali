@@ -199,11 +199,11 @@ enum SankeyEngine {
         ]
     }
 
-    private static var calendar: Calendar {
+    private static let calendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         return cal
-    }
+    }()
 
     // MARK: Compute
 

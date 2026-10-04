@@ -2292,13 +2292,19 @@ struct MonthPicker: View {
         return Self.formatter(template: "yMMM", locale: locale).string(from: date)
     }
 
+    /// Cached per (template, locale): construction is slow and this runs per
+    /// row per redraw.
+    private nonisolated static let formatterCache = FormatterCache<DateFormatter>()
+
     private nonisolated static func formatter(template: String, locale: Locale) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: template, options: 0, locale: locale) ?? template
-        return formatter
+        formatterCache.value("MonthPicker|\(template)|\(locale.identifier)") {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: locale.identifier)
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: template, options: 0, locale: locale) ?? template
+            return formatter
+        }
     }
 
     nonisolated static func date(fromMonth month: String) -> Date? {

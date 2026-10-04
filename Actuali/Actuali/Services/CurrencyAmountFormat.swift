@@ -87,34 +87,7 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         return formatter
     }
 
-    /// The NSLock serializes every access to the non-Sendable NumberFormatter
-    /// dictionary (and each format call), so sharing across actors is safe.
-    private final class FormatterCache: @unchecked Sendable {
-        private let lock = NSLock()
-        private var formatters: [String: NumberFormatter] = [:]
-
-        func string(
-            from number: NSNumber,
-            key: String,
-            makeFormatter: () -> NumberFormatter
-        ) -> String {
-            lock.lock()
-            defer { lock.unlock() }
-
-            let formatter: NumberFormatter
-
-            if let cached = formatters[key] {
-                formatter = cached
-            } else {
-                formatter = makeFormatter()
-                formatters[key] = formatter
-            }
-
-            return formatter.string(from: number) ?? ""
-        }
-    }
-
-    private static let formatterCache = FormatterCache()
+    private static let formatterCache = FormatterCache<NumberFormatter>()
 
     private func cachedString(
         from number: NSNumber,
@@ -123,7 +96,7 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
     ) -> String {
         let key = "\(rawValue)|\(currencyCode ?? "")|\(wholeUnits)"
 
-        return Self.formatterCache.string(from: number, key: key) {
+        let formatter = Self.formatterCache.value(key) {
             if let currencyCode {
                 return numberFormatter(
                     currencyCode: currencyCode,
@@ -139,6 +112,8 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
 
             return formatter
         }
+
+        return formatter.string(from: number) ?? ""
     }
 
     func format(
@@ -249,5 +224,32 @@ enum CurrencyAmountFormat {
         )
 
         return prefix + numericString + suffix
+    }
+}
+
+/// Shared get-or-create cache for locale-keyed formatters (currency, date,
+/// bundles), so call sites don't rebuild one per redraw. Keys must be
+/// namespaced per call site: two sites may use the same locale yet configure
+/// their cached objects differently, and must freeze a runtime locale to its
+/// identifier so a cached entry can't drift when .autoupdatingCurrent follows
+/// a system language change. The NSLock serializes every access to the
+/// non-Sendable value dictionary, so sharing across actors is safe; handing
+/// the cached value out is safe because NumberFormatter, DateFormatter and
+/// Bundle use is thread-safe on iOS 7+.
+final class FormatterCache<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String: Value] = [:]
+
+    func value(_ key: String, make: () -> Value) -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let cached = values[key] {
+            return cached
+        }
+
+        let made = make()
+        values[key] = made
+        return made
     }
 }

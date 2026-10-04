@@ -389,11 +389,11 @@ enum BalanceForecastEngine {
         return result
     }
 
-    private static var utcCalendar: Calendar {
+    private static let utcCalendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         return cal
-    }
+    }()
 
     private static func dayDate(from date: Date) -> DayDate {
         let c = utcCalendar.dateComponents([.year, .month, .day], from: date)

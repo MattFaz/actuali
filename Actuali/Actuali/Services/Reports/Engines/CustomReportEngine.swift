@@ -517,27 +517,31 @@ enum CustomReportEngine {
         var out: [BucketDef] = []
         switch interval {
         case "Daily":
+            let formatter = dayFormatter(locale: locale)
             var d = cal.startOfDay(for: start)
             while d <= end {
-                out.append(.init(key: ymdInt(from: d), label: dayFormatter(locale: locale).string(from: d)))
+                out.append(.init(key: ymdInt(from: d), label: formatter.string(from: d)))
                 d = cal.date(byAdding: .day, value: 1, to: d)!
             }
         case "Weekly":
+            let formatter = dayFormatter(locale: locale)
             var d = ReportDateRange.weekStart(of: start, firstDayOfWeekIdx: firstDayOfWeekIdx)
             let last = ReportDateRange.weekStart(of: end, firstDayOfWeekIdx: firstDayOfWeekIdx)
             while d <= last {
-                out.append(.init(key: ymdInt(from: d), label: dayFormatter(locale: locale).string(from: d)))
+                out.append(.init(key: ymdInt(from: d), label: formatter.string(from: d)))
                 d = cal.date(byAdding: .day, value: 7, to: d)!
             }
         case "Yearly":
+            let formatter = yearFormatter(locale: locale)
             var y = cal.component(.year, from: start)
             let lastY = cal.component(.year, from: end)
             while y <= lastY {
                 let d = cal.date(from: DateComponents(year: y, month: 1, day: 1))!
-                out.append(.init(key: y, label: yearFormatter(locale: locale).string(from: d)))
+                out.append(.init(key: y, label: formatter.string(from: d)))
                 y += 1
             }
         default: // Monthly — label "MMM ''yy" → Sep '25 (upstream intervalFormat)
+            let formatter = monthFormatter(locale: locale)
             let startC = cal.dateComponents([.year, .month], from: start)
             var d = cal.date(from: DateComponents(year: startC.year, month: startC.month, day: 1))!
             let endC = cal.dateComponents([.year, .month], from: end)
@@ -545,7 +549,7 @@ enum CustomReportEngine {
             while d <= last {
                 let mc = cal.dateComponents([.year, .month], from: d)
                 out.append(.init(key: (mc.year ?? 0) * 100 + (mc.month ?? 0),
-                                 label: monthFormatter(locale: locale).string(from: d)))
+                                 label: formatter.string(from: d)))
                 d = cal.date(byAdding: .month, value: 1, to: d)!
             }
         }
