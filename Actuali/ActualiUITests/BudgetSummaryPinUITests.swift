@@ -43,35 +43,56 @@ final class BudgetSummaryPinUITests: XCTestCase {
 
         let nextMonth = app.buttons["Next month"]
         XCTAssertTrue(nextMonth.waitForExistence(timeout: 10),
-                      "the month stepper lives in the bar")
+                      "the month stepper lives in the pinned header")
 
         app.swipeUp()
         XCTAssertTrue(nextMonth.isHittable,
-                      "the inline bar keeps the stepper tappable while scrolled")
+                      "the pinned header keeps the stepper tappable while scrolled")
     }
 
-    /// UIKit silently gives up on centering a title view once it outgrows the
-    /// slot the trailing buttons leave, and jams it against the leading edge
-    /// instead — twice now (GH #234, #319). Only the rendered frames catch it,
-    /// and the stepper clears the slot by 2pt, so this is the guard for the
-    /// next thing that widens it.
     @MainActor
-    func testMonthStepperIsCenteredInTheBar() {
+    func testMonthStepperIsCenteredInTheHeader() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
         app.launch()
 
-        app.tabBars.buttons["Budget"].tap()
+        assertMonthStepperIsCentered(app)
+    }
 
-        let navBar = app.navigationBars.firstMatch
-        let previousMonth = navBar.buttons["Previous month"]
-        XCTAssertTrue(previousMonth.waitForExistence(timeout: 10),
-                      "the month stepper lives in the bar")
-        let nextMonth = navBar.buttons["Next month"]
+    @MainActor
+    func testLocalizedMonthStepperStaysCenteredAtLargerTextSizes() {
+        for language in ["de", "pt-BR"] {
+            for size in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryXXXL"] {
+                let app = XCUIApplication()
+                app.launchArguments = [
+                    "-loadDemoData", "-initialTab", "1",
+                    "-AppleLanguages", "(\(language))", "-AppleLocale", language,
+                    "-UIPreferredContentSizeCategoryName", size,
+                ]
+                app.launch()
 
-        let stepperMidX = (previousMonth.frame.minX + nextMonth.frame.maxX) / 2
-        XCTAssertEqual(stepperMidX, navBar.frame.midX, accuracy: 4,
-                       "the month stepper must stay centered in the bar")
+                assertMonthStepperIsCentered(app)
+                app.terminate()
+            }
+        }
+    }
+
+    @MainActor private func assertMonthStepperIsCentered(_ app: XCUIApplication) {
+        let header = app.descendants(matching: .any)["budget.monthStepper"]
+        XCTAssertTrue(header.waitForExistence(timeout: 10))
+        let previous = app.buttons["budget.previousMonth"]
+        let next = app.buttons["budget.nextMonth"]
+        XCTAssertTrue(previous.isHittable)
+        XCTAssertTrue(next.isHittable)
+        let midpoint = (previous.frame.minX + next.frame.maxX) / 2
+        XCTAssertEqual(midpoint, app.windows.firstMatch.frame.midX, accuracy: 2)
+        XCTAssertEqual(header.frame.minY, app.navigationBars.firstMatch.frame.maxY, accuracy: 2)
+
+        let restingFrame = header.frame
+        app.swipeUp()
+        XCTAssertEqual(header.frame, restingFrame, "the month header must stay pinned while scrolling")
+        XCTAssertTrue(previous.isHittable)
+        XCTAssertTrue(next.isHittable)
     }
 
     @MainActor
@@ -98,7 +119,9 @@ final class BudgetSummaryPinUITests: XCTestCase {
         XCTAssertTrue(budgetNavBar.exists)
         let budgetFrame = budgetBox.frame
         let budgetWindow = app.windows.firstMatch.frame
-        let budgetTopGap = budgetFrame.minY - budgetNavBar.frame.maxY
+        let monthHeader = app.descendants(matching: .any)["budget.monthStepper"]
+        XCTAssertTrue(monthHeader.exists)
+        let budgetTopGap = budgetFrame.minY - monthHeader.frame.maxY
         let budgetLeadingInset = budgetFrame.minX - budgetWindow.minX
         let budgetTrailingInset = budgetWindow.maxX - budgetFrame.maxX
 
@@ -158,7 +181,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
                                  "the uncategorized bar must stay above the pinned summary")
         let navBar = app.navigationBars.firstMatch
         XCTAssertTrue(navBar.exists)
-        XCTAssertEqual(bar.frame.minY - navBar.frame.maxY, 8, accuracy: 2,
+        XCTAssertEqual(bar.frame.minY - app.descendants(matching: .any)["budget.monthStepper"].frame.maxY, 8, accuracy: 2,
                        "the bar must keep the standardized top gutter (TopBoxLayout.verticalContentMargin)")
     }
 
@@ -182,7 +205,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
                       "the status strip should be the top surface")
         let navBar = app.navigationBars.firstMatch
         XCTAssertTrue(navBar.exists)
-        XCTAssertEqual(chip.frame.minY - navBar.frame.maxY, 8, accuracy: 2,
+        XCTAssertEqual(chip.frame.minY - app.descendants(matching: .any)["budget.monthStepper"].frame.maxY, 8, accuracy: 2,
                        "the strip must keep the standardized top gutter (TopBoxLayout.verticalContentMargin)")
     }
 }

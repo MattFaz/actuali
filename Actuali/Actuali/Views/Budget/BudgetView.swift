@@ -171,14 +171,14 @@ struct BudgetView: View {
                     }
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) { monthStepper }
             .navigationTitle("Budget")
             // The summary bar is pinned outside the List (GH #155), so it
             // can't move with an overscroll the way list content does. A
             // large title stretches on that overscroll and draws straight
             // over the card, and collapses on scroll-up, jolting it (GH
-            // #253). Inline keeps the bar a fixed height; the month stepper
-            // below already occupies the centre, and the tab bar says
-            // "Budget" anyway.
+            // #253). Inline keeps the bar a fixed height above the pinned
+            // month stepper and summary.
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { budgetToolbar }
             .onAppear {
@@ -378,65 +378,52 @@ struct BudgetView: View {
         }
     }
 
+    /// A full-width header keeps the month centered at larger text sizes and
+    /// in longer locales, independently of the navigation bar buttons.
+    private var monthStepper: some View {
+        HStack(spacing: 0) {
+            Button {
+                selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .frame(width: 44, height: 44)
+                    .contentShape(.rect)
+            }
+            .accessibilityLabel("Previous month")
+            .accessibilityIdentifier("budget.previousMonth")
+
+            MonthPicker(
+                selectedMonth: $selectedMonth,
+                note: displayedMonthNote,
+                onEditNote: { editingMonthNote = true }
+            )
+
+            Button {
+                selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .frame(width: 44, height: 44)
+                    .contentShape(.rect)
+            }
+            .accessibilityLabel("Next month")
+            .accessibilityIdentifier("budget.nextMonth")
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("budget.monthStepper")
+        .background(Color(.systemGroupedBackground))
+    }
+
     /// The screen's toolbar, extracted from `body` so the whole screen stays
     /// within the compiler's type-check budget.
     @ToolbarContentBuilder
     private var budgetToolbar: some ToolbarContent {
-        // Both arrows flank the month in the center, so nothing sits in the
-        // leading "back button" position where the previous-month chevron
-        // used to be mistaken for one (it steps the month, not the
-        // navigation stack).
-        ToolbarItem(placement: .principal) {
-            // UIKit centers a title view only while it stays under ~140pt
-            // next to these two trailing buttons; one point over and it
-            // left-aligns the whole stepper against the leading edge instead.
-            // That cliff has been hit twice — GH #234, then again by #319
-            // padding both chevrons out to 44pt wide (44 + 44 + a 78pt
-            // "Aug 2026" = 166). So the width is the budget: the touch target
-            // grows downward to 44pt and stays 30pt wide, giving 138 total.
-            // `.frame(maxWidth: .infinity)` can't buy centering back — the
-            // title view is sized to fit its content, so the frame has no
-            // extra width to center in.
-            //
-            // ponytail: 138 of ~140 is all the headroom there is, and the slot
-            // shrinks as the trailing buttons scale, so raised text sizes still
-            // left-align (measured at XXXL). Anything that needs a bigger
-            // stepper — a third trailing button, unabbreviated months, real
-            // Dynamic Type support — has to leave the bar for a pinned header
-            // row above the summary card, where centering is real layout.
-            HStack(spacing: 0) {
-                Button {
-                    selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 30, height: 44)
-                        .contentShape(.rect)
-                }
-                .accessibilityLabel("Previous month")
-
-                MonthPicker(
-                    selectedMonth: $selectedMonth,
-                    note: displayedMonthNote,
-                    onEditNote: { editingMonthNote = true }
-                )
-
-                Button {
-                    selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .frame(width: 30, height: 44)
-                        .contentShape(.rect)
-                }
-                .accessibilityLabel("Next month")
-            }
-        }
         // New Category / New Group live at the top of the options menu below
         // (GH #157 follow-up) — creation is one more "how this looks and
         // what's in it" action rather than its own toolbar button.
         ToolbarItemGroup(placement: .topBarTrailing) {
             // Budget actions get their own button so the options menu stays
-            // about how the table looks. It sits beside that menu in one
-            // group, still within the title stepper's centering budget.
+            // about how the table looks.
             if budgetStore.currentBudgetMonth != nil {
                 BudgetActionsMenu(
                     onCopyPreviousMonthBudget: { copyPreviousMonthBudget() },
@@ -2322,8 +2309,7 @@ struct EditBudgetAmountSheet: View {
 struct MonthPicker: View {
     @Binding var selectedMonth: String
     /// The selected month's note (GH #567). It lives in this menu rather than
-    /// its own toolbar button because the stepper has no width to spare (see
-    /// `budgetToolbar`); the note text doubles as the "has a note" indicator.
+    /// its own toolbar button; the note text doubles as the "has a note" indicator.
     let note: EntityNote
     let onEditNote: () -> Void
     @Environment(\.locale) private var locale

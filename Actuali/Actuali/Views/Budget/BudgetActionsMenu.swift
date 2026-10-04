@@ -52,7 +52,6 @@ struct BudgetActionsMenu: View {
             Image(systemName: "sparkles")
         }
         .accessibilityLabel("Budget actions")
-        .accessibilityHint("Copy last month's budget, set budgets to zero, apply templates and clean up")
         .accessibilityIdentifier("budget.actionsMenu")
     }
 }
@@ -71,5 +70,4 @@ struct BudgetActionsMenu: View {
                 }
             }
     }
-    .environmentObject(BudgetStore.previewInstance())
 }
