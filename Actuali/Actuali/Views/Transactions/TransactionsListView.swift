@@ -423,34 +423,45 @@ struct TransactionRow: View {
         )
     }
 
-    private func categoryLine(showsTags: Bool) -> some View {
-        HStack(spacing: 4) {
-            if transaction.isParent {
-                Image(systemName: "arrow.triangle.branch")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Text(categoryLabel)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: showsTags, vertical: false)
-            if showsTags, let notes = transaction.notes, !notes.isEmpty {
-                let extractedTags = TagFilter.extractHashtags(from: notes)
-                ForEach(extractedTags.prefix(2), id: \.self) { rawTag in
-                    let clean = Tag.normalizeTagName(rawTag)
-                    let match = budgetStore.tagsByName[clean.lowercased()]
-                    let tagColor = match?.swiftUIColor ?? .secondary
-                    Text(rawTag)
-                        .font(.system(size: 10, weight: .semibold))
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background(tagColor.opacity(0.15), in: Capsule())
-                        .foregroundStyle(tagColor)
+    /// The note, wrapping over as many lines as it needs, with each `#tag`
+    /// drawn as a colored chip in place so the tags read as part of the note.
+    private func noteLine(_ notes: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(notes.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).enumerated()), id: \.offset) { _, line in
+                if line.allSatisfy(\.isWhitespace) {
+                    Text(verbatim: " ").font(.caption)
+                } else {
+                    FlowLayout(spacing: 4, lineSpacing: 2) {
+                        ForEach(Array(TagFilter.noteSegments(String(line)).enumerated()), id: \.offset) { _, segment in
+                            switch segment {
+                            case .text(let text):
+                                ForEach(Array(text.split(separator: " ").enumerated()), id: \.offset) { _, word in
+                                    Text(word)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            case .tag(let rawTag):
+                                tagChip(rawTag)
+                            }
+                        }
+                    }
                 }
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(notes)
+    }
+
+    private func tagChip(_ rawTag: String) -> some View {
+        let match = budgetStore.tagsByName[Tag.normalizeTagName(rawTag).lowercased()]
+        let tagColor = match?.swiftUIColor ?? .secondary
+        return Text(rawTag)
+            .font(.system(size: 10, weight: .semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(tagColor.opacity(0.15), in: Capsule())
+            .foregroundStyle(tagColor)
     }
 
     var body: some View {
@@ -507,17 +518,18 @@ struct TransactionRow: View {
                     locale: locale
                 ))
                 .font(.body)
-                // The tag chips only sit beside the category when they fit;
-                // otherwise they'd squeeze the category into a letter-by-letter
-                // wrap. The tags are still in the note below.
-                ViewThatFits(in: .horizontal) {
-                    categoryLine(showsTags: true)
-                    categoryLine(showsTags: false)
-                }
-                if let notes = transaction.notes, !notes.isEmpty {
-                    Text(notes)
+                HStack(spacing: 4) {
+                    if transaction.isParent {
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(categoryLabel)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                if let notes = transaction.notes, !notes.isEmpty {
+                    noteLine(notes)
                 }
             }
             // Take all the width the amount column leaves. A trailing Spacer
