@@ -908,15 +908,3 @@ private struct CompactAmountText: View {
         }
     }
 }
-
-extension View {
-    @ViewBuilder
-    func budgetListStyle(for style: BudgetDisplayStyle) -> some View {
-        switch style {
-        case .compact:
-            listStyle(.plain)
-        case .clean:
-            self
-        }
-    }
-}
