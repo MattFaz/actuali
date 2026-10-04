@@ -594,7 +594,7 @@ struct AddTransactionView: View {
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
                     // full view of a transaction's note.
-                    NoteLinkRows(text: notes)
+                    NoteLinkRows(text: notes).equatable()
 
                     Toggle("Cleared", isOn: $cleared)
                     // Only the paths that record locations (adds and split
@@ -706,7 +706,13 @@ struct AddTransactionView: View {
                 await loadSplitChildren()
             }
             .task(id: automaticCategoryInput) {
-                await applyAutomaticCategory(for: automaticCategoryInput)
+                let input = automaticCategoryInput
+                // Keep every rule input; cancellation skips lookup while typing.
+                // Save calls applyAutomaticCategory directly without this delay.
+                do {
+                    try await Task.sleep(for: .milliseconds(300))
+                } catch { return }
+                await applyAutomaticCategory(for: input)
             }
         }
     }
@@ -1132,7 +1138,7 @@ private struct SplitLineRow: View {
             TextField(String(localized: AddTransactionLocalization.optionalNotes, locale: locale), text: $line.notes)
                 .font(.subheadline)
             TagSuggestionBar(text: $line.notes, availableTags: budgetStore.tags)
-            NoteLinkRows(text: line.notes)
+            NoteLinkRows(text: line.notes).equatable()
                 .font(.subheadline)
         }
         .sheet(isPresented: $showCategoryPicker) {

@@ -23,6 +23,11 @@ struct NoteLink: Identifiable, Equatable {
 /// unlinked, so `[label](url)` and pasted URLs both become links without
 /// double-linking the markdown ones.
 enum NoteLinkText {
+    /// NSDataDetector inherits immutable, thread-safe matching from NSRegularExpression.
+    private static let detector = try? NSDataDetector(
+        types: NSTextCheckingResult.CheckingType.link.rawValue
+    )
+
     /// The note rendered for display: markdown links become link runs, bare
     /// URLs are linkified in place. Falls back to the raw text if markdown
     /// parsing rejects the note — a note must never display as empty.
@@ -58,9 +63,7 @@ enum NoteLinkText {
     /// NSDataDetector also normalizes schemeless matches ("www.example.com")
     /// to openable http URLs.
     private static func detectBareURLs(in attributed: inout AttributedString) {
-        guard let detector = try? NSDataDetector(
-            types: NSTextCheckingResult.CheckingType.link.rawValue
-        ) else { return }
+        guard let detector else { return }
         let plain = String(attributed.characters)
         let matches = detector.matches(
             in: plain,
