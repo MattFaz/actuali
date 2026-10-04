@@ -19,5 +19,8 @@ extension View {
                     Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 1)
                 }
             }
+            // Keep the compact capsule inside a full-size touch target.
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
     }
 }
