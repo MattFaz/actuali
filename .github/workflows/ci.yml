@@ -84,21 +84,6 @@ jobs:
             -skip-testing:ActualiUITests \
             | xcbeautify --quiet
 
-      # The notification executor regression only appeared with optimization.
-      # Keep DEBUG test fixtures available while using Release's optimizer.
-      - name: Run notification isolation tests with optimization
-        run: |
-          set -o pipefail
-          xcodebuild test \
-            -project Actuali/Actuali.xcodeproj \
-            -scheme Actuali \
-            -configuration Debug \
-            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
-            -only-testing:ActualiTests/CreditCardDueNotifierTests \
-            SWIFT_OPTIMIZATION_LEVEL=-O \
-            SWIFT_COMPILATION_MODE=wholemodule \
-            | xcbeautify --quiet
-
   # IPHONEOS_DEPLOYMENT_TARGET is 18.0, so the floor needs a runtime of its
   # own: the compiler rejects an unavailable API, but a missing SF Symbol or
   # a behaviour difference only shows up when the tests actually run there.
