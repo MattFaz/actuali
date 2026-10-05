@@ -58,6 +58,24 @@ struct BudgetStoreHideSpentCategoriesTests {
         #expect(visible.count == 3)
     }
 
+    @Test(arguments: [false, true])
+    func reorderingIncludesSpentRowsWithoutChangingVisibilityPreferences(showHidden: Bool) {
+        let store = BudgetStore.previewInstance()
+        store.hideZeroBudgetCategories = true
+        store.showHiddenCategories = showHidden
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hideZeroBudgetCategories")
+            UserDefaults.standard.removeObject(forKey: "showHiddenCategories")
+        }
+        var categories = makeCategories(availables: [0, 500, 0])
+        categories[2].hidden = true
+
+        let reorderRows = store.visibleCategoryBudgets(categories, includeSpent: true)
+        #expect(reorderRows.map(\.categoryId) == (showHidden ? ["cat0", "cat1", "cat2"] : ["cat0", "cat1"]))
+        #expect(store.hideZeroBudgetCategories)
+        #expect(store.visibleCategoryBudgets(categories).map(\.categoryId) == (showHidden ? ["cat1", "cat2"] : ["cat1"]))
+    }
+
     @Test func showHiddenKeepsHiddenRowsReachableWhenSpentRowsAreHidden() {
         let store = BudgetStore.previewInstance()
         store.hideZeroBudgetCategories = true

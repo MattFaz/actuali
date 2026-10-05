@@ -1074,6 +1074,74 @@ actor SyncClient {
         return insertion.category
     }
 
+    /// Move a category into a group, before `targetId` (last when nil), the
+    /// way upstream's `category/move` does: one batch with a sort_order
+    /// message per sibling the shove displaced, then the category's own
+    /// `cat_group` and `sort_order`.
+    func moveCategory(id: String, categoryGroupId: String, before targetId: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        // 1. Move locally (optimistic)
+        let move = try database.moveCategory(id: id, toGroup: categoryGroupId, before: targetId)
+
+        // 2. One message per changed column: displaced siblings first, as
+        //    upstream orders them, then the moved category.
+        var messages: [CRDTMessage] = []
+        for sibling in move.movedSiblings {
+            messages += try await messageGenerator.messages(
+                dataset: Category.datasetName,
+                row: sibling.id,
+                fields: [("sort_order", sibling.sortOrder)]
+            )
+        }
+        messages += try await messageGenerator.messages(
+            dataset: Category.datasetName,
+            row: move.id,
+            fields: [("sort_order", move.sortOrder), ("cat_group", move.groupId)]
+        )
+
+        // 3. Store messages and update merkle
+        for message in try database.insertMessages(messages) {
+            merkle = merkle.inserting(message.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // Push after the local save so an unreachable server cannot hold the drag.
+        scheduleAutomaticSync()
+    }
+
+    /// Move a category group before `targetId` (last when nil), the way
+    /// upstream's `category-group/move` does: a sort_order message per sibling
+    /// the shove displaced, then the group's own.
+    func moveCategoryGroup(id: String, before targetId: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        let move = try database.moveCategoryGroup(id: id, before: targetId)
+
+        var messages: [CRDTMessage] = []
+        for sibling in move.movedSiblings {
+            messages += try await messageGenerator.messages(
+                dataset: CategoryGroup.datasetName,
+                row: sibling.id,
+                fields: [("sort_order", sibling.sortOrder)]
+            )
+        }
+        messages += try await messageGenerator.messages(
+            dataset: CategoryGroup.datasetName,
+            row: move.id,
+            fields: [("sort_order", move.sortOrder)]
+        )
+
+        for message in try database.insertMessages(messages) {
+            merkle = merkle.inserting(message.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
     /// Rename a category through the normal CRDT path so the local optimistic
     /// edit and every synced client converge on the same name.
     func renameCategory(id: String, name: String) async throws {

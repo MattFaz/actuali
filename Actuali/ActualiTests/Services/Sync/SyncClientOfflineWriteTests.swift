@@ -185,6 +185,44 @@ struct SyncClientOfflineWriteTests {
         await cancelStalledSync(syncClient, server)
     }
 
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func categoryMovesReturnAndQueueTheirPushWhileTheServerIsStalled(movingGroup: Bool) async throws {
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO category_groups (id, name, sort_order) VALUES
+                ('A', 'A', 16384), ('B', 'B', 32768);
+            INSERT INTO categories (id, name, cat_group, sort_order) VALUES
+                ('x', 'x', 'A', 16384), ('y', 'y', 'A', 32768);
+            """)
+        }
+        let server = StallingServer()
+        let syncClient = try await makeSyncClient(database: database, server: server)
+        defer { server.release() }
+
+        do {
+            if movingGroup {
+                try await syncClient.moveCategoryGroup(id: "B", before: "A")
+            } else {
+                try await syncClient.moveCategory(id: "y", categoryGroupId: "B", before: nil)
+            }
+            await server.waitForAttempt()
+            #expect(server.completionCount == 0, "the local move waited for the server")
+            #expect(try await database.dbQueueForTesting.read { db in
+                if movingGroup {
+                    return try Double.fetchOne(db, sql: "SELECT sort_order FROM category_groups WHERE id = 'B'") == 8192
+                }
+                return try String.fetchOne(db, sql: "SELECT cat_group FROM categories WHERE id = 'y'") == "B"
+            })
+            #expect(try !messageRows(path: path).isEmpty)
+        } catch {
+            await cancelStalledSync(syncClient, server)
+            throw error
+        }
+        await cancelStalledSync(syncClient, server)
+    }
+
     /// Deferred, not dropped: the push still goes out, just off the caller's
     /// thread. The time limit is the failure mode: a dropped push never wakes
     /// `waitForAttempt()`.
