@@ -7,13 +7,25 @@ struct TransactionImpactPopup: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
     var body: some View {
+        ViewThatFits(in: .vertical) {
+            cards
+            ScrollView {
+                cards
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .frame(maxHeight: 300, alignment: .bottom)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 16)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private var cards: some View {
         VStack(spacing: 8) {
             ForEach(budgetStore.transactionImpactCues) { cue in
                 TransactionImpactCard(cue: cue)
             }
         }
-        .padding(.horizontal, 16)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }
 
@@ -86,7 +98,7 @@ private struct TransactionImpactCard: View {
         .accessibilityLabel(budgetStore.spokenImpactText(cue))
         .accessibilityHint(Text("Double-tap to dismiss"))
         .accessibilityAddTraits(.isButton)
-        .accessibilityIdentifier("transactionImpactCue")
+        .accessibilityIdentifier("transactionImpactCue.\(cue.id)")
     }
 }
 

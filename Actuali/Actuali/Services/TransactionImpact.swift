@@ -86,20 +86,22 @@ extension BudgetStore {
         guard form.type != .transfer, !offBudgetAccountIds.contains(form.accountId) else { return [] }
         let month = TransactionImpact.month(forDate: Transaction.yyyymmdd(from: form.date))
         let ids = form.splits.isEmpty ? [form.categoryId] : form.splits.map(\.categoryId)
-        var targets = Set<TransactionImpactTarget>()
-        for case let categoryId? in ids {
-            targets.insert(TransactionImpactTarget(month: month, categoryId: categoryId))
-        }
-        return targets
+        return Set(ids.compactMap { $0.map { TransactionImpactTarget(month: month, categoryId: $0) } })
     }
 
     private func availableBalances(
-        _ targets: Set<TransactionImpactTarget>
+        _ targets: Set<TransactionImpactTarget>,
+        refreshedMonth: BudgetMonth? = nil
     ) async -> [TransactionImpactTarget: (name: String, available: Int)] {
         guard let database = databaseForLogger else { return [:] }
         var result: [TransactionImpactTarget: (name: String, available: Int)] = [:]
         for month in Set(targets.map(\.month)) {
-            guard let budget = try? await database.fetchBudgetMonth(month: month) else { continue }
+            let budget: BudgetMonth? = if let refreshedMonth, refreshedMonth.month == month {
+                refreshedMonth
+            } else {
+                try? await database.fetchBudgetMonth(month: month)
+            }
+            guard let budget else { continue }
             for category in budget.categoryBudgets {
                 let target = TransactionImpactTarget(month: month, categoryId: category.categoryId)
                 if targets.contains(target) {
@@ -118,12 +120,20 @@ extension BudgetStore {
         _ work: () async throws -> T
     ) async rethrows -> T {
         // Hidden balances stay hidden: no popup rather than one full of dots.
-        guard showTransactionImpactCue, !hideBalances, !targets.isEmpty, databaseForLogger != nil else {
+        guard showTransactionImpactCue, !hideBalances, !targets.isEmpty, let database = databaseForLogger else {
             return try await work()
         }
+        let budgetId = currentBudgetId
+        let displayedBefore = currentBudgetMonth
         let before = await availableBalances(targets)
         let result = try await work()
-        let after = await availableBalances(targets)
+        guard databaseForLogger === database, currentBudgetId == budgetId,
+              showTransactionImpactCue, !hideBalances else { return result }
+        // A successful write refreshes the displayed month already. Reuse
+        // that snapshot when it changed, instead of walking its history again.
+        let refreshedMonth = currentBudgetMonth != displayedBefore ? currentBudgetMonth : nil
+        let after = await availableBalances(targets, refreshedMonth: refreshedMonth)
+        guard databaseForLogger === database, currentBudgetId == budgetId else { return result }
         showImpactCues(TransactionImpact.cues(before: before, after: after))
         return result
     }
@@ -139,6 +149,7 @@ extension BudgetStore {
     }
 
     private func showImpactCues(_ cues: [TransactionImpactCue]) {
+        guard showTransactionImpactCue, !hideBalances else { return }
         impactDismissTask?.cancel()
         transactionImpactCues = cues
         guard !cues.isEmpty else { return }
@@ -163,6 +174,9 @@ extension BudgetStore {
         let format = cue.isExpense
             ? String(localized: "%@: %@ to %@, down %@")
             : String(localized: "%@: %@ to %@, up %@")
-        return String(format: format, cue.categoryName, before, after, change)
+        let name = cue.month == TransactionImpact.month(forDate: Transaction.yyyymmdd(from: Date()))
+            ? cue.categoryName
+            : String(format: String(localized: "%@ (%@)"), cue.categoryName, MonthPicker.title(for: cue.month))
+        return String(format: format, name, before, after, change)
     }
 }

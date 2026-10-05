@@ -262,6 +262,7 @@ final class BudgetStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
             if currentBudgetId != oldValue {
+                dismissTransactionImpactCues()
                 creditCardConfigs = [:]
                 loanConfigs = [:]
                 depositConfigs = [:]
@@ -702,6 +703,9 @@ final class BudgetStore: ObservableObject {
     @Published var showTransactionImpactCue: Bool = true {
         didSet {
             UserDefaults.standard.set(showTransactionImpactCue, forKey: "showTransactionImpactCue")
+            if !showTransactionImpactCue {
+                dismissTransactionImpactCues()
+            }
         }
     }
 
@@ -741,6 +745,9 @@ final class BudgetStore: ObservableObject {
     @Published var hideBalances: Bool = false {
         didSet {
             UserDefaults.standard.set(hideBalances, forKey: "hideBalances")
+            if hideBalances {
+                dismissTransactionImpactCues()
+            }
             publishWidgetSnapshot()
         }
     }
@@ -1333,6 +1340,7 @@ final class BudgetStore: ObservableObject {
             // the database identity changes so `database = nil` before a
             // re-import (downloadBudget) actually closes the GRDB connection.
             guard database !== oldValue else { return }
+            dismissTransactionImpactCues()
             schedulePoster = nil
         }
     }
@@ -3600,28 +3608,47 @@ final class BudgetStore: ObservableObject {
     @discardableResult
     func createTransaction(
         _ transaction: Transaction,
-        preserveCategory: Bool = false
+        preserveCategory: Bool = false,
+        showImpact: Bool = false
     ) async throws -> SyncClient.TransactionCreateResult {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
 
-        let result = try await syncClient.createTransaction(
-            transaction,
-            applyRules: true,
-            preserveCategory: preserveCategory
-        )
-
-        // Publish the persisted row before the full refresh so local observers
-        // such as History see the transaction immediately.
-        if let database, let saved = try? await database.fetchTransaction(id: transaction.id) {
-            transactions.removeAll { $0.id == saved.id }
-            transactions.append(saved)
+        // Use the same rules snapshot for the cue and the write: rules can
+        // change the category, account and date before insertion.
+        let prepared = if showImpact, showTransactionImpactCue, !hideBalances {
+            try await syncClient.prepareRules()
+        } else {
+            nil as SyncClient.PreparedRules?
         }
+        var targets = Set<TransactionImpactTarget>()
+        if let prepared {
+            var final = RulesEngine.apply(transaction, rules: prepared.rules, context: prepared.context).transaction
+            if preserveCategory, let categoryId = transaction.categoryId {
+                final.categoryId = categoryId
+            }
+            targets = await impactTargets(for: [final])
+        }
+        return try await withImpactCue(touching: targets) {
+            let result = try await syncClient.createTransaction(
+                transaction,
+                applyRules: true,
+                prepared: prepared,
+                preserveCategory: preserveCategory
+            )
 
-        // Refresh local data (without recreating SyncClient, which would cancel the scheduled sync)
-        await refreshDataOnly()
-        return result
+            // Publish the persisted row before the full refresh so local observers
+            // such as History see the transaction immediately.
+            if let database, let saved = try? await database.fetchTransaction(id: transaction.id) {
+                transactions.removeAll { $0.id == saved.id }
+                transactions.append(saved)
+            }
+
+            // Refresh local data (without recreating SyncClient, which would cancel the scheduled sync)
+            await refreshDataOnly()
+            return result
+        }
     }
 
     struct WalletImportResult: Equatable {
@@ -5681,9 +5708,14 @@ final class BudgetStore: ObservableObject {
     /// updates the transaction.
     @discardableResult
     func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws -> String? {
+        // New plain rows collect their target after resolving the payee and
+        // applying rules in createTransaction; edits and splits skip rules.
+        if original == nil, form.type != .transfer, form.splits.isEmpty {
+            return try await performSaveTransaction(form, editing: original)
+        }
         var targets = impactTargets(for: form)
         if let original {
-            targets.formUnion(await impactTargets(for: [original]))
+            await targets.formUnion(impactTargets(for: [original]))
         }
         return try await withImpactCue(touching: targets) {
             try await performSaveTransaction(form, editing: original)
@@ -5946,7 +5978,8 @@ final class BudgetStore: ObservableObject {
                 )
                 try await createTransaction(
                     transaction,
-                    preserveCategory: form.categoryIsExplicit
+                    preserveCategory: form.categoryIsExplicit,
+                    showImpact: true
                 )
                 if form.recordLocation, let payeeId {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)

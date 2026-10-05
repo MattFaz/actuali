@@ -4,7 +4,7 @@ import XCTest
 /// shows how its category's available balance moved.
 final class TransactionImpactCueUITests: XCTestCase {
     @MainActor
-    private func duplicateChipotle(_ app: XCUIApplication) {
+    private func duplicateChipotle(_ app: XCUIApplication, includeGroceries: Bool = false) {
         app.tabBars.buttons["Accounts"].tap()
         let allAccounts = app.staticTexts["All Accounts"].firstMatch
         XCTAssertTrue(allAccounts.waitForExistence(timeout: 10))
@@ -20,7 +20,14 @@ final class TransactionImpactCueUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 10), "the demo budget has a Chipotle transaction")
         row.tap()
 
-        let duplicate = app.buttons["Duplicate 1 selected transaction"]
+        if includeGroceries {
+            let groceries = app.buttons.matching(
+                NSPredicate(format: "identifier BEGINSWITH 'transactionRow.' AND label CONTAINS 'Whole Foods'")
+            ).firstMatch
+            XCTAssertTrue(groceries.waitForExistence(timeout: 10))
+            groceries.tap()
+        }
+        let duplicate = app.buttons[includeGroceries ? "Duplicate 2 selected transactions" : "Duplicate 1 selected transaction"]
         XCTAssertTrue(duplicate.waitForExistence(timeout: 5))
         duplicate.tap()
     }
@@ -32,7 +39,7 @@ final class TransactionImpactCueUITests: XCTestCase {
         app.launch()
         duplicateChipotle(app)
 
-        let cue = app.descendants(matching: .any)["transactionImpactCue"]
+        let cue = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'transactionImpactCue.'")).firstMatch
         XCTAssertTrue(cue.waitForExistence(timeout: 10), "the impact popup appears")
         XCTAssertTrue(cue.label.contains("Dining Out"), "it names the category that moved")
         XCTAssertTrue(cue.label.contains("down"), "a duplicated expense lowers the balance")
@@ -48,7 +55,21 @@ final class TransactionImpactCueUITests: XCTestCase {
         app.launch()
         duplicateChipotle(app)
 
-        let cue = app.descendants(matching: .any)["transactionImpactCue"]
+        let cue = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'transactionImpactCue.'")).firstMatch
         XCTAssertFalse(cue.waitForExistence(timeout: 4), "no popup while Show Balance Impact is off")
+    }
+
+    @MainActor
+    func testMultipleCardsHaveDistinctIdentifiers() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-transactionDisplayMode", "flat", "-showTransactionImpactCue", "YES"]
+        app.launch()
+        duplicateChipotle(app, includeGroceries: true)
+        let cues = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'transactionImpactCue.'"))
+        XCTAssertTrue(cues.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertEqual(cues.count, 2)
+        if cues.count == 2 {
+            XCTAssertNotEqual(cues.element(boundBy: 0).identifier, cues.element(boundBy: 1).identifier)
+        }
     }
 }
