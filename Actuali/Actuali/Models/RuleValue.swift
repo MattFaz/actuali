@@ -4,7 +4,7 @@ import Foundation
 /// in the `rules` table, so every value is a JSON primitive — modelling that
 /// explicitly instead of `Any?` keeps the model `Equatable` (SwiftUI state) and
 /// makes the round trip back out to JSON exact.
-enum RuleValue: Equatable, Hashable {
+enum RuleValue: Equatable, Hashable, Sendable {
     case string(String)
     case number(Double)
     case bool(Bool)

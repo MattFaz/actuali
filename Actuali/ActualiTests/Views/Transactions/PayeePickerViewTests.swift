@@ -142,4 +142,23 @@ struct PayeePickerViewTests {
             ) == true
         )
     }
+
+    // MARK: - Transfer to / from
+
+    private func account(_ id: String, _ name: String) -> Account {
+        Account(id: id, name: name, type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0)
+    }
+
+    @Test func transferAccountsListEveryAccountForAnEmptySearch() {
+        let accounts = [account("a", "Checking"), account("b", "Savings")]
+
+        #expect(PayeePickerView.transferAccounts(matching: "", in: accounts).map(\.id) == ["a", "b"])
+    }
+
+    @Test func transferAccountsFollowTheSearchIgnoringCase() {
+        let accounts = [account("a", "Checking"), account("b", "Savings"), account("c", "Holiday savings")]
+
+        #expect(PayeePickerView.transferAccounts(matching: "SAV", in: accounts).map(\.id) == ["b", "c"])
+        #expect(PayeePickerView.transferAccounts(matching: "visa", in: accounts).isEmpty)
+    }
 }
