@@ -176,14 +176,7 @@ struct BudgetView: View {
                     }
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) { monthStepper }
-            .navigationTitle("Budget")
-            // The summary bar is pinned outside the List (GH #155), so it
-            // can't move with an overscroll the way list content does. A
-            // large title stretches on that overscroll and draws straight
-            // over the card, and collapses on scroll-up, jolting it (GH
-            // #253). Inline keeps the bar a fixed height above the pinned
-            // month stepper and summary.
+            // Keep the toolbar a fixed height above the pinned summary.
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { budgetToolbar }
             .onAppear {
@@ -400,8 +393,7 @@ struct BudgetView: View {
         }
     }
 
-    /// A full-width header keeps the month centered at larger text sizes and
-    /// in longer locales, independently of the navigation bar buttons.
+    /// The principal toolbar item centers the month between the two menus.
     private var monthStepper: some View {
         HStack(spacing: 0) {
             Button {
@@ -430,10 +422,12 @@ struct BudgetView: View {
             .accessibilityLabel("Next month")
             .accessibilityIdentifier("budget.nextMonth")
         }
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .tint(.primary)
+        .fixedSize(horizontal: true, vertical: false)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("budget.monthStepper")
-        .background(Color(.systemGroupedBackground))
     }
 
     /// The screen's toolbar, extracted from `body` so the whole screen stays
@@ -453,7 +447,10 @@ struct BudgetView: View {
         // New Category / New Group live at the top of the options menu below
         // (GH #157 follow-up) — creation is one more "how this looks and
         // what's in it" action rather than its own toolbar button.
-        ToolbarItemGroup(placement: .topBarTrailing) {
+        ToolbarItem(placement: .principal) {
+            monthStepper
+        }
+        ToolbarItem(placement: .topBarLeading) {
             // Budget actions get their own button so the options menu stays
             // about how the table looks.
             if budgetStore.currentBudgetMonth != nil {
@@ -466,7 +463,10 @@ struct BudgetView: View {
                         && budgetStore.goalTemplatesEnabled
                         ? { runCleanup() } : nil
                 )
+                .tint(.primary)
             }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
             // Every "how should this look" control lives here (GH #157).
             // Whole-table expand/collapse is a menu rather than a long-press
             // on the group headers: SwiftUI context menus don't fire inside
@@ -483,6 +483,8 @@ struct BudgetView: View {
                 expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
                 collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil
             )
+            .tint(.primary)
+            .accessibilityIdentifier("budget.optionsMenu")
         }
     }
 

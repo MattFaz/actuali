@@ -52,10 +52,7 @@ struct ReportsTabView: View {
                     }
                 }
             }
-            // The dashboard picker is the page's header now, so the title
-            // stays out of its way in the compact bar.
-            .navigationTitle("Reports")
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             // Keyed to the open database so the initial load re-runs when
             // the budget finishes opening (launching straight onto this tab
             // races loadLocalBudget) and when the budget is switched.
