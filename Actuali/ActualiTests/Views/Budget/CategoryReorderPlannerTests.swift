@@ -77,6 +77,32 @@ struct CategoryReorderPlannerTests {
         ) == nil)
     }
 
+    @Test func anEmptyGroupReceivesADropOnItsHeader() {
+        let entries = [Entry(id: "A", ids: ["a1"]), Entry(id: "B", ids: [])]
+        let frames = [
+            "a1": CGRect(x: 0, y: 0, width: 300, height: 100),
+            "header-B": CGRect(x: 0, y: 160, width: 300, height: 50),
+        ]
+        let slot = CategoryReorderPlanner.destination(dragged: "a1", centerY: 185, arrangement: entries, frames: frames)
+        #expect(slot == Slot(groupId: "B", index: 0))
+        let moved = CategoryReorderPlanner.moved(entries, dragged: "a1", to: Slot(groupId: "B", index: 0))
+        #expect(CategoryReorderPlanner.target(of: "a1", in: moved)?.groupId == "B")
+        #expect(CategoryReorderPlanner.target(of: "a1", in: moved)?.before == nil)
+    }
+
+    @Test func aGroupEmptiedDuringTheDragCanReceiveTheCategoryBack() {
+        let entries = [Entry(id: "A", ids: ["a1"]), Entry(id: "B", ids: ["b1"])]
+        let moved = CategoryReorderPlanner.moved(entries, dragged: "a1", to: Slot(groupId: "B", index: 0))
+        let frames = [
+            "header-A": CGRect(x: 0, y: 0, width: 300, height: 50),
+            "a1": CGRect(x: 0, y: 110, width: 300, height: 100),
+            "b1": CGRect(x: 0, y: 210, width: 300, height: 100),
+        ]
+        let slot = CategoryReorderPlanner.destination(dragged: "a1", centerY: 25, arrangement: moved, frames: frames)
+        #expect(slot == Slot(groupId: "A", index: 0))
+        #expect(CategoryReorderPlanner.moved(moved, dragged: "a1", to: Slot(groupId: "A", index: 0)) == entries)
+    }
+
     @Test func movedTakesTheRowOutAndPutsItAtTheSlot() {
         let withinGroup = CategoryReorderPlanner.moved(arrangement, dragged: "a3", to: Slot(groupId: "A", index: 0))
         #expect(withinGroup == [Entry(id: "A", ids: ["a3", "a1", "a2"]), Entry(id: "B", ids: ["b1", "b2"])])

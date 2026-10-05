@@ -812,9 +812,9 @@ final class BudgetStore: ObservableObject {
     /// Categories the Budget list should show. With the hide toggle on, only
     /// exactly-zero available drops out: overspent (negative) categories stay
     /// visible so problems that need fixing are never masked.
-    func visibleCategoryBudgets(_ categories: [CategoryBudget]) -> [CategoryBudget] {
+    func visibleCategoryBudgets(_ categories: [CategoryBudget], includeSpent: Bool = false) -> [CategoryBudget] {
         let visible = categories.filter { !$0.isEffectivelyHidden }
-        let filtered = hideZeroBudgetCategories
+        let filtered = hideZeroBudgetCategories && !includeSpent
             ? visible.filter { $0.available != 0 }
             : visible
         return showHiddenCategories

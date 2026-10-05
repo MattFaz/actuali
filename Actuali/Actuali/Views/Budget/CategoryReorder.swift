@@ -35,7 +35,8 @@ enum CategoryReorderPlanner {
     /// never swallows it). Within the group, the index is the number of the
     /// other rows whose middle sits above the centre. `frames` are the rows'
     /// frames in one shared coordinate space, the dragged row's own slot
-    /// included so a group it is alone in still has a card.
+    /// included so a group it is alone in still has a card. An empty group's
+    /// header supplies its bounds instead.
     static func destination(
         dragged: String,
         centerY: CGFloat,
@@ -44,7 +45,10 @@ enum CategoryReorderPlanner {
     ) -> Slot? {
         var best: (group: Int, distance: CGFloat)?
         for (position, entry) in arrangement.enumerated() {
-            let rects = entry.ids.compactMap { frames[$0] }
+            var rects = entry.ids.compactMap { frames[$0] }
+            if entry.ids.isEmpty, let header = frames[headerKey(entry.id)] {
+                rects = [header]
+            }
             guard let top = rects.map(\.minY).min(), let bottom = rects.map(\.maxY).max() else { continue }
             let distance = if centerY < top {
                 top - centerY
@@ -218,6 +222,7 @@ final class CategoryReorderController {
     @ObservationIgnored private var fingerY: CGFloat = 0
     @ObservationIgnored private var grabOffset: CGFloat = 0
     @ObservationIgnored private var isSettling = false
+    @ObservationIgnored private var isSaving = false
     @ObservationIgnored private var autoScroll: Task<Void, Never>?
     @ObservationIgnored private let impact = UIImpactFeedbackGenerator(style: .medium)
     @ObservationIgnored private let selection = UISelectionFeedbackGenerator()
@@ -254,6 +259,7 @@ final class CategoryReorderController {
 
     /// A touch on a handle: the first sample lifts the row, later ones steer it.
     func touch(id: String, viewportY: CGFloat, groups: () -> [BudgetView.CategoryGroupSection]) {
+        guard !isSaving else { return }
         if !isDragging {
             begin(id: id, viewportY: viewportY, groups: groups())
         } else if liftedId == id {
@@ -263,6 +269,7 @@ final class CategoryReorderController {
 
     /// A touch on a group header's handle: the first sample lifts the group.
     func touchGroup(id: String, viewportY: CGFloat, groups: () -> [BudgetView.CategoryGroupSection]) {
+        guard !isSaving else { return }
         if !isDragging {
             beginGroup(id: id, viewportY: viewportY, groups: groups())
         } else if liftedGroupId == id {
@@ -317,6 +324,7 @@ final class CategoryReorderController {
 
     /// Drop the arrangement once the saved order is on screen (or the write failed).
     func clearPreview() {
+        isSaving = false
         arrangement = []
         snapshot = []
         groupOrder = []
@@ -324,21 +332,24 @@ final class CategoryReorderController {
     }
 
     /// One step up or down for a group without dragging, for VoiceOver.
-    func stepGroup(_ direction: Int, of id: String, groups: [BudgetView.CategoryGroupSection]) -> CategoryGroupMove? {
+    func stepGroup(_ direction: Int, of id: String, groups: [BudgetView.CategoryGroupSection]) {
+        guard !isDragging, !isSaving, let onDropGroup else { return }
         let order = groups.map(\.id)
-        guard let index = CategoryReorderPlanner.groupStep(direction, of: id, in: order) else { return nil }
+        guard let index = CategoryReorderPlanner.groupStep(direction, of: id, in: order) else { return }
         let moved = CategoryReorderPlanner.movedGroup(order, dragged: id, to: index)
-        return CategoryGroupMove(id: id, before: CategoryReorderPlanner.groupTarget(of: id, in: moved))
+        isSaving = true
+        onDropGroup(CategoryGroupMove(id: id, before: CategoryReorderPlanner.groupTarget(of: id, in: moved)))
     }
 
     /// One step up or down without dragging, for VoiceOver.
-    func step(_ direction: Int, of id: String, groups: [BudgetView.CategoryGroupSection]) -> CategoryMove? {
+    func step(_ direction: Int, of id: String, groups: [BudgetView.CategoryGroupSection]) {
+        guard !isDragging, !isSaving, let onDrop else { return }
         let entries = groups.map { Entry(id: $0.id, ids: $0.categories.map(\.categoryId)) }
-        guard let slot = CategoryReorderPlanner.step(direction, of: id, in: entries) else { return nil }
+        guard let slot = CategoryReorderPlanner.step(direction, of: id, in: entries) else { return }
         let moved = CategoryReorderPlanner.moved(entries, dragged: id, to: slot)
-        return CategoryReorderPlanner.target(of: id, in: moved).map {
-            CategoryMove(id: id, groupId: $0.groupId, before: $0.before)
-        }
+        guard let target = CategoryReorderPlanner.target(of: id, in: moved) else { return }
+        isSaving = true
+        onDrop(CategoryMove(id: id, groupId: target.groupId, before: target.before))
     }
 
     private func begin(id: String, viewportY: CGFloat, groups: [BudgetView.CategoryGroupSection]) {
@@ -394,6 +405,7 @@ final class CategoryReorderController {
         }
         isSettling = false
         if let move, let onDropGroup {
+            isSaving = true
             onDropGroup(move)
         } else {
             clearPreview()
@@ -413,6 +425,7 @@ final class CategoryReorderController {
         }
         isSettling = false
         if let move, let onDrop {
+            isSaving = true
             onDrop(move)
         } else {
             clearPreview()
@@ -500,7 +513,6 @@ struct CategoryStackOriginKey: PreferenceKey {
 /// drag handle. One flat list, so a row keeps its identity when it crosses
 /// into another group and the move animates instead of being rebuilt.
 struct CategoryReorderTable: View {
-    @EnvironmentObject private var budgetStore: BudgetStore
     @State private var controller = CategoryReorderController()
     @State private var scrollPosition = ScrollPosition()
 
@@ -543,10 +555,10 @@ struct CategoryReorderTable: View {
                     case .header(let groupId, let name):
                         ReorderHeader(
                             groupId: groupId, name: name, controller: controller,
-                            groups: groups, onMoveGroup: onMoveGroup
+                            groups: groups
                         )
                     case .row(let category, let isFirst, let isLast):
-                        ReorderRow(category: category, isFirst: isFirst, isLast: isLast, controller: controller, groups: groups, onMove: onMove)
+                        ReorderRow(category: category, isFirst: isFirst, isLast: isLast, controller: controller, groups: groups)
                     }
                 }
             }
@@ -645,7 +657,6 @@ private struct ReorderRow: View {
     let isLast: Bool
     let controller: CategoryReorderController
     let groups: [BudgetView.CategoryGroupSection]
-    let onMove: (CategoryMove) async -> Void
 
     private var shape: UnevenRoundedRectangle {
         UnevenRoundedRectangle(
@@ -682,14 +693,10 @@ private struct ReorderRow: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("reorder.handle.\(category.categoryId)")
             .accessibilityAction(named: "Move Up") {
-                if let move = controller.step(-1, of: category.categoryId, groups: groups) {
-                    Task { await onMove(move) }
-                }
+                controller.step(-1, of: category.categoryId, groups: groups)
             }
             .accessibilityAction(named: "Move Down") {
-                if let move = controller.step(1, of: category.categoryId, groups: groups) {
-                    Task { await onMove(move) }
-                }
+                controller.step(1, of: category.categoryId, groups: groups)
             }
     }
 
@@ -721,7 +728,6 @@ private struct ReorderHeader: View {
     let name: String
     let controller: CategoryReorderController
     let groups: [BudgetView.CategoryGroupSection]
-    let onMoveGroup: (CategoryGroupMove) async -> Void
 
     private var handle: some View {
         Image(systemName: "line.3.horizontal")
@@ -748,14 +754,10 @@ private struct ReorderHeader: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("reorder.groupHandle.\(groupId)")
             .accessibilityAction(named: "Move Up") {
-                if let move = controller.stepGroup(-1, of: groupId, groups: groups) {
-                    Task { await onMoveGroup(move) }
-                }
+                controller.stepGroup(-1, of: groupId, groups: groups)
             }
             .accessibilityAction(named: "Move Down") {
-                if let move = controller.stepGroup(1, of: groupId, groups: groups) {
-                    Task { await onMoveGroup(move) }
-                }
+                controller.stepGroup(1, of: groupId, groups: groups)
             }
     }
 

@@ -4,9 +4,12 @@ import XCTest
 /// shows a drag handle on every category and group, and dragging a handle moves it within
 /// or between groups. The new order is saved when the finger lifts.
 final class CategoryReorderModeUITests: XCTestCase {
-    @MainActor private func launch(style: String = "clean") -> XCUIApplication {
+    @MainActor private func launch(style: String = "clean", hideSpent: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", style, "-initialTab", "1"]
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", style, "-initialTab", "1",
+            "-hideZeroBudgetCategories", hideSpent ? "YES" : "NO",
+        ]
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Budget"].waitForExistence(timeout: 10))
         return app
@@ -54,6 +57,17 @@ final class CategoryReorderModeUITests: XCTestCase {
         XCTAssertTrue(handle(app, "Essentials").exists, "groups have handles too")
         leaveReorderMode(app)
         XCTAssertFalse(handle(app, "Groceries").exists)
+    }
+
+    @MainActor
+    func testReorderModeIncludesSpentRowsWithoutChangingTheNormalTableFilter() {
+        let app = launch(hideSpent: true)
+        // Demo rent is paid on the first of the month, leaving zero available.
+        XCTAssertTrue(spent(app, "Rent").waitForNonExistence(timeout: 5))
+        enterReorderMode(app)
+        XCTAssertTrue(handle(app, "Rent").waitForExistence(timeout: 5))
+        leaveReorderMode(app)
+        XCTAssertTrue(spent(app, "Rent").waitForNonExistence(timeout: 5))
     }
 
     @MainActor
@@ -143,7 +157,7 @@ final class CategoryReorderModeUITests: XCTestCase {
         let handles = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH %@", "reorder.groupHandle."))
         let visible = (0..<handles.count).map(handles.element(boundBy:))
-            .filter { $0.isHittable }
+            .filter(\.isHittable)
             .sorted { $0.frame.minY < $1.frame.minY }
         XCTAssertGreaterThanOrEqual(visible.count, 2, "two group handles are visible at the bottom")
         guard visible.count >= 2, let last = visible.last else { return }

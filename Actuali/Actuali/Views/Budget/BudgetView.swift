@@ -1191,8 +1191,10 @@ struct BudgetView: View {
                 // An explicit filter is its own visibility rule: "Not Funded"
                 // must still match zero-available categories even when the
                 // Hide Spent Categories setting would drop them from "All".
-                let base = categoryFilter == .all
-                    ? budgetStore.visibleCategoryBudgets(items)
+                // Reordering needs every visible category, including spent rows,
+                // without changing the user's normal-table visibility setting.
+                let base = isReordering || categoryFilter == .all
+                    ? budgetStore.visibleCategoryBudgets(items, includeSpent: isReordering)
                     : items.filter(categoryFilter.includes)
                 let visible = base
                     .sorted { $0.categorySortOrder < $1.categorySortOrder }
@@ -1207,7 +1209,7 @@ struct BudgetView: View {
                         isHidden: first.groupHidden,
                         categories: visible,
                         totals: CategoryGroupTotals(
-                            (categoryFilter == .all ? items : visible)
+                            (isReordering || categoryFilter == .all ? items : visible)
                                 .filter { !$0.isEffectivelyHidden }
                         )
                     )
@@ -1222,7 +1224,7 @@ struct BudgetView: View {
         // that matches nothing should show the empty state, not bare headers.
         sections += budgetStore.categoryGroups
             .filter {
-                categoryFilter == .all && !$0.isIncome
+                (isReordering || categoryFilter == .all) && !$0.isIncome
                     && (budgetStore.showHiddenCategories || !$0.hidden)
                     && $0.categories.isEmpty
             }

@@ -1107,8 +1107,8 @@ actor SyncClient {
         merkle = merkle.pruned()
         try saveClock()
 
-        // 4. Sync to push the move to the server (rate-limited)
-        await automaticSync()
+        // Push after the local save so an unreachable server cannot hold the drag.
+        scheduleAutomaticSync()
     }
 
     /// Move a category group before `targetId` (last when nil), the way
@@ -1139,7 +1139,7 @@ actor SyncClient {
         merkle = merkle.pruned()
         try saveClock()
 
-        await automaticSync()
+        scheduleAutomaticSync()
     }
 
     /// Rename a category through the normal CRDT path so the local optimistic
