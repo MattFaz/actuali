@@ -616,6 +616,30 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    /// Update several transaction rows, each with its own changed fields, as
+    /// one atomic write — for edits that touch rows differently, like a merge
+    /// that updates one row, re-parents split lines and deletes another.
+    func updateTransactions(_ updates: [(transaction: Transaction, changedFields: Set<String>)]) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard !updates.isEmpty else { return }
+
+        var prepared: [(transaction: Transaction, messages: [CRDTMessage])] = []
+        for update in updates {
+            let messages = update.changedFields.isEmpty
+                ? []
+                : try await messageGenerator.messagesForUpdate(update.transaction, changedFields: update.changedFields)
+            prepared.append((transaction: update.transaction, messages: messages))
+        }
+
+        for msg in try database.updateTransactionsWithMessages(prepared) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
     /// Create a payee (optimistic local-first)
     func createPayee(_ payee: Payee) async throws {
         guard let database else { throw SyncError.notConfigured }

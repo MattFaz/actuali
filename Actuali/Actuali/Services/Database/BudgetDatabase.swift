@@ -3522,6 +3522,21 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Which of these transactions came from a bank import (carry a
+    /// `financial_id`). Fetched rows don't expose it, and a merge keeps the
+    /// imported side.
+    func importedTransactionIds(among ids: [String]) throws -> Set<String> {
+        guard !ids.isEmpty else { return [] }
+        let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ", ")
+        return try dbQueue.read { db in
+            let found = try String.fetchAll(db, sql: """
+            SELECT id FROM transactions
+            WHERE financial_id IS NOT NULL AND id IN (\(placeholders))
+            """, arguments: StatementArguments(ids))
+            return Set(found)
+        }
+    }
+
     // MARK: - Bank Sync
 
     private static func bankSyncLinkMatches(
