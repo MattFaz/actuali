@@ -6,7 +6,7 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "Rule")
 /// actions are stored as JSON blobs in the `rules` table using the *internal*
 /// schema names (`description` for payee, `acct` for account); `RuleSchema`
 /// translates them on the way in and out.
-struct Rule: Identifiable, Equatable, Hashable {
+struct Rule: Identifiable, Equatable, Hashable, Sendable {
     let id: String
     var stage: Stage
     var conditionsOp: ConditionsOp
@@ -14,7 +14,7 @@ struct Rule: Identifiable, Equatable, Hashable {
     var actions: [Action]
     var tombstone: Bool = false
 
-    enum Stage: Int, Comparable, CaseIterable {
+    enum Stage: Int, Comparable, CaseIterable, Sendable {
         case pre = 0
         case `default` = 1
         case post = 2
@@ -50,7 +50,7 @@ struct Rule: Identifiable, Equatable, Hashable {
         }
     }
 
-    enum ConditionsOp: String, CaseIterable {
+    enum ConditionsOp: String, CaseIterable, Sendable {
         case and
         case or
 
@@ -63,14 +63,14 @@ struct Rule: Identifiable, Equatable, Hashable {
         }
     }
 
-    struct Condition: Equatable, Hashable {
+    struct Condition: Equatable, Hashable, Sendable {
         var op: String
         var field: String // public field name, e.g. "imported_payee"
         var value: RuleValue
         var options: [String: RuleValue]?
     }
 
-    struct Action: Equatable, Hashable {
+    struct Action: Equatable, Hashable, Sendable {
         var op: String
         var field: String? // nil for ops without a field (link-schedule, …)
         var value: RuleValue

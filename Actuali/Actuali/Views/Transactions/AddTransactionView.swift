@@ -318,6 +318,56 @@ struct AddTransactionView: View {
         orderedOpenAccounts.filter { $0.id != selectedAccountId }
     }
 
+    /// Whether the payee list may offer accounts as transfers: the same cases
+    /// the Transfer type is offered in. A pending import, a split in progress
+    /// and an edit that couldn't become a transfer can't take one.
+    private var offersTransfer: Bool {
+        Self.offersTransfer(
+            isPendingImportReview: isPendingImportReview,
+            isSplitting: isSplitting,
+            isEditingSplitParent: isEditingSplitParent,
+            isEditing: isEditing,
+            canConvertToTransfer: canConvertToTransfer
+        )
+    }
+
+    nonisolated static func offersTransfer(
+        isPendingImportReview: Bool,
+        isSplitting: Bool,
+        isEditingSplitParent: Bool,
+        isEditing: Bool,
+        canConvertToTransfer: Bool
+    ) -> Bool {
+        !isPendingImportReview && !isSplitting && !isEditingSplitParent
+            && (!isEditing || canConvertToTransfer)
+    }
+
+    /// Choosing an account in the payee list makes this a transfer between the
+    /// form's account and that one.
+    private func selectTransferAccount(_ account: Account) {
+        let selection = Self.transferAccountSelection(
+            accountId: selectedAccountId, otherAccountId: account.id,
+            type: txType, isEditing: isEditing
+        )
+        transferToAccountId = selection.partnerAccountId
+        selectedAccountId = selection.accountId
+        txType = .transfer
+        showPayeePicker = false
+    }
+
+    nonisolated static func transferAccountSelection(
+        accountId: String,
+        otherAccountId: String,
+        type: TransactionType,
+        isEditing: Bool
+    ) -> (accountId: String, partnerAccountId: String) {
+        // New transfers use From/To; conversion keeps the edited row's own
+        // account and lets the store preserve its original amount's sign.
+        type == .income && !isEditing
+            ? (otherAccountId, accountId)
+            : (accountId, otherAccountId)
+    }
+
     private func matchingPayee(for name: String) -> Payee? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -527,6 +577,10 @@ struct AddTransactionView: View {
                             PayeePickerView(
                                 payeeName: payeeName,
                                 nearbyPayees: $nearbyPayees,
+                                transferAccounts: offersTransfer ? transferEligibleAccounts : [],
+                                onSelectAccount: { account in
+                                    selectTransferAccount(account)
+                                },
                                 onSelect: { payee in
                                     payeeName = payee.name
                                     applyEditCategoryFromHistory(payeeId: payee.id)
