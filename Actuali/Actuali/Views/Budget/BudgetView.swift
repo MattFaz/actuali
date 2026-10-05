@@ -173,14 +173,14 @@ struct BudgetView: View {
                     }
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) { monthStepper }
             .navigationTitle("Budget")
             // The summary bar is pinned outside the List (GH #155), so it
             // can't move with an overscroll the way list content does. A
             // large title stretches on that overscroll and draws straight
             // over the card, and collapses on scroll-up, jolting it (GH
-            // #253). Inline keeps the bar a fixed height above the pinned
-            // month stepper and summary.
+            // #253). Inline keeps the bar a fixed height; the month stepper
+            // sits in its centre in place of the "Budget" title (the tab bar
+            // already says "Budget").
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { budgetToolbar }
             .onAppear {
@@ -397,50 +397,65 @@ struct BudgetView: View {
         }
     }
 
-    /// A full-width header keeps the month centered at larger text sizes and
-    /// in longer locales, independently of the navigation bar buttons.
+    /// The month stepper shown in the middle of the navigation bar. UIKit
+    /// centers a title view only while it fits the room left beside the
+    /// trailing buttons and otherwise slides it toward the leading edge, so
+    /// the chevrons are kept tight (24pt wide, with the touch target growing
+    /// downward to 44pt) to leave as much headroom as possible on small
+    /// phones.
     private var monthStepper: some View {
         HStack(spacing: 0) {
             Button {
                 selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
             } label: {
                 Image(systemName: "chevron.left")
-                    .frame(width: 44, height: 44)
+                    .frame(width: 24, height: 44)
                     .contentShape(.rect)
             }
             .accessibilityLabel("Previous month")
             .accessibilityIdentifier("budget.previousMonth")
 
+            // A fixed width with a shrinking label keeps the whole control the
+            // same size for every locale and text size, so UIKit never has a
+            // reason to slide it off-center.
             MonthPicker(
                 selectedMonth: $selectedMonth,
                 note: displayedMonthNote,
                 onEditNote: { editingMonthNote = true }
             )
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .frame(width: 80)
 
             Button {
                 selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
             } label: {
                 Image(systemName: "chevron.right")
-                    .frame(width: 44, height: 44)
+                    .frame(width: 24, height: 44)
                     .contentShape(.rect)
             }
             .accessibilityLabel("Next month")
             .accessibilityIdentifier("budget.nextMonth")
         }
-        .frame(maxWidth: .infinity)
+        .dynamicTypeSize(...DynamicTypeSize.large)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("budget.monthStepper")
-        .background(Color(.systemGroupedBackground))
     }
 
     /// The screen's toolbar, extracted from `body` so the whole screen stays
     /// within the compiler's type-check budget.
     @ToolbarContentBuilder
     private var budgetToolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            monthStepper
+        }
         // New Category / New Group live at the top of the options menu below
         // (GH #157 follow-up) — creation is one more "how this looks and
         // what's in it" action rather than its own toolbar button.
         ToolbarItemGroup(placement: .topBarTrailing) {
+            // The two buttons are icons that grow with text size and squeeze
+            // the month stepper toward the leading edge, so their size is
+            // capped to keep it centered at every setting.
             // Budget actions get their own button so the options menu stays
             // about how the table looks.
             if budgetStore.currentBudgetMonth != nil {
@@ -453,6 +468,7 @@ struct BudgetView: View {
                         && budgetStore.goalTemplatesEnabled
                         ? { runCleanup() } : nil
                 )
+                .dynamicTypeSize(...DynamicTypeSize.large)
             }
             // Every "how should this look" control lives here (GH #157).
             // Whole-table expand/collapse is a menu rather than a long-press
@@ -468,6 +484,7 @@ struct BudgetView: View {
                 expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
                 collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil
             )
+            .dynamicTypeSize(...DynamicTypeSize.large)
         }
     }
 

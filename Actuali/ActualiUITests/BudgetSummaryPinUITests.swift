@@ -86,7 +86,9 @@ final class BudgetSummaryPinUITests: XCTestCase {
         XCTAssertTrue(next.isHittable)
         let midpoint = (previous.frame.minX + next.frame.maxX) / 2
         XCTAssertEqual(midpoint, app.windows.firstMatch.frame.midX, accuracy: 2)
-        XCTAssertEqual(header.frame.minY, app.navigationBars.firstMatch.frame.maxY, accuracy: 2)
+        let navBar = app.navigationBars.firstMatch
+        XCTAssertTrue(navBar.frame.contains(CGPoint(x: header.frame.midX, y: header.frame.midY)),
+                      "the month stepper sits in the navigation bar")
 
         let restingFrame = header.frame
         app.swipeUp()
@@ -121,7 +123,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
         let budgetWindow = app.windows.firstMatch.frame
         let monthHeader = app.descendants(matching: .any)["budget.monthStepper"]
         XCTAssertTrue(monthHeader.exists)
-        let budgetTopGap = budgetFrame.minY - monthHeader.frame.maxY
+        let budgetTopGap = budgetFrame.minY - budgetNavBar.frame.maxY
         let budgetLeadingInset = budgetFrame.minX - budgetWindow.minX
         let budgetTrailingInset = budgetWindow.maxX - budgetFrame.maxX
 
@@ -181,7 +183,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
                                  "the uncategorized bar must stay above the pinned summary")
         let navBar = app.navigationBars.firstMatch
         XCTAssertTrue(navBar.exists)
-        XCTAssertEqual(bar.frame.minY - app.descendants(matching: .any)["budget.monthStepper"].frame.maxY, 8, accuracy: 2,
+        XCTAssertEqual(bar.frame.minY - navBar.frame.maxY, 8, accuracy: 2,
                        "the bar must keep the standardized top gutter (TopBoxLayout.verticalContentMargin)")
     }
 
@@ -205,7 +207,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
                       "the status strip should be the top surface")
         let navBar = app.navigationBars.firstMatch
         XCTAssertTrue(navBar.exists)
-        XCTAssertEqual(chip.frame.minY - app.descendants(matching: .any)["budget.monthStepper"].frame.maxY, 8, accuracy: 2,
+        XCTAssertEqual(chip.frame.minY - navBar.frame.maxY, 8, accuracy: 2,
                        "the strip must keep the standardized top gutter (TopBoxLayout.verticalContentMargin)")
     }
 }
