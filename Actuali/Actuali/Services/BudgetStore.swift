@@ -693,6 +693,18 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// The cards of the balance impact popup, empty when it isn't showing.
+    @Published var transactionImpactCues: [TransactionImpactCue] = []
+    var impactDismissTask: Task<Void, Never>?
+
+    /// Whether changing a transaction shows the balance impact popup.
+    /// Persisted to UserDefaults, defaults to on.
+    @Published var showTransactionImpactCue: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showTransactionImpactCue, forKey: "showTransactionImpactCue")
+        }
+    }
+
     /// Whether the Budget tab shows a badge with the overspent-category
     /// count (GH #68). Persisted to UserDefaults, defaults to on.
     @Published var showOverspentBadge: Bool = true {
@@ -1807,6 +1819,9 @@ final class BudgetStore: ObservableObject {
         _transactionStatusFilter = Published(initialValue: TransactionStatusFilter.resolved(
             from: defaults.string(forKey: TransactionStatusFilter.defaultsKey)
         ))
+        _showTransactionImpactCue = Published(
+            initialValue: persistedBool("showTransactionImpactCue", default: true)
+        )
         _showOverspentBadge = Published(
             initialValue: persistedBool("showOverspentBadge", default: true)
         )
@@ -5080,6 +5095,12 @@ final class BudgetStore: ObservableObject {
     /// merkle/clock save and one sync for the whole selection, like
     /// `lockClearedTransactions`.
     func deleteTransactions(_ transactions: [Transaction]) async {
+        await withImpactCue(for: transactions) {
+            await performDeleteTransactions(transactions)
+        }
+    }
+
+    private func performDeleteTransactions(_ transactions: [Transaction]) async {
         guard let syncClient else {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
@@ -5126,6 +5147,12 @@ final class BudgetStore: ObservableObject {
 
     /// Duplicate multiple transactions.
     func duplicateTransactions(_ transactions: [Transaction]) async {
+        await withImpactCue(for: transactions) {
+            await performDuplicateTransactions(transactions)
+        }
+    }
+
+    private func performDuplicateTransactions(_ transactions: [Transaction]) async {
         guard syncClient != nil else {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
@@ -5654,6 +5681,16 @@ final class BudgetStore: ObservableObject {
     /// updates the transaction.
     @discardableResult
     func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws -> String? {
+        var targets = impactTargets(for: form)
+        if let original {
+            targets.formUnion(await impactTargets(for: [original]))
+        }
+        return try await withImpactCue(touching: targets) {
+            try await performSaveTransaction(form, editing: original)
+        }
+    }
+
+    private func performSaveTransaction(_ form: TransactionForm, editing original: Transaction?) async throws -> String? {
         var form = form
         // The form hides categories for off-budget accounts; normalize
         // here too so stale picker or split state cannot bypass that rule.

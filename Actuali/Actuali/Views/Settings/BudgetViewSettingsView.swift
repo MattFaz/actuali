@@ -32,6 +32,8 @@ struct BudgetViewSettingsView: View {
                 Toggle(String(localized: "Inverse Progress Bars"), isOn: $budgetStore.showInverseBudgetProgressBars)
                     .disabled(!budgetStore.showBudgetProgressBars)
                 Toggle(String(localized: "Overspent Badge"), isOn: $budgetStore.showOverspentBadge)
+                Toggle(String(localized: "Show Balance Impact"), isOn: $budgetStore.showTransactionImpactCue)
+                    .accessibilityIdentifier("budgetViewSettings.showBalanceImpact")
                 Toggle(String(localized: "Hide Income Group"), isOn: $budgetStore.hideIncomeGroup)
                     .accessibilityIdentifier("budgetViewSettings.hideIncomeGroup")
 
