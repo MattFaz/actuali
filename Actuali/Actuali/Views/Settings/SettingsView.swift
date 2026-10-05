@@ -153,7 +153,7 @@ struct SettingsView: View {
                 }
             }
             .readableWidth()
-            .navigationTitle(String(localized: "navigation.settings"))
+            .toolbar(.hidden, for: .navigationBar)
             .contentMargins(.horizontal, 6, for: .scrollContent)
         }
         // Keep the store-wide loading indicator above the navigation stack so
