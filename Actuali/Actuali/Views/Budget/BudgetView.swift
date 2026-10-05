@@ -1665,9 +1665,9 @@ struct CleanBudgetSummary: View {
     }
 }
 
-/// What's left to budget as one row filled with the app's primary color,
-/// shown in Clean style when the overview card is hidden. Tapping it opens
-/// the budget summary, like the To Budget figure in the card.
+/// What's left to budget as one card matching the summary card, shown in
+/// Clean style when the overview is hidden. Tapping it opens the budget
+/// summary, like the To Budget figure in the card.
 struct ReadyToBudgetRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
@@ -1687,22 +1687,23 @@ struct ReadyToBudgetRow: View {
             HStack(spacing: 8) {
                 Text(label)
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Spacer(minLength: 8)
                 Text(value)
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(amount < 0 ? Color.red : Color.green)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .animatedAmount(value)
             }
-            .foregroundStyle(.white)
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.vertical, 18)
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 24)
-                    .fill(amount < 0 ? Color.red : Color.accentColor)
+                    .fill(Color(.secondarySystemGroupedBackground))
             )
             .contentShape(RoundedRectangle(cornerRadius: 24))
         }
