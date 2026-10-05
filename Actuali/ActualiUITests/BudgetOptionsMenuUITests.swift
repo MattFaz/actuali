@@ -93,11 +93,14 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(overview.waitForExistence(timeout: 5))
         overview.tap()
         XCTAssertTrue(topBox.waitForNonExistence(timeout: 5), "turning Show Overview off hides the summary")
+        XCTAssertTrue(app.buttons["budget.readyToBudget"].waitForExistence(timeout: 5),
+                      "with the overview hidden, a Ready to Budget row keeps the amount in view")
 
         app.buttons["Budget options"].tap()
         XCTAssertTrue(overview.waitForExistence(timeout: 5))
         overview.tap()
         XCTAssertTrue(topBox.waitForExistence(timeout: 5), "turning it back on restores the summary")
+        XCTAssertFalse(app.buttons["budget.readyToBudget"].exists, "the row is only shown while the overview is hidden")
     }
 
     @MainActor
