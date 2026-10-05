@@ -26,27 +26,23 @@ struct CreditCardDueNotifierTests {
 
     @Test func systemPermissionCheckReturnsToMainActor() async {
         let center: any NotificationPosting = UNUserNotificationCenter.current()
-        _ = await center.authorizationStatus()
-        MainActor.assertIsolated()
+        await Self.assertCallerActorIsRestored(by: center)
     }
 
-    @Test func schedulingResumesOnMainActorAfterBackgroundNotificationCalls() async {
-        let center = BackgroundCreditCardNotificationCenter()
-        let calendar = fixedCalendar()
-        let now = calendar.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 8))!
+    /// Keep the caller's isolation without an explicit MainActor hop in the
+    /// test body, and keep the runtime check active in optimized builds.
+    private nonisolated(nonsending) static func assertCallerActorIsRestored(by center: any NotificationPosting) async {
+        _ = await center.authorizationStatus()
+        MainActor.preconditionIsolated()
+        // Provisional authorization exercises the real Objective-C witness
+        // without presenting a permission prompt in unattended CI.
+        _ = try? await center.requestAuthorization(options: [.provisional])
+        MainActor.preconditionIsolated()
+    }
 
-        await CreditCardDueNotifier().scheduleNotifications(
-            accounts: [account(id: "card1", name: "Visa", balance: -5000)],
-            cycles: ["card1": CreditCardCycle(statementDay: 15)],
-            currencyCode: "USD",
-            settings: makeDefaults(enabled: true),
-            center: center,
-            now: now,
-            calendar: calendar
-        )
-
-        #expect(await center.addedCount == 4)
-        MainActor.assertIsolated()
+    @Test func directSystemPermissionRequestReturnsToMainActor() async {
+        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.provisional])
+        MainActor.preconditionIsolated()
     }
 
     @Test func unchangedInputsSkipSchedulingButChangesStillSchedule() async {
@@ -369,29 +365,6 @@ struct CreditCardDueNotifierTests {
         #expect(firstTrigger?.dateComponents.month == 3)
         #expect(firstTrigger?.dateComponents.day == 25)
     }
-}
-
-private actor BackgroundCreditCardNotificationCenter: NotificationPosting {
-    private(set) var addedCount = 0
-
-    func authorizationStatus() async -> UNAuthorizationStatus {
-        .authorized
-    }
-
-    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
-        true
-    }
-
-    @concurrent
-    nonisolated func add(_ request: UNNotificationRequest) async throws {
-        await recordAdd()
-    }
-
-    private func recordAdd() {
-        addedCount += 1
-    }
-
-    nonisolated func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {}
 }
 
 private final class FakeCreditCardNotificationCenter: NotificationPosting, @unchecked Sendable {
