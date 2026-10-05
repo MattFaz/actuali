@@ -12,9 +12,6 @@ struct PayeePickerView: View {
     /// through this list, use `transferFromAccountId` instead).
     let transferAccounts: [Account]
     let onSelectAccount: (Account) -> Void
-    /// An existing transfer can change its other account but can't turn back
-    /// into a regular payee, so only the accounts are offered.
-    let accountsOnly: Bool
     let onSelect: (Payee) -> Void
     let onCommit: (String) -> Void
     let onDeleteNearby: (NearbyPayee) -> Void
@@ -30,7 +27,6 @@ struct PayeePickerView: View {
         nearbyPayees: Binding<[NearbyPayee]>,
         transferFromAccountId: String? = nil,
         transferAccounts: [Account] = [],
-        accountsOnly: Bool = false,
         onSelectAccount: @escaping (Account) -> Void = { _ in },
         onSelect: @escaping (Payee) -> Void,
         onCommit: @escaping (String) -> Void,
@@ -39,7 +35,6 @@ struct PayeePickerView: View {
         _nearbyPayees = nearbyPayees
         self.transferFromAccountId = transferFromAccountId
         self.transferAccounts = transferAccounts
-        self.accountsOnly = accountsOnly
         self.onSelectAccount = onSelectAccount
         self.onSelect = onSelect
         self.onCommit = onCommit
@@ -248,9 +243,7 @@ struct PayeePickerView: View {
                 if !matchingTransferAccounts.isEmpty {
                     transferAccountsSection
                 }
-                if accountsOnly {
-                    // Nothing else: an existing transfer stays a transfer.
-                } else if trimmedSearchText.isEmpty {
+                if trimmedSearchText.isEmpty {
                     if !nearbyPayees.isEmpty {
                         Section("Nearby") {
                             ForEach(nearbyPayees.prefix(5)) { nearby in
@@ -303,7 +296,7 @@ struct PayeePickerView: View {
                     }
                 }
 
-                if canCommitCustomPayee, !accountsOnly {
+                if canCommitCustomPayee {
                     Section {
                         Button {
                             onCommit(trimmedSearchText)
