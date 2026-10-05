@@ -245,7 +245,7 @@ struct CompactBudgetGroupHeader: View {
         // menu, like the Clean header. A List section header can't present
         // SwiftUI's .contextMenu, so the row is hosted in UIKit.
         let actions = menuActions
-        ContextMenuHost(actions: actions, cornerRadius: 0, onTap: onToggleCollapse) {
+        ContextMenuHost(actions: actions, onTap: onToggleCollapse) {
             headerContent
                 .foregroundStyle(.primary)
                 .background(Color(.secondarySystemBackground))
@@ -641,7 +641,7 @@ struct CompactIncomeGroupHeader: View {
     var body: some View {
         // Same native context menu as the expense group headers.
         let actions = menuActions
-        ContextMenuHost(actions: actions, cornerRadius: 0, onTap: onToggleCollapse) {
+        ContextMenuHost(actions: actions, onTap: onToggleCollapse) {
             headerContent
                 .foregroundStyle(.primary)
                 .background(Color(.secondarySystemBackground))
