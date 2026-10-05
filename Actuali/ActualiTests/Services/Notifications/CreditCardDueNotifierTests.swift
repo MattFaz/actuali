@@ -24,6 +24,27 @@ struct CreditCardDueNotifierTests {
         return cal
     }
 
+    @Test func systemPermissionCheckReturnsToMainActor() async {
+        let center: any NotificationPosting = UNUserNotificationCenter.current()
+        await Self.assertCallerActorIsRestored(by: center)
+    }
+
+    /// Keep the caller's isolation without an explicit MainActor hop in the
+    /// test body, and keep the runtime check active in optimized builds.
+    private nonisolated(nonsending) static func assertCallerActorIsRestored(by center: any NotificationPosting) async {
+        _ = await center.authorizationStatus()
+        MainActor.preconditionIsolated()
+        // Provisional authorization exercises the real Objective-C witness
+        // without presenting a permission prompt in unattended CI.
+        _ = try? await center.requestAuthorization(options: [.provisional])
+        MainActor.preconditionIsolated()
+    }
+
+    @Test func directSystemPermissionRequestReturnsToMainActor() async {
+        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.provisional])
+        MainActor.preconditionIsolated()
+    }
+
     @Test func unchangedInputsSkipSchedulingButChangesStillSchedule() async {
         let notifier = CreditCardDueNotifier()
         let center = FakeCreditCardNotificationCenter()
