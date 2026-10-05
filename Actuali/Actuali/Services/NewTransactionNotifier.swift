@@ -6,13 +6,19 @@ private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "NewTran
 
 /// Seam over UNUserNotificationCenter so notify's gating is testable.
 protocol NotificationPosting: Sendable {
+    /// UserNotifications completes on a background executor. Keep that boundary
+    /// explicit so MainActor callers hop back before accessing their state.
+    @concurrent
     func authorizationStatus() async -> UNAuthorizationStatus
+    @concurrent
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
+    @concurrent
     func add(_ request: UNNotificationRequest) async throws
     func removePendingNotificationRequests(withIdentifiers identifiers: [String])
 }
 
 extension UNUserNotificationCenter: NotificationPosting {
+    @concurrent
     func authorizationStatus() async -> UNAuthorizationStatus {
         await notificationSettings().authorizationStatus
     }
