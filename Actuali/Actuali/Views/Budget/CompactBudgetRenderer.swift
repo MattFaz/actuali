@@ -223,32 +223,29 @@ struct CompactBudgetGroupHeader: View {
     var body: some View {
         // Tap collapses; long-press lifts the whole row into a native context
         // menu, like the Clean header. A List section header can't present
-        // SwiftUI's .contextMenu, so the row is hosted in UIKit.
+        // SwiftUI's .contextMenu, so a UIKit overlay carries the menu.
         let actions = menuActions
-        ContextMenuHost(actions: actions, onTap: onToggleCollapse) {
-            headerContent
-                .foregroundStyle(.primary)
-                .background(Color(.secondarySystemBackground))
-                .opacity(isHidden ? 0.5 : 1)
-                .environmentObject(budgetStore)
-                .environment(\.locale, locale)
-                .accessibilityElement(children: .ignore)
-                .accessibilityIdentifier("compactBudgetGroup.\(name)")
-                .accessibilityLabel(accessibilityLabel)
-                .accessibilityHint(
-                    actions.isEmpty
-                        ? String(localized: "Toggles the group's categories", bundle: .main, locale: locale)
-                        : String(localized: "Tap to toggle the group's categories; touch and hold for options", bundle: .main, locale: locale)
-                )
-                .accessibilityAddTraits(.isButton)
-                .accessibilityAction { onToggleCollapse() }
-                .accessibilityActions {
-                    ForEach(actions.indices, id: \.self) { index in
-                        Button(actions[index].title, action: actions[index].handler)
-                    }
+        headerContent
+            .foregroundStyle(.primary)
+            .background(Color(.secondarySystemBackground))
+            .opacity(isHidden ? 0.5 : 1)
+            .overlay { ContextMenuHost(actions: actions, onTap: onToggleCollapse) }
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("compactBudgetGroup.\(name)")
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint(
+                actions.isEmpty
+                    ? String(localized: "Toggles the group's categories", bundle: .main, locale: locale)
+                    : String(localized: "Tap to toggle the group's categories; touch and hold for options", bundle: .main, locale: locale)
+            )
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { onToggleCollapse() }
+            .accessibilityActions {
+                ForEach(actions.indices, id: \.self) { index in
+                    Button(actions[index].title, action: actions[index].handler)
                 }
-        }
-        .listRowInsets(EdgeInsets())
+            }
+            .listRowInsets(EdgeInsets())
     }
 
     private var headerContent: some View {
@@ -612,30 +609,27 @@ struct CompactIncomeGroupHeader: View {
     var body: some View {
         // Same native context menu as the expense group headers.
         let actions = menuActions
-        ContextMenuHost(actions: actions, onTap: onToggleCollapse) {
-            headerContent
-                .foregroundStyle(.primary)
-                .background(Color(.secondarySystemBackground))
-                .opacity(isHidden ? 0.5 : 1)
-                .environmentObject(budgetStore)
-                .environment(\.locale, locale)
-                .accessibilityElement(children: .ignore)
-                .accessibilityIdentifier("compactIncomeSection")
-                .accessibilityLabel(accessibilityLabel)
-                .accessibilityHint(
-                    actions.isEmpty
-                        ? String(localized: "Toggles the income categories", bundle: .main, locale: locale)
-                        : String(localized: "Tap to toggle the income categories; touch and hold for options", bundle: .main, locale: locale)
-                )
-                .accessibilityAddTraits(.isButton)
-                .accessibilityAction { onToggleCollapse() }
-                .accessibilityActions {
-                    ForEach(actions.indices, id: \.self) { index in
-                        Button(actions[index].title, action: actions[index].handler)
-                    }
+        headerContent
+            .foregroundStyle(.primary)
+            .background(Color(.secondarySystemBackground))
+            .opacity(isHidden ? 0.5 : 1)
+            .overlay { ContextMenuHost(actions: actions, onTap: onToggleCollapse) }
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("compactIncomeSection")
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint(
+                actions.isEmpty
+                    ? String(localized: "Toggles the income categories", bundle: .main, locale: locale)
+                    : String(localized: "Tap to toggle the income categories; touch and hold for options", bundle: .main, locale: locale)
+            )
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { onToggleCollapse() }
+            .accessibilityActions {
+                ForEach(actions.indices, id: \.self) { index in
+                    Button(actions[index].title, action: actions[index].handler)
                 }
-        }
-        .listRowInsets(EdgeInsets())
+            }
+            .listRowInsets(EdgeInsets())
     }
 
     private var headerContent: some View {
