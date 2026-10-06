@@ -209,35 +209,15 @@ struct CompactBudgetGroupHeader: View {
             .map { .init(type: $0, amount: 0) }
     }
 
-    /// The menu entries, in the same order as the Clean header's.
     private var menuActions: [ContextMenuHostAction] {
-        var items: [ContextMenuHostAction] = []
-        if let onApplyTemplate {
-            items.append(.init(
-                title: ReportStrings.text("Apply Budget Template", locale: locale, bundle: .main),
-                systemImage: "wand.and.stars", handler: onApplyTemplate
-            ))
-        }
-        if let onOverwriteTemplate {
-            items.append(.init(
-                title: ReportStrings.text("Overwrite with Budget Template", locale: locale, bundle: .main),
-                systemImage: "arrow.counterclockwise", handler: onOverwriteTemplate
-            ))
-        }
-        if let onRename {
-            items.append(.init(
-                title: String(localized: "Rename Group", bundle: .main, locale: locale),
-                systemImage: "pencil", handler: onRename
-            ))
-        }
-        if let onSetHidden {
-            items.append(.init(
-                title: ReportStrings.text(isHidden ? "Show Group" : "Hide Group", locale: locale, bundle: .main),
-                systemImage: isHidden ? "eye" : "eye.slash",
-                handler: { onSetHidden(!isHidden) }
-            ))
-        }
-        return items
+        ContextMenuHostAction.groupActions(
+            isHidden: isHidden,
+            onApplyTemplate: onApplyTemplate,
+            onOverwriteTemplate: onOverwriteTemplate,
+            onRename: onRename,
+            onSetHidden: onSetHidden,
+            locale: locale
+        )
     }
 
     var body: some View {
@@ -621,21 +601,12 @@ struct CompactIncomeGroupHeader: View {
     }
 
     private var menuActions: [ContextMenuHostAction] {
-        var items: [ContextMenuHostAction] = []
-        if let onRename {
-            items.append(.init(
-                title: String(localized: "Rename Group", bundle: .main, locale: locale),
-                systemImage: "pencil", handler: onRename
-            ))
-        }
-        if let onSetHidden {
-            items.append(.init(
-                title: ReportStrings.text(isHidden ? "Show Group" : "Hide Group", locale: locale, bundle: .main),
-                systemImage: isHidden ? "eye" : "eye.slash",
-                handler: { onSetHidden(!isHidden) }
-            ))
-        }
-        return items
+        ContextMenuHostAction.groupActions(
+            isHidden: isHidden,
+            onRename: onRename,
+            onSetHidden: onSetHidden,
+            locale: locale
+        )
     }
 
     var body: some View {

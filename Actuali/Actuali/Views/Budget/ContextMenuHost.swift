@@ -1,11 +1,48 @@
 import SwiftUI
 import UIKit
 
-/// One entry of a `ContextMenuHost` menu.
+/// One group-header action, shared by the Clean and Compact menus.
 struct ContextMenuHostAction {
     let title: String
     let systemImage: String
     let handler: () -> Void
+
+    static func groupActions(
+        isHidden: Bool,
+        onApplyTemplate: (() -> Void)? = nil,
+        onOverwriteTemplate: (() -> Void)? = nil,
+        onRename: (() -> Void)?,
+        onSetHidden: ((Bool) -> Void)?,
+        locale: Locale
+    ) -> [Self] {
+        var items: [Self] = []
+        if let onApplyTemplate {
+            items.append(.init(
+                title: ReportStrings.text("Apply Budget Template", locale: locale, bundle: .main),
+                systemImage: "wand.and.stars", handler: onApplyTemplate
+            ))
+        }
+        if let onOverwriteTemplate {
+            items.append(.init(
+                title: ReportStrings.text("Overwrite with Budget Template", locale: locale, bundle: .main),
+                systemImage: "wand.and.stars.inverse", handler: onOverwriteTemplate
+            ))
+        }
+        if let onRename {
+            items.append(.init(
+                title: String(localized: "Rename Group", bundle: .main, locale: locale),
+                systemImage: "pencil", handler: onRename
+            ))
+        }
+        if let onSetHidden {
+            items.append(.init(
+                title: ReportStrings.text(isHidden ? "Show Group" : "Hide Group", locale: locale, bundle: .main),
+                systemImage: isHidden ? "eye" : "eye.slash",
+                handler: { onSetHidden(!isHidden) }
+            ))
+        }
+        return items
+    }
 }
 
 /// Hosts SwiftUI content with a native UIKit context-menu interaction, so a
@@ -14,21 +51,8 @@ struct ContextMenuHostAction {
 /// which is where the Compact group rows live and must stay pinned.
 struct ContextMenuHost<Content: View>: UIViewControllerRepresentable {
     let actions: [ContextMenuHostAction]
-    let cornerRadius: CGFloat
     let onTap: () -> Void
-    let content: Content
-
-    init(
-        actions: [ContextMenuHostAction],
-        cornerRadius: CGFloat = 14,
-        onTap: @escaping () -> Void,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.actions = actions
-        self.cornerRadius = cornerRadius
-        self.onTap = onTap
-        self.content = content()
-    }
+    @ViewBuilder let content: Content
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -58,19 +82,17 @@ struct ContextMenuHost<Content: View>: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: UIHostingController<Sized>, context: Context) {
         controller.rootView = Sized(content: content)
         context.coordinator.actions = actions
-        context.coordinator.cornerRadius = cornerRadius
         context.coordinator.onTap = onTap
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiViewController: UIHostingController<Sized>, context: Context) -> CGSize? {
-        let width = proposal.width ?? UIScreen.main.bounds.width
+        guard let width = proposal.width else { return nil }
         let size = uiViewController.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
         return CGSize(width: width, height: size.height)
     }
 
     final class Coordinator: NSObject, UIContextMenuInteractionDelegate {
         var actions: [ContextMenuHostAction] = []
-        var cornerRadius: CGFloat = 14
         var onTap: () -> Void = {}
 
         @objc func tapped() {
@@ -109,7 +131,7 @@ struct ContextMenuHost<Content: View>: UIViewControllerRepresentable {
         private func preview(for interaction: UIContextMenuInteraction) -> UITargetedPreview? {
             guard let view = interaction.view else { return nil }
             let parameters = UIPreviewParameters()
-            parameters.visiblePath = UIBezierPath(roundedRect: view.bounds, cornerRadius: cornerRadius)
+            parameters.visiblePath = UIBezierPath(roundedRect: view.bounds, cornerRadius: 14)
             return UITargetedPreview(view: view, parameters: parameters)
         }
     }
