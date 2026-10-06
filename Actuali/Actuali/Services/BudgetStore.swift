@@ -6,6 +6,85 @@ import UIKit
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "BudgetStore")
 
+/// Pure rules for transaction batch edits and selection totals.
+enum TransactionBulkEdit {
+    /// The selection's net amount in cents (outflows negative).
+    nonisolated static func total(of transactions: [Transaction]) -> Int {
+        transactions.reduce(0) { $0 + $1.amount }
+    }
+
+    /// Whether two transactions can be merged, following Actual's rules
+    /// (loot-core `validForMerge`): same account and amount. Transfers are
+    /// left out for now.
+    nonisolated static func canMerge(_ a: Transaction, _ b: Transaction) -> Bool {
+        a.id != b.id
+            && a.accountId == b.accountId
+            && a.amount == b.amount
+            && a.transferId == nil && a.transferAcct == nil
+            && b.transferId == nil && b.transferAcct == nil
+            && a.parentId == nil && b.parentId == nil
+    }
+
+    /// Which of two mergeable transactions survives, per Actual's
+    /// `determineKeepDrop`: the bank-imported one, then the one with an
+    /// imported payee, then the earlier one (the second on a tie).
+    nonisolated static func keepAndDrop(
+        _ a: Transaction, _ b: Transaction, importedIds: Set<String>
+    ) -> (keep: Transaction, drop: Transaction) {
+        let aImported = importedIds.contains(a.id)
+        let bImported = importedIds.contains(b.id)
+        if bImported, !aImported {
+            return (b, a)
+        }
+        if aImported, !bImported {
+            return (a, b)
+        }
+        let aPayee = !(a.importedPayee ?? "").isEmpty
+        let bPayee = !(b.importedPayee ?? "").isEmpty
+        if bPayee, !aPayee {
+            return (b, a)
+        }
+        if aPayee, !bPayee {
+            return (a, b)
+        }
+        return a.date < b.date ? (a, b) : (b, a)
+    }
+
+    /// The kept transaction after absorbing what the dropped one has and it
+    /// lacks (payee, category, notes), with cleared, reconciled and schedule
+    /// carried over if either had them. A split parent keeps no category.
+    nonisolated static func merged(keep: Transaction, drop: Transaction) -> Transaction {
+        var result = keep
+        if keep.payeeId == nil {
+            result.payeeId = drop.payeeId
+            result.payeeName = drop.payeeName
+        }
+        if (keep.notes ?? "").isEmpty {
+            result.notes = drop.notes
+        }
+        if keep.categoryId == nil, !keep.isParent {
+            result.categoryId = drop.categoryId
+            result.categoryName = drop.categoryName
+        }
+        result.cleared = keep.cleared || drop.cleared
+        result.reconciled = keep.reconciled || drop.reconciled
+        result.schedule = keep.schedule ?? drop.schedule
+        return result
+    }
+
+    /// `notes` with `#tag` appended, or nil when the note already carries
+    /// the tag (compared case-insensitively, like Actual's tag filter).
+    nonisolated static func notes(adding tag: String, to notes: String?) -> String? {
+        let name = Tag.normalizeTagName(tag)
+        guard Tag.isValidTagName(name) else { return nil }
+        let existing = (notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if TagFilter.notesContainTag(existing, tag: "#" + name, caseSensitive: false) {
+            return nil
+        }
+        return existing.isEmpty ? "#" + name : existing + " #" + name
+    }
+}
+
 /// Errors thrown by `BudgetStore` write operations.
 enum BudgetStoreError: LocalizedError, Equatable {
     case syncNotConfigured
@@ -5292,6 +5371,167 @@ final class BudgetStore: ObservableObject {
             self.error = String(format: String(localized: "Failed to update cleared status: %@"), error.localizedDescription)
         }
         await refreshDataOnly()
+    }
+
+    /// Set (or clear, with nil) the category of several transactions as one
+    /// sync write. Reconciled rows stay locked, and transfers and split
+    /// parents take no category, so both are left as they are; how many were
+    /// skipped is reported through `error`.
+    func setCategory(_ categoryId: String?, for transactions: [Transaction]) async {
+        guard let syncClient else {
+            self.error = BudgetStoreError.syncNotConfigured.localizedDescription
+            return
+        }
+        let name = categoryGroups.flatMap(\.categories).first { $0.id == categoryId }?.name
+        var updated: [Transaction] = []
+        var locked = 0
+        var unsupported = 0
+        for tx in transactions where tx.categoryId != categoryId {
+            if tx.reconciled {
+                locked += 1
+            } else if tx.isParent || tx.transferId != nil || tx.transferAcct != nil {
+                unsupported += 1
+            } else {
+                var copy = tx
+                copy.categoryId = categoryId
+                copy.categoryName = name
+                updated.append(copy)
+            }
+        }
+        reportSkipped(locked: locked, unsupported: unsupported)
+        guard !updated.isEmpty else { return }
+        do {
+            try await syncClient.updateTransactions(updated, changedFields: ["category"])
+        } catch {
+            self.error = String(format: String(localized: "Failed to categorize transaction: %@"), error.localizedDescription)
+        }
+        await refreshDataOnly()
+    }
+
+    /// Add a `#tag` to the note of several transactions as one sync write,
+    /// leaving rows that already carry it alone. Reconciled rows stay locked
+    /// and are reported through `error`.
+    func addTag(_ tag: String, to transactions: [Transaction]) async {
+        guard let syncClient else {
+            self.error = BudgetStoreError.syncNotConfigured.localizedDescription
+            return
+        }
+        guard Tag.isValidTagName(tag) else { return }
+        var updated: [Transaction] = []
+        var locked = 0
+        for tx in transactions {
+            guard let notes = TransactionBulkEdit.notes(adding: tag, to: tx.notes) else { continue }
+            if tx.reconciled {
+                locked += 1
+            } else {
+                var copy = tx
+                copy.notes = notes
+                updated.append(copy)
+            }
+        }
+        reportSkipped(locked: locked, unsupported: 0)
+        guard !updated.isEmpty else { return }
+        do {
+            try await syncClient.updateTransactions(updated, changedFields: ["notes"])
+        } catch {
+            self.error = String(format: String(localized: "Failed to add tag: %@"), error.localizedDescription)
+        }
+        await refreshDataOnly()
+    }
+
+    /// Merge two transactions the way Actual does: the bank-imported one (else
+    /// the earlier one) is kept and fills in its blank payee, category and
+    /// notes from the other, which is then deleted. A split on the dropped
+    /// transaction moves to the kept one when that has none. All of it is one
+    /// atomic write. Only same-account, same-amount, non-transfer pairs merge.
+    func mergeTransactions(_ first: Transaction, _ second: Transaction) async {
+        guard let syncClient, let database else {
+            self.error = BudgetStoreError.syncNotConfigured.localizedDescription
+            return
+        }
+        do {
+            // Selection values can predate a sync or another local edit.
+            guard let first = try await database.fetchTransaction(id: first.id),
+                  let second = try await database.fetchTransaction(id: second.id),
+                  TransactionBulkEdit.canMerge(first, second) else {
+                self.error = ReportStrings.localized(
+                    "Only two transactions in the same account with the same amount can be merged.",
+                    locale: .current, bundle: .main
+                )
+                return
+            }
+            let imported = try await database.importedTransactionIds(among: [first.id, second.id])
+            let (keep, drop) = TransactionBulkEdit.keepAndDrop(first, second, importedIds: imported)
+            let keepChildren = keep.isParent ? try await database.fetchChildTransactions(parentId: keep.id) : []
+            let dropChildren = drop.isParent ? try await database.fetchChildTransactions(parentId: drop.id) : []
+
+            var merged = TransactionBulkEdit.merged(keep: keep, drop: drop)
+            var updates: [(transaction: Transaction, changedFields: Set<String>)] = []
+            var deleted = [drop]
+
+            if keepChildren.isEmpty, !dropChildren.isEmpty {
+                // The split moves over; the kept row becomes its parent.
+                merged.isParent = true
+                merged.categoryId = nil
+                merged.categoryName = nil
+                for child in dropChildren {
+                    var moved = child
+                    moved.parentId = keep.id
+                    updates.append((moved, ["parent_id"]))
+                }
+            } else {
+                for child in dropChildren {
+                    deleted.append(child)
+                    // Split transfers must lose both legs, as in deleteTransactions.
+                    if let partnerId = child.transferId,
+                       let partner = try await database.fetchTransaction(id: partnerId) {
+                        deleted.append(partner)
+                    }
+                }
+            }
+
+            var keepFields = Self.changedFields(original: keep, updated: merged)
+            if keep.schedule != merged.schedule {
+                keepFields.insert("schedule")
+            }
+            if !keepFields.isEmpty {
+                updates.insert((merged, keepFields), at: 0)
+            }
+            for var gone in deleted {
+                gone.tombstone = true
+                updates.append((gone, ["tombstone"]))
+            }
+            try await syncClient.updateTransactions(updates)
+        } catch {
+            self.error = String(format: String(localized: "Failed to merge transactions: %@"), error.localizedDescription)
+        }
+        await refreshDataOnly()
+    }
+
+    /// Tell the user which part of a batch edit stayed as it was.
+    private func reportSkipped(locked: Int, unsupported: Int) {
+        var messages: [String] = []
+        if locked > 0 {
+            messages.append(Self.lockedReconciledMessage(count: locked))
+        }
+        if unsupported > 0 {
+            messages.append(Self.skippedTransfersAndSplitsMessage(count: unsupported))
+        }
+        if !messages.isEmpty {
+            self.error = messages.joined(separator: "\n")
+        }
+    }
+
+    nonisolated static func skippedTransfersAndSplitsMessage(
+        count: Int,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+        ReportStrings.localized(
+            "\(count) transfer or split transaction was left as it is.",
+            locale: locale,
+            bundle: bundle
+        )
     }
 
     nonisolated static func lockedReconciledMessage(

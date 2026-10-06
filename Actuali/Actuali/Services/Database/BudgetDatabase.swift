@@ -3522,6 +3522,21 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Which of these transactions came from a bank import (carry a
+    /// `financial_id`). Fetched rows don't expose it, and a merge keeps the
+    /// imported side.
+    func importedTransactionIds(among ids: [String]) async throws -> Set<String> {
+        guard !ids.isEmpty else { return [] }
+        let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ", ")
+        return try await dbQueue.read { db in
+            let found = try String.fetchAll(db, sql: """
+            SELECT id FROM transactions
+            WHERE financial_id IS NOT NULL AND id IN (\(placeholders))
+            """, arguments: StatementArguments(ids))
+            return Set(found)
+        }
+    }
+
     // MARK: - Bank Sync
 
     private static func bankSyncLinkMatches(
@@ -4256,6 +4271,11 @@ final class BudgetDatabase: Sendable {
         try dbQueue.write { db in
             for update in updates {
                 try Self.updateTransactionRow(db, update.transaction)
+                // The editor omits schedule, so only explicit schedule edits write it.
+                if update.messages.contains(where: { $0.column == "schedule" }) {
+                    try db.execute(sql: "UPDATE transactions SET schedule = ? WHERE id = ?",
+                                   arguments: [update.transaction.schedule, update.transaction.id])
+                }
             }
             return try Self.insertMessageRows(db, updates.flatMap(\.messages))
         }
