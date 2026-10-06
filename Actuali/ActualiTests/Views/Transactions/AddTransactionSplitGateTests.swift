@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Actuali
 
@@ -23,5 +24,47 @@ struct AddTransactionSplitGateTests {
         #expect(AddTransactionView.canSplitIntoCategories(
             isTransfer: false, isEditingSplitParent: true, unsplitRequested: true
         ))
+    }
+
+    // MARK: - Sign key
+
+    @Test func theSignKeySwapsExpenseAndIncomeAndLeavesATransferAlone() {
+        #expect(AddTransactionView.toggledType(.expense) == .income)
+        #expect(AddTransactionView.toggledType(.income) == .expense)
+        #expect(AddTransactionView.toggledType(.transfer) == .transfer)
+    }
+
+    @Test(arguments: [
+        (false, false, false, false, false, true), // Ordinary expense/income.
+        (false, false, false, true, true, true), // New transfer with both accounts.
+        (false, false, false, true, false, false), // No account to swap with.
+        (true, false, false, false, false, false), // Split parent.
+        (false, true, false, true, true, false), // Existing transfer.
+        (false, false, true, true, true, false), // Converting an existing row.
+    ])
+    func signToggleEligibility(
+        isEditingSplitParent: Bool,
+        isEditingTransfer: Bool,
+        isConvertingToTransfer: Bool,
+        isTransfer: Bool,
+        hasTransferPartner: Bool,
+        expected: Bool
+    ) {
+        #expect(AddTransactionView.canToggleDirection(
+            isEditingSplitParent: isEditingSplitParent,
+            isEditingTransfer: isEditingTransfer,
+            isConvertingToTransfer: isConvertingToTransfer,
+            isTransfer: isTransfer,
+            hasTransferPartner: hasTransferPartner
+        ) == expected)
+    }
+
+    @Test func transferAccessibilityDescribesBothAccountsAndReversal() {
+        let locale = Locale(identifier: "en")
+        #expect(AddTransactionView.transferDirectionDescription(from: "Checking", to: "Savings", locale: locale)
+            == "Transfer from Checking to Savings")
+        #expect(AddTransactionView.transferDirectionDescription(from: "Savings", to: "Checking", locale: locale)
+            == "Transfer from Savings to Checking")
+        #expect(AddTransactionView.transferDirectionDescription(from: "Checking", to: nil, locale: locale) == "Transfer")
     }
 }

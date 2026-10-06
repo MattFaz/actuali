@@ -18,13 +18,17 @@ struct AmountInputFieldTests {
     private func makeField(
         initial: String = "",
         allowsNegative: Bool = false,
-        conventionalAmountEntry: Bool = false
+        conventionalAmountEntry: Bool = false,
+        onToggleSign: (() -> Void)? = nil,
+        signToggleEnabled: Bool = true
     ) -> (coordinator: AmountInputField.Coordinator, textField: UITextField, box: TextBox) {
         let box = TextBox(initial)
         let field = AmountInputField(
             text: Binding(get: { box.value }, set: { box.value = $0 }),
             conventionalAmountEntry: conventionalAmountEntry,
-            allowsNegative: allowsNegative
+            allowsNegative: allowsNegative,
+            onToggleSign: onToggleSign,
+            signToggleEnabled: signToggleEnabled
         )
         let coordinator = field.makeCoordinator()
         let textField = UITextField()
@@ -357,6 +361,25 @@ struct AmountInputFieldTests {
         #expect(textField.text == "-")
         type("250", into: coordinator, textField)
         #expect(box.value == "-2.50")
+    }
+
+    @Test func delegatedSignTogglePreservesTheUnsignedAmountAndFollowsEligibilityChanges() {
+        var toggles = 0
+        let (coordinator, textField, box) = makeField(initial: "12.34", onToggleSign: { toggles += 1 })
+
+        coordinator.toggleSign()
+        #expect(toggles == 1)
+        #expect(box.value == "12.34")
+        #expect(textField.text == "12.34")
+
+        coordinator.parent.signToggleEnabled = false
+        coordinator.toggleSign()
+        #expect(toggles == 1)
+
+        coordinator.parent.signToggleEnabled = true
+        coordinator.toggleSign()
+        #expect(toggles == 2)
+        #expect(box.value == "12.34")
     }
 
     /// Reconcile can show a negative balance, so the true signed result stands.

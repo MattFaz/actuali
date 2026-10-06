@@ -509,17 +509,31 @@ struct AddTransactionView: View {
                     // the sign hugs it; an equal spacer on the far side keeps
                     // the amount itself on the row's center line.
                     HStack(alignment: .center, spacing: 12) {
-                        Text(amountSignSymbol)
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(amountSignColor)
-                            .frame(width: amountSignWidth, alignment: .trailing)
+                        // Tapping the sign flips it, like the keyboard's ± key.
+                        Button {
+                            toggleDirection()
+                        } label: {
+                            Text(amountSignSymbol)
+                                .font(.title2.weight(.semibold))
+                                .foregroundStyle(amountSignColor)
+                                .frame(width: amountSignWidth, alignment: .trailing)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!canToggleDirection)
+                        .accessibilityLabel("Amount sign")
+                        .accessibilityValue(amountSignDescription)
+                        .accessibilityHint("Switches between expense and income, or reverses a transfer")
+                        .accessibilityIdentifier("addTransaction.sign")
                         AmountInputField(
                             text: $amount,
                             conventionalAmountEntry: budgetStore.conventionalAmountEntry,
                             alignment: .center,
                             textStyle: .extraLargeTitle,
                             weight: .bold,
-                            autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty)
+                            autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty),
+                            onToggleSign: { toggleDirection() },
+                            signToggleEnabled: canToggleDirection
                         )
                         .fixedSize(horizontal: true, vertical: false)
                         .frame(minWidth: amountMinWidth)
@@ -896,6 +910,75 @@ struct AddTransactionView: View {
         }
     }
 
+    /// The sign is the direction, as in Actual. A split parent's sign is its
+    /// lines', and an existing transfer's direction is fixed by its two legs,
+    /// so neither flips; converting a row to a transfer keeps its own side.
+    private var canToggleDirection: Bool {
+        Self.canToggleDirection(
+            isEditingSplitParent: isEditingSplitParent,
+            isEditingTransfer: isEditingTransfer,
+            isConvertingToTransfer: isConvertingToTransfer,
+            isTransfer: isTransfer,
+            hasTransferPartner: transferToAccountId != nil
+        )
+    }
+
+    nonisolated static func canToggleDirection(
+        isEditingSplitParent: Bool,
+        isEditingTransfer: Bool,
+        isConvertingToTransfer: Bool,
+        isTransfer: Bool,
+        hasTransferPartner: Bool
+    ) -> Bool {
+        !isEditingSplitParent && !isEditingTransfer && !isConvertingToTransfer
+            && (!isTransfer || hasTransferPartner)
+    }
+
+    /// Flip the amount's sign: expense and income swap, and a new transfer
+    /// reverses (the other account becomes the source).
+    private func toggleDirection() {
+        guard canToggleDirection else { return }
+        if txType == .transfer {
+            if let partner = transferToAccountId {
+                transferToAccountId = selectedAccountId
+                selectedAccountId = partner
+            }
+        } else {
+            txType = Self.toggledType(txType)
+        }
+    }
+
+    nonisolated static func toggledType(_ type: TransactionType) -> TransactionType {
+        switch type {
+        case .expense: .income
+        case .income: .expense
+        case .transfer: .transfer
+        }
+    }
+
+    private var amountSignDescription: String {
+        switch txType {
+        case .expense: return String(localized: AddTransactionLocalization.outflow, locale: locale)
+        case .income: return String(localized: AddTransactionLocalization.inflow, locale: locale)
+        case .transfer:
+            let ownAccount = budgetStore.accounts.first { $0.id == selectedAccountId }?.name
+            let partnerAccount = budgetStore.accounts.first { $0.id == transferToAccountId }?.name
+            // Conversion preserves the edited row's original sign, even for
+            // an inflow whose own account is the receiving side.
+            let isIncomingConversion = isConvertingToTransfer && (editing?.amount ?? 0) >= 0
+            return Self.transferDirectionDescription(
+                from: isIncomingConversion ? partnerAccount : ownAccount,
+                to: isIncomingConversion ? ownAccount : partnerAccount,
+                locale: locale
+            )
+        }
+    }
+
+    nonisolated static func transferDirectionDescription(from source: String?, to destination: String?, locale: Locale) -> String {
+        guard let source, let destination else { return String(localized: "Transfer", locale: locale) }
+        return String(localized: "Transfer from \(source) to \(destination)", locale: locale)
+    }
+
     private var amountSignSymbol: String {
         switch txType {
         case .expense: "-"
@@ -1222,7 +1305,7 @@ private struct SplitLineRow: View {
 ///
 /// With `allowsNegative`, a ± button joins the keyboard toolbar and flips the
 /// text's own sign. With `onToggleSign`, the same button appears but the sign
-/// lives outside the field (a split line's direction flip) and the text stays unsigned.
+/// lives outside the field (a transaction or split line's direction) and the text stays unsigned.
 /// Neither set means sign is handled elsewhere entirely (e.g. the expense/income toggle).
 ///
 /// `textStyle` picks the Dynamic Type text style the font scales from.
@@ -1250,6 +1333,8 @@ struct AmountInputField: UIViewRepresentable {
     /// Shows the ± toolbar button and delegates it here instead of signing
     /// the text — for callers whose sign is separate state.
     var onToggleSign: (() -> Void)?
+    /// Keep the key in the toolbar while the form's direction rules change.
+    var signToggleEnabled = true
 
     /// becomeFirstResponder is a no-op until the view joins a window, and
     /// during a sheet presentation that happens well after makeUIView —
@@ -1305,20 +1390,21 @@ struct AmountInputField: UIViewRepresentable {
         if allowsNegative || onToggleSign != nil {
             // The decimal pad has no minus key, so this button is the only
             // keyboard affordance for flipping an amount's sign.
-            items.append(UIBarButtonItem(
-                image: UIImage(systemName: "plus.forwardslash.minus"),
-                style: .plain,
+            let item = Self.keyItem(
+                symbol: "plus.forwardslash.minus",
+                label: String(localized: "Flip sign"),
                 target: context.coordinator, action: #selector(Coordinator.toggleSign)
-            ))
+            )
+            context.coordinator.signButton = item.customView as? UIButton
+            context.coordinator.signButton?.isEnabled = signToggleEnabled
+            items.append(item)
         }
         for op in Coordinator.Operator.allCases {
-            let item = UIBarButtonItem(
-                image: UIImage(systemName: op.symbolName),
-                style: .plain,
+            items.append(Self.keyItem(
+                symbol: op.symbolName,
+                label: op.accessibilityLabel,
                 target: context.coordinator, action: op.selector
-            )
-            item.accessibilityLabel = op.accessibilityLabel
-            items.append(item)
+            ))
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
         // `.prominent` is iOS 26+; `.done` is the pre-26 equivalent emphasis.
@@ -1352,11 +1438,26 @@ struct AmountInputField: UIViewRepresentable {
         return field
     }
 
+    /// A keyboard-bar key drawn as a symbol. A bar item's own
+    /// `accessibilityLabel` and `title` are ignored inside the keyboard's
+    /// accessory view (the key is announced by its symbol's name, "add",
+    /// "remove"), so the key is a button view that carries the label.
+    private static func keyItem(symbol: String, label: String, target: AnyObject?, action: Selector) -> UIBarButtonItem {
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = UIImage(systemName: symbol)
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10)
+        let button = UIButton(configuration: configuration)
+        button.addTarget(target, action: action, for: .touchUpInside)
+        button.accessibilityLabel = label
+        return UIBarButtonItem(customView: button)
+    }
+
     func updateUIView(_ uiView: UITextField, context: Context) {
         (uiView as? AutofocusTextField)?.updateAutofocus(autofocus)
         let formatChanged = context.coordinator.numberFormat != budgetStore.numberFormat
         context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.parent = self
+        context.coordinator.signButton?.isEnabled = signToggleEnabled
 
         if formatChanged {
             uiView.placeholder = budgetStore.numberFormat.format(
@@ -1428,6 +1529,7 @@ struct AmountInputField: UIViewRepresentable {
 
         var parent: AmountInputField
         weak var textField: UITextField?
+        weak var signButton: UIButton?
         /// The last value written to the binding, so `updateUIView` can tell
         /// an outside change from the field's own echo.
         private(set) var lastPublishedText: String?
@@ -1534,6 +1636,7 @@ struct AmountInputField: UIViewRepresentable {
         }
 
         @objc func toggleSign() {
+            guard parent.signToggleEnabled else { return }
             // Delegated sign lives outside the text (a split line's flip);
             // the field's own text stays unsigned.
             if let onToggleSign = parent.onToggleSign {
