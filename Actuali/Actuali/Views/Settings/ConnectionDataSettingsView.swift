@@ -276,8 +276,10 @@ private struct ServerConnectionSettingsSection: View {
             titleVisibility: .visible
         ) {
             Button(String(localized: "Disconnect & Remove Data"), role: .destructive) {
-                budgetStore.logout()
-                password = ""
+                Task {
+                    await budgetStore.logout()
+                    password = ""
+                }
             }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {

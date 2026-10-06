@@ -55,7 +55,7 @@ struct SettingsView: View {
     static var informationItems: [SettingsItem] {
         [
             SettingsItem(
-                title: String(localized: "Support"),
+                title: String(localized: "Support & Diagnostic"),
                 systemImage: "questionmark.circle",
                 destination: { AnyView(SupportView()) }
             ),

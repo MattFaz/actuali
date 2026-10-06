@@ -25,6 +25,13 @@ struct SupportView: View {
                     Label(String(localized: "Email"), systemImage: "envelope")
                 }
                 .accessibilityIdentifier("support.email")
+
+                NavigationLink {
+                    DiagnosticReportView()
+                } label: {
+                    Label(String(localized: "Diagnostic Report"), systemImage: "doc.text")
+                }
+                .accessibilityIdentifier("support.diagnosticReport")
             }
         }
         .readableWidth()
@@ -37,5 +44,6 @@ struct SupportView: View {
 #Preview {
     NavigationStack {
         SupportView()
+            .environmentObject(BudgetStore.previewInstance())
     }
 }

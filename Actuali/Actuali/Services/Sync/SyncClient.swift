@@ -55,6 +55,8 @@ actor SyncClient {
     // MARK: - Dependencies
 
     private let serverClient: ActualServerClient
+    private let diagnosticLog: DiagnosticLog
+    private var diagnosticSessionID: DiagnosticLog.SessionID?
     private weak var database: BudgetDatabase?
     private let clock: HybridLogicalClock
     private let messageGenerator: MessageGenerator
@@ -64,6 +66,9 @@ actor SyncClient {
     private var merkle: MerkleTree
     private var encoder: SyncEncoder
     private var syncTask: Task<Void, Never>?
+    /// Coalesces foreground, retry, and write-triggered syncs so only one full
+    /// sync owns the diagnostic attempt summary and database at a time.
+    private var activeSyncTask: Task<Bool, Never>?
     private var retryDelay: TimeInterval = 5
     private let maxRetryDelay: TimeInterval = 300 // 5 min cap
 
@@ -108,8 +113,14 @@ actor SyncClient {
 
     // MARK: - Initialization
 
-    init(serverClient: ActualServerClient, nodeId: String? = nil) {
+    init(
+        serverClient: ActualServerClient,
+        nodeId: String? = nil,
+        diagnosticLog: DiagnosticLog = .shared
+    ) {
         self.serverClient = serverClient
+        self.diagnosticLog = diagnosticLog
+        self.diagnosticSessionID = nil
         self.clock = HybridLogicalClock(node: nodeId)
         self.messageGenerator = MessageGenerator(clock: clock)
         self.merkle = MerkleTree()
@@ -130,6 +141,8 @@ actor SyncClient {
         self.groupId = groupId
         self.encryptKeyId = keyId
         self.encoder = SyncEncoder(encryptionKey: encryptionKey)
+        diagnosticSessionID = await diagnosticLog.currentSessionID()
+        await diagnosticLog.recordSyncConfiguration(sessionID: diagnosticSessionID)
 
         // Load saved clock state
         if let clockRecord = try database.loadClock() {
@@ -2078,7 +2091,10 @@ actor SyncClient {
     /// Force immediate sync (pull-to-refresh)
     func syncNow() async {
         logger.info("syncNow() called - forcing immediate sync")
-        syncTask?.cancel()
+        let retryTask = syncTask
+        syncTask = nil
+        retryTask?.cancel()
+        await retryTask?.value
         await performSync()
     }
 
@@ -2091,7 +2107,15 @@ actor SyncClient {
     /// parity it hadn't earned (#99, #121).
     func resetSyncState() async {
         logger.notice("resetSyncState() - clearing lastSyncedTimestamp")
-        syncTask?.cancel()
+        let retryTask = syncTask
+        syncTask = nil
+        retryTask?.cancel()
+        await retryTask?.value
+        _ = await activeSyncTask?.value
+        await diagnosticLog.recordResyncTriggered(
+            reason: .manualReset,
+            sessionID: diagnosticSessionID
+        )
         lastSyncedTimestamp = nil
         retryDelay = 5
         try? saveClock()
@@ -2150,14 +2174,22 @@ actor SyncClient {
     /// Cancel deferred work when the owning budget is being torn down. The
     /// push task must be awaited so it cannot continue using the old database.
     func cancelPendingSync() async {
-        syncTask?.cancel()
+        let retryTask = syncTask
+        let pushTask = self.pushTask
+        let activeSyncTask = self.activeSyncTask
+
         syncTask = nil
+        self.pushTask = nil
+        self.activeSyncTask = nil
         pushNeededAfterCurrent = false
 
-        let pushTask = self.pushTask
+        retryTask?.cancel()
         pushTask?.cancel()
+        activeSyncTask?.cancel()
+
+        await retryTask?.value
         await pushTask?.value
-        self.pushTask = nil
+        _ = await activeSyncTask?.value
     }
 
     /// Whether local writes are still waiting to reach the server. Call after
@@ -2242,25 +2274,51 @@ actor SyncClient {
     /// - Returns: true iff the sync completed successfully.
     @discardableResult
     private func performSync() async -> Bool {
+        if let activeSyncTask {
+            return await activeSyncTask.value
+        }
+
+        let task = Task { [weak self] in
+            guard let self else { return false }
+            return await self.runSync()
+        }
+        activeSyncTask = task
+        let result = await task.value
+        activeSyncTask = nil
+        return result
+    }
+
+    @discardableResult
+    private func runSync() async -> Bool {
         logger.info("performSync() starting...")
+        await diagnosticLog.recordSyncStarted(sessionID: diagnosticSessionID)
         stateSubject.send(.syncing)
 
         do {
             try await fullSync(since: nil, attemptCount: 0)
             logger.info("performSync() completed successfully")
+            await diagnosticLog.recordSyncFinished(.success, sessionID: diagnosticSessionID)
             stateSubject.send(.idle)
             retryDelay = 5 // reset on success
             lastSuccessfulSyncTime = Date()
             return true
         } catch SyncError.offline {
-            guard !Task.isCancelled else { return false }
+            guard !Task.isCancelled else {
+                await diagnosticLog.recordSyncFinished(.cancelled, sessionID: diagnosticSessionID)
+                return false
+            }
             logger.notice("performSync() failed - offline")
+            await diagnosticLog.recordSyncFinished(.offline, sessionID: diagnosticSessionID)
             stateSubject.send(.offline)
             scheduleRetry()
             return false
         } catch {
-            guard !Task.isCancelled else { return false }
+            guard !Task.isCancelled else {
+                await diagnosticLog.recordSyncFinished(.cancelled, sessionID: diagnosticSessionID)
+                return false
+            }
             logger.error("performSync() failed: \(error.localizedDescription, privacy: .public)")
+            await diagnosticLog.recordSyncFinished(.failed, sessionID: diagnosticSessionID)
             stateSubject.send(.error(error.localizedDescription))
             scheduleRetry()
             return false
@@ -2366,12 +2424,14 @@ actor SyncClient {
         logger.debug("Encoded request: \(requestData.count, privacy: .public) bytes")
 
         // POST to server
+        await diagnosticLog.recordSyncRequestMessageCount(localMessages.count, sessionID: diagnosticSessionID)
         logger.debug("Posting sync request to server...")
         let responseData = try await serverClient.postSync(requestData)
         logger.debug("Received response: \(responseData.count, privacy: .public) bytes")
 
         // Decode response
         let (remoteMessages, remoteMerkle) = try encoder.decode(responseData)
+        await diagnosticLog.recordSyncResponseMessageCount(remoteMessages.count, sessionID: diagnosticSessionID)
         logger.debug("Decoded \(remoteMessages.count, privacy: .public) remote messages, merkle hash: \(remoteMerkle.hash, privacy: .public)")
 
         // Apply remote messages
@@ -2394,12 +2454,17 @@ actor SyncClient {
             // log above, so the divergence point is real and each pass narrows
             // it; `attemptCount` still bounds a pathological case.
             logger.debug("Merkle diff found at time: \(diffTime, privacy: .public), recursing...")
+            await diagnosticLog.recordMerkleMismatch(sessionID: diagnosticSessionID)
 
             guard attemptCount < 10 else {
                 logger.error("Too many sync attempts, giving up")
                 throw SyncError.outOfSync
             }
             let diffTimestamp = HLCTimestamp(millis: diffTime, counter: 0, node: "0").toString()
+            await diagnosticLog.recordResyncTriggered(
+                reason: .merkleMismatch,
+                sessionID: diagnosticSessionID
+            )
             try await fullSync(since: diffTimestamp, attemptCount: attemptCount + 1)
         } else {
             // Fully synced — persist the HLC as the high-water mark (matches
