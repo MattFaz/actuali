@@ -6,6 +6,85 @@ import UIKit
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "BudgetStore")
 
+/// Pure rules for transaction batch edits and selection totals.
+enum TransactionBulkEdit {
+    /// The selection's net amount in cents (outflows negative).
+    nonisolated static func total(of transactions: [Transaction]) -> Int {
+        transactions.reduce(0) { $0 + $1.amount }
+    }
+
+    /// Whether two transactions can be merged, following Actual's rules
+    /// (loot-core `validForMerge`): same account and amount. Transfers are
+    /// left out for now.
+    nonisolated static func canMerge(_ a: Transaction, _ b: Transaction) -> Bool {
+        a.id != b.id
+            && a.accountId == b.accountId
+            && a.amount == b.amount
+            && a.transferId == nil && a.transferAcct == nil
+            && b.transferId == nil && b.transferAcct == nil
+            && a.parentId == nil && b.parentId == nil
+    }
+
+    /// Which of two mergeable transactions survives, per Actual's
+    /// `determineKeepDrop`: the bank-imported one, then the one with an
+    /// imported payee, then the earlier one (the second on a tie).
+    nonisolated static func keepAndDrop(
+        _ a: Transaction, _ b: Transaction, importedIds: Set<String>
+    ) -> (keep: Transaction, drop: Transaction) {
+        let aImported = importedIds.contains(a.id)
+        let bImported = importedIds.contains(b.id)
+        if bImported, !aImported {
+            return (b, a)
+        }
+        if aImported, !bImported {
+            return (a, b)
+        }
+        let aPayee = !(a.importedPayee ?? "").isEmpty
+        let bPayee = !(b.importedPayee ?? "").isEmpty
+        if bPayee, !aPayee {
+            return (b, a)
+        }
+        if aPayee, !bPayee {
+            return (a, b)
+        }
+        return a.date < b.date ? (a, b) : (b, a)
+    }
+
+    /// The kept transaction after absorbing what the dropped one has and it
+    /// lacks (payee, category, notes), with cleared, reconciled and schedule
+    /// carried over if either had them. A split parent keeps no category.
+    nonisolated static func merged(keep: Transaction, drop: Transaction) -> Transaction {
+        var result = keep
+        if keep.payeeId == nil {
+            result.payeeId = drop.payeeId
+            result.payeeName = drop.payeeName
+        }
+        if (keep.notes ?? "").isEmpty {
+            result.notes = drop.notes
+        }
+        if keep.categoryId == nil, !keep.isParent {
+            result.categoryId = drop.categoryId
+            result.categoryName = drop.categoryName
+        }
+        result.cleared = keep.cleared || drop.cleared
+        result.reconciled = keep.reconciled || drop.reconciled
+        result.schedule = keep.schedule ?? drop.schedule
+        return result
+    }
+
+    /// `notes` with `#tag` appended, or nil when the note already carries
+    /// the tag (compared case-insensitively, like Actual's tag filter).
+    nonisolated static func notes(adding tag: String, to notes: String?) -> String? {
+        let name = Tag.normalizeTagName(tag)
+        guard Tag.isValidTagName(name) else { return nil }
+        let existing = (notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if TagFilter.notesContainTag(existing, tag: "#" + name, caseSensitive: false) {
+            return nil
+        }
+        return existing.isEmpty ? "#" + name : existing + " #" + name
+    }
+}
+
 /// Errors thrown by `BudgetStore` write operations.
 enum BudgetStoreError: LocalizedError, Equatable {
     case syncNotConfigured
@@ -5370,15 +5449,18 @@ final class BudgetStore: ObservableObject {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
         }
-        guard TransactionBulkEdit.canMerge(first, second) else {
-            self.error = ReportStrings.localized(
-                "Only two transactions in the same account with the same amount can be merged.",
-                locale: .current, bundle: .main
-            )
-            return
-        }
         do {
-            let imported = try database.importedTransactionIds(among: [first.id, second.id])
+            // Selection values can predate a sync or another local edit.
+            guard let first = try await database.fetchTransaction(id: first.id),
+                  let second = try await database.fetchTransaction(id: second.id),
+                  TransactionBulkEdit.canMerge(first, second) else {
+                self.error = ReportStrings.localized(
+                    "Only two transactions in the same account with the same amount can be merged.",
+                    locale: .current, bundle: .main
+                )
+                return
+            }
+            let imported = try await database.importedTransactionIds(among: [first.id, second.id])
             let (keep, drop) = TransactionBulkEdit.keepAndDrop(first, second, importedIds: imported)
             let keepChildren = keep.isParent ? try await database.fetchChildTransactions(parentId: keep.id) : []
             let dropChildren = drop.isParent ? try await database.fetchChildTransactions(parentId: drop.id) : []
@@ -5398,7 +5480,14 @@ final class BudgetStore: ObservableObject {
                     updates.append((moved, ["parent_id"]))
                 }
             } else {
-                deleted.append(contentsOf: dropChildren)
+                for child in dropChildren {
+                    deleted.append(child)
+                    // Split transfers must lose both legs, as in deleteTransactions.
+                    if let partnerId = child.transferId,
+                       let partner = try await database.fetchTransaction(id: partnerId) {
+                        deleted.append(partner)
+                    }
+                }
             }
 
             var keepFields = Self.changedFields(original: keep, updated: merged)

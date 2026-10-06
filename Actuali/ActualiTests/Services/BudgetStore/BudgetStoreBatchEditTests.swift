@@ -247,4 +247,118 @@ struct BudgetStoreBatchEditTests {
         #expect(Set(children.map(\.id)) == ["child-a", "child-b"])
         #expect(try await stored(database, "parent") == nil)
     }
+
+    @Test
+    func mergePersistsCarriedScheduleLocallyAndInTheSyncLog() async throws {
+        let (store, database, tempURL) = try await makeStore()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let keep = mergeable("keep", date: 20_260_801)
+        var drop = mergeable("drop", date: 20_260_809)
+        drop.schedule = "schedule-1"
+        try await store.createTransaction(keep)
+        try await store.createTransaction(drop)
+
+        await store.mergeTransactions(keep, drop)
+
+        #expect(try await stored(database, "keep")?.schedule == "schedule-1")
+        let scheduleMessages = try await database.dbQueueForTesting.read { db in
+            try String.fetchAll(db, sql: """
+            SELECT value FROM messages_crdt WHERE row = 'keep' AND column = 'schedule' ORDER BY id
+            """)
+        }
+        #expect(scheduleMessages.last == "S:schedule-1")
+        #expect(try await stored(database, "drop") == nil)
+    }
+
+    @Test
+    func mergeDeletesTheTransferPartnerOfADiscardedSplitChild() async throws {
+        let (store, database, tempURL) = try await makeStore()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        var keep = mergeable("keep", date: 20_260_801)
+        var drop = mergeable("drop", date: 20_260_809)
+        keep.isParent = true
+        drop.isParent = true
+        var keepChild = mergeable("keep-child", categoryId: "cat-a")
+        keepChild.parentId = keep.id
+        var dropChild = mergeable("drop-child", payeeId: "payee-transfer-2")
+        dropChild.parentId = drop.id
+        dropChild.transferId = "partner"
+        var partner = mergeable("partner", payeeId: "payee-transfer-1")
+        partner.accountId = "acct-2"
+        partner.amount = 4200
+        partner.transferId = dropChild.id
+        for tx in [keep, drop, keepChild, dropChild, partner] {
+            try await store.createTransaction(tx)
+        }
+
+        await store.mergeTransactions(keep, drop)
+
+        #expect(try await stored(database, "partner") == nil)
+        #expect(try await database.fetchChildTransactions(parentId: drop.id).isEmpty)
+        #expect(try await database.fetchChildTransactions(parentId: keep.id).map(\.id) == [keepChild.id])
+        let partnerDeleted = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT tombstone FROM transactions WHERE id = 'partner'")
+        }
+        #expect(partnerDeleted == 1)
+    }
+
+    @Test
+    func mergeRevalidatesCurrentRowsInsteadOfTheSelectionSnapshot() async throws {
+        let (store, database, tempURL) = try await makeStore()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let first = mergeable("first", date: 20_260_801)
+        let second = mergeable("second", date: 20_260_809)
+        try await store.createTransaction(first)
+        try await store.createTransaction(second)
+        var changed = first
+        changed.amount = -5000
+        try database.updateTransaction(changed)
+
+        await store.mergeTransactions(first, second)
+
+        #expect(try await stored(database, first.id)?.amount == -5000)
+        #expect(try await stored(database, second.id) != nil)
+        #expect(store.error?.isEmpty == false)
+    }
+
+    @Test
+    func mergeRollsBackScheduleAndDeletionWhenMessagePersistenceFails() async throws {
+        let (store, database, tempURL) = try await makeStore()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let keep = mergeable("keep", date: 20_260_801)
+        var drop = mergeable("drop", date: 20_260_809)
+        drop.schedule = "schedule-1"
+        try await store.createTransaction(keep)
+        try await store.createTransaction(drop)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            CREATE TRIGGER reject_merge_message BEFORE INSERT ON messages_crdt
+            BEGIN SELECT RAISE(ABORT, 'test failure'); END;
+            """)
+        }
+
+        await store.mergeTransactions(keep, drop)
+
+        #expect(try await stored(database, "keep")?.schedule == nil)
+        #expect(try await stored(database, "drop")?.schedule == "schedule-1")
+        #expect(store.error?.isEmpty == false)
+    }
+
+    @Test
+    func mergeCarriesReconciledStateAsRequested() async throws {
+        let (store, database, tempURL) = try await makeStore()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let keep = mergeable("keep", date: 20_260_801)
+        var drop = mergeable("drop", date: 20_260_809, cleared: true)
+        drop.reconciled = true
+        try await store.createTransaction(keep)
+        try await store.createTransaction(drop)
+
+        await store.mergeTransactions(keep, drop)
+
+        #expect(try await stored(database, "keep")?.reconciled == true)
+        #expect(try await stored(database, "keep")?.cleared == true)
+        #expect(try await stored(database, "drop") == nil)
+        #expect(store.error == nil)
+    }
 }

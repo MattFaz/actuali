@@ -590,30 +590,7 @@ actor SyncClient {
     /// an account, and per-row round trips made that visibly slow. Mirrors
     /// upstream's transactions-batch-update.
     func updateTransactions(_ transactions: [Transaction], changedFields: Set<String>) async throws {
-        guard let database else { throw SyncError.notConfigured }
-        guard !transactions.isEmpty else { return }
-
-        logger.debug("updateTransactions() - \(transactions.count, privacy: .public) rows, fields: \(changedFields.count, privacy: .public)")
-
-        // 1. Generate every message before touching any row.
-        var updates: [(transaction: Transaction, messages: [CRDTMessage])] = []
-        for transaction in transactions {
-            let messages = changedFields.isEmpty
-                ? []
-                : try await messageGenerator.messagesForUpdate(transaction, changedFields: changedFields)
-            updates.append((transaction: transaction, messages: messages))
-        }
-
-        // 2. Store all rows and messages atomically, then update Merkle once.
-        for msg in try database.updateTransactionsWithMessages(updates) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-        logger.debug("Batch stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
-
-        // 3. Push to the server in the background
-        scheduleAutomaticSync()
+        try await updateTransactions(transactions.map { ($0, changedFields) })
     }
 
     /// Update several transaction rows, each with its own changed fields, as
