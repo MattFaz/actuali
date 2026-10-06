@@ -697,12 +697,16 @@ struct AddTransactionView: View {
                             .accessibilityHidden(true)
                         TextField("Notes", text: $notes, axis: .vertical)
                             .lineLimit(1...6)
+                            .accessibilityIdentifier("addTransaction.notes")
                     }
                     TagSuggestionBar(text: $notes, availableTags: budgetStore.tags)
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
                     // full view of a transaction's note.
-                    NoteLinkRows(text: notes).equatable()
+                    // An empty equatable wrapper still reserves a Form cell.
+                    if !NoteLinkText.links(in: notes).isEmpty {
+                        NoteLinkRows(text: notes).equatable()
+                    }
                 }
 
                 if let error = errorMessage {
