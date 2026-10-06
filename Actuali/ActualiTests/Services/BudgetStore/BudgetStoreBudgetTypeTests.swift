@@ -50,6 +50,7 @@ struct BudgetStoreBudgetTypeTests {
         let store = try await makeTestStore(database: database)
         let budgetId = "budget-" + UUID().uuidString
         store.currentBudgetId = budgetId
+        await store.fetchBudgetMonth(month)
         return (store, database, path, budgetId, month)
     }
 
@@ -60,6 +61,8 @@ struct BudgetStoreBudgetTypeTests {
         await store.setBudgetType(.tracking)
 
         #expect(store.budgetType == .tracking)
+        #expect(store.currentBudgetMonth?.isTrackingBudget == true)
+        #expect(store.currentBudgetMonth?.categoryBudgets.first?.budgeted == 200)
         #expect(try await database.fetchPreference(id: "budgetType") == "tracking")
 
         let trackingMonth = try await database.fetchBudgetMonth(month: month)
@@ -76,6 +79,8 @@ struct BudgetStoreBudgetTypeTests {
         await store.setBudgetType(.envelope)
 
         #expect(store.budgetType == .envelope)
+        #expect(store.currentBudgetMonth?.isTrackingBudget == false)
+        #expect(store.currentBudgetMonth?.categoryBudgets.first?.budgeted == 100)
         #expect(try await database.fetchPreference(id: "budgetType") == "envelope")
 
         let envelopeMonth = try await database.fetchBudgetMonth(month: month)
@@ -88,7 +93,7 @@ struct BudgetStoreBudgetTypeTests {
     }
 
     @Test func failedBudgetTypeChangeRestoresPreviousType() async throws {
-        let (store, _, path, _, _) = try await makeStore()
+        let (store, database, path, _, _) = try await makeStore()
         defer { cleanup(path) }
 
         try await DatabaseQueue(path: path.path).write { db in
@@ -99,22 +104,88 @@ struct BudgetStoreBudgetTypeTests {
 
         #expect(store.budgetType == .envelope)
         #expect(store.error != nil)
+        #expect(try await database.fetchPreference(id: "budgetType") == nil)
     }
 
-    @Test func openingTrackingBudgetPublishesTrackingType() async throws {
+    @Test func clockSaveFailureKeepsCommittedBudgetType() async throws {
+        let (store, database, path, _, month) = try await makeStore()
+        defer { cleanup(path) }
+
+        try await DatabaseQueue(path: path.path).write { db in
+            try db.execute(sql: """
+            CREATE TRIGGER fail_clock_save BEFORE INSERT ON messages_clock
+            BEGIN SELECT RAISE(FAIL, 'test clock save failure'); END;
+            """)
+        }
+
+        await store.setBudgetType(.tracking)
+
+        #expect(try await database.fetchPreference(id: "budgetType") == "tracking")
+        #expect(try messageRows(path: path).count == 1)
+        #expect(store.budgetType == .tracking)
+        #expect(store.currentBudgetMonth?.isTrackingBudget == true)
+        #expect(store.error?.contains("test clock save failure") == true)
+        #expect(try await database.fetchBudgetMonth(month: month).isTrackingBudget)
+    }
+
+    @Test func failedChangeDoesNotPublishErrorOverAnotherBudget() async throws {
+        let (store, _, path, _, _) = try await makeStore()
+        defer { cleanup(path) }
+        try await DatabaseQueue(path: path.path).write { db in
+            try db.execute(sql: "DROP TABLE messages_crdt")
+        }
+
+        let refreshing = Gate()
+        let resume = Gate()
+        store.bankSyncAccountsFetchedForTesting = {
+            refreshing.open()
+            await resume.wait()
+        }
+        let change = Task { await store.setBudgetType(.tracking) }
+        await refreshing.wait()
+
+        store.closeDatabaseForTesting()
+        store.currentBudgetId = "budget-" + UUID().uuidString
+        store.error = "new budget error"
+        resume.open()
+        await change.value
+
+        #expect(store.budgetType == .envelope)
+        #expect(store.error == "new budget error")
+    }
+
+    @Test(arguments: ["tracking", "report"])
+    func openingTrackingBudgetPublishesTrackingType(preference: String) async throws {
         let (store, manager, root) = makeFileBackedStore()
         defer { try? FileManager.default.removeItem(at: root) }
         let budgetId = "budget-" + UUID().uuidString
         try seedBudget(
             id: budgetId, in: manager,
             sql: TestSchema.upstream
-                + "INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking');"
+                + "INSERT INTO preferences (id, value) VALUES ('budgetType', '\(preference)');"
         )
 
         store.currentBudgetId = budgetId
         await store.loadLocalBudget(budgetId)
 
         #expect(store.budgetType == .tracking)
+    }
+
+    @Test func refreshPublishesBudgetTypeChangedByAnotherClient() async throws {
+        let (store, _, path, _, _) = try await makeStore()
+        defer { cleanup(path) }
+
+        try await DatabaseQueue(path: path.path).write { db in
+            try db.execute(sql: """
+            INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking')
+            """)
+        }
+        await store.sync()
+
+        #expect(store.budgetType == .tracking)
+        #expect(store.currentBudgetMonth?.isTrackingBudget == true)
+        #expect(store.currentBudgetMonth?.categoryBudgets.first?.budgeted == 200)
+        #expect(try messageRows(path: path).isEmpty)
     }
 
     @Test func budgetTypeChangeRequiresConfiguredSync() async throws {

@@ -508,16 +508,22 @@ final class BudgetStore: ObservableObject {
     /// preference. Refreshing the local budget after the write switches reads
     /// between `zero_budgets` and `reflect_budgets` immediately.
     func setBudgetType(_ type: BudgetType) async {
-        guard currentBudgetId != nil, let syncClient else { return }
+        guard let budgetId = currentBudgetId, let database, let syncClient else { return }
         guard type != budgetType else { return }
 
         let previous = budgetType
         budgetType = type
         do {
             try await syncClient.setPreference(key: "budgetType", value: type.rawValue)
+            guard currentBudgetId == budgetId, self.database === database else { return }
             await refreshDataOnly()
         } catch {
+            guard currentBudgetId == budgetId, self.database === database else { return }
             budgetType = previous
+            // The preference and CRDT message can commit before saving the
+            // sync clock fails. Re-read the database instead of assuming rollback.
+            await refreshDataOnly()
+            guard currentBudgetId == budgetId, self.database === database else { return }
             self.error = error.localizedDescription
         }
     }

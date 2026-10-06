@@ -8,6 +8,8 @@ import Testing
 struct BudgetMonthTrackingSummaryTests {
     @Test func budgetTypePreferenceMatchesActualValues() {
         #expect(BudgetType.fromPreference(nil) == .envelope)
+        #expect(BudgetType.fromPreference("") == .envelope)
+        #expect(BudgetType.fromPreference("unknown") == .envelope)
         #expect(BudgetType.fromPreference("envelope") == .envelope)
         #expect(BudgetType.fromPreference("tracking") == .tracking)
         #expect(BudgetType.fromPreference("report") == .tracking)
