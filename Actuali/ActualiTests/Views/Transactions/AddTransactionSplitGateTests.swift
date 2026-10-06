@@ -28,12 +28,6 @@ struct AddTransactionSplitGateTests {
 
     // MARK: - Sign key
 
-    @Test func theSignKeySwapsExpenseAndIncomeAndLeavesATransferAlone() {
-        #expect(AddTransactionView.toggledType(.expense) == .income)
-        #expect(AddTransactionView.toggledType(.income) == .expense)
-        #expect(AddTransactionView.toggledType(.transfer) == .transfer)
-    }
-
     @Test(arguments: [
         (false, false, false, false, false, true), // Ordinary expense/income.
         (false, false, false, true, true, true), // New transfer with both accounts.

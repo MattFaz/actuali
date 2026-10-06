@@ -11,6 +11,7 @@ struct PayeePickerView: View {
     /// account. Empty hides the section (split lines, which can't transfer
     /// through this list, use `transferFromAccountId` instead).
     let transferAccounts: [Account]
+    let accountsOnly: Bool
     let onSelectAccount: (Account) -> Void
     let onSelect: (Payee) -> Void
     let onCommit: (String) -> Void
@@ -27,6 +28,7 @@ struct PayeePickerView: View {
         nearbyPayees: Binding<[NearbyPayee]>,
         transferFromAccountId: String? = nil,
         transferAccounts: [Account] = [],
+        accountsOnly: Bool = false,
         onSelectAccount: @escaping (Account) -> Void = { _ in },
         onSelect: @escaping (Payee) -> Void,
         onCommit: @escaping (String) -> Void,
@@ -35,6 +37,7 @@ struct PayeePickerView: View {
         _nearbyPayees = nearbyPayees
         self.transferFromAccountId = transferFromAccountId
         self.transferAccounts = transferAccounts
+        self.accountsOnly = accountsOnly
         self.onSelectAccount = onSelectAccount
         self.onSelect = onSelect
         self.onCommit = onCommit
@@ -240,7 +243,7 @@ struct PayeePickerView: View {
     var body: some View {
         NavigationStack {
             List {
-                if trimmedSearchText.isEmpty {
+                if !accountsOnly, trimmedSearchText.isEmpty {
                     if !nearbyPayees.isEmpty {
                         Section("Nearby") {
                             ForEach(nearbyPayees.prefix(5)) { nearby in
@@ -283,7 +286,7 @@ struct PayeePickerView: View {
                     transferAccountsSection
                 }
 
-                if trimmedSearchText.isEmpty {
+                if !accountsOnly, trimmedSearchText.isEmpty {
                     if !nonSuggestedPayees.isEmpty {
                         Section("Payees") {
                             ForEach(nonSuggestedPayees) { payee in
@@ -291,7 +294,7 @@ struct PayeePickerView: View {
                             }
                         }
                     }
-                } else if !filteredPayees.isEmpty {
+                } else if !accountsOnly, !filteredPayees.isEmpty {
                     Section("Suggestions") {
                         ForEach(filteredPayees) { payee in
                             payeeButton(payee)
@@ -299,7 +302,7 @@ struct PayeePickerView: View {
                     }
                 }
 
-                if canCommitCustomPayee {
+                if !accountsOnly, canCommitCustomPayee {
                     Section {
                         Button {
                             onCommit(trimmedSearchText)
@@ -344,7 +347,11 @@ struct PayeePickerView: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
-                        onCommit(trimmedSearchText)
+                        if accountsOnly {
+                            dismiss()
+                        } else {
+                            onCommit(trimmedSearchText)
+                        }
                     }
                 }
             }

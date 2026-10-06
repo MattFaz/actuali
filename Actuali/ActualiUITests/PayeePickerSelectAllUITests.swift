@@ -13,25 +13,27 @@ final class PayeePickerSelectAllUITests: XCTestCase {
         let payeeRow = app.buttons["addTransaction.payee"]
         XCTAssertTrue(payeeRow.waitForExistence(timeout: 10))
         payeeRow.tap()
-        XCTAssertTrue(app.staticTexts["Suggested Payees"].waitForExistence(timeout: 5))
+        let suggestions = app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "Suggested Payees")).firstMatch
+        XCTAssertTrue(suggestions.waitForExistence(timeout: 5))
 
         // Demo data has no nearby locations. Collect headers while scrolling
         // so this also works when the keyboard hides the later sections.
-        let headers = app.staticTexts.matching(
-            NSPredicate(format: "label IN %@", ["Suggested Payees", "Transfer to / from", "Payees"])
-        )
+        let headers = app.staticTexts.matching(NSCompoundPredicate(orPredicateWithSubpredicates:
+            ["Suggested Payees", "Transfer to / from", "Payees"].map {
+                NSPredicate(format: "label ==[c] %@", $0)
+            }))
         var seen: [String] = []
         for _ in 0..<8 {
-            for header in headers.allElementsBoundByIndex where !seen.contains(header.label) {
-                seen.append(header.label)
+            for header in headers.allElementsBoundByIndex where !seen.contains(header.label.lowercased()) {
+                seen.append(header.label.lowercased())
             }
-            if seen.contains("Payees") {
+            if seen.contains("payees") {
                 break
             }
             app.swipeUp()
         }
 
-        XCTAssertEqual(seen, ["Suggested Payees", "Transfer to / from", "Payees"])
+        XCTAssertEqual(seen, ["suggested payees", "transfer to / from", "payees"])
     }
 
     @MainActor
