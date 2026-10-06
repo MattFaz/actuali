@@ -240,9 +240,6 @@ struct PayeePickerView: View {
     var body: some View {
         NavigationStack {
             List {
-                if !matchingTransferAccounts.isEmpty {
-                    transferAccountsSection
-                }
                 if trimmedSearchText.isEmpty {
                     if !nearbyPayees.isEmpty {
                         Section("Nearby") {
@@ -280,7 +277,13 @@ struct PayeePickerView: View {
                             }
                         }
                     }
+                }
 
+                if !matchingTransferAccounts.isEmpty {
+                    transferAccountsSection
+                }
+
+                if trimmedSearchText.isEmpty {
                     if !nonSuggestedPayees.isEmpty {
                         Section("Payees") {
                             ForEach(nonSuggestedPayees) { payee in
