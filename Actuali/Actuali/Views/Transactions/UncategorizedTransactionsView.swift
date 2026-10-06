@@ -138,7 +138,9 @@ struct UncategorizedTransactionsView: View {
             .first { $0.id == categoryId }?
             .name
         do {
-            try await budgetStore.updateTransaction(updated, original: transaction)
+            try await budgetStore.withImpactCue(for: [transaction, updated]) {
+                try await budgetStore.updateTransaction(updated, original: transaction)
+            }
         } catch {
             budgetStore.error = "Failed to categorize transaction: \(error.localizedDescription)"
         }

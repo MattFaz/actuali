@@ -188,6 +188,15 @@ struct ActualiApp: App {
                 }
             }
             .animation(AppAnimation.appearance, value: budgetStore.schedulePostNotice)
+            .overlay(alignment: .bottom) {
+                if !budgetStore.transactionImpactCues.isEmpty {
+                    // Floats above the tab bar.
+                    TransactionImpactPopup()
+                        .environmentObject(budgetStore)
+                        .padding(.bottom, 96)
+                }
+            }
+            .animation(AppAnimation.appearance, value: budgetStore.transactionImpactCues)
         }
     }
 }
