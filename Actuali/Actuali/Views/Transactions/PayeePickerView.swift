@@ -347,7 +347,11 @@ struct PayeePickerView: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
-                        onCommit(trimmedSearchText)
+                        if accountsOnly {
+                            dismiss()
+                        } else {
+                            onCommit(trimmedSearchText)
+                        }
                     }
                 }
             }

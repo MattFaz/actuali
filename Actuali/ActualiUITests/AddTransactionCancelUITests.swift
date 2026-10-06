@@ -62,8 +62,9 @@ final class AddTransactionCancelUITests: XCTestCase {
 
         enterAmountAndCancel(in: app)
 
-        XCTAssertTrue(app.navigationBars["Budget"].waitForExistence(timeout: 5),
-                      "cancel did not land on the configured Start Page")
+        // The Budget tab has no navigation header; verify the selected tab.
+        expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons["Budget"])
+        waitForExpectations(timeout: 5)
 
         // Back on the Add tab, the entered amount must be gone.
         app.tabBars.buttons["Add"].tap()

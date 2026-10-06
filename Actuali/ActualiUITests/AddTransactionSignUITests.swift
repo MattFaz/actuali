@@ -28,23 +28,25 @@ final class AddTransactionSignUITests: XCTestCase {
     }
 
     @MainActor
-    func testTransferWithoutPartnerDisablesBothSignControlsAndExpenseReenablesThem() {
+    func testChoosingATransferKeepsBothSignControlsEnabled() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
 
         let sign = app.buttons["addTransaction.sign"]
-        let flip = app.buttons["Flip sign"]
-        XCTAssertTrue(flip.waitForExistence(timeout: 10))
-        app.segmentedControls.buttons["Transfer"].tap()
-        XCTAssertFalse(sign.isEnabled)
-        XCTAssertFalse(flip.isEnabled)
-
-        app.segmentedControls.buttons["Expense"].tap()
+        XCTAssertTrue(sign.waitForExistence(timeout: 10))
+        app.buttons["addTransaction.payee"].tap()
+        let account = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH 'payeePicker.transfer.' AND label CONTAINS 'Ally Savings'"
+        )).firstMatch
+        XCTAssertTrue(account.waitForExistence(timeout: 5))
+        account.tap()
         XCTAssertTrue(sign.isEnabled)
+        let amount = app.textFields.matching(NSPredicate(format: "placeholderValue == '0.00'")).firstMatch
+        amount.tap()
+        let flip = app.buttons["Flip sign"]
+        XCTAssertTrue(flip.waitForExistence(timeout: 5))
         XCTAssertTrue(flip.isEnabled)
-        flip.tap()
-        XCTAssertEqual(sign.value as? String, "Inflow")
     }
 
     @MainActor
@@ -69,11 +71,27 @@ final class AddTransactionSignUITests: XCTestCase {
         XCTAssertTrue(flip.waitForExistence(timeout: 5))
         XCTAssertTrue(flip.isEnabled)
 
-        app.segmentedControls.buttons["Transfer"].tap()
+        app.buttons["addTransaction.payee"].tap()
+        let transferSearch = app.textFields["Search payees"]
+        XCTAssertTrue(transferSearch.waitForExistence(timeout: 5))
+        transferSearch.typeText("Ally Savings")
+        let account = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH 'payeePicker.transfer.' AND label CONTAINS 'Ally Savings'"
+        )).firstMatch
+        XCTAssertTrue(account.waitForExistence(timeout: 5))
+        account.tap()
+        amount.tap()
+        XCTAssertTrue(flip.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["addTransaction.sign"].isEnabled)
         XCTAssertFalse(flip.isEnabled)
 
-        app.segmentedControls.buttons["Expense"].tap()
+        app.buttons["addTransaction.payee"].tap()
+        let search = app.textFields["Search payees"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.typeText("Chipotle")
+        app.navigationBars.buttons["Done"].tap()
+        amount.tap()
+        XCTAssertTrue(flip.waitForExistence(timeout: 5))
         XCTAssertTrue(flip.isEnabled)
         flip.tap()
         XCTAssertEqual(app.buttons["addTransaction.sign"].value as? String, "Inflow")

@@ -273,8 +273,7 @@ struct AddTransactionView: View {
     /// Transfers are excluded — they pair two accounts through `transferId`
     /// and splitting would orphan the partner leg (the store refuses it), so
     /// the button stays hidden rather than failing on save. Gated on the live
-    /// type toggle, which also covers a saved transfer (its type is locked to
-    /// Transfer), so switching a new transaction to Transfer hides it (GH #556).
+    /// transfer state, so choosing an account as the payee hides it (GH #556).
     private var canSplitIntoCategories: Bool {
         Self.canSplitIntoCategories(
             isTransfer: isTransfer,
@@ -328,7 +327,7 @@ struct AddTransactionView: View {
     }
 
     /// Whether the payee list may offer accounts as transfers: the same cases
-    /// the Transfer type is offered in. A pending import, a split in progress
+    /// that can save a transfer. A pending import, a split in progress
     /// and an edit that couldn't become a transfer can't take one.
     private var offersTransfer: Bool {
         Self.offersTransfer(
@@ -544,9 +543,11 @@ struct AddTransactionView: View {
                             Text(account.name).tag(account.id)
                         }
                     }
-                    .onChange(of: selectedAccountId) { _, newValue in
+                    .accessibilityIdentifier("addTransaction.account")
+                    .onChange(of: selectedAccountId) { oldValue, newValue in
                         if transferToAccountId == newValue {
-                            transferToAccountId = nil
+                            // Keep the pair when the partner becomes the form's account.
+                            transferToAccountId = oldValue
                         }
                     }
 
@@ -577,7 +578,7 @@ struct AddTransactionView: View {
                     .accessibilityIdentifier("addTransaction.payee")
                     .sheet(isPresented: $showPayeePicker) {
                         PayeePickerView(
-                            payeeName: payeeName,
+                            payeeName: isTransfer ? "" : payeeName,
                             nearbyPayees: $nearbyPayees,
                             transferAccounts: offersTransfer ? transferEligibleAccounts : [],
                             accountsOnly: isEditingTransfer,
@@ -591,6 +592,10 @@ struct AddTransactionView: View {
                                 showPayeePicker = false
                             },
                             onCommit: { name in
+                                guard !isTransfer || !name.isEmpty else {
+                                    showPayeePicker = false
+                                    return
+                                }
                                 transferToAccountId = nil
                                 payeeName = name
                                 if let payee = matchingPayee(for: name) {
@@ -1021,7 +1026,7 @@ struct AddTransactionView: View {
                 // next entry and route to the saved transaction's account
                 // list so every add flow lands on the relevant list.
                 resetForm()
-                NotificationRouter.shared.pendingAccountNavigation = form.accountId
+                NotificationRouter.shared.pendingAccountNavigation = selectedAccountId
             }
         } catch {
             errorMessage = PendingImportApprover.localizedErrorMessage(
@@ -1861,14 +1866,12 @@ private enum AddTransactionLocalization {
     static let addTransfer: String.LocalizationValue = "Add Transfer"
     static let category: String.LocalizationValue = "Category"
     static let flipsDirection: String.LocalizationValue = "Flips this line's direction"
-    static let from: String.LocalizationValue = "From"
     static let inflow: String.LocalizationValue = "Inflow"
     static let none: String.LocalizationValue = "None"
     static let optionalNotes: String.LocalizationValue = "Notes (optional)"
     static let optionalPayee: String.LocalizationValue = "Payee (optional)"
     static let outflow: String.LocalizationValue = "Outflow"
     static let saveChanges: String.LocalizationValue = "Save Changes"
-    static let to: String.LocalizationValue = "To"
     static let transferFrom: String.LocalizationValue = "Transfer from"
     static let transferTo: String.LocalizationValue = "Transfer to"
 }

@@ -74,4 +74,11 @@ struct AddTransactionTransferTests {
             canConvertToTransfer: canConvertToTransfer
         ) == expected)
     }
+
+    @Test func existingTransferOffersReplacementAccounts() {
+        #expect(AddTransactionView.offersTransfer(
+            isPendingImportReview: false, isSplitting: false, isEditingSplitParent: false,
+            isEditing: true, isEditingTransfer: true, canConvertToTransfer: false
+        ))
+    }
 }
