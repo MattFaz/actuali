@@ -143,6 +143,27 @@ struct BudgetStoreDisplayStyleTests {
         }
     }
 
+    @Test func cleanOverviewDefaultsOnAndPersistsIndependently() {
+        let cleanKey = "showCleanBudgetOverview"
+        let compactKey = "showCompactBudgetOverview"
+        withSavedDefaults(for: [cleanKey, compactKey]) {
+            let store = BudgetStore.previewInstance()
+            #expect(store.showCleanBudgetOverview)
+            #expect(store.showCompactBudgetOverview)
+
+            store.showCleanBudgetOverview = false
+            #expect(UserDefaults.standard.object(forKey: cleanKey) as? Bool == false)
+            #expect(store.showCompactBudgetOverview)
+            #expect(UserDefaults.standard.object(forKey: compactKey) == nil)
+
+            store.showCleanBudgetOverview = true
+            store.showCompactBudgetOverview = false
+            #expect(UserDefaults.standard.object(forKey: cleanKey) as? Bool == true)
+            #expect(store.showCleanBudgetOverview)
+            #expect(UserDefaults.standard.object(forKey: compactKey) as? Bool == false)
+        }
+    }
+
     @Test func inverseBudgetProgressPreferenceDefaultsOffAndPersists() {
         let key = "showInverseBudgetProgressBars"
 

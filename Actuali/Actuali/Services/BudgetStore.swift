@@ -552,6 +552,17 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether the Clean Budget view style shows its pinned monthly summary.
+    /// Defaults on.
+    @Published var showCleanBudgetOverview: Bool = true {
+        didSet {
+            UserDefaults.standard.set(
+                showCleanBudgetOverview,
+                forKey: "showCleanBudgetOverview"
+            )
+        }
+    }
+
     /// Whether the Compact Budget view style shows its pinned monthly overview.
     /// This is independent of the Clean summary and defaults on.
     @Published var showCompactBudgetOverview: Bool = true {
@@ -1843,6 +1854,9 @@ final class BudgetStore: ObservableObject {
         _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle.resolved(
             from: defaults.string(forKey: "budgetDisplayStyle")
         ))
+        _showCleanBudgetOverview = Published(
+            initialValue: persistedBool("showCleanBudgetOverview", default: true)
+        )
         _showCompactBudgetOverview = Published(
             initialValue: persistedBool("showCompactBudgetOverview", default: true)
         )

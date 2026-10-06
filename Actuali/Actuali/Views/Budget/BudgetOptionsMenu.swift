@@ -97,11 +97,19 @@ struct BudgetOptionsMenu: View {
             }
             .pickerStyle(.inline)
 
-            if budgetStore.budgetDisplayStyle == .compact {
-                Section {
-                    Toggle(isOn: $budgetStore.showCompactBudgetOverview) {
+            Section {
+                Toggle(isOn: budgetStore.budgetDisplayStyle == .clean
+                    ? $budgetStore.showCleanBudgetOverview
+                    : $budgetStore.showCompactBudgetOverview) {
                         Label("Show Overview", systemImage: "rectangle.topthird.inset.filled")
                     }
+                    .accessibilityIdentifier("budgetOptions.showOverview")
+                Toggle(isOn: $budgetStore.showBudgetedAmounts) {
+                    Label("Show Budgeted", systemImage: "banknote")
+                }
+                .accessibilityLabel("Budgeted Amounts")
+                .accessibilityIdentifier("budgetOptions.showBudgetedAmounts")
+                if budgetStore.budgetDisplayStyle == .compact {
                     Toggle(isOn: $budgetStore.showCompactSpentColumn) {
                         Label("Show Spent", systemImage: "tablecells.badge.ellipsis")
                     }
@@ -130,10 +138,6 @@ struct BudgetOptionsMenu: View {
                         Label("Group Totals", systemImage: "sum")
                     }
                 }
-                Toggle(isOn: $budgetStore.showBudgetedAmounts) {
-                    Label("Budgeted Amounts", systemImage: "banknote")
-                }
-                .accessibilityIdentifier("budgetOptions.showBudgetedAmounts")
                 Toggle(isOn: $budgetStore.showBudgetCheckInStrip) {
                     Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
                 }

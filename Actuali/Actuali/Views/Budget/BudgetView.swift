@@ -747,8 +747,9 @@ struct BudgetView: View {
 
             // Keep the summary above the List so it stays pinned while the
             // table scrolls (GH #155).
-            if !isCompact
-                || budgetStore.showCompactBudgetOverview {
+            if isCompact
+                ? budgetStore.showCompactBudgetOverview
+                : budgetStore.showCleanBudgetOverview {
                 Group {
                     switch budgetStore.budgetDisplayStyle {
                     case .clean:
@@ -778,6 +779,13 @@ struct BudgetView: View {
                 )
                 .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
                 .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            } else if !isCompact, budget.toBudget != nil {
+                // With the Clean overview hidden, what's left to budget stays
+                // in view as a single filled row, as in Actua's plan view.
+                ReadyToBudgetRow(budget: budget)
+                    .padding(.horizontal, TopBoxLayout.horizontalContentMargin)
+                    .padding(.vertical, TopBoxLayout.verticalContentMargin)
+                    .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }
 
             budgetTable(budget)
@@ -1656,6 +1664,58 @@ struct CleanBudgetSummary: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// What's left to budget as one card matching the summary card, shown in
+/// Clean style when the overview is hidden. Tapping it opens the budget
+/// summary, like the To Budget figure in the card.
+struct ReadyToBudgetRow: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
+    @State private var showingSummary = false
+
+    let budget: BudgetMonth
+
+    var body: some View {
+        let amount = budget.toBudget ?? 0
+        let label = amount < 0
+            ? String(localized: "Overbudgeted", locale: locale)
+            : String(localized: "Ready to Budget", locale: locale)
+        let value = budgetStore.displayBalance(amount)
+        Button {
+            showingSummary = true
+        } label: {
+            HStack(spacing: 8) {
+                Text(label)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 8)
+                Text(value)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(amount < 0 ? Color.red : Color.green)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .animatedAmount(value)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 18)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 24))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("\(label), \(value)"))
+        .accessibilityHint(Text(String(localized: "Budget Summary", locale: locale)))
+        .accessibilityIdentifier("budget.readyToBudget")
+        .fullScreenCover(isPresented: $showingSummary) {
+            BudgetSummarySheet(month: budget.month)
+        }
     }
 }
 

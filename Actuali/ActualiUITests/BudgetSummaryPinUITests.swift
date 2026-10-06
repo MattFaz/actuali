@@ -109,6 +109,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
             "-showCompactBudgetOverview", "YES",
+            "-showCleanBudgetOverview", "YES",
             // The status strip now sits above the summary in both styles, so
             // hide it here: this test measures the summary cards themselves.
             "-showBudgetCheckInStrip", "NO",
@@ -167,6 +168,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
             "-seedUncategorized",
+            "-showCleanBudgetOverview", "YES",
             // The status strip sits above the bar (GH #546); hide it so the
             // bar is the top surface whose gutter this test measures.
             "-showBudgetCheckInStrip", "NO",
