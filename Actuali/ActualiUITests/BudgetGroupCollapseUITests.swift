@@ -129,6 +129,70 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
+    func testCompactGroupTemplateActionsRunAndDisappearWhenHidden() {
+        assertGroupTemplateActions(displayStyle: "compact")
+    }
+
+    @MainActor
+    func testCleanGroupTemplateActionsRunAndDisappearWhenHidden() {
+        assertGroupTemplateActions(displayStyle: "clean")
+    }
+
+    @MainActor
+    private func assertGroupTemplateActions(displayStyle: String) {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", displayStyle,
+            "-showHiddenCategories", "YES", "-initialTab", "4",
+        ]
+        app.launch()
+        let budgetSettings = app.buttons["Budget View"]
+        XCTAssertTrue(budgetSettings.waitForExistence(timeout: 10))
+        budgetSettings.tap()
+        let templates = app.switches["Budget Goal Templates"]
+        for _ in 0..<5 where !templates.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(templates.isHittable)
+        let toggle = templates.switches.firstMatch
+        let control = toggle.exists ? toggle : templates
+        control.tap()
+        let enabled = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "1"), object: control
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed)
+        app.tabBars.buttons["Budget"].tap()
+
+        let group = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Essentials, ")
+        ).firstMatch
+        XCTAssertTrue(group.waitForExistence(timeout: 10))
+        let wasCollapsed = group.label.contains("collapsed")
+        for title in ["Apply Budget Template", "Overwrite with Budget Template"] {
+            group.press(forDuration: 1)
+            let action = app.buttons[title]
+            XCTAssertTrue(action.waitForExistence(timeout: 5))
+            XCTAssertEqual(group.label.contains("collapsed"), wasCollapsed)
+            action.tap()
+            let result = app.alerts["Templates Applied"]
+            XCTAssertTrue(result.waitForExistence(timeout: 10),
+                          "the group action must reach the template runner")
+            result.buttons["OK"].tap()
+        }
+
+        group.press(forDuration: 1)
+        let hide = app.buttons["Hide Group"]
+        XCTAssertTrue(hide.waitForExistence(timeout: 5))
+        hide.tap()
+        group.press(forDuration: 1)
+        let show = app.buttons["Show Group"]
+        XCTAssertTrue(show.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Apply Budget Template"].exists)
+        XCTAssertFalse(app.buttons["Overwrite with Budget Template"].exists)
+        show.tap()
+    }
+
+    @MainActor
     func testCompactGroupHeaderStaysPinnedWhileCategoriesScroll() {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -269,7 +333,10 @@ final class BudgetGroupCollapseUITests: XCTestCase {
             wasCollapsed,
             "revealing a group action must not toggle its collapse state"
         )
-        let action = app.buttons[hidden ? "Hide" : "Show"].firstMatch
+        XCTAssertFalse(app.buttons["Apply Budget Template"].exists,
+                       "template actions must be absent when templates are off")
+        XCTAssertFalse(app.buttons["Overwrite with Budget Template"].exists)
+        let action = app.buttons[hidden ? "Hide Group" : "Show Group"].firstMatch
         XCTAssertTrue(action.waitForExistence(timeout: 5))
         action.tap()
     }
@@ -291,7 +358,10 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(income.waitForExistence(timeout: 5))
 
         income.press(forDuration: 1)
-        XCTAssertFalse(app.buttons["Hide"].waitForExistence(timeout: 2),
+        XCTAssertTrue(app.buttons["Rename Group"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Apply Budget Template"].exists)
+        XCTAssertFalse(app.buttons["Overwrite with Budget Template"].exists)
+        XCTAssertFalse(app.buttons["Hide Group"].waitForExistence(timeout: 2),
                        "the Income group must not offer a hide action")
     }
 

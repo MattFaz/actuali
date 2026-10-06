@@ -342,6 +342,8 @@ struct BudgetView: View {
                     setCategoryGroupHidden(group.id, hidden: $0)
                 },
                 onRename: { editCategoryGroup(group.id) },
+                onApplyTemplate: groupTemplateAction(.apply, for: group),
+                onOverwriteTemplate: groupTemplateAction(.overwrite, for: group),
                 totals: budgetStore.showGroupTotals ? group.totals : nil,
                 showsSpent: budgetStore.showCompactSpentColumn,
                 showsBudgeted: budgetStore.showBudgetedAmounts,
@@ -1786,31 +1788,18 @@ struct BudgetGroupHeader: View {
         .contentShape(Rectangle())
     }
 
-    @ViewBuilder
     private var actions: some View {
-        if let onApplyTemplate {
-            Button(action: onApplyTemplate) {
-                Label(ReportStrings.text("Apply Budget Template", locale: locale, bundle: .main), systemImage: "wand.and.stars")
-            }
-        }
-        if let onOverwriteTemplate {
-            Button(action: onOverwriteTemplate) {
-                Label(ReportStrings.text("Overwrite with Budget Template", locale: locale, bundle: .main), systemImage: "wand.and.stars.inverse")
-            }
-        }
-        if let onRename {
-            Button(action: onRename) {
-                Label("Rename Group", systemImage: "pencil")
-            }
-        }
-        if let onSetHidden {
-            Button {
-                onSetHidden(!isHidden)
-            } label: {
-                Label(
-                    ReportStrings.text(isHidden ? "Show Group" : "Hide Group", locale: locale, bundle: .main),
-                    systemImage: isHidden ? "eye" : "eye.slash"
-                )
+        let items = ContextMenuHostAction.groupActions(
+            isHidden: isHidden,
+            onApplyTemplate: onApplyTemplate,
+            onOverwriteTemplate: onOverwriteTemplate,
+            onRename: onRename,
+            onSetHidden: onSetHidden,
+            locale: locale
+        )
+        return ForEach(items.indices, id: \.self) { index in
+            Button(action: items[index].handler) {
+                Label(items[index].title, systemImage: items[index].systemImage)
             }
         }
     }
