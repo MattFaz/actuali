@@ -28,6 +28,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", "clean",
+            "-showCleanBudgetOverview", "YES",
             "-showBudgetCheckInStrip", "YES",
         ]
         app.launch()

@@ -98,16 +98,12 @@ struct BudgetOptionsMenu: View {
             .pickerStyle(.inline)
 
             Section {
-                if budgetStore.budgetDisplayStyle == .clean {
-                    Toggle(isOn: $budgetStore.showCleanBudgetOverview) {
+                Toggle(isOn: budgetStore.budgetDisplayStyle == .clean
+                    ? $budgetStore.showCleanBudgetOverview
+                    : $budgetStore.showCompactBudgetOverview) {
                         Label("Show Overview", systemImage: "rectangle.topthird.inset.filled")
                     }
-                    .accessibilityIdentifier("budgetOptions.showCleanOverview")
-                } else {
-                    Toggle(isOn: $budgetStore.showCompactBudgetOverview) {
-                        Label("Show Overview", systemImage: "rectangle.topthird.inset.filled")
-                    }
-                }
+                    .accessibilityIdentifier("budgetOptions.showOverview")
                 Toggle(isOn: $budgetStore.showBudgetedAmounts) {
                     Label("Show Budgeted", systemImage: "banknote")
                 }
