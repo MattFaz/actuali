@@ -12,6 +12,9 @@ struct ConnectionDataSettingsView: View {
             // offline budgets without a session.
             if budgetStore.isConnected {
                 BudgetSelectionSettingsSection()
+                if budgetStore.canChangeBudgetType {
+                    BudgetTypeSettingsSection()
+                }
             }
 
             if budgetStore.currentBudgetId != nil {
@@ -23,6 +26,29 @@ struct ConnectionDataSettingsView: View {
         .navigationTitle(String(localized: "Connection & Data"))
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.horizontal, 6, for: .scrollContent)
+    }
+}
+
+private struct BudgetTypeSettingsSection: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+
+    var body: some View {
+        Section {
+            Picker(String(localized: "Budget type"), selection: Binding(
+                get: { budgetStore.budgetType },
+                set: { budgetType in
+                    Task { await budgetStore.setBudgetType(budgetType) }
+                }
+            )) {
+                Text(String(localized: "Envelope budget")).tag(BudgetType.envelope)
+                Text(String(localized: "Tracking budget")).tag(BudgetType.tracking)
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("budgetType.picker")
+            .disabled(budgetStore.isLoading)
+        } header: {
+            Text(String(localized: "Budget"))
+        }
     }
 }
 

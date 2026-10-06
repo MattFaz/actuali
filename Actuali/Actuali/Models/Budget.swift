@@ -1,5 +1,20 @@
 import Foundation
 
+enum BudgetType: String, CaseIterable, Hashable {
+    case envelope
+    case tracking
+
+    /// Actual used "report" before renaming Tracking Budget.
+    static func fromPreference(_ value: String?) -> Self {
+        switch value {
+        case "tracking", "report":
+            .tracking
+        default:
+            .envelope
+        }
+    }
+}
+
 struct BudgetMonth: Identifiable, Hashable {
     var id: String {
         month

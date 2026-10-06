@@ -342,6 +342,7 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
             if currentBudgetId != oldValue {
                 dismissTransactionImpactCues()
+                budgetType = .envelope
                 creditCardConfigs = [:]
                 loanConfigs = [:]
                 depositConfigs = [:]
@@ -374,6 +375,7 @@ final class BudgetStore: ObservableObject {
     /// Statement dues (statement balance, payments since closing, remaining due) for active credit card accounts.
     @Published var creditCardStatementDues: [String: [CreditCardCycle.StatementDue]] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
+    @Published private(set) var budgetType: BudgetType = .envelope
 
     /// Categories left out of the Spent (and so Saved/Net) summaries on the
     /// Budget and Accounts tabs. This
@@ -498,6 +500,30 @@ final class BudgetStore: ObservableObject {
         do {
             try await syncClient.updateCurrencyCode(code)
         } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// User-initiated budget type changes use Actual's synced `budgetType`
+    /// preference. Refreshing the local budget after the write switches reads
+    /// between `zero_budgets` and `reflect_budgets` immediately.
+    func setBudgetType(_ type: BudgetType) async {
+        guard let budgetId = currentBudgetId, let database, let syncClient else { return }
+        guard type != budgetType else { return }
+
+        let previous = budgetType
+        budgetType = type
+        do {
+            try await syncClient.setPreference(key: "budgetType", value: type.rawValue)
+            guard currentBudgetId == budgetId, self.database === database else { return }
+            await refreshDataOnly()
+        } catch {
+            guard currentBudgetId == budgetId, self.database === database else { return }
+            budgetType = previous
+            // The preference and CRDT message can commit before saving the
+            // sync clock fails. Re-read the database instead of assuming rollback.
+            await refreshDataOnly()
+            guard currentBudgetId == budgetId, self.database === database else { return }
             self.error = error.localizedDescription
         }
     }
@@ -1702,6 +1728,11 @@ final class BudgetStore: ObservableObject {
     }
 
     private var syncClient: SyncClient?
+
+    var canChangeBudgetType: Bool {
+        currentBudgetId != nil && syncClient != nil
+    }
+
     private var syncStateCancellable: AnyCancellable?
 
     // MARK: - Backups
@@ -2689,6 +2720,8 @@ final class BudgetStore: ObservableObject {
             // is Actual's explicit "None" setting.
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
             let fetchedNumberFormat = try await openedDb.fetchPreference(id: "numberFormat")
+            let budgetTypePreference = try await openedDb.fetchPreference(id: "budgetType")
+            let fetchedBudgetType = BudgetType.fromPreference(budgetTypePreference)
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await openedDb.fetchCreditCardConfigs()
             let fetchedLoans = try await openedDb.fetchLoanConfigs()
@@ -2743,6 +2776,7 @@ final class BudgetStore: ObservableObject {
             } else {
                 numberFormat = .commaDot
             }
+            budgetType = fetchedBudgetType
 
             upcomingScheduledTransactionLength = fetchedUpcomingLength
 
@@ -2906,6 +2940,7 @@ final class BudgetStore: ObservableObject {
                 syncClient = nil
                 requestedBudgetMonth = nil
                 currentBudgetMonth = nil
+                budgetType = .envelope
                 widgetBudgetMonth = nil
                 accounts = []
                 transactions = []
@@ -3003,6 +3038,7 @@ final class BudgetStore: ObservableObject {
         let budgetId = currentBudgetId
         let currencyCodeBefore = currencyCode
         let numberFormatBefore = numberFormat
+        let budgetTypeBefore = budgetType
         let creditCardsBefore = creditCardConfigs
         let loansBefore = loanConfigs
         let depositsBefore = depositConfigs
@@ -3041,6 +3077,8 @@ final class BudgetStore: ObservableObject {
             // client, and nothing else republishes it (GH #297).
             let fetchedCurrencyCode = try await database.fetchCurrencyCode()
             let fetchedNumberFormat = try await database.fetchPreference(id: "numberFormat")
+            let budgetTypePreference = try await database.fetchPreference(id: "budgetType")
+            let fetchedBudgetType = BudgetType.fromPreference(budgetTypePreference)
             // Same story for the goal-templates flags — the web's Experimental
             // settings toggles arrive as synced preferences.
             let fetchedGoalTemplatesFlag = try await database.fetchPreference(
@@ -3112,6 +3150,9 @@ final class BudgetStore: ObservableObject {
             }
             if let fetchedBankAccounts {
                 assignIfChanged(\.bankSyncAccounts, fetchedBankAccounts)
+            }
+            if budgetType == budgetTypeBefore {
+                budgetType = fetchedBudgetType
             }
             dataVersion += 1
             isPublishingReload = false

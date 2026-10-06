@@ -6,6 +6,15 @@ import Testing
 /// loot-core `tracking.ts`: `real-saved` (actual income + actual spent) and
 /// `total-saved` (budgeted income - budgeted expenses).
 struct BudgetMonthTrackingSummaryTests {
+    @Test func budgetTypePreferenceMatchesActualValues() {
+        #expect(BudgetType.fromPreference(nil) == .envelope)
+        #expect(BudgetType.fromPreference("") == .envelope)
+        #expect(BudgetType.fromPreference("unknown") == .envelope)
+        #expect(BudgetType.fromPreference("envelope") == .envelope)
+        #expect(BudgetType.fromPreference("tracking") == .tracking)
+        #expect(BudgetType.fromPreference("report") == .tracking)
+    }
+
     @Test func budgetTypeFollowsPresenceOfToBudget() {
         let tracking = BudgetMonth(month: "2026-07", categoryBudgets: [], toBudget: nil)
         let envelope = BudgetMonth(month: "2026-07", categoryBudgets: [], toBudget: 0)
