@@ -45,55 +45,46 @@ struct ContextMenuHostAction {
     }
 }
 
-/// Hosts SwiftUI content with a native UIKit context-menu interaction, so a
-/// long-press lifts and zooms the whole content like any other context menu.
-/// SwiftUI's `.contextMenu` doesn't present from a `List` section header,
-/// which is where the Compact group rows live and must stay pinned.
-struct ContextMenuHost<Content: View>: UIViewControllerRepresentable {
+/// A transparent UIKit overlay that adds a native context-menu interaction
+/// and a tap to the SwiftUI content beneath it, so a long-press lifts the
+/// whole row like any other context menu. SwiftUI's `.contextMenu` doesn't
+/// present from a `List` section header, which is where the Compact group
+/// rows live and must stay pinned.
+///
+/// The content stays in the List's own SwiftUI graph rather than inside a
+/// nested `UIHostingController`: hosting each pinned header separately meant
+/// a fresh hosting controller and a synchronous nested layout per header on
+/// every scroll pass, which made Compact scrolling stutter.
+struct ContextMenuHost: UIViewRepresentable {
     let actions: [ContextMenuHostAction]
     let onTap: () -> Void
-    @ViewBuilder let content: Content
+    /// The lift preview is a snapshot, so UIKit can't hide the real row the
+    /// way it hides a source view it owns; the row hides itself while lifted.
+    let onLift: (Bool) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
-    /// Measures the content at its ideal height: flexible views such as a
-    /// `Color.clear` spacer would otherwise stretch to the unbounded height
-    /// offered while sizing.
-    struct Sized: View {
-        let content: Content
-
-        var body: some View {
-            content.fixedSize(horizontal: false, vertical: true)
-        }
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.addInteraction(UIContextMenuInteraction(delegate: context.coordinator))
+        view.addGestureRecognizer(UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped)))
+        return view
     }
 
-    func makeUIViewController(context: Context) -> UIHostingController<Sized> {
-        let controller = UIHostingController(rootView: Sized(content: content))
-        controller.view.backgroundColor = .clear
-        let interaction = UIContextMenuInteraction(delegate: context.coordinator)
-        controller.view.addInteraction(interaction)
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped))
-        controller.view.addGestureRecognizer(tap)
-        return controller
-    }
-
-    func updateUIViewController(_ controller: UIHostingController<Sized>, context: Context) {
-        controller.rootView = Sized(content: content)
+    func updateUIView(_ view: UIView, context: Context) {
         context.coordinator.actions = actions
         context.coordinator.onTap = onTap
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, uiViewController: UIHostingController<Sized>, context: Context) -> CGSize? {
-        guard let width = proposal.width else { return nil }
-        let size = uiViewController.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
-        return CGSize(width: width, height: size.height)
+        context.coordinator.onLift = onLift
     }
 
     final class Coordinator: NSObject, UIContextMenuInteractionDelegate {
         var actions: [ContextMenuHostAction] = []
         var onTap: () -> Void = {}
+        var onLift: (Bool) -> Void = { _ in }
+        private var preview: UITargetedPreview?
 
         @objc func tapped() {
             onTap()
@@ -118,21 +109,50 @@ struct ContextMenuHost<Content: View>: UIViewControllerRepresentable {
             _ interaction: UIContextMenuInteraction,
             previewForHighlightingMenuWithConfiguration configuration: UIContextMenuConfiguration
         ) -> UITargetedPreview? {
-            preview(for: interaction)
+            // The overlay itself draws nothing, so lift a snapshot of the row
+            // beneath it. Taken once here and reused on dismissal, when the
+            // window would also contain the menu.
+            guard let view = interaction.view, let window = view.window,
+                  let snapshot = window.resizableSnapshotView(
+                      from: view.convert(view.bounds, to: window),
+                      afterScreenUpdates: false,
+                      withCapInsets: .zero
+                  )
+            else { return nil }
+            let parameters = UIPreviewParameters()
+            parameters.visiblePath = UIBezierPath(roundedRect: view.bounds, cornerRadius: 14)
+            let preview = UITargetedPreview(
+                view: snapshot,
+                parameters: parameters,
+                target: UIPreviewTarget(container: view, center: CGPoint(x: view.bounds.midX, y: view.bounds.midY))
+            )
+            self.preview = preview
+            return preview
         }
 
         func contextMenuInteraction(
             _ interaction: UIContextMenuInteraction,
             previewForDismissingMenuWithConfiguration configuration: UIContextMenuConfiguration
         ) -> UITargetedPreview? {
-            preview(for: interaction)
+            defer { preview = nil }
+            return preview
         }
 
-        private func preview(for interaction: UIContextMenuInteraction) -> UITargetedPreview? {
-            guard let view = interaction.view else { return nil }
-            let parameters = UIPreviewParameters()
-            parameters.visiblePath = UIBezierPath(roundedRect: view.bounds, cornerRadius: 14)
-            return UITargetedPreview(view: view, parameters: parameters)
+        func contextMenuInteraction(
+            _ interaction: UIContextMenuInteraction,
+            willDisplayMenuFor configuration: UIContextMenuConfiguration,
+            animator: UIContextMenuInteractionAnimating?
+        ) {
+            onLift(true)
+        }
+
+        func contextMenuInteraction(
+            _ interaction: UIContextMenuInteraction,
+            willEndFor configuration: UIContextMenuConfiguration,
+            animator: UIContextMenuInteractionAnimating?
+        ) {
+            guard let animator else { return onLift(false) }
+            animator.addCompletion { self.onLift(false) }
         }
     }
 }

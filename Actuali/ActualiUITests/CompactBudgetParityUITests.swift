@@ -246,6 +246,35 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
+    func testGroupHeaderTapCollapsesAndLongPressOpensMenu() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "compact",
+            "-showBudgetProgressBars", "NO", "-showCategoryStatusDots", "NO",
+            "-initialTab", "1",
+        ]
+        app.launch()
+
+        let details = app.buttons["Details for Groceries"]
+        ensureGroupExpanded("Essentials", revealing: details, in: app)
+        let group = app.buttons["compactBudgetGroup.Essentials"]
+        group.tap()
+        XCTAssertTrue(details.waitForNonExistence(timeout: 5))
+        group.tap()
+        XCTAssertTrue(details.waitForExistence(timeout: 5))
+
+        group.press(forDuration: 1)
+        XCTAssertTrue(app.buttons["Rename Group"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Hide Group"].exists)
+
+        // Closing the menu runs the dismissal preview and brings the row back.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).tap()
+        XCTAssertTrue(app.buttons["Rename Group"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(group.isHittable)
+        XCTAssertTrue(details.exists, "the group stays expanded after the menu closes")
+    }
+
+    @MainActor
     private func ensureGroupExpanded(
         _ name: String,
         revealing element: XCUIElement,
