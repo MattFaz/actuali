@@ -58,6 +58,9 @@ struct ContextMenuHostAction {
 struct ContextMenuHost: UIViewRepresentable {
     let actions: [ContextMenuHostAction]
     let onTap: () -> Void
+    /// The lift preview is a snapshot, so UIKit can't hide the real row the
+    /// way it hides a source view it owns; the row hides itself while lifted.
+    let onLift: (Bool) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -74,11 +77,13 @@ struct ContextMenuHost: UIViewRepresentable {
     func updateUIView(_ view: UIView, context: Context) {
         context.coordinator.actions = actions
         context.coordinator.onTap = onTap
+        context.coordinator.onLift = onLift
     }
 
     final class Coordinator: NSObject, UIContextMenuInteractionDelegate {
         var actions: [ContextMenuHostAction] = []
         var onTap: () -> Void = {}
+        var onLift: (Bool) -> Void = { _ in }
         private var preview: UITargetedPreview?
 
         @objc func tapped() {
@@ -131,6 +136,23 @@ struct ContextMenuHost: UIViewRepresentable {
         ) -> UITargetedPreview? {
             defer { preview = nil }
             return preview
+        }
+
+        func contextMenuInteraction(
+            _ interaction: UIContextMenuInteraction,
+            willDisplayMenuFor configuration: UIContextMenuConfiguration,
+            animator: UIContextMenuInteractionAnimating?
+        ) {
+            onLift(true)
+        }
+
+        func contextMenuInteraction(
+            _ interaction: UIContextMenuInteraction,
+            willEndFor configuration: UIContextMenuConfiguration,
+            animator: UIContextMenuInteractionAnimating?
+        ) {
+            guard let animator else { return onLift(false) }
+            animator.addCompletion { self.onLift(false) }
         }
     }
 }

@@ -183,6 +183,7 @@ struct CompactBudgetGroupHeader: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
+    @State private var isLifted = false
 
     let name: String
     let isCollapsed: Bool
@@ -228,8 +229,10 @@ struct CompactBudgetGroupHeader: View {
         headerContent
             .foregroundStyle(.primary)
             .background(Color(.secondarySystemBackground))
-            .opacity(isHidden ? 0.5 : 1)
-            .overlay { ContextMenuHost(actions: actions, onTap: onToggleCollapse) }
+            .opacity(isLifted ? 0 : isHidden ? 0.5 : 1)
+            .overlay {
+                ContextMenuHost(actions: actions, onTap: onToggleCollapse, onLift: { isLifted = $0 })
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("compactBudgetGroup.\(name)")
             .accessibilityLabel(accessibilityLabel)
@@ -569,6 +572,7 @@ struct CompactIncomeGroupHeader: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
+    @State private var isLifted = false
 
     let name: String
     var isCollapsed = false
@@ -612,8 +616,10 @@ struct CompactIncomeGroupHeader: View {
         headerContent
             .foregroundStyle(.primary)
             .background(Color(.secondarySystemBackground))
-            .opacity(isHidden ? 0.5 : 1)
-            .overlay { ContextMenuHost(actions: actions, onTap: onToggleCollapse) }
+            .opacity(isLifted ? 0 : isHidden ? 0.5 : 1)
+            .overlay {
+                ContextMenuHost(actions: actions, onTap: onToggleCollapse, onLift: { isLifted = $0 })
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("compactIncomeSection")
             .accessibilityLabel(accessibilityLabel)
