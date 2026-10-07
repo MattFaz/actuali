@@ -29,9 +29,12 @@ struct AccountsListViewTests {
 
         #expect(names("", in: accounts).count == 4)
         #expect(names("   ", in: accounts).count == 4)
+        #expect(names("\n\t ", in: accounts).count == 4)
         #expect(names("chequing", in: accounts) == ["Chequing", "Tangerine Chequing"])
         #expect(names("CREDIT", in: accounts) == ["Visa Credit"])
         #expect(names("  savings ", in: accounts) == ["Savings"])
+        #expect(names("\nSAVINGS\t", in: accounts) == ["Savings"])
+        #expect(names("savings", in: []).isEmpty)
         #expect(names("mortgage", in: accounts).isEmpty)
         #expect(names("i", in: accounts) == [
             "Chequing",

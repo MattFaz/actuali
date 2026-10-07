@@ -170,7 +170,8 @@ struct AccountsListView: View {
                                     identifier: "on-budget",
                                     title: String(localized: "On Budget"),
                                     total: onBudgetTotal,
-                                    isExpanded: $isOnBudgetExpanded
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isOnBudgetExpanded,
+                                    allowsCollapse: !isSearchingAccounts
                                 )
                             }
                         }
@@ -188,7 +189,8 @@ struct AccountsListView: View {
                                     identifier: "off-budget",
                                     title: String(localized: "Off Budget"),
                                     total: offBudgetTotal,
-                                    isExpanded: $isOffBudgetExpanded
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isOffBudgetExpanded,
+                                    allowsCollapse: !isSearchingAccounts
                                 )
                             }
                         }
@@ -206,14 +208,10 @@ struct AccountsListView: View {
                                     identifier: "closed",
                                     title: String(localized: "Closed Accounts"),
                                     total: closedTotal,
-                                    isExpanded: $isClosedExpanded
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isClosedExpanded,
+                                    allowsCollapse: !isSearchingAccounts
                                 )
                             }
-                        }
-                    }
-                    .overlay {
-                        if hasNoSearchResults {
-                            ContentUnavailableView.search(text: accountSearchText)
                         }
                     }
                     // Capped like the transactions this pushes to, so a
@@ -259,7 +257,8 @@ struct AccountsListView: View {
                                     identifier: "on-budget",
                                     title: String(localized: "On Budget"),
                                     total: onBudgetTotal,
-                                    isExpanded: $isOnBudgetExpanded,
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isOnBudgetExpanded,
+                                    allowsCollapse: !isSearchingAccounts,
                                     totalTrailingPadding: 0
                                 )
                             }
@@ -277,7 +276,8 @@ struct AccountsListView: View {
                                     identifier: "off-budget",
                                     title: String(localized: "Off Budget"),
                                     total: offBudgetTotal,
-                                    isExpanded: $isOffBudgetExpanded,
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isOffBudgetExpanded,
+                                    allowsCollapse: !isSearchingAccounts,
                                     totalTrailingPadding: 0
                                 )
                             }
@@ -295,15 +295,11 @@ struct AccountsListView: View {
                                     identifier: "closed",
                                     title: String(localized: "Closed Accounts"),
                                     total: closedTotal,
-                                    isExpanded: $isClosedExpanded,
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isClosedExpanded,
+                                    allowsCollapse: !isSearchingAccounts,
                                     totalTrailingPadding: 0
                                 )
                             }
-                        }
-                    }
-                    .overlay {
-                        if hasNoSearchResults {
-                            ContentUnavailableView.search(text: accountSearchText)
                         }
                     }
                 }
@@ -394,66 +390,35 @@ struct AccountsListView: View {
                 TopBoxLayout.verticalContentMargin,
                 for: .scrollContent
             )
-            // Custom bar so search is hidden until the toolbar icon is tapped
-            // (.searchable always leaves a pull-down field on the list).
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if isAccountSearchActive {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                        TextField(
-                            String(localized: "Search Accounts"),
-                            text: $accountSearchText
-                        )
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.done)
-                        .focused($isAccountSearchFocused)
-                        .accessibilityIdentifier("accounts.searchField")
-                        // Done just dismisses the keyboard; the filter stays.
-                        .onSubmit { isAccountSearchFocused = false }
-                        if !accountSearchText.isEmpty {
-                            Button {
-                                accountSearchText = ""
-                                isAccountSearchFocused = true
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(String(localized: "Clear Search"))
-                            .accessibilityIdentifier("accounts.searchClear")
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.quaternary, in: Capsule())
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            .overlay {
+                if hasNoSearchResults {
+                    ContentUnavailableView.search(text: accountSearchText)
                 }
             }
-//            .navigationTitle("Accounts")
+            .navigationTitle("Accounts")
+            .navigationBarTitleDisplayMode(.large)
+            .searchable(
+                text: $accountSearchText,
+                isPresented: $isAccountSearchActive,
+                placement: .navigationBarDrawer,
+                prompt: String(localized: "Search Accounts")
+            )
+            .searchFocused($isAccountSearchFocused)
+            .onChange(of: isAccountSearchActive) { _, isActive in
+                if !isActive {
+                    accountSearchText = ""
+                }
+            }
             .toolbar {
-                if !hasNoAccounts || isAccountSearchActive {
+                if !hasNoAccounts, !isAccountSearchActive {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
-                            if isAccountSearchActive {
-                                cancelAccountSearch()
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    isAccountSearchActive = true
-                                }
-                                isAccountSearchFocused = true
-                            }
+                            isAccountSearchActive = true
+                            isAccountSearchFocused = true
                         } label: {
-                            Image(systemName: isAccountSearchActive ? "xmark" : "magnifyingglass")
+                            Image(systemName: "magnifyingglass")
                         }
-                        .accessibilityLabel(
-                            isAccountSearchActive
-                                ? String(localized: "Cancel Search")
-                                : String(localized: "Search Accounts")
-                        )
+                        .accessibilityLabel(String(localized: "Search Accounts"))
                         .accessibilityIdentifier("accounts.search")
                     }
                 }
@@ -615,14 +580,6 @@ struct AccountsListView: View {
                     ProgressView()
                 }
             }
-    }
-
-    private func cancelAccountSearch() {
-        isAccountSearchFocused = false
-        accountSearchText = ""
-        withAnimation(.easeInOut(duration: 0.2)) {
-            isAccountSearchActive = false
-        }
     }
 
     nonisolated static func filterAccounts(_ accounts: [Account], matching query: String) -> [Account] {
@@ -809,6 +766,7 @@ struct AccountSectionHeader: View {
     let title: String
     let total: Int
     @Binding var isExpanded: Bool
+    var allowsCollapse = true
     /// Extra trailing inset lining the total up with row balances that sit
     /// left of a NavigationLink disclosure chevron. The split layout's rows
     /// carry no chevron, so it passes zero to keep its totals flush too.
@@ -841,6 +799,7 @@ struct AccountSectionHeader: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!allowsCollapse)
         .accessibilityAddTraits(.isHeader)
         // State lives in the label, not the hint: hints are read last and can
         // be disabled outright, and a collapsed section is otherwise
@@ -850,9 +809,11 @@ struct AccountSectionHeader: View {
         .accessibilityIdentifier("account.group.\(identifier)")
         // Hints describe the result of the action, not the gesture itself —
         // VoiceOver already announces this as double-tap-activatable.
-        .accessibilityHint(isExpanded
-            ? String(localized: "Collapses this section")
-            : String(localized: "Expands this section"))
+        .accessibilityHint(allowsCollapse
+            ? (isExpanded
+                ? String(localized: "Collapses this section")
+                : String(localized: "Expands this section"))
+            : "")
     }
 
     private var expandedState: String {
