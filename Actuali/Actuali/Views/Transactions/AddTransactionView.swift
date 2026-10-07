@@ -946,9 +946,17 @@ struct AddTransactionView: View {
     /// preserving each line's relative direction. Existing transfers remain
     /// fixed by their two legs; converting a row to a transfer keeps its own side.
     private var canToggleDirection: Bool {
-        Self.canToggleDirection(
+        // A transfer line's partner lives in another account, and the pair fixes
+        // its direction, exactly as for a whole transfer. "Remove Split" is
+        // exempt: the collapse tombstones both legs anyway.
+        let hasTransferLine = splitLines.contains { line in
+            line.payeeId.flatMap { id in
+                budgetStore.payees.first { $0.id == id }?.transferAccountId
+            } != nil
+        }
+        return Self.canToggleDirection(
             isEditingSplitParent: isEditingSplitParent,
-            splitLoaded: unsplitRequested || !splitLines.isEmpty,
+            splitLoaded: unsplitRequested || (!splitLines.isEmpty && !hasTransferLine),
             isEditingTransfer: isEditingTransfer,
             isConvertingToTransfer: isConvertingToTransfer,
             isTransfer: isTransfer,
