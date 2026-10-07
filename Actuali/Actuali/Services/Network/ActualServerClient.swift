@@ -306,10 +306,16 @@ actor ActualServerClient {
     private var customHeaders: [(name: String, value: String)] = []
     private let diagnosticLog: DiagnosticLog
 
+    /// Timeout for the `retryPrimaryIfRecovered` probe. Short so a foreground
+    /// probe never blocks for the full request timeout; tests raise it because
+    /// a stubbed request on a loaded runner can take longer than 5s to start.
+    private let probeTimeout: TimeInterval
+
     /// - Parameter session: overridable so tests can drive the client through a
     ///   stub transport; production callers take the default.
-    init(session: URLSession? = nil, diagnosticLog: DiagnosticLog = .shared) {
+    init(session: URLSession? = nil, diagnosticLog: DiagnosticLog = .shared, probeTimeout: TimeInterval = 5) {
         self.diagnosticLog = diagnosticLog
+        self.probeTimeout = probeTimeout
         if let session {
             self.session = session
             return
@@ -560,7 +566,7 @@ actor ActualServerClient {
               let current = serverURL,
               current != configuredPrimaryURL else { return }
         var request = makeRequest(configuredPrimaryURL.appendingPathComponent("/info"))
-        request.timeoutInterval = 5
+        request.timeoutInterval = probeTimeout
         // Older servers and route-stripping reverse proxies don't answer
         // /info (see fetchServerVersion), so any client-side status proves
         // the primary is reachable; 5xx means a proxy whose backend is down,

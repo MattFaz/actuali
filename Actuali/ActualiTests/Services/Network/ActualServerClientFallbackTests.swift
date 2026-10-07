@@ -48,10 +48,14 @@ private final class FallbackServers: Sendable {
 }
 
 struct ActualServerClientFallbackTests {
+    /// The probe's 5s production timeout is a wall-clock bound a starved CI
+    /// runner has tripped with nothing wrong; the stub answers eventually.
+    private static let probeTimeout: TimeInterval = 3600
+
     private func makeClient(fallbackServerURL: String = "https://fallback.example.com") async throws
         -> (ActualServerClient, FallbackServers) {
         let servers = FallbackServers()
-        let client = ActualServerClient(session: servers.session())
+        let client = ActualServerClient(session: servers.session(), probeTimeout: Self.probeTimeout)
         try await client.configure(
             serverURL: "https://primary.example.com",
             fallbackServerURL: fallbackServerURL
@@ -127,7 +131,9 @@ struct ActualServerClientFallbackTests {
     @Test func cancelledPrimaryProbeDoesNotRecordNetworkFailure() async throws {
         let servers = FallbackServers()
         let log = DiagnosticLog()
-        let client = ActualServerClient(session: servers.session(), diagnosticLog: log)
+        let client = ActualServerClient(
+            session: servers.session(), diagnosticLog: log, probeTimeout: Self.probeTimeout
+        )
         try await client.configure(
             serverURL: "https://primary.example.com", fallbackServerURL: "https://fallback.example.com"
         )
@@ -233,7 +239,8 @@ struct ActualServerClientFallbackTests {
         let log = DiagnosticLog()
         let client = ActualServerClient(
             session: servers.session(),
-            diagnosticLog: log
+            diagnosticLog: log,
+            probeTimeout: Self.probeTimeout
         )
         try await client.configure(
             serverURL: "https://primary.example.com",

@@ -72,6 +72,10 @@ actor SyncClient {
     private var activeSyncID: UUID?
     private var retryDelay: TimeInterval = 5
     private let maxRetryDelay: TimeInterval = 300 // 5 min cap
+    /// How long after a successful sync a pull-only `automaticSync()` is
+    /// skipped (see `shouldSkipAutomaticSync`). Injectable so tests aren't
+    /// racing the wall clock on a slow runner.
+    private let rateLimitWindow: TimeInterval
 
     /// The detached push kicked off by the most recent local write (see
     /// `scheduleAutomaticSync`). Nil when no push is in flight.
@@ -117,10 +121,12 @@ actor SyncClient {
     init(
         serverClient: ActualServerClient,
         nodeId: String? = nil,
-        diagnosticLog: DiagnosticLog = .shared
+        diagnosticLog: DiagnosticLog = .shared,
+        rateLimitWindow: TimeInterval = 1
     ) {
         self.serverClient = serverClient
         self.diagnosticLog = diagnosticLog
+        self.rateLimitWindow = rateLimitWindow
         self.diagnosticSessionID = nil
         self.clock = HybridLogicalClock(node: nodeId)
         self.messageGenerator = MessageGenerator(clock: clock)
@@ -2124,7 +2130,7 @@ actor SyncClient {
     }
 
     /// Automatic sync with rate limiting (for foreground events, after transaction creation, etc.)
-    /// Skips sync if last successful sync was less than 1 second ago
+    /// Skips sync if last successful sync was less than `rateLimitWindow` ago
     /// - Returns: whether the data is freshly synced — true when this call's
     ///   sync succeeded, and also on the rate-limited skip, which by
     ///   construction only fires when a sync SUCCEEDED within the window
@@ -2132,7 +2138,7 @@ actor SyncClient {
     @discardableResult
     func automaticSync() async -> Bool {
         if shouldSkipAutomaticSync() {
-            logger.debug("automaticSync() skipped - rate limited (last sync < 1s ago, nothing new locally)")
+            logger.debug("automaticSync() skipped - rate limited (last sync inside the window, nothing new locally)")
             return true
         }
         logger.debug("automaticSync() proceeding with sync")
@@ -2253,7 +2259,7 @@ actor SyncClient {
         guard let lastSync = lastSuccessfulSyncTime else {
             return false // No previous sync, allow it
         }
-        guard Date().timeIntervalSince(lastSync) < 1.0 else {
+        guard Date().timeIntervalSince(lastSync) < rateLimitWindow else {
             return false // Outside the window
         }
         return !hasUnsyncedLocalMessages()

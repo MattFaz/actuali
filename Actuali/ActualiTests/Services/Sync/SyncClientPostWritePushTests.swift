@@ -28,7 +28,9 @@ struct SyncClientPostWritePushTests {
     }
 
     /// Answers /sync/sync with a canned, in-sync response (no messages, empty
-    /// merkle), recording each request body.
+    /// merkle), recording each request body. The rate-limit window is held
+    /// open for the whole test so "right after a sync" stays true however
+    /// long a starved runner takes between the sync and the write.
     private func makeSyncClient(
         database: BudgetDatabase, recording captured: CapturedBodies,
         session: URLSession? = nil, diagnosticLog: DiagnosticLog = DiagnosticLog()
@@ -45,7 +47,10 @@ struct SyncClientPostWritePushTests {
         try await serverClient.configure(serverURL: "https://budget.example.com")
         await serverClient.setToken("test-token")
 
-        let syncClient = SyncClient(serverClient: serverClient, nodeId: "89e0e8e90b203f9e", diagnosticLog: diagnosticLog)
+        let syncClient = SyncClient(
+            serverClient: serverClient, nodeId: "89e0e8e90b203f9e", diagnosticLog: diagnosticLog,
+            rateLimitWindow: 3600
+        )
         try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
         return syncClient
     }
@@ -111,7 +116,7 @@ struct SyncClientPostWritePushTests {
         defer { release.signal() }
         let session = StubTransport.session { _ in
             started.open()
-            _ = release.wait(timeout: .now() + 5)
+            _ = release.wait(timeout: .now() + 60)
             var response = SyncResponse()
             response.merkle = #"{"hash":0}"#
             return try .init(contentType: "application/actual-sync", body: response.serializedData())
@@ -143,7 +148,7 @@ struct SyncClientPostWritePushTests {
             }
             if first {
                 started.open()
-                _ = release.wait(timeout: .now() + 5)
+                _ = release.wait(timeout: .now() + 60)
             }
             var response = SyncResponse()
             response.merkle = #"{"hash":0}"#
