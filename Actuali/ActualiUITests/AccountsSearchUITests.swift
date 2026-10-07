@@ -21,7 +21,7 @@ final class AccountsSearchUITests: XCTestCase {
         XCTAssertFalse(chase.exists)
 
         app.buttons["accounts.search"].tap()
-        let searchField = app.searchFields.firstMatch
+        let searchField = app.textFields["accounts.searchField"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 10))
         searchField.typeText("chase")
         XCTAssertTrue(chase.waitForExistence(timeout: 10))
@@ -31,7 +31,7 @@ final class AccountsSearchUITests: XCTestCase {
                        "search forces rows open, so collapse must not be offered")
         XCTAssertFalse(app.staticTexts["All Accounts"].firstMatch.exists)
 
-        app.buttons.matching(NSPredicate(format: "label IN %@", ["Cancel", "Close"])).firstMatch.tap()
+        app.buttons["accounts.search"].tap()
         XCTAssertTrue(header.waitForExistence(timeout: 10))
         XCTAssertTrue(header.label.contains("collapsed"))
         XCTAssertTrue(header.isEnabled)
@@ -39,8 +39,8 @@ final class AccountsSearchUITests: XCTestCase {
                        "cancelling search must restore the saved collapsed state")
         header.tap()
         XCTAssertTrue(chase.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.navigationBars["Accounts"].exists,
-                      "the Accounts page must have the title requested in #641")
+        XCTAssertFalse(app.navigationBars["Accounts"].exists,
+                       "the Accounts page title must stay hidden")
     }
 
     @MainActor
@@ -61,9 +61,15 @@ final class AccountsSearchUITests: XCTestCase {
 
         let searchButton = app.buttons["accounts.search"]
         XCTAssertTrue(searchButton.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.textFields["accounts.searchField"].exists,
+                       "the search field must stay hidden until the icon is tapped")
+        XCTAssertFalse(app.searchFields.firstMatch.exists,
+                       "there must be no idle native search bar")
+        XCTAssertFalse(app.navigationBars["Accounts"].exists,
+                       "the Accounts page title must stay hidden")
         searchButton.tap()
 
-        let searchField = app.searchFields.firstMatch
+        let searchField = app.textFields["accounts.searchField"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 10))
         searchField.typeText("vanguard")
 
@@ -74,7 +80,7 @@ final class AccountsSearchUITests: XCTestCase {
                        "search should hide non-matching accounts")
         XCTAssertFalse(app.staticTexts["All Accounts"].firstMatch.exists)
 
-        searchField.buttons["Clear text"].tap()
+        app.buttons["accounts.searchClear"].tap()
         XCTAssertTrue(chase.waitForExistence(timeout: 10),
                       "clearing the search should restore all accounts")
 
@@ -87,10 +93,18 @@ final class AccountsSearchUITests: XCTestCase {
                       "a non-matching search should show the no-results state")
         XCTAssertFalse(chase.exists)
 
-        app.buttons.matching(NSPredicate(format: "label IN %@", ["Cancel", "Close"])).firstMatch.tap()
+        app.buttons["accounts.search"].tap()
         XCTAssertTrue(chase.waitForExistence(timeout: 10),
                       "cancelling search should restore the full account list")
         XCTAssertTrue(searchButton.waitForExistence(timeout: 10),
                       "cancelling search should restore the toolbar search action")
+        XCTAssertFalse(searchField.exists,
+                       "cancelling search must hide the field again")
+        searchButton.tap()
+        XCTAssertTrue(searchField.waitForExistence(timeout: 10))
+        searchField.typeText("chase")
+        XCTAssertTrue(chase.waitForExistence(timeout: 10),
+                      "reopening search must focus the field again")
+        searchButton.tap()
     }
 }

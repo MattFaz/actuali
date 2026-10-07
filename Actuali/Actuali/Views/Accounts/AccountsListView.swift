@@ -395,30 +395,57 @@ struct AccountsListView: View {
                     ContentUnavailableView.search(text: accountSearchText)
                 }
             }
-            .navigationTitle("Accounts")
-            .navigationBarTitleDisplayMode(.large)
-            .searchable(
-                text: $accountSearchText,
-                isPresented: $isAccountSearchActive,
-                placement: .navigationBarDrawer,
-                prompt: String(localized: "Search Accounts")
-            )
-            .searchFocused($isAccountSearchFocused)
-            .onChange(of: isAccountSearchActive) { _, isActive in
-                if !isActive {
-                    accountSearchText = ""
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if isAccountSearchActive {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField(String(localized: "Search Accounts"), text: $accountSearchText)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.done)
+                            .focused($isAccountSearchFocused)
+                            .accessibilityIdentifier("accounts.searchField")
+                            .onSubmit { isAccountSearchFocused = false }
+                            // Focus after the conditional field joins the view tree.
+                            .task { isAccountSearchFocused = true }
+                        if !accountSearchText.isEmpty {
+                            Button {
+                                accountSearchText = ""
+                                isAccountSearchFocused = true
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(String(localized: "Clear Search"))
+                            .accessibilityIdentifier("accounts.searchClear")
+                        }
+                    }
+                    .frame(minHeight: 44)
+                    .padding(.horizontal, 12)
+                    .background(.quaternary, in: Capsule())
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
                 }
             }
             .toolbar {
-                if !hasNoAccounts, !isAccountSearchActive {
+                if !hasNoAccounts || isAccountSearchActive {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
-                            isAccountSearchActive = true
-                            isAccountSearchFocused = true
+                            isAccountSearchActive.toggle()
+                            if !isAccountSearchActive {
+                                isAccountSearchFocused = false
+                                accountSearchText = ""
+                            }
                         } label: {
-                            Image(systemName: "magnifyingglass")
+                            Image(systemName: isAccountSearchActive ? "xmark" : "magnifyingglass")
                         }
-                        .accessibilityLabel(String(localized: "Search Accounts"))
+                        .accessibilityLabel(isAccountSearchActive
+                            ? String(localized: "Cancel Search")
+                            : String(localized: "Search Accounts"))
                         .accessibilityIdentifier("accounts.search")
                     }
                 }
