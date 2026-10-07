@@ -813,6 +813,7 @@ final class BudgetStore: ObservableObject {
     /// The cards of the balance impact popup, empty when it isn't showing.
     @Published var transactionImpactCues: [TransactionImpactCue] = []
     var impactDismissTask: Task<Void, Never>?
+    var impactDismissGeneration = 0
 
     /// Whether changing a transaction shows the balance impact popup.
     /// Persisted to UserDefaults, defaults to on.
