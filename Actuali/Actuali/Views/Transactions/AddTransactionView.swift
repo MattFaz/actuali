@@ -697,12 +697,13 @@ struct AddTransactionView: View {
                             .accessibilityHidden(true)
                         TextField("Notes", text: $notes, axis: .vertical)
                             .lineLimit(1...6)
+                            .accessibilityIdentifier("addTransaction.notes")
                     }
                     TagSuggestionBar(text: $notes, availableTags: budgetStore.tags)
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
                     // full view of a transaction's note.
-                    NoteLinkRows(text: notes).equatable()
+                    NoteLinkRows(text: notes)
                 }
 
                 if let error = errorMessage {
@@ -1282,8 +1283,9 @@ private struct SplitLineRow: View {
             }
             TextField(String(localized: AddTransactionLocalization.optionalNotes, locale: locale), text: $line.notes)
                 .font(.subheadline)
+                .accessibilityIdentifier("addTransaction.splitLine.notes")
             TagSuggestionBar(text: $line.notes, availableTags: budgetStore.tags)
-            NoteLinkRows(text: line.notes).equatable()
+            NoteLinkRows(text: line.notes)
                 .font(.subheadline)
         }
         .sheet(isPresented: $showCategoryPicker) {
