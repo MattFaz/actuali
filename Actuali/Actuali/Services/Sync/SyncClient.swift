@@ -66,9 +66,10 @@ actor SyncClient {
     private var merkle: MerkleTree
     private var encoder: SyncEncoder
     private var syncTask: Task<Void, Never>?
-    /// Coalesces foreground, retry, and write-triggered syncs so only one full
+    /// Serializes foreground, retry, and write-triggered syncs so only one full
     /// sync owns the diagnostic attempt summary and database at a time.
     private var activeSyncTask: Task<Bool, Never>?
+    private var activeSyncID: UUID?
     private var retryDelay: TimeInterval = 5
     private let maxRetryDelay: TimeInterval = 300 // 5 min cap
 
@@ -2181,6 +2182,7 @@ actor SyncClient {
         syncTask = nil
         self.pushTask = nil
         self.activeSyncTask = nil
+        activeSyncID = nil
         pushNeededAfterCurrent = false
 
         retryTask?.cancel()
@@ -2274,17 +2276,34 @@ actor SyncClient {
     /// - Returns: true iff the sync completed successfully.
     @discardableResult
     private func performSync() async -> Bool {
-        if let activeSyncTask {
-            return await activeSyncTask.value
+        // A caller may have committed messages after the running pass read
+        // its batch. Wait for it, then give this caller a fresh pass.
+        while let inFlight = activeSyncTask {
+            let id = activeSyncID
+            _ = await inFlight.value
+            if activeSyncID == id {
+                activeSyncTask = nil
+                activeSyncID = nil
+            }
         }
+        guard !Task.isCancelled else { return false }
 
+        let id = UUID()
         let task = Task { [weak self] in
             guard let self else { return false }
             return await self.runSync()
         }
         activeSyncTask = task
-        let result = await task.value
-        activeSyncTask = nil
+        activeSyncID = id
+        let result = await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        if activeSyncID == id {
+            activeSyncTask = nil
+            activeSyncID = nil
+        }
         return result
     }
 
@@ -2295,7 +2314,9 @@ actor SyncClient {
         stateSubject.send(.syncing)
 
         do {
+            try Task.checkCancellation()
             try await fullSync(since: nil, attemptCount: 0)
+            try Task.checkCancellation()
             logger.info("performSync() completed successfully")
             await diagnosticLog.recordSyncFinished(.success, sessionID: diagnosticSessionID)
             stateSubject.send(.idle)

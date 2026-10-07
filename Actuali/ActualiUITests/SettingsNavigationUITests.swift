@@ -75,8 +75,8 @@ final class SettingsNavigationUITests: XCTestCase {
                 destination == "Bank Sync (SimpleFIN & Wallet)"
                     ? "Bank Sync"
                     : destination == "Support & Diagnostic"
-                        ? "Support"
-                        : destination
+                    ? "Support"
+                    : destination
             ]
             XCTAssertTrue(
                 navigationBar.waitForExistence(timeout: 5),
@@ -142,6 +142,13 @@ final class SettingsNavigationUITests: XCTestCase {
         XCTAssertEqual(copyButton.label, "Diagnostic Report Copied")
 
         XCTAssertTrue(app.buttons["diagnosticReport.share"].waitForExistence(timeout: 5))
+        let report = app.staticTexts["diagnosticReport.text"]
+        XCTAssertTrue(report.waitForExistence(timeout: 5))
+        let capturedText = report.label
+        // The generated timestamp used to change each second, replacing the
+        // selectable text and making the copied/shared report drift.
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertEqual(report.label, capturedText)
     }
 
     @MainActor

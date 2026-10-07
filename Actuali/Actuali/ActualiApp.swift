@@ -115,13 +115,6 @@ struct ActualiApp: App {
                     }
                 }
 
-                // Debug fixtures can overlap the app's initial foreground/load
-                // task. Reassert the synthetic connection after all fixture state
-                // has been installed so ConnectionDataSettingsView renders the
-                // budget-selection section deterministically.
-                if CommandLine.arguments.contains("-connectedServerSettings") {
-                    budgetStore.isConnected = true
-                }
                 // Stands in for coordinates the Add Transaction form would
                 // have recorded, so PayeeLocationsUITests can clear them.
                 if CommandLine.arguments.contains("-seedPayeeLocations") {

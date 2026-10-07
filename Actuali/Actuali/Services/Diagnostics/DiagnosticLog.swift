@@ -46,7 +46,7 @@ struct DiagnosticLogSnapshot: Sendable, Equatable {
         lastSyncResult: nil,
         lastSyncDurationMilliseconds: nil,
         lastSyncRequestMessageCount: nil,
-        lastSyncResponseMessageCount: nil,
+        lastSyncResponseMessageCount: nil
     )
 }
 
@@ -139,7 +139,6 @@ actor DiagnosticLog {
     private let capacity: Int
     private var sessionID = SessionID()
     private var entries: [DiagnosticLogEntry] = []
-    private var entryWriteIndex = 0
     private var serverConfigured = false
     private var serverTransport = "not configured"
     private var fallbackConfigured = false
@@ -168,7 +167,6 @@ actor DiagnosticLog {
     func clear() {
         sessionID = SessionID()
         entries.removeAll(keepingCapacity: true)
-        entryWriteIndex = 0
         serverConfigured = false
         serverTransport = "not configured"
         fallbackConfigured = false
@@ -189,7 +187,7 @@ actor DiagnosticLog {
 
     func snapshot() -> DiagnosticLogSnapshot {
         DiagnosticLogSnapshot(
-            entries: orderedEntries,
+            entries: entries,
             serverConfigured: serverConfigured,
             serverTransport: serverTransport,
             fallbackConfigured: fallbackConfigured,
@@ -204,7 +202,7 @@ actor DiagnosticLog {
             lastSyncResult: lastSyncResult,
             lastSyncDurationMilliseconds: lastSyncDurationMilliseconds,
             lastSyncRequestMessageCount: lastSyncRequestMessageCount,
-            lastSyncResponseMessageCount: lastSyncResponseMessageCount,
+            lastSyncResponseMessageCount: lastSyncResponseMessageCount
         )
     }
 
@@ -340,21 +338,11 @@ actor DiagnosticLog {
     }
 
     private func append(_ message: String) {
-        let entry = DiagnosticLogEntry(message: message)
-        if entries.count < capacity {
-            entries.append(entry)
-            entryWriteIndex = entries.count % capacity
-            return
+        entries.append(DiagnosticLogEntry(message: message))
+        // ponytail: shifting at most 300 entries is cheap; use a deque if the
+        // retained history grows enough for this to matter.
+        if entries.count > capacity {
+            entries.removeFirst(entries.count - capacity)
         }
-
-        entries[entryWriteIndex] = entry
-        entryWriteIndex = (entryWriteIndex + 1) % capacity
-    }
-
-    private var orderedEntries: [DiagnosticLogEntry] {
-        guard entries.count == capacity, entryWriteIndex != 0 else {
-            return entries
-        }
-        return Array(entries[entryWriteIndex...]) + Array(entries[..<entryWriteIndex])
     }
 }

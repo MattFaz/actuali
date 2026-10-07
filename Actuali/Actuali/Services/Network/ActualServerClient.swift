@@ -386,27 +386,20 @@ actor ActualServerClient {
     /// instead of CFNetwork's raw description.
     private func recordNetworkResult(
         for request: URLRequest,
+        path: String,
         response: URLResponse?,
         error: DiagnosticLog.NetworkError?,
         expectedStatusCodes: Set<Int> = [200],
         sessionID: DiagnosticLog.SessionID,
         startedAt: Date
     ) async {
-        let path = diagnosticPath(for: request.url)
         let statusCode = (response as? HTTPURLResponse)?.statusCode
-        let resolvedError: DiagnosticLog.NetworkError? = if let error {
-            error
-        } else if let statusCode, !expectedStatusCodes.contains(statusCode) {
-            .http(statusCode: statusCode)
-        } else {
-            nil
-        }
         let duration = max(0, Int((Date().timeIntervalSince(startedAt) * 1000).rounded()))
         await diagnosticLog.recordNetworkRequest(
             method: request.httpMethod ?? "GET",
             path: path,
             statusCode: statusCode,
-            error: resolvedError,
+            error: error,
             expectedStatusCodes: expectedStatusCodes,
             durationMilliseconds: duration,
             sessionID: sessionID
@@ -416,27 +409,13 @@ actor ActualServerClient {
     /// Remove user-configured server path prefixes from diagnostic paths. The
     /// report should identify the Actual endpoint without exposing a custom
     /// server address/path that may contain private routing information.
-    private func diagnosticPath(for url: URL?) -> String {
-        var path = url?.path ?? "/"
-        let configuredPrefixes = [
-            configuredPrimaryURL?.path,
-            serverURL?.path,
-            fallbackServerURL?.path,
-        ]
-        for prefix in configuredPrefixes.compactMap({ $0 }).map({ $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")) })
-            where !prefix.isEmpty
-        {
-            let normalizedPrefix = "/" + prefix
-            if path == normalizedPrefix {
-                path = "/"
-                break
-            }
-            if path.hasPrefix(normalizedPrefix + "/") {
-                path = String(path.dropFirst(normalizedPrefix.count))
-                break
-            }
-        }
-        return path.isEmpty ? "/" : path
+    private func diagnosticPath(for url: URL?, relativeTo baseURL: URL?) -> String {
+        let path = url?.path ?? "/"
+        let prefix = baseURL?.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? ""
+        guard !prefix.isEmpty else { return path }
+        let normalizedPrefix = "/" + prefix
+        guard path.hasPrefix(normalizedPrefix + "/") else { return "/" }
+        return String(path.dropFirst(normalizedPrefix.count))
     }
 
     private func send(
@@ -445,19 +424,21 @@ actor ActualServerClient {
     ) async throws -> (Data, URLResponse) {
         let requestServerURL = serverURL
         let requestFallbackURL = fallbackServerURL
+        let path = diagnosticPath(for: request.url, relativeTo: requestServerURL)
         let requestSessionID = await diagnosticLog.currentSessionID()
         let startedAt = Date()
 
         do {
             let result = try await session.data(for: request)
             let error: DiagnosticLog.NetworkError? = if let response = result.1 as? HTTPURLResponse,
-                                                           looksLikeAuthProxy(response, data: result.0) {
+                                                        looksLikeAuthProxy(response, data: result.0) {
                 .authProxy
             } else {
                 nil
             }
             await recordNetworkResult(
                 for: request,
+                path: path,
                 response: result.1,
                 error: error,
                 expectedStatusCodes: expectedStatusCodes,
@@ -468,6 +449,7 @@ actor ActualServerClient {
         } catch let urlError as URLError where urlError.code != .cancelled {
             await recordNetworkResult(
                 for: request,
+                path: path,
                 response: nil,
                 error: DiagnosticLog.NetworkError.from(urlError.code),
                 expectedStatusCodes: expectedStatusCodes,
@@ -492,13 +474,14 @@ actor ActualServerClient {
                 do {
                     let result = try await session.data(for: fallbackRequest)
                     let error: DiagnosticLog.NetworkError? = if let response = result.1 as? HTTPURLResponse,
-                                                                       looksLikeAuthProxy(response, data: result.0) {
+                                                                looksLikeAuthProxy(response, data: result.0) {
                         .authProxy
                     } else {
                         nil
                     }
                     await recordNetworkResult(
                         for: fallbackRequest,
+                        path: path,
                         response: result.1,
                         error: error,
                         expectedStatusCodes: expectedStatusCodes,
@@ -508,7 +491,10 @@ actor ActualServerClient {
                     if serverURL == requestServerURL {
                         serverURL = requestFallbackURL
                         fallbackServerURL = requestServerURL
-                        await diagnosticLog.recordServerRoute("fallback", sessionID: requestSessionID)
+                        await diagnosticLog.recordServerRoute(
+                            serverURL == configuredPrimaryURL ? "primary" : "fallback",
+                            sessionID: requestSessionID
+                        )
                     }
                     logger.notice(
                         "Server was unreachable; switched to the configured alternate address"
@@ -517,6 +503,7 @@ actor ActualServerClient {
                 } catch let fallbackError as URLError where fallbackError.code != .cancelled {
                     await recordNetworkResult(
                         for: fallbackRequest,
+                        path: path,
                         response: nil,
                         error: DiagnosticLog.NetworkError.from(fallbackError.code),
                         expectedStatusCodes: expectedStatusCodes,
@@ -534,6 +521,7 @@ actor ActualServerClient {
                 } catch {
                     await recordNetworkResult(
                         for: fallbackRequest,
+                        path: path,
                         response: nil,
                         error: .transport(code: (error as NSError).code),
                         expectedStatusCodes: expectedStatusCodes,
@@ -552,6 +540,7 @@ actor ActualServerClient {
         } catch {
             await recordNetworkResult(
                 for: request,
+                path: path,
                 response: nil,
                 error: .transport(code: (error as NSError).code),
                 expectedStatusCodes: expectedStatusCodes,
@@ -576,12 +565,14 @@ actor ActualServerClient {
         // /info (see fetchServerVersion), so any client-side status proves
         // the primary is reachable; 5xx means a proxy whose backend is down,
         // so stay on the fallback.
+        let path = "/info"
         let probeSessionID = await diagnosticLog.currentSessionID()
         let startedAt = Date()
         do {
             let (_, response) = try await session.data(for: request)
             await recordNetworkResult(
                 for: request,
+                path: path,
                 response: response,
                 error: nil,
                 expectedStatusCodes: Set(200..<500),
@@ -593,6 +584,7 @@ actor ActualServerClient {
         } catch let urlError as URLError where urlError.code != .cancelled {
             await recordNetworkResult(
                 for: request,
+                path: path,
                 response: nil,
                 error: DiagnosticLog.NetworkError.from(urlError.code),
                 expectedStatusCodes: Set(200..<500),
@@ -600,11 +592,14 @@ actor ActualServerClient {
                 startedAt: startedAt
             )
             return
+        } catch let error as URLError where error.code == .cancelled {
+            return
         } catch is CancellationError {
             return
         } catch {
             await recordNetworkResult(
                 for: request,
+                path: path,
                 response: nil,
                 error: .transport(code: (error as NSError).code),
                 expectedStatusCodes: Set(200..<500),
@@ -785,9 +780,9 @@ actor ActualServerClient {
             request,
             expectedStatusCodes: [200, 404]
         ),
-              let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200,
-              let created = try? JSONDecoder().decode(Bool.self, from: data) else {
+            let httpResponse = response as? HTTPURLResponse,
+            httpResponse.statusCode == 200,
+            let created = try? JSONDecoder().decode(Bool.self, from: data) else {
             return true
         }
         return created
@@ -814,9 +809,9 @@ actor ActualServerClient {
             request,
             expectedStatusCodes: [200, 404]
         ),
-              let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200,
-              let info = try? JSONDecoder().decode(ServerInfoResponse.self, from: data) else {
+            let httpResponse = response as? HTTPURLResponse,
+            httpResponse.statusCode == 200,
+            let info = try? JSONDecoder().decode(ServerInfoResponse.self, from: data) else {
             return nil
         }
         return info.build?.version

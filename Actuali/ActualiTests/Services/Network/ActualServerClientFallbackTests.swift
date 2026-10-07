@@ -104,7 +104,12 @@ struct ActualServerClientFallbackTests {
     }
 
     @Test func returnsToPrimaryWhenFallbackFailsLater() async throws {
-        let (client, servers) = try await makeClient()
+        let servers = FallbackServers()
+        let log = DiagnosticLog()
+        let client = ActualServerClient(session: servers.session(), diagnosticLog: log)
+        try await client.configure(
+            serverURL: "https://primary.example.com", fallbackServerURL: "https://fallback.example.com"
+        )
         _ = try await client.login(password: "password")
         servers.failures = ["fallback.example.com": URLError(.cannotConnectToHost)]
 
@@ -116,6 +121,21 @@ struct ActualServerClientFallbackTests {
             "fallback.example.com", "primary.example.com",
             "primary.example.com",
         ])
+        #expect(await log.snapshot().serverRoute == "primary")
+    }
+
+    @Test func cancelledPrimaryProbeDoesNotRecordNetworkFailure() async throws {
+        let servers = FallbackServers()
+        let log = DiagnosticLog()
+        let client = ActualServerClient(session: servers.session(), diagnosticLog: log)
+        try await client.configure(
+            serverURL: "https://primary.example.com", fallbackServerURL: "https://fallback.example.com"
+        )
+        _ = try await client.login(password: "password")
+        let before = await log.snapshot()
+        servers.failures = ["primary.example.com": URLError(.cancelled)]
+        await client.retryPrimaryIfRecovered()
+        #expect(await log.snapshot() == before)
     }
 
     @Test func foregroundProbeSwapsBackWhenPrimaryRecovers() async throws {
@@ -255,18 +275,19 @@ struct ActualServerClientFallbackTests {
 
         try await client.configure(
             serverURL: "https://primary.example.com/private-route",
-            fallbackServerURL: "https://fallback.example.com/fallback-route"
+            fallbackServerURL: "https://fallback.example.com/private-route/fallback-secret-route"
         )
         _ = try await client.login(password: "password")
+        _ = try await client.login(password: "password")
 
-        let report = (await log.snapshot()).entries
+        let report = await (log.snapshot()).entries
             .map(\.message)
             .joined(separator: "\n")
         #expect(report.contains(
             "NETWORK method=POST path=/account/login status=200 error=none"
         ))
         #expect(!report.contains("/private-route"))
-        #expect(!report.contains("/fallback-route"))
+        #expect(!report.contains("fallback-secret-route"))
     }
 
     @Test func diagnosticHistoryTracksFallbackFailure() async throws {

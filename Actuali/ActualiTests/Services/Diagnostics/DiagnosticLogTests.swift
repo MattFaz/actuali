@@ -36,7 +36,7 @@ struct DiagnosticLogTests {
             return .init(
                 status: 500,
                 contentType: "application/json",
-                body: Data(#"{"reason":"secret-budget-data"}"#.utf8),
+                body: Data(#"{"reason":"secret-budget-data"}"#.utf8)
             )
         }
         let client = ActualServerClient(session: session, diagnosticLog: log)
@@ -48,7 +48,7 @@ struct DiagnosticLogTests {
             _ = try await client.login(password: "hunter2")
         } catch {}
 
-        let report = formattedReport(from: await log.snapshot())
+        let report = await formattedReport(from: log.snapshot())
         #expect(report.contains("method=POST"))
         #expect(report.contains("path=/account/login"))
         #expect(report.contains("status=500"))
@@ -67,7 +67,7 @@ struct DiagnosticLogTests {
             session: StubTransport.session { _ in
                 throw URLError(.secureConnectionFailed)
             },
-            diagnosticLog: log,
+            diagnosticLog: log
         )
 
         try await client.configure(serverURL: "https://budget.example.com")
@@ -76,7 +76,7 @@ struct DiagnosticLogTests {
             _ = try await client.login(password: "not-a-real-password")
         } catch {}
 
-        let report = formattedReport(from: await log.snapshot())
+        let report = await formattedReport(from: log.snapshot())
         #expect(report.contains("method=POST"))
         #expect(report.contains("path=/account/login"))
         #expect(report.contains("status=none"))
@@ -99,7 +99,7 @@ struct DiagnosticLogTests {
         #expect(!result)
         await client.cancelPendingSync()
 
-        let report = formattedReport(from: await log.snapshot())
+        let report = await formattedReport(from: log.snapshot())
         #expect(report.contains("SYNC started"))
         #expect(report.contains("SYNC finished result=failed"))
     }
@@ -114,7 +114,7 @@ struct DiagnosticLogTests {
         await client.resetSyncState()
         await client.cancelPendingSync()
 
-        let report = formattedReport(from: await log.snapshot())
+        let report = await formattedReport(from: log.snapshot())
         #expect(report.contains("SYNC resync-triggered reason=manual-reset"))
     }
 
@@ -123,7 +123,7 @@ struct DiagnosticLogTests {
 
         await log.recordServerConfiguration(
             transport: "HTTPS",
-            fallbackConfigured: true,
+            fallbackConfigured: true
         )
         await log.recordCredentialAvailability(true)
         await log.recordNetworkRequest(
@@ -131,7 +131,7 @@ struct DiagnosticLogTests {
             path: "/info",
             statusCode: 200,
             error: nil,
-            durationMilliseconds: 42,
+            durationMilliseconds: 42
         )
         await log.recordSyncStarted()
         await log.recordSyncRequestMessageCount(3)
@@ -173,7 +173,7 @@ struct DiagnosticLogTests {
         await log.recordServerConfiguration(
             transport: "https",
             fallbackConfigured: false,
-            sessionID: oldSession,
+            sessionID: oldSession
         )
         await log.clear()
 
@@ -239,7 +239,7 @@ struct DiagnosticLogTests {
         let log = DiagnosticLog()
         let client = ActualServerClient(
             session: StubTransport.session { _ in
-                .init(status: 404, contentType: "application/json", body: Data()),
+                .init(status: 404, contentType: "application/json", body: Data())
             },
             diagnosticLog: log
         )
@@ -263,7 +263,7 @@ struct DiagnosticLogTests {
             return .init(
                 status: 500,
                 contentType: "application/json",
-                body: Data(),
+                body: Data()
             )
         }
         let client = ActualServerClient(session: session, diagnosticLog: log)
@@ -296,6 +296,31 @@ struct DiagnosticLogTests {
         #expect(snapshot.entries.filter { $0.message.hasPrefix("NETWORK ") }.isEmpty)
     }
 
+    @Test func reconfigurationDuringRequestDoesNotExposePrivatePath() async throws {
+        let log = DiagnosticLog()
+        let started = Gate()
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let client = ActualServerClient(
+            session: StubTransport.session { _ in
+                started.open()
+                _ = release.wait(timeout: .now() + 5)
+                return .init(status: 500, contentType: "application/json")
+            },
+            diagnosticLog: log
+        )
+        try await client.configure(serverURL: "https://budget.example.com/private-secret-route")
+        let request = Task { try? await client.login(password: "password") }
+        await started.wait()
+        try await client.configure(serverURL: "https://another.example.com/new-route")
+        release.signal()
+        _ = await request.value
+
+        let history = await formattedReport(from: log.snapshot())
+        #expect(history.contains("path=/account/login"))
+        #expect(!history.contains("private-secret-route"))
+    }
+
     @Test func cancelledFallbackRequestDoesNotBecomeTransportFailure() async throws {
         let log = DiagnosticLog()
         let client = ActualServerClient(
@@ -310,16 +335,16 @@ struct DiagnosticLogTests {
 
         try await client.configure(
             serverURL: "https://primary.example.com",
-            fallbackServerURL: "https://fallback.example.com",
+            fallbackServerURL: "https://fallback.example.com"
         )
 
         do {
             _ = try await client.login(password: "password")
             Issue.record("Expected cancellation")
-        } catch is CancellationError {
-            // Expected.
+        } catch let error as URLError {
+            #expect(error.code == .cancelled)
         } catch {
-            Issue.record("Expected CancellationError, got \(String(describing: error))")
+            Issue.record("Expected URLSession cancellation, got \(String(describing: error))")
         }
 
         let snapshot = await log.snapshot()
@@ -342,13 +367,13 @@ struct DiagnosticLogTests {
         do {
             _ = try await client.login(password: "password")
             Issue.record("Expected cancellation")
-        } catch is CancellationError {
-            // Expected.
+        } catch let error as URLError {
+            #expect(error.code == .cancelled)
         } catch {
-            Issue.record("Expected CancellationError, got \(String(describing: error))")
+            Issue.record("Expected URLSession cancellation, got \(String(describing: error))")
         }
 
-        #expect((await log.snapshot()).entries.filter { $0.message.hasPrefix("NETWORK ") }.isEmpty)
+        #expect(await (log.snapshot()).entries.filter { $0.message.hasPrefix("NETWORK ") }.isEmpty)
     }
 
     @Test func successfulPasswordLoginRecordsCredentialAvailability() async throws {
@@ -358,7 +383,7 @@ struct DiagnosticLogTests {
                 .init(
                     status: 200,
                     contentType: "application/json",
-                    body: Data(#"{"status":"ok","data":{"token":"secret-token"}}"#.utf8),
+                    body: Data(#"{"status":"ok","data":{"token":"secret-token"}}"#.utf8)
                 )
             },
             diagnosticLog: log
@@ -379,7 +404,7 @@ struct DiagnosticLogTests {
                 .init(
                     status: 200,
                     contentType: "text/html; charset=utf-8",
-                    body: Data("<html>proxy-secret</html>".utf8),
+                    body: Data("<html>proxy-secret</html>".utf8)
                 )
             },
             diagnosticLog: log
@@ -411,14 +436,14 @@ struct DiagnosticLogTests {
             path: "/info",
             statusCode: nil,
             error: .tls(code: -1200),
-            durationMilliseconds: 10,
+            durationMilliseconds: 10
         )
         await log.recordNetworkRequest(
             method: "GET",
             path: "/info",
             statusCode: 200,
             error: nil,
-            durationMilliseconds: 20,
+            durationMilliseconds: 20
         )
 
         let snapshot = await log.snapshot()
@@ -473,7 +498,7 @@ struct DiagnosticLogTests {
             snapshot: .empty,
             settings: .empty,
             environment: .empty,
-            generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            generatedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
         #expect(report.text.contains("Actuali Diagnostic Report"))
@@ -542,13 +567,13 @@ struct DiagnosticLogTests {
             depositConfigurationCount: 5,
             categoryFundingConfigured: true,
             categoryFundingEnabled: true,
-            categoryFundingSource: "category",
+            categoryFundingSource: "category"
         )
         let report = DiagnosticReportBuilder.make(
             snapshot: .empty,
             settings: settings,
             environment: .empty,
-            generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            generatedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
         for expected in [
@@ -596,7 +621,7 @@ struct DiagnosticLogTests {
             "Deposit configurations: 5",
             "Category funding configured: yes",
             "Category funding enabled: yes",
-            "Category funding source: category"
+            "Category funding source: category",
         ] {
             #expect(report.text.contains(expected))
         }

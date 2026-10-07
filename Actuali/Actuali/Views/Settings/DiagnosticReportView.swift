@@ -102,7 +102,7 @@ struct DiagnosticSettingsSnapshot: Sendable, Equatable {
         depositConfigurationCount: 0,
         categoryFundingConfigured: false,
         categoryFundingEnabled: false,
-        categoryFundingSource: "none",
+        categoryFundingSource: "none"
     )
 
     @MainActor
@@ -111,7 +111,7 @@ struct DiagnosticSettingsSnapshot: Sendable, Equatable {
             for: budgetStore.currentBudgetId
         )
 
-        let fundingSource: String = switch fundingConfiguration?.fundingSource {
+        let fundingSource = switch fundingConfiguration?.fundingSource {
         case .none:
             "none"
         case .some(.toBudget):
@@ -172,7 +172,7 @@ struct DiagnosticSettingsSnapshot: Sendable, Equatable {
             depositConfigurationCount: budgetStore.depositConfigs.count,
             categoryFundingConfigured: fundingConfiguration != nil,
             categoryFundingEnabled: fundingConfiguration?.isEnabled ?? false,
-            categoryFundingSource: fundingSource,
+            categoryFundingSource: fundingSource
         )
     }
 }
@@ -213,7 +213,7 @@ struct DiagnosticReportEnvironment: Sendable, Equatable {
         processorCount: 0,
         activeProcessorCount: 0,
         physicalMemoryBytes: 0,
-        availableStorageBytes: nil,
+        availableStorageBytes: nil
     )
 
     @MainActor
@@ -226,16 +226,15 @@ struct DiagnosticReportEnvironment: Sendable, Equatable {
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "Unknown"
         let bundle = Bundle.main.bundleIdentifier ?? "Unknown"
-        let availableStorage: Int64?
-        if let applicationSupportURL = FileManager.default.urls(
+        let availableStorage: Int64? = if let applicationSupportURL = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first {
-            availableStorage = try? applicationSupportURL.resourceValues(
+            try? applicationSupportURL.resourceValues(
                 forKeys: [.volumeAvailableCapacityForImportantUsageKey]
             ).volumeAvailableCapacityForImportantUsage
         } else {
-            availableStorage = nil
+            nil
         }
 
         return DiagnosticReportEnvironment(
@@ -248,7 +247,7 @@ struct DiagnosticReportEnvironment: Sendable, Equatable {
             processorCount: processInfo.processorCount,
             activeProcessorCount: processInfo.activeProcessorCount,
             physicalMemoryBytes: processInfo.physicalMemory,
-            availableStorageBytes: availableStorage,
+            availableStorageBytes: availableStorage
         )
     }
 
@@ -277,8 +276,8 @@ struct DiagnosticReportEnvironment: Sendable, Equatable {
 
 @MainActor
 enum DiagnosticReportBuilder {
-    // The report payload is a support-facing technical format; its field names
-    // stay in English so support tooling and copied reports remain consistent.
+    /// The report payload is a support-facing technical format; its field names
+    /// stay in English so support tooling and copied reports remain consistent.
     static func make(
         snapshot: DiagnosticLogSnapshot,
         settings: DiagnosticSettingsSnapshot,
@@ -291,7 +290,7 @@ enum DiagnosticReportBuilder {
         var lines: [String] = [
             "Actuali Diagnostic Report",
             "Generated: \(timestamp(generatedAt))",
-            "Privacy: This report excludes credentials, custom header values, account and budget identifiers, server addresses, budget contents, transaction details, and financial amounts.",
+            String(localized: "Privacy: This report excludes credentials, custom header values, account and budget identifiers, server addresses, budget contents, transaction details, and financial amounts."),
             "",
             "[Application]",
             "Version: \(environment.version) (\(environment.build))",
@@ -384,11 +383,11 @@ enum DiagnosticReportBuilder {
             "",
             "[Diagnostic Event History]",
             "Scope: app session; events may include earlier budget or connection configurations.",
-            "Retained events: \(snapshot.entries.count)"
+            "Retained events: \(snapshot.entries.count)",
         ]
 
         if snapshot.entries.isEmpty {
-            lines.append("No diagnostic events recorded.")
+            lines.append(String(localized: "No diagnostic events recorded."))
         } else {
             for (index, entry) in snapshot.entries.enumerated() {
                 lines.append("\(index + 1). \(timestamp(entry.date)) | \(entry.message)")
@@ -470,69 +469,66 @@ enum DiagnosticReportBuilder {
 @MainActor
 struct DiagnosticReportView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
-    @State private var snapshot: DiagnosticLogSnapshot = .empty
-    @State private var settings: DiagnosticSettingsSnapshot = .empty
-    @State private var environment = DiagnosticReportEnvironment.empty
+    @State private var report: DiagnosticReport?
     @State private var copied = false
-    @State private var generatedAt = Date()
-
-    private var report: DiagnosticReport {
-        DiagnosticReportBuilder.make(
-            snapshot: snapshot,
-            settings: settings,
-            environment: environment,
-            generatedAt: generatedAt
-        )
-    }
 
     var body: some View {
         ScrollView {
-            Text(report.text)
-                .font(.system(.footnote, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
+            if let report {
+                Text(report.text)
+                    .font(.system(.footnote, design: .monospaced))
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("diagnosticReport.text")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            } else {
+                ProgressView()
+            }
         }
         .readableWidth()
         .navigationTitle(String(localized: "Diagnostic Report"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                ShareLink(
-                    item: report,
-                    preview: SharePreview(
-                        String(localized: "Diagnostic Report"),
-                        image: Image(systemName: "doc.text")
-                    )
-                ) {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .accessibilityLabel(String(localized: "Share Diagnostic Report"))
-                .accessibilityIdentifier("diagnosticReport.share")
+                if let report {
+                    ShareLink(
+                        item: report,
+                        preview: SharePreview(
+                            String(localized: "Diagnostic Report"),
+                            image: Image(systemName: "doc.text")
+                        )
+                    ) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel(String(localized: "Share Diagnostic Report"))
+                    .accessibilityIdentifier("diagnosticReport.share")
 
-                Button {
-                    UIPasteboard.general.string = report.text
-                    copied = true
-                } label: {
-                    Label(
-                        copied
-                            ? String(localized: "Diagnostic Report Copied")
-                            : String(localized: "Copy Diagnostic Report"),
-                        systemImage: copied ? "checkmark.circle" : "doc.on.doc"
-                    )
+                    Button {
+                        UIPasteboard.general.string = report.text
+                        copied = true
+                    } label: {
+                        Label(
+                            copied
+                                ? String(localized: "Diagnostic Report Copied")
+                                : String(localized: "Copy Diagnostic Report"),
+                            systemImage: copied ? "checkmark.circle" : "doc.on.doc"
+                        )
+                    }
+                    .accessibilityIdentifier("diagnosticReport.copy")
                 }
-                .accessibilityIdentifier("diagnosticReport.copy")
             }
         }
-        .task {
-            environment = DiagnosticReportEnvironment.capture()
-            while !Task.isCancelled {
-                generatedAt = Date()
-                snapshot = await DiagnosticLog.shared.snapshot()
-                settings = DiagnosticSettingsSnapshot.capture(from: budgetStore)
-                try? await Task.sleep(for: .seconds(1))
-            }
-        }
+        .task { await refresh() }
+        .refreshable { await refresh() }
+    }
+
+    private func refresh() async {
+        let snapshot = await DiagnosticLog.shared.snapshot()
+        report = DiagnosticReportBuilder.make(
+            snapshot: snapshot,
+            settings: .capture(from: budgetStore)
+        )
+        copied = false
     }
 }
 

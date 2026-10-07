@@ -88400,7 +88400,101 @@
         }
       }
     }
-
+,
+    "No diagnostic events recorded." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Diagnoseereignisse aufgezeichnet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No diagnostic events recorded."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se han registrado eventos de diagnóstico."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun événement de diagnostic enregistré."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessun evento diagnostico registrato."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geen diagnostische gebeurtenissen vastgelegd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum evento de diagnóstico registrado."
+          }
+        }
+      }
+    },
+    "Privacy: This report excludes credentials, custom header values, account and budget identifiers, server addresses, budget contents, transaction details, and financial amounts." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz: Dieser Bericht enthält keine Zugangsdaten, benutzerdefinierten Header-Werte, Konto- und Budgetkennungen, Serveradressen, Budgetinhalte, Transaktionsdetails oder Geldbeträge."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy: This report excludes credentials, custom header values, account and budget identifiers, server addresses, budget contents, transaction details, and financial amounts."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacidad: Este informe no incluye credenciales, valores de cabeceras personalizadas, identificadores de cuentas y presupuestos, direcciones de servidores, contenido de presupuestos, detalles de transacciones ni importes financieros."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confidentialité : ce rapport exclut les identifiants de connexion, les valeurs des en-têtes personnalisés, les identifiants de comptes et de budgets, les adresses de serveurs, le contenu des budgets, les détails des transactions et les montants financiers."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy: questo rapporto esclude credenziali, valori delle intestazioni personalizzate, identificativi di conti e budget, indirizzi dei server, contenuti dei budget, dettagli delle transazioni e importi finanziari."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy: dit rapport bevat geen inloggegevens, waarden van aangepaste headers, rekening- en budget-ID’s, serveradressen, budgetinhoud, transactiedetails of financiële bedragen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacidade: este relatório exclui credenciais, valores de cabeçalhos personalizados, identificadores de contas e orçamentos, endereços de servidores, conteúdo dos orçamentos, detalhes de transações e valores financeiros."
+          }
+        }
+      }
+    }
   },
   "version" : "1.0"
 }
