@@ -293,6 +293,11 @@ final class StubTransport: URLProtocol {
         handlers.withLock { $0[id] = handler }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubTransport.self]
+        // A starved CI runner has taken over a minute to get a stubbed request
+        // to `startLoading`; with the default 60s the stub's error is replaced
+        // by URLError.timedOut and the test fails on the wrong error.
+        configuration.timeoutIntervalForRequest = 3600
+        configuration.timeoutIntervalForResource = 3600
         configuration.httpAdditionalHeaders = [header: id]
         return URLSession(configuration: configuration)
     }
