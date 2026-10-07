@@ -528,7 +528,7 @@ actor ActualServerClient {
                     )
                     throw ActualServerError.networkError(urlError)
                 } catch let fallbackError as URLError where fallbackError.code == .cancelled {
-                    throw CancellationError()
+                    throw fallbackError
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
@@ -546,7 +546,7 @@ actor ActualServerClient {
             }
             throw ActualServerError.networkError(urlError)
         } catch let urlError as URLError where urlError.code == .cancelled {
-            throw CancellationError()
+            throw urlError
         } catch is CancellationError {
             throw CancellationError()
         } catch {

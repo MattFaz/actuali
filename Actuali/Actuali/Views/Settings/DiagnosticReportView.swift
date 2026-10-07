@@ -102,7 +102,7 @@ struct DiagnosticSettingsSnapshot: Sendable, Equatable {
         depositConfigurationCount: 0,
         categoryFundingConfigured: false,
         categoryFundingEnabled: false,
-        categoryFundingSource: "none"
+        categoryFundingSource: "none",
     )
 
     @MainActor
@@ -172,7 +172,7 @@ struct DiagnosticSettingsSnapshot: Sendable, Equatable {
             depositConfigurationCount: budgetStore.depositConfigs.count,
             categoryFundingConfigured: fundingConfiguration != nil,
             categoryFundingEnabled: fundingConfiguration?.isEnabled ?? false,
-            categoryFundingSource: fundingSource
+            categoryFundingSource: fundingSource,
         )
     }
 }
@@ -213,7 +213,7 @@ struct DiagnosticReportEnvironment: Sendable, Equatable {
         processorCount: 0,
         activeProcessorCount: 0,
         physicalMemoryBytes: 0,
-        availableStorageBytes: nil
+        availableStorageBytes: nil,
     )
 
     @MainActor
@@ -248,7 +248,7 @@ struct DiagnosticReportEnvironment: Sendable, Equatable {
             processorCount: processInfo.processorCount,
             activeProcessorCount: processInfo.activeProcessorCount,
             physicalMemoryBytes: processInfo.physicalMemory,
-            availableStorageBytes: availableStorage
+            availableStorageBytes: availableStorage,
         )
     }
 
@@ -398,7 +398,7 @@ enum DiagnosticReportBuilder {
         lines += [
             "",
             "End of report",
-            ""
+            "",
         ]
 
         return DiagnosticReport(
@@ -466,6 +466,7 @@ enum DiagnosticReportBuilder {
         return formatter
     }()
 }
+
 @MainActor
 struct DiagnosticReportView: View {
     @EnvironmentObject private var budgetStore: BudgetStore

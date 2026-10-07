@@ -36,7 +36,7 @@ struct DiagnosticLogTests {
             return .init(
                 status: 500,
                 contentType: "application/json",
-                body: Data(#"{"reason":"secret-budget-data"}"#.utf8)
+                body: Data(#"{"reason":"secret-budget-data"}"#.utf8),
             )
         }
         let client = ActualServerClient(session: session, diagnosticLog: log)
@@ -67,7 +67,7 @@ struct DiagnosticLogTests {
             session: StubTransport.session { _ in
                 throw URLError(.secureConnectionFailed)
             },
-            diagnosticLog: log
+            diagnosticLog: log,
         )
 
         try await client.configure(serverURL: "https://budget.example.com")
@@ -123,7 +123,7 @@ struct DiagnosticLogTests {
 
         await log.recordServerConfiguration(
             transport: "HTTPS",
-            fallbackConfigured: true
+            fallbackConfigured: true,
         )
         await log.recordCredentialAvailability(true)
         await log.recordNetworkRequest(
@@ -131,7 +131,7 @@ struct DiagnosticLogTests {
             path: "/info",
             statusCode: 200,
             error: nil,
-            durationMilliseconds: 42
+            durationMilliseconds: 42,
         )
         await log.recordSyncStarted()
         await log.recordSyncRequestMessageCount(3)
@@ -173,7 +173,7 @@ struct DiagnosticLogTests {
         await log.recordServerConfiguration(
             transport: "https",
             fallbackConfigured: false,
-            sessionID: oldSession
+            sessionID: oldSession,
         )
         await log.clear()
 
@@ -239,7 +239,7 @@ struct DiagnosticLogTests {
         let log = DiagnosticLog()
         let client = ActualServerClient(
             session: StubTransport.session { _ in
-                .init(status: 404, contentType: "application/json", body: Data())
+                .init(status: 404, contentType: "application/json", body: Data()),
             },
             diagnosticLog: log
         )
@@ -263,7 +263,7 @@ struct DiagnosticLogTests {
             return .init(
                 status: 500,
                 contentType: "application/json",
-                body: Data()
+                body: Data(),
             )
         }
         let client = ActualServerClient(session: session, diagnosticLog: log)
@@ -310,7 +310,7 @@ struct DiagnosticLogTests {
 
         try await client.configure(
             serverURL: "https://primary.example.com",
-            fallbackServerURL: "https://fallback.example.com"
+            fallbackServerURL: "https://fallback.example.com",
         )
 
         do {
@@ -358,7 +358,7 @@ struct DiagnosticLogTests {
                 .init(
                     status: 200,
                     contentType: "application/json",
-                    body: Data(#"{"status":"ok","data":{"token":"secret-token"}}"#.utf8)
+                    body: Data(#"{"status":"ok","data":{"token":"secret-token"}}"#.utf8),
                 )
             },
             diagnosticLog: log
@@ -379,7 +379,7 @@ struct DiagnosticLogTests {
                 .init(
                     status: 200,
                     contentType: "text/html; charset=utf-8",
-                    body: Data("<html>proxy-secret</html>".utf8)
+                    body: Data("<html>proxy-secret</html>".utf8),
                 )
             },
             diagnosticLog: log
@@ -411,14 +411,14 @@ struct DiagnosticLogTests {
             path: "/info",
             statusCode: nil,
             error: .tls(code: -1200),
-            durationMilliseconds: 10
+            durationMilliseconds: 10,
         )
         await log.recordNetworkRequest(
             method: "GET",
             path: "/info",
             statusCode: 200,
             error: nil,
-            durationMilliseconds: 20
+            durationMilliseconds: 20,
         )
 
         let snapshot = await log.snapshot()
@@ -473,7 +473,7 @@ struct DiagnosticLogTests {
             snapshot: .empty,
             settings: .empty,
             environment: .empty,
-            generatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
         )
 
         #expect(report.text.contains("Actuali Diagnostic Report"))
@@ -494,6 +494,7 @@ struct DiagnosticLogTests {
         #expect(report.filename.hasPrefix("Actuali-Diagnostics-"))
         #expect(report.filename.hasSuffix(".txt"))
     }
+
     @MainActor
     @Test func diagnosticReportRendersEverySettingsField() {
         let settings = DiagnosticSettingsSnapshot(
@@ -541,13 +542,13 @@ struct DiagnosticLogTests {
             depositConfigurationCount: 5,
             categoryFundingConfigured: true,
             categoryFundingEnabled: true,
-            categoryFundingSource: "category"
+            categoryFundingSource: "category",
         )
         let report = DiagnosticReportBuilder.make(
             snapshot: .empty,
             settings: settings,
             environment: .empty,
-            generatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
         )
 
         for expected in [
