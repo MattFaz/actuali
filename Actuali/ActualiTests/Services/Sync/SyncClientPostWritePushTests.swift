@@ -30,9 +30,10 @@ struct SyncClientPostWritePushTests {
     /// Answers /sync/sync with a canned, in-sync response (no messages, empty
     /// merkle), recording each request body.
     private func makeSyncClient(
-        database: BudgetDatabase, recording captured: CapturedBodies
+        database: BudgetDatabase, recording captured: CapturedBodies,
+        session: URLSession? = nil, diagnosticLog: DiagnosticLog = DiagnosticLog()
     ) async throws -> SyncClient {
-        let session = StubTransport.session { request in
+        let session = session ?? StubTransport.session { request in
             captured.values.withLock { $0.append(request.bodyData) }
             var response = SyncResponse()
             response.merkle = #"{"hash":0}"#
@@ -40,11 +41,11 @@ struct SyncClientPostWritePushTests {
                 contentType: "application/actual-sync", body: response.serializedData()
             )
         }
-        let serverClient = ActualServerClient(session: session)
+        let serverClient = ActualServerClient(session: session, diagnosticLog: diagnosticLog)
         try await serverClient.configure(serverURL: "https://budget.example.com")
         await serverClient.setToken("test-token")
 
-        let syncClient = SyncClient(serverClient: serverClient, nodeId: "89e0e8e90b203f9e")
+        let syncClient = SyncClient(serverClient: serverClient, nodeId: "89e0e8e90b203f9e", diagnosticLog: diagnosticLog)
         try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
         return syncClient
     }
@@ -99,6 +100,70 @@ struct SyncClientPostWritePushTests {
             try $0 + SyncRequest(serializedData: $1).messages.count
         }
         #expect(pushedMessages > 0)
+    }
+
+    @Test func cancellingCallerCancelsItsRunningSync() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let log = DiagnosticLog()
+        let started = Gate()
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let session = StubTransport.session { _ in
+            started.open()
+            _ = release.wait(timeout: .now() + 5)
+            var response = SyncResponse()
+            response.merkle = #"{"hash":0}"#
+            return try .init(contentType: "application/actual-sync", body: response.serializedData())
+        }
+        let client = try await makeSyncClient(
+            database: database, recording: CapturedBodies(), session: session, diagnosticLog: log
+        )
+        let caller = Task { await client.syncNow() }
+        await started.wait()
+        caller.cancel()
+        release.signal()
+        await caller.value
+        await client.cancelPendingSync()
+
+        #expect(await log.snapshot().lastSyncResult == .cancelled)
+    }
+
+    @Test func writeDuringForegroundSyncIsStillPushed() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let captured = CapturedBodies()
+        let started = Gate()
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let session = StubTransport.session { request in
+            let first = captured.values.withLock { values in
+                values.append(request.bodyData)
+                return values.count == 1
+            }
+            if first {
+                started.open()
+                _ = release.wait(timeout: .now() + 5)
+            }
+            var response = SyncResponse()
+            response.merkle = #"{"hash":0}"#
+            return try .init(contentType: "application/actual-sync", body: response.serializedData())
+        }
+        let client = try await makeSyncClient(database: database, recording: captured, session: session)
+        let foreground = Task { await client.syncNow() }
+        await started.wait()
+        try await client.createTransaction(transaction())
+        release.signal()
+        await foreground.value
+        await client.flushPendingSync()
+        await client.cancelPendingSync()
+
+        let requests = captured.values.withLock { $0 }
+        #expect(try SyncRequest(serializedData: requests[0]).messages.isEmpty)
+        let followUpMessageCount = try requests.dropFirst().reduce(0) {
+            try $0 + SyncRequest(serializedData: $1).messages.count
+        }
+        #expect(followUpMessageCount > 0)
     }
 
     /// The rate limit still does its job for pull-only triggers: nothing new

@@ -36,7 +36,7 @@ final class SettingsNavigationUITests: XCTestCase {
             content = app.textFields["Setup token"]
         case "History":
             content = app.staticTexts["No History Yet"]
-        case "Support":
+        case "Support & Diagnostic":
             content = app.descendants(matching: .any)["support.discord"]
         default:
             XCTFail("No representative content assertion for \(destination)")
@@ -65,14 +65,18 @@ final class SettingsNavigationUITests: XCTestCase {
             "Rules",
             "Bank Sync (SimpleFIN & Wallet)",
             "History",
-            "Support",
+            "Support & Diagnostic",
         ] {
             let row = rowOnHub(destination, in: app)
             XCTAssertTrue(row.waitForExistence(timeout: 5), "\(destination) row not found")
             row.tap()
 
             let navigationBar = app.navigationBars[
-                destination == "Bank Sync (SimpleFIN & Wallet)" ? "Bank Sync" : destination
+                destination == "Bank Sync (SimpleFIN & Wallet)"
+                    ? "Bank Sync"
+                    : destination == "Support & Diagnostic"
+                    ? "Support"
+                    : destination
             ]
             XCTAssertTrue(
                 navigationBar.waitForExistence(timeout: 5),
@@ -80,7 +84,7 @@ final class SettingsNavigationUITests: XCTestCase {
             )
             assertExpectedContent(for: destination, in: app)
             navigationBar.buttons.element(boundBy: 0).tap()
-            if destination == "Support" {
+            if destination == "Support & Diagnostic" {
                 // GH #533: Privacy Policy and Version moved into the Information
                 // section beside Support; assert them once back on the hub, where
                 // that section is on screen, so a regression can't silently drop
@@ -102,13 +106,49 @@ final class SettingsNavigationUITests: XCTestCase {
     /// until the row exists before asserting on it.
     @MainActor
     private func rowOnHub(_ title: String, in app: XCUIApplication) -> XCUIElement {
-        let row = app.buttons[title]
+        let button = app.buttons.matching(
+            NSPredicate(format: "label == %@", title)
+        ).firstMatch
+        let link = app.links.matching(
+            NSPredicate(format: "label == %@", title)
+        ).firstMatch
         var swipes = 0
-        while !row.exists, swipes < 8 {
+        while !button.exists && !link.exists && swipes < 8 {
             app.swipeUp()
             swipes += 1
         }
-        return row
+        return button.exists ? button : link
+    }
+
+    @MainActor
+    func testSupportShowsDiagnosticReportWithCopyAndShare() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        app.launch()
+
+        let support = rowOnHub("Support & Diagnostic", in: app)
+        XCTAssertTrue(support.waitForExistence(timeout: 5))
+        support.tap()
+
+        let diagnosticReport = app.buttons["support.diagnosticReport"]
+        XCTAssertTrue(diagnosticReport.waitForExistence(timeout: 5))
+        diagnosticReport.tap()
+
+        XCTAssertTrue(app.navigationBars["Diagnostic Report"].waitForExistence(timeout: 5))
+
+        let copyButton = app.buttons["diagnosticReport.copy"]
+        XCTAssertTrue(copyButton.waitForExistence(timeout: 5))
+        copyButton.tap()
+        XCTAssertEqual(copyButton.label, "Diagnostic Report Copied")
+
+        XCTAssertTrue(app.buttons["diagnosticReport.share"].waitForExistence(timeout: 5))
+        let report = app.staticTexts["diagnosticReport.text"]
+        XCTAssertTrue(report.waitForExistence(timeout: 5))
+        let capturedText = report.label
+        // The generated timestamp used to change each second, replacing the
+        // selectable text and making the copied/shared report drift.
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertEqual(report.label, capturedText)
     }
 
     @MainActor

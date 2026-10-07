@@ -176,7 +176,7 @@ struct BudgetStoreCurrencyRefreshTests {
         await store.loadLocalBudget(id) // caches GBP
         #expect(store.currencyCode == "GBP")
 
-        store.logout()
+        await store.logout()
 
         // Same budget id downloaded again, this time from a snapshot whose
         // preference messages have not landed: nothing may resurface.
