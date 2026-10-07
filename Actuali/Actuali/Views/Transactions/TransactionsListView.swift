@@ -372,7 +372,7 @@ struct TransactionRow: View {
 
     /// Caption under the payee. Off-budget accounts aren't categorized at all
     /// ("Off budget", GH #123); split parents say "Split" (as the PWA does)
-    /// followed by their children's breakdown, so the split reads at a glance
+    /// with each child's line beneath it, so the split reads at a glance
     /// without opening it (GH #552); transfers that can't take a category
     /// show "Transfer" instead of nagging "Uncategorized" (GH #104).
     nonisolated static func categoryLabel(
@@ -389,7 +389,7 @@ struct TransactionRow: View {
         }
         if isParent {
             let split = String(localized: TransactionsListLocalization.split, locale: locale)
-            return splitBreakdown.map { "\(split)・\($0)" } ?? split
+            return splitBreakdown.map { "\(split)\n\($0)" } ?? split
         }
         if categoryName == nil, isTransfer, !needsCategory {
             return String(localized: TransactionsListLocalization.transfer, locale: locale)
@@ -398,15 +398,15 @@ struct TransactionRow: View {
             ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
     }
 
-    /// "Food $6.00, Refund +$4.00": outflows unsigned, inflows keep a "+" so a
-    /// credit line inside a spend split stays distinguishable (GH #216).
+    /// One "Food $6.00" line per child: outflows unsigned, inflows keep a "+"
+    /// so a credit line inside a spend split stays distinguishable (GH #216).
     private var splitBreakdown: String? {
         guard let portions = transaction.splitPortions, !portions.isEmpty else { return nil }
         return portions.map { portion in
             let name = portion.categoryName
                 ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
             return "\(name) \(budgetStore.displaySpentCaption(portion.amount))"
-        }.joined(separator: ", ")
+        }.joined(separator: "\n")
     }
 
     private var categoryLabel: String {
@@ -518,7 +518,9 @@ struct TransactionRow: View {
                     locale: locale
                 ))
                 .font(.body)
-                HStack(spacing: 4) {
+                // First-baseline so the split glyph stays beside "Split"
+                // rather than centring on the stacked child lines.
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
                     if transaction.isParent {
                         Image(systemName: "arrow.triangle.branch")
                             .font(.caption2)

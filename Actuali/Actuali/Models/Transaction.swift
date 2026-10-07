@@ -42,7 +42,7 @@ struct Transaction: Identifiable, Hashable, Codable {
     var transferAcct: String? = nil
     /// One entry per live child of a split parent, in entry order. Populated
     /// for isParent rows by fetchTransactions (the list row's breakdown,
-    /// "Split・Food $6.00, Fun $4.00") and fetchAllLiveTransactions (History's
+    /// "Split" over one "Food $6.00" line per child) and fetchAllLiveTransactions (History's
     /// caption). Display-only, not synced.
     var splitPortions: [SplitPortion]? = nil
     /// Display-only running balance used by account transaction registers.
