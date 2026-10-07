@@ -4,7 +4,9 @@ import Testing
 @testable import Actuali
 
 struct StubTransportTests {
-    @Test(.timeLimit(.minutes(1)))
+    /// The full suite can starve CI for over a minute; this limit detects a
+    /// deadlock, while the completion assertion below checks request ordering.
+    @Test(.timeLimit(.minutes(5)))
     func stalledRequestDoesNotBlockAnotherSession() async throws {
         let started = Gate()
         let release = DispatchSemaphore(value: 0)

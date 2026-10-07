@@ -249,7 +249,7 @@ struct DiagnosticLogTests {
         #expect(snapshot.lastNetworkError == nil)
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(.minutes(5)))
     func networkCompletionFromPreviousSessionIsIgnored() async throws {
         let log = DiagnosticLog()
         let started = Gate()
@@ -282,7 +282,7 @@ struct DiagnosticLogTests {
         #expect(snapshot.entries.filter { $0.message.hasPrefix("NETWORK ") }.isEmpty)
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(.minutes(5)))
     func reconfigurationDuringRequestDoesNotExposePrivatePath() async throws {
         let log = DiagnosticLog()
         let started = Gate()

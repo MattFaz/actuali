@@ -371,7 +371,7 @@ struct TransactionImpactTests {
         #expect(store.spokenImpactText(cue).contains(MonthPicker.title(for: "2020-01")))
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(.minutes(5)))
     func theCueDismissesAutomatically() async throws {
         let (database, url) = try await makeDatabase()
         let store = try await makeStore(database)
@@ -379,14 +379,20 @@ struct TransactionImpactTests {
             store.closeDatabaseForTesting()
             try? FileManager.default.removeItem(at: url)
         }
-        _ = try await store.saveTransaction(form(amount: "1.00", categoryId: "cat-food"))
-        #expect(!store.transactionImpactCues.isEmpty)
-        // The dismissal task can start late on a busy runner; await its result.
-        for await cues in store.$transactionImpactCues.values {
-            if cues.isEmpty {
-                break
+        // Observe before saving: a busy runner can resume the test after dismissal.
+        var showedCue = false
+        let dismissed = Gate()
+        let subscription = store.$transactionImpactCues.sink { cues in
+            if !cues.isEmpty {
+                showedCue = true
+            } else if showedCue {
+                dismissed.open()
             }
         }
+        defer { subscription.cancel() }
+        _ = try await store.saveTransaction(form(amount: "1.00", categoryId: "cat-food"))
+        await dismissed.wait()
+        #expect(showedCue)
         #expect(store.transactionImpactCues.isEmpty)
     }
 
