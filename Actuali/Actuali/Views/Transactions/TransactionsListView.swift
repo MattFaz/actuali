@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TransactionsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @State private var pager: TransactionPager?
     @State private var searchText = ""
     @State private var editingTransaction: Transaction?
@@ -11,6 +12,43 @@ struct TransactionsListView: View {
     private var searchQuery: String? {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var closedAccountIds: Set<String> {
+        Set(budgetStore.accounts.filter(\.closed).map(\.id))
+    }
+
+    private var scheduleAccountNames: [String: String] {
+        Dictionary(uniqueKeysWithValues: budgetStore.accounts.map { ($0.id, $0.name) })
+    }
+
+    private var upcomingScheduleEntries: [UpcomingScheduleEntry] {
+        ScheduleRegisterProjection.upcomingEntries(
+            schedules: budgetStore.schedules,
+            statuses: budgetStore.scheduleStatuses,
+            closedAccountIds: closedAccountIds
+        )
+    }
+
+    nonisolated static func showsEmptyState(
+        transactionsEmpty: Bool,
+        isLoading: Bool,
+        isSearching: Bool,
+        statusFilter: TransactionStatusFilter,
+        schedulesLoaded: Bool,
+        hasUpcomingSchedules: Bool
+    ) -> Bool {
+        transactionsEmpty && !isLoading
+            && (isSearching || statusFilter != .all || (schedulesLoaded && !hasUpcomingSchedules))
+    }
+
+    nonisolated static func showsScheduleLoadFailure(
+        transactionsEmpty: Bool,
+        isLoading: Bool,
+        schedulesLoaded: Bool,
+        scheduleLoadFailed: Bool
+    ) -> Bool {
+        transactionsEmpty && !isLoading && schedulesLoaded && scheduleLoadFailed
     }
 
     /// Wraps `isSelecting` so every path that leaves selection mode — the
@@ -56,7 +94,30 @@ struct TransactionsListView: View {
 
     var body: some View {
         Group {
-            if let pager, pager.transactions.isEmpty, !budgetStore.isLoading {
+            if let pager, searchQuery == nil, budgetStore.transactionStatusFilter == .all,
+               Self.showsScheduleLoadFailure(
+                   transactionsEmpty: pager.transactions.isEmpty,
+                   isLoading: budgetStore.isLoading,
+                   schedulesLoaded: budgetStore.schedulesLoaded,
+                   scheduleLoadFailed: budgetStore.scheduleLoadError != nil
+               ) {
+                ContentUnavailableView {
+                    Label(
+                        String(localized: "Unable to load scheduled transactions"),
+                        systemImage: "exclamationmark.triangle"
+                    )
+                }
+            } else if let pager, searchQuery == nil, budgetStore.transactionStatusFilter == .all,
+                      pager.transactions.isEmpty, !budgetStore.schedulesLoaded {
+                ProgressView()
+            } else if let pager, Self.showsEmptyState(
+                transactionsEmpty: pager.transactions.isEmpty,
+                isLoading: budgetStore.isLoading,
+                isSearching: searchQuery != nil,
+                statusFilter: budgetStore.transactionStatusFilter,
+                schedulesLoaded: budgetStore.schedulesLoaded,
+                hasUpcomingSchedules: !upcomingScheduleEntries.isEmpty
+            ) {
                 if searchQuery != nil {
                     ContentUnavailableView.search(text: searchText)
                 } else if budgetStore.transactionStatusFilter != .all {
@@ -78,6 +139,23 @@ struct TransactionsListView: View {
                 }
             } else if let pager {
                 List {
+                    if searchQuery == nil, budgetStore.transactionStatusFilter == .all {
+                        if budgetStore.scheduleLoadError != nil {
+                            Section {
+                                Label(
+                                    String(localized: "Unable to load scheduled transactions"),
+                                    systemImage: "exclamationmark.triangle"
+                                )
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+                        if budgetStore.schedulesLoaded, !upcomingScheduleEntries.isEmpty {
+                            UpcomingScheduleSections(
+                                entries: upcomingScheduleEntries,
+                                accountNames: scheduleAccountNames
+                            )
+                        }
+                    }
                     if budgetStore.transactionDisplayMode == .groupedByDate {
                         let groups = pager.transactions.groupedByDate()
                         ForEach(groups) { group in
@@ -125,6 +203,7 @@ struct TransactionsListView: View {
         .readableWidth()
         .navigationTitle("All Accounts")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .task { await budgetStore.loadSchedules() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(isSelecting ? "Done" : "Select") {

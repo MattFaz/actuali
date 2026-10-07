@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AccountDetailView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let account: Account
 
     @State private var pager: TransactionPager?
@@ -795,7 +796,39 @@ struct AccountDetailView: View {
         }
     }
 
+    private var closedAccountIds: Set<String> {
+        Set(budgetStore.accounts.filter(\.closed).map(\.id))
+    }
+
+    private var upcomingScheduleEntries: [UpcomingScheduleEntry] {
+        ScheduleRegisterProjection.upcomingEntries(
+            schedules: budgetStore.schedules,
+            statuses: budgetStore.scheduleStatuses,
+            accountId: account.id,
+            closedAccountIds: closedAccountIds,
+            startingBalance: currentBalance
+        )
+    }
+
     @ViewBuilder private var transactionSection: some View {
+        if searchQuery == nil, budgetStore.transactionStatusFilter == .all {
+            if budgetStore.scheduleLoadError != nil {
+                Section {
+                    Label(
+                        String(localized: "Unable to load scheduled transactions"),
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .foregroundStyle(.secondary)
+                }
+            }
+            if budgetStore.schedulesLoaded {
+                UpcomingScheduleSections(
+                    entries: upcomingScheduleEntries,
+                    accountNames: [account.id: account.name],
+                    showRunningBalance: showRunningBalance
+                )
+            }
+        }
         if let pager, !pager.transactions.isEmpty {
             let displayedTransactions = transactionsForDisplay
             if budgetStore.transactionDisplayMode == .groupedByDate {
@@ -1059,6 +1092,7 @@ struct AccountDetailView: View {
             }
             await reload()
         }
+        .task { await budgetStore.loadSchedules() }
         .refreshable {
             await budgetStore.sync()
             // Not every sync bumps dataVersion (no database, a budget switch

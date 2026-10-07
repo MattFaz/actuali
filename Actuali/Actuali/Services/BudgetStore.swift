@@ -369,6 +369,8 @@ final class BudgetStore: ObservableObject {
     private(set) var tagsByName: [String: Tag] = [:]
     @Published var tagSummaries: [TagSummary] = []
     @Published var schedules: [ScheduleSummary] = []
+    @Published private(set) var schedulesLoaded = false
+    @Published private(set) var scheduleLoadError: String?
     @Published var upcomingScheduledTransactionLength: String?
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var schedulePaymentDates: [String: Set<DayDate>] = [:]
@@ -2378,6 +2380,8 @@ final class BudgetStore: ObservableObject {
         payees = []
         tags = []
         tagSummaries = []
+        schedulesLoaded = false
+        scheduleLoadError = nil
         syncStatus.state = .idle
         syncStatus.lastSyncTime = nil
         // No budget left to catch up — an in-flight initial sync's banner must
@@ -2722,6 +2726,8 @@ final class BudgetStore: ObservableObject {
         isLoading = true
         isBudgetLoaded = false
         error = nil
+        schedulesLoaded = false
+        scheduleLoadError = nil
         let monthRequestGenerationBeforeLoad = budgetMonthRequestGeneration
         var published = false
 
@@ -3107,7 +3113,21 @@ final class BudgetStore: ObservableObject {
                 id: "flags.goalTemplatesUIEnabled"
             ) == "true"
 
-            let fetchedSchedules = await fetchSchedules(database: database, upcomingLength: fetchedUpcomingLength)
+            let fetchedSchedules: ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>])?
+            do {
+                fetchedSchedules = try await fetchSchedules(
+                    database: database,
+                    upcomingLength: fetchedUpcomingLength
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                fetchedSchedules = nil
+                if self.database === database {
+                    scheduleLoadError = error.localizedDescription
+                    schedulesLoaded = true
+                }
+            }
             let duesConfigs = creditCardConfigs == creditCardsBefore ? fetchedCreditCards : creditCardConfigs
             let fetchedDues = await fetchCreditCardStatementDues(database: database, accounts: fetchedAccounts,
                                                                  configs: duesConfigs)
@@ -3163,7 +3183,11 @@ final class BudgetStore: ObservableObject {
                 let parsed = ActualNumberFormat(rawValue: fetchedNumberFormat) ?? .commaDot
                 assignIfChanged(\.numberFormat, parsed)
             }
-            publishSchedules(fetchedSchedules)
+            if let fetchedSchedules {
+                publishSchedules(fetchedSchedules)
+                schedulesLoaded = true
+                scheduleLoadError = nil
+            }
             if creditCardConfigs == duesConfigs {
                 assignIfChanged(\.creditCardStatementDues, fetchedDues)
             }
@@ -7185,13 +7209,28 @@ final class BudgetStore: ObservableObject {
     /// on today's date as well as on transactions, so they are derived here on
     /// every refresh rather than cached against a schedule row.
     func loadSchedules() async {
+        scheduleLoadError = nil
         guard let database else {
             publishSchedules(([], [:], [:]))
+            schedulesLoaded = true
             return
         }
-        let fetched = await fetchSchedules(database: database, upcomingLength: upcomingScheduledTransactionLength)
-        guard self.database === database else { return }
-        publishSchedules(fetched)
+
+        do {
+            let fetched = try await fetchSchedules(
+                database: database,
+                upcomingLength: upcomingScheduledTransactionLength
+            )
+            guard self.database === database else { return }
+            publishSchedules(fetched)
+            schedulesLoaded = true
+        } catch is CancellationError {
+            return
+        } catch {
+            guard self.database === database else { return }
+            scheduleLoadError = error.localizedDescription
+            schedulesLoaded = true
+        }
     }
 
     private func publishSchedules(_ fetched: ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>])) {
@@ -7200,28 +7239,23 @@ final class BudgetStore: ObservableObject {
         assignIfChanged(\.schedulePaymentDates, fetched.2)
     }
 
-    private func fetchSchedules(database: BudgetDatabase, upcomingLength: String?) async
+    private func fetchSchedules(database: BudgetDatabase, upcomingLength: String?) async throws
         -> ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>]) {
-        do {
-            let loaded = try await database.fetchSchedules()
-            let today = DayDate.today()
-            let paid = try await database.fetchPaidScheduleIds(for: loaded, today: today)
-            let paymentDates = try await database.fetchSchedulePaymentDates(for: loaded)
-            var statuses: [String: ScheduleStatus] = [:]
-            for schedule in loaded {
-                statuses[schedule.id] = ScheduleStatusCalculator.status(
-                    nextDate: schedule.nextDate,
-                    completed: schedule.completed,
-                    hasTransaction: paid.contains(schedule.id),
-                    upcomingLength: schedule.customUpcomingLength ?? upcomingLength,
-                    today: today
-                )
-            }
-            return (loaded.sorted(by: Self.scheduleOrder), statuses, paymentDates)
-        } catch {
-            logger.error("Failed to load schedules: \(error, privacy: .public)")
-            return ([], [:], [:])
+        let loaded = try await database.fetchSchedules()
+        let today = DayDate.today()
+        let paid = try await database.fetchPaidScheduleIds(for: loaded, today: today)
+        let paymentDates = try await database.fetchSchedulePaymentDates(for: loaded)
+        var statuses: [String: ScheduleStatus] = [:]
+        for schedule in loaded {
+            statuses[schedule.id] = ScheduleStatusCalculator.status(
+                nextDate: schedule.nextDate,
+                completed: schedule.completed,
+                hasTransaction: paid.contains(schedule.id),
+                upcomingLength: schedule.customUpcomingLength ?? upcomingLength,
+                today: today
+            )
         }
+        return (loaded.sorted(by: Self.scheduleOrder), statuses, paymentDates)
     }
 
     /// Loads the latest statement dues for all active credit cards.

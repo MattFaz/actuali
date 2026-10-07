@@ -265,6 +265,8 @@ struct ScheduleRow: View {
     let status: ScheduleStatus
     let accountName: String?
     let payeeName: String?
+    var runningBalance: Int? = nil
+    var showsNextDate = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -293,9 +295,17 @@ struct ScheduleRow: View {
                         .foregroundStyle(.secondary)
                         .accessibilityLabel(ReportStrings.text("Recurring", locale: locale))
                 }
-                Text(nextDateText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let runningBalance {
+                    Text(budgetStore.displayBalance(runningBalance))
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(balanceColor(for: runningBalance))
+                }
+                if showsNextDate {
+                    Text(nextDateText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 2)
@@ -338,6 +348,39 @@ struct ScheduleRow: View {
 
     nonisolated static func formattedAmount(_ amount: String, amountOp: ScheduleAmountOp) -> String {
         amountOp == .isApprox ? "~ " + amount : amount
+    }
+}
+
+struct UpcomingScheduleSections: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
+
+    let entries: [UpcomingScheduleEntry]
+    let accountNames: [String: String]
+    var showRunningBalance = false
+
+    private var entriesByDate: [(key: DayDate, value: [UpcomingScheduleEntry])] {
+        Dictionary(grouping: entries, by: \.date).sorted { $0.key < $1.key }
+    }
+
+    var body: some View {
+        ForEach(entriesByDate, id: \.key) { group in
+            Section(ScheduleDescription.mediumDate(group.key, locale: locale)) {
+                ForEach(group.value) { entry in
+                    let schedule = entry.schedule
+                    ScheduleRow(
+                        schedule: schedule,
+                        status: budgetStore.scheduleStatuses[schedule.id] ?? .scheduled,
+                        accountName: schedule.accountId.flatMap { accountNames[$0] },
+                        payeeName: schedule.payeeId.flatMap { id in
+                            budgetStore.payees.first { $0.id == id }?.name
+                        },
+                        runningBalance: showRunningBalance ? entry.runningBalance : nil,
+                        showsNextDate: false
+                    )
+                }
+            }
+        }
     }
 }
 
