@@ -380,7 +380,8 @@ struct TransactionImpactTests {
         }
         _ = try await store.saveTransaction(form(amount: "1.00", categoryId: "cat-food"))
         #expect(!store.transactionImpactCues.isEmpty)
-        try await Task.sleep(for: .seconds(TransactionImpact.autoDismissSeconds + 0.2))
+        let dismissTask = try #require(store.impactDismissTask)
+        await dismissTask.value
         #expect(store.transactionImpactCues.isEmpty)
     }
 
