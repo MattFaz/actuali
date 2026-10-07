@@ -1449,6 +1449,7 @@ final class BudgetStore: ObservableObject {
     // MARK: - Private
 
     private var serverClient = ActualServerClient()
+    private var diagnosticLog = DiagnosticLog.shared
     private var fileManager = BudgetFileManager.shared
     private var database: BudgetDatabase? {
         didSet {
@@ -1802,6 +1803,11 @@ final class BudgetStore: ObservableObject {
         serverClient = client
     }
 
+    /// Test-only: isolate diagnostic session state from the process-wide log.
+    func setDiagnosticLogForTesting(_ log: DiagnosticLog) {
+        diagnosticLog = log
+    }
+
     /// Test-only: swap in a SimpleFIN client wired to a stub transport so the
     /// bank sync path can be exercised without a reachable bridge.
     func setSimpleFINClientForTesting(_ client: SimpleFINClient) {
@@ -2013,6 +2019,7 @@ final class BudgetStore: ObservableObject {
         // Normalize here too: the field persists raw text per keystroke, and
         // only connect() normalizes — a value saved between connect and login
         // would otherwise fail validation on every subsequent launch.
+        await applyCustomHeadersToClientNow()
         try? await serverClient.configure(
             serverURL: serverURL,
             fallbackServerURL: Self.normalizedServerURL(fallbackServerURL)
@@ -2073,14 +2080,25 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Push the current header set to the network client. Only rows with a
-    /// non-empty name are sent; names/values are trimmed of surrounding space.
-    private func applyCustomHeadersToClient() {
-        let headers: [(name: String, value: String)] = customHeaders
+    /// The current header set in the representation used by ActualServerClient.
+    /// Values stay in the Keychain-backed model and are never sent to diagnostics.
+    private var currentCustomHeadersForClient: [(name: String, value: String)] {
+        customHeaders
             .map { (name: $0.name.trimmingCharacters(in: .whitespaces),
                     value: $0.value.trimmingCharacters(in: .whitespaces)) }
             .filter { !$0.name.isEmpty }
+    }
+
+    /// Push the current header set to the network client for live edits.
+    private func applyCustomHeadersToClient() {
+        let headers = currentCustomHeadersForClient
         Task { await serverClient.setCustomHeaders(headers) }
+    }
+
+    /// Apply headers before configuring or probing a server, so the first request
+    /// cannot race an asynchronous property update.
+    private func applyCustomHeadersToClientNow() async {
+        await serverClient.setCustomHeaders(currentCustomHeadersForClient)
     }
 
     // MARK: - Server Connection
@@ -2103,13 +2121,11 @@ final class BudgetStore: ObservableObject {
         error = nil
 
         do {
+            await applyCustomHeadersToClientNow()
             try await serverClient.configure(
                 serverURL: normalized,
                 fallbackServerURL: normalizedFallback
             )
-            // Ensure the client carries the user's headers before any probe/login,
-            // so servers behind an auth proxy are reachable from the first request.
-            applyCustomHeadersToClient()
         } catch {
             self.error = error.localizedDescription
             isLoading = false
@@ -2148,6 +2164,7 @@ final class BudgetStore: ObservableObject {
         let previousServerURL = serverURL
         let previousFallbackServerURL = fallbackServerURL
         do {
+            await applyCustomHeadersToClientNow()
             if normalized != previousServerURL {
                 // Probe the primary without fallback so an unreachable edit
                 // cannot be accepted merely because its alternate responds.
@@ -2289,10 +2306,12 @@ final class BudgetStore: ObservableObject {
     /// - Parameter clearLocalData: pass `false` to keep budget files on disk
     ///   (the demo entry point clears the session without destroying data;
     ///   only an explicit Disconnect wipes it).
-    func logout(clearLocalData: Bool = true) {
-        Task {
-            await serverClient.setToken(nil)
+    func logout(clearLocalData: Bool = true) async {
+        if let syncClient {
+            await syncClient.cancelPendingSync()
         }
+        await serverClient.setToken(nil)
+        await diagnosticLog.clear()
         try? Keychain.remove(for: "authToken")
         // Defensively remove any legacy UserDefaults copy
         UserDefaults.standard.removeObject(forKey: "authToken")
@@ -2993,7 +3012,7 @@ final class BudgetStore: ObservableObject {
         // Log out any active session so sync doesn't try to fire against a
         // real server — but keep local budget files: trying the demo must
         // never destroy a user's synced data.
-        logout(clearLocalData: false)
+        await logout(clearLocalData: false)
         do {
             try DemoDataSeeder.seed(
                 tracking: tracking,

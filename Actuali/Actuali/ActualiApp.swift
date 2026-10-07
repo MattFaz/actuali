@@ -114,6 +114,7 @@ struct ActualiApp: App {
                         ]
                     }
                 }
+
                 // Stands in for coordinates the Add Transaction form would
                 // have recorded, so PayeeLocationsUITests can clear them.
                 if CommandLine.arguments.contains("-seedPayeeLocations") {

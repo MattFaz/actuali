@@ -48,6 +48,9 @@ struct AccountsListView: View {
     /// This month's money in and out, for the summary card. nil until the
     /// first fetch lands.
     @State private var monthSummary: AccountsMonthTotals?
+    @State private var accountSearchText = ""
+    @State private var isAccountSearchActive = false
+    @FocusState private var isAccountSearchFocused: Bool
 
     /// Independent expand/collapse state per section, persisted so a
     /// collapsed section stays collapsed across launches — same contract as
@@ -80,6 +83,8 @@ struct AccountsListView: View {
         budgetStore.visibleClosedAccounts
     }
 
+    /// Section totals always cover the whole section, search or not, so a
+    /// header's number never silently changes meaning while filtering.
     var onBudgetTotal: Int {
         onBudgetAccounts.sumBalance
     }
@@ -90,6 +95,29 @@ struct AccountsListView: View {
 
     var closedTotal: Int {
         closedAccounts.sumBalance
+    }
+
+    private var filteredOnBudgetAccounts: [Account] {
+        Self.filterAccounts(onBudgetAccounts, matching: accountSearchText)
+    }
+
+    private var filteredOffBudgetAccounts: [Account] {
+        Self.filterAccounts(offBudgetAccounts, matching: accountSearchText)
+    }
+
+    private var filteredClosedAccounts: [Account] {
+        Self.filterAccounts(closedAccounts, matching: accountSearchText)
+    }
+
+    private var isSearchingAccounts: Bool {
+        !accountSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var hasNoSearchResults: Bool {
+        isSearchingAccounts
+            && filteredOnBudgetAccounts.isEmpty
+            && filteredOffBudgetAccounts.isEmpty
+            && filteredClosedAccounts.isEmpty
     }
 
     var body: some View {
@@ -121,15 +149,17 @@ struct AccountsListView: View {
                     emptyState
                 } else {
                     List {
-                        Section {
-                            NavigationLink(value: AllAccountsRoute()) {
-                                allAccountsRow
+                        if !isSearchingAccounts {
+                            Section {
+                                NavigationLink(value: AllAccountsRoute()) {
+                                    allAccountsRow
+                                }
                             }
                         }
-                        if !onBudgetAccounts.isEmpty {
+                        if !filteredOnBudgetAccounts.isEmpty {
                             Section {
-                                if isOnBudgetExpanded {
-                                    ForEach(onBudgetAccounts) { account in
+                                if isOnBudgetExpanded || isSearchingAccounts {
+                                    ForEach(filteredOnBudgetAccounts) { account in
                                         NavigationLink(value: account) {
                                             AccountRow(account: account)
                                         }
@@ -140,14 +170,15 @@ struct AccountsListView: View {
                                     identifier: "on-budget",
                                     title: String(localized: "On Budget"),
                                     total: onBudgetTotal,
-                                    isExpanded: $isOnBudgetExpanded
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isOnBudgetExpanded,
+                                    allowsCollapse: !isSearchingAccounts
                                 )
                             }
                         }
-                        if !offBudgetAccounts.isEmpty {
+                        if !filteredOffBudgetAccounts.isEmpty {
                             Section {
-                                if isOffBudgetExpanded {
-                                    ForEach(offBudgetAccounts) { account in
+                                if isOffBudgetExpanded || isSearchingAccounts {
+                                    ForEach(filteredOffBudgetAccounts) { account in
                                         NavigationLink(value: account) {
                                             AccountRow(account: account)
                                         }
@@ -158,14 +189,15 @@ struct AccountsListView: View {
                                     identifier: "off-budget",
                                     title: String(localized: "Off Budget"),
                                     total: offBudgetTotal,
-                                    isExpanded: $isOffBudgetExpanded
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isOffBudgetExpanded,
+                                    allowsCollapse: !isSearchingAccounts
                                 )
                             }
                         }
-                        if !closedAccounts.isEmpty {
+                        if !filteredClosedAccounts.isEmpty {
                             Section {
-                                if isClosedExpanded {
-                                    ForEach(closedAccounts) { account in
+                                if isClosedExpanded || isSearchingAccounts {
+                                    ForEach(filteredClosedAccounts) { account in
                                         NavigationLink(value: account) {
                                             AccountRow(account: account)
                                         }
@@ -176,7 +208,8 @@ struct AccountsListView: View {
                                     identifier: "closed",
                                     title: String(localized: "Closed Accounts"),
                                     total: closedTotal,
-                                    isExpanded: $isClosedExpanded
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isClosedExpanded,
+                                    allowsCollapse: !isSearchingAccounts
                                 )
                             }
                         }
@@ -205,14 +238,16 @@ struct AccountsListView: View {
                     emptyState
                 } else {
                     List(selection: $selection) {
-                        Section {
-                            allAccountsRow
-                                .tag(AccountSelection.allAccounts)
-                        }
-                        if !onBudgetAccounts.isEmpty {
+                        if !isSearchingAccounts {
                             Section {
-                                if isOnBudgetExpanded {
-                                    ForEach(onBudgetAccounts) { account in
+                                allAccountsRow
+                                    .tag(AccountSelection.allAccounts)
+                            }
+                        }
+                        if !filteredOnBudgetAccounts.isEmpty {
+                            Section {
+                                if isOnBudgetExpanded || isSearchingAccounts {
+                                    ForEach(filteredOnBudgetAccounts) { account in
                                         AccountRow(account: account)
                                             .tag(AccountSelection.account(account.id))
                                     }
@@ -222,15 +257,16 @@ struct AccountsListView: View {
                                     identifier: "on-budget",
                                     title: String(localized: "On Budget"),
                                     total: onBudgetTotal,
-                                    isExpanded: $isOnBudgetExpanded,
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isOnBudgetExpanded,
+                                    allowsCollapse: !isSearchingAccounts,
                                     totalTrailingPadding: 0
                                 )
                             }
                         }
-                        if !offBudgetAccounts.isEmpty {
+                        if !filteredOffBudgetAccounts.isEmpty {
                             Section {
-                                if isOffBudgetExpanded {
-                                    ForEach(offBudgetAccounts) { account in
+                                if isOffBudgetExpanded || isSearchingAccounts {
+                                    ForEach(filteredOffBudgetAccounts) { account in
                                         AccountRow(account: account)
                                             .tag(AccountSelection.account(account.id))
                                     }
@@ -240,15 +276,16 @@ struct AccountsListView: View {
                                     identifier: "off-budget",
                                     title: String(localized: "Off Budget"),
                                     total: offBudgetTotal,
-                                    isExpanded: $isOffBudgetExpanded,
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isOffBudgetExpanded,
+                                    allowsCollapse: !isSearchingAccounts,
                                     totalTrailingPadding: 0
                                 )
                             }
                         }
-                        if !closedAccounts.isEmpty {
+                        if !filteredClosedAccounts.isEmpty {
                             Section {
-                                if isClosedExpanded {
-                                    ForEach(closedAccounts) { account in
+                                if isClosedExpanded || isSearchingAccounts {
+                                    ForEach(filteredClosedAccounts) { account in
                                         AccountRow(account: account)
                                             .tag(AccountSelection.account(account.id))
                                     }
@@ -258,7 +295,8 @@ struct AccountsListView: View {
                                     identifier: "closed",
                                     title: String(localized: "Closed Accounts"),
                                     total: closedTotal,
-                                    isExpanded: $isClosedExpanded,
+                                    isExpanded: isSearchingAccounts ? .constant(true) : $isClosedExpanded,
+                                    allowsCollapse: !isSearchingAccounts,
                                     totalTrailingPadding: 0
                                 )
                             }
@@ -331,7 +369,7 @@ struct AccountsListView: View {
     }
 
     /// Everything both layouts hang off their account list: title, notification
-    /// routing, pull-to-refresh, loading overlay.
+    /// routing, pull-to-refresh, loading overlay, search.
     /// Shared so the two layouts can't drift apart.
     private func withChrome(@ViewBuilder _ content: () -> some View) -> some View {
         Group(content: content)
@@ -352,8 +390,65 @@ struct AccountsListView: View {
                 TopBoxLayout.verticalContentMargin,
                 for: .scrollContent
             )
-//            .navigationTitle("Accounts")
+            .overlay {
+                if hasNoSearchResults {
+                    ContentUnavailableView.search(text: accountSearchText)
+                }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if isAccountSearchActive {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField(String(localized: "Search Accounts"), text: $accountSearchText)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.done)
+                            .focused($isAccountSearchFocused)
+                            .accessibilityIdentifier("accounts.searchField")
+                            .onSubmit { isAccountSearchFocused = false }
+                            // Focus after the conditional field joins the view tree.
+                            .task { isAccountSearchFocused = true }
+                        if !accountSearchText.isEmpty {
+                            Button {
+                                accountSearchText = ""
+                                isAccountSearchFocused = true
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(String(localized: "Clear Search"))
+                            .accessibilityIdentifier("accounts.searchClear")
+                        }
+                    }
+                    .frame(minHeight: 44)
+                    .padding(.horizontal, 12)
+                    .background(.quaternary, in: Capsule())
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                }
+            }
             .toolbar {
+                if !hasNoAccounts || isAccountSearchActive {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            isAccountSearchActive.toggle()
+                            if !isAccountSearchActive {
+                                isAccountSearchFocused = false
+                                accountSearchText = ""
+                            }
+                        } label: {
+                            Image(systemName: isAccountSearchActive ? "xmark" : "magnifyingglass")
+                        }
+                        .accessibilityLabel(isAccountSearchActive
+                            ? String(localized: "Cancel Search")
+                            : String(localized: "Search Accounts"))
+                        .accessibilityIdentifier("accounts.search")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showingAddAccount = true
@@ -512,6 +607,12 @@ struct AccountsListView: View {
                     ProgressView()
                 }
             }
+    }
+
+    nonisolated static func filterAccounts(_ accounts: [Account], matching query: String) -> [Account] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return accounts }
+        return accounts.filter { $0.name.localizedCaseInsensitiveContains(query) }
     }
 
     private var bankSyncAlertBinding: Binding<Bool> {
@@ -692,6 +793,7 @@ struct AccountSectionHeader: View {
     let title: String
     let total: Int
     @Binding var isExpanded: Bool
+    var allowsCollapse = true
     /// Extra trailing inset lining the total up with row balances that sit
     /// left of a NavigationLink disclosure chevron. The split layout's rows
     /// carry no chevron, so it passes zero to keep its totals flush too.
@@ -724,6 +826,7 @@ struct AccountSectionHeader: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!allowsCollapse)
         .accessibilityAddTraits(.isHeader)
         // State lives in the label, not the hint: hints are read last and can
         // be disabled outright, and a collapsed section is otherwise
@@ -733,9 +836,11 @@ struct AccountSectionHeader: View {
         .accessibilityIdentifier("account.group.\(identifier)")
         // Hints describe the result of the action, not the gesture itself —
         // VoiceOver already announces this as double-tap-activatable.
-        .accessibilityHint(isExpanded
-            ? String(localized: "Collapses this section")
-            : String(localized: "Expands this section"))
+        .accessibilityHint(allowsCollapse
+            ? (isExpanded
+                ? String(localized: "Collapses this section")
+                : String(localized: "Expands this section"))
+            : "")
     }
 
     private var expandedState: String {

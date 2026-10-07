@@ -45,7 +45,7 @@ struct BudgetStoreLogoutTests {
         SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
     }
 
-    @Test func deletesEveryLocalBudgetFromDisk() throws {
+    @Test func deletesEveryLocalBudgetFromDisk() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
@@ -53,7 +53,7 @@ struct BudgetStoreLogoutTests {
         try seedBudget(id: "budget-b", in: manager)
         #expect(manager.listLocalBudgets().count == 2)
 
-        store.logout()
+        await store.logout()
 
         #expect(manager.listLocalBudgets().isEmpty)
         #expect(!manager.budgetExists("budget-a"))
@@ -70,7 +70,7 @@ struct BudgetStoreLogoutTests {
         try seedBudget(id: "budget-a", in: manager)
         try await store.configureForTesting(database: makeTestDatabase().0, syncClient: makeSyncClient())
 
-        store.logout()
+        await store.logout()
 
         #expect(store.databaseForLogger == nil)
         // The sync client is gone too: with no client and no saved budget,
@@ -78,7 +78,7 @@ struct BudgetStoreLogoutTests {
         #expect(await store.syncInBackground() == false)
     }
 
-    @Test func clearsAllPublishedBudgetState() throws {
+    @Test func clearsAllPublishedBudgetState() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, _) = try makeIsolatedStore()
@@ -98,7 +98,7 @@ struct BudgetStoreLogoutTests {
         store.payees = [Payee(id: "p1", name: "Grocer")]
         store.syncStatus.lastSyncTime = Date()
 
-        store.logout()
+        await store.logout()
 
         #expect(store.currentBudgetId == nil)
         #expect(store.accounts.isEmpty)
@@ -110,7 +110,7 @@ struct BudgetStoreLogoutTests {
 
     /// "Leave nothing behind" includes the Keychain: an encrypted budget's
     /// derived key must not outlive the budget files it unlocks.
-    @Test func removesEncryptionKeysForDeletedBudgets() throws {
+    @Test func removesEncryptionKeysForDeletedBudgets() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
@@ -122,7 +122,7 @@ struct BudgetStoreLogoutTests {
         )
         defer { try? EncryptionKeyManager.remove(fileId: fileId) }
 
-        store.logout()
+        await store.logout()
 
         #expect(EncryptionKeyManager.load(fileId: fileId) == nil)
     }
@@ -130,6 +130,23 @@ struct BudgetStoreLogoutTests {
     /// The demo entry point (loadDemoData) clears the session so sync can't
     /// fire against a real server, but it must not destroy locally-synced
     /// budgets — only an explicit Disconnect wipes data.
+    @Test func clearsDiagnosticSessionState() async throws {
+        let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
+        defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
+        let (store, _) = try makeIsolatedStore()
+        let log = DiagnosticLog()
+        store.setDiagnosticLogForTesting(log)
+        await log.recordServerConfiguration(
+            transport: "https",
+            fallbackConfigured: true
+        )
+        await log.recordCredentialAvailability(true)
+
+        await store.logout(clearLocalData: false)
+
+        #expect(await log.snapshot() == .empty)
+    }
+
     @Test func preservesLocalDataWhenAskedTo() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
@@ -137,7 +154,7 @@ struct BudgetStoreLogoutTests {
         try seedBudget(id: "budget-a", in: manager)
         try await store.configureForTesting(database: makeTestDatabase().0, syncClient: makeSyncClient())
 
-        store.logout(clearLocalData: false)
+        await store.logout(clearLocalData: false)
 
         // The session and open connections still reset...
         #expect(store.isConnected == false)

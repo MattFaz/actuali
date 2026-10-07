@@ -13,7 +13,7 @@ struct SettingsViewTests {
         #expect(SettingsView.manageItems(includeRules: true).map(\.title) == [
             "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "Rules", "Scheduled Transactions", "Tags",
         ])
-        #expect(SettingsView.informationItems.map(\.title) == ["Support"])
+        #expect(SettingsView.informationItems.map(\.title) == ["Support & Diagnostic"])
     }
 
     @Test func informationLinkOpensPrivacyPolicy() {

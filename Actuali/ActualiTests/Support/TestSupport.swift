@@ -322,6 +322,8 @@ final class StubTransport: URLProtocol {
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: stub.body)
             client?.urlProtocolDidFinishLoading(self)
+        } catch is CancellationError {
+            client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
         } catch {
             client?.urlProtocol(self, didFailWithError: error)
         }
