@@ -39,6 +39,7 @@ struct AccountDetailView: View {
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
     @State private var cycleSpend: Int = 0
+    @AppStorage("showUpcomingScheduledTransactions") private var showUpcomingSchedules = true
     @AppStorage("showAccountRunningBalance") private var showRunningBalance = true
     @State private var loadedFullHistory = false
     /// What the last `.task` run saw, so only a changed query debounces: a
@@ -127,9 +128,10 @@ struct AccountDetailView: View {
         statusFilter: TransactionStatusFilter,
         schedulesLoaded: Bool,
         hasUpcomingSchedules: Bool,
-        scheduleLoadFailed: Bool
+        scheduleLoadFailed: Bool,
+        showUpcomingSchedules: Bool = true
     ) -> Bool {
-        isSearching || statusFilter != .all
+        isSearching || statusFilter != .all || !showUpcomingSchedules
             || (schedulesLoaded && !hasUpcomingSchedules && !scheduleLoadFailed)
     }
 
@@ -811,7 +813,7 @@ struct AccountDetailView: View {
     }
 
     @ViewBuilder private var transactionSection: some View {
-        if searchQuery == nil, budgetStore.transactionStatusFilter == .all {
+        if showUpcomingSchedules, searchQuery == nil, budgetStore.transactionStatusFilter == .all {
             if budgetStore.scheduleLoadError != nil {
                 Section {
                     Label(
@@ -821,7 +823,7 @@ struct AccountDetailView: View {
                     .foregroundStyle(.secondary)
                 }
             }
-            if budgetStore.schedulesLoaded {
+            if budgetStore.schedulesLoaded, !upcomingScheduleEntries.isEmpty {
                 UpcomingScheduleSections(
                     entries: upcomingScheduleEntries,
                     showRunningBalance: showRunningBalance
@@ -865,7 +867,8 @@ struct AccountDetailView: View {
                         statusFilter: budgetStore.transactionStatusFilter,
                         schedulesLoaded: budgetStore.schedulesLoaded,
                         hasUpcomingSchedules: !upcomingScheduleEntries.isEmpty,
-                        scheduleLoadFailed: budgetStore.scheduleLoadError != nil
+                        scheduleLoadFailed: budgetStore.scheduleLoadError != nil,
+                        showUpcomingSchedules: showUpcomingSchedules
                     ) {
                         Text(emptyTransactionsText)
                             .foregroundStyle(.secondary)
@@ -943,6 +946,9 @@ struct AccountDetailView: View {
         }
         ToolbarItem(placement: .secondaryAction) {
             TransactionGroupingToggle()
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            UpcomingSchedulesVisibilityToggle()
         }
 
         if note.supported {

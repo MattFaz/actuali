@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TransactionsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @AppStorage("showUpcomingScheduledTransactions") private var showUpcomingSchedules = true
     @State private var pager: TransactionPager?
     @State private var searchText = ""
     @State private var editingTransaction: Transaction?
@@ -23,19 +24,22 @@ struct TransactionsListView: View {
         isSearching: Bool,
         statusFilter: TransactionStatusFilter,
         schedulesLoaded: Bool,
-        hasUpcomingSchedules: Bool
+        hasUpcomingSchedules: Bool,
+        showUpcomingSchedules: Bool = true
     ) -> Bool {
         transactionsEmpty && !isLoading
-            && (isSearching || statusFilter != .all || (schedulesLoaded && !hasUpcomingSchedules))
+            && (isSearching || statusFilter != .all || !showUpcomingSchedules
+                || (schedulesLoaded && !hasUpcomingSchedules))
     }
 
     nonisolated static func showsScheduleLoadFailure(
         transactionsEmpty: Bool,
         isLoading: Bool,
         schedulesLoaded: Bool,
-        scheduleLoadFailed: Bool
+        scheduleLoadFailed: Bool,
+        showUpcomingSchedules: Bool = true
     ) -> Bool {
-        transactionsEmpty && !isLoading && schedulesLoaded && scheduleLoadFailed
+        showUpcomingSchedules && transactionsEmpty && !isLoading && schedulesLoaded && scheduleLoadFailed
     }
 
     /// Wraps `isSelecting` so every path that leaves selection mode — the
@@ -86,7 +90,8 @@ struct TransactionsListView: View {
                    transactionsEmpty: pager.transactions.isEmpty,
                    isLoading: budgetStore.isLoading,
                    schedulesLoaded: budgetStore.schedulesLoaded,
-                   scheduleLoadFailed: budgetStore.scheduleLoadError != nil
+                   scheduleLoadFailed: budgetStore.scheduleLoadError != nil,
+                   showUpcomingSchedules: showUpcomingSchedules
                ) {
                 ContentUnavailableView {
                     Label(
@@ -94,7 +99,7 @@ struct TransactionsListView: View {
                         systemImage: "exclamationmark.triangle"
                     )
                 }
-            } else if let pager, searchQuery == nil, budgetStore.transactionStatusFilter == .all,
+            } else if let pager, showUpcomingSchedules, searchQuery == nil, budgetStore.transactionStatusFilter == .all,
                       pager.transactions.isEmpty, !budgetStore.schedulesLoaded {
                 ProgressView()
             } else if let pager, Self.showsEmptyState(
@@ -103,7 +108,8 @@ struct TransactionsListView: View {
                 isSearching: searchQuery != nil,
                 statusFilter: budgetStore.transactionStatusFilter,
                 schedulesLoaded: budgetStore.schedulesLoaded,
-                hasUpcomingSchedules: !upcomingScheduleEntries.isEmpty
+                hasUpcomingSchedules: !upcomingScheduleEntries.isEmpty,
+                showUpcomingSchedules: showUpcomingSchedules
             ) {
                 if searchQuery != nil {
                     ContentUnavailableView.search(text: searchText)
@@ -126,7 +132,7 @@ struct TransactionsListView: View {
                 }
             } else if let pager {
                 List {
-                    if searchQuery == nil, budgetStore.transactionStatusFilter == .all {
+                    if showUpcomingSchedules, searchQuery == nil, budgetStore.transactionStatusFilter == .all {
                         if budgetStore.scheduleLoadError != nil {
                             Section {
                                 Label(
@@ -204,6 +210,9 @@ struct TransactionsListView: View {
             }
             ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                UpcomingSchedulesVisibilityToggle()
             }
         }
         .safeAreaInset(edge: .bottom) {

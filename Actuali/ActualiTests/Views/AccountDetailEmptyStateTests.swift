@@ -78,4 +78,12 @@ struct AccountDetailEmptyStateTests {
             hasUpcomingSchedules: true, scheduleLoadFailed: false
         ))
     }
+
+    @Test(arguments: [false, true])
+    func hidingSchedulesLeavesTheAccountEmptyStateIndependentOfTheirLoading(loaded: Bool) {
+        #expect(AccountDetailView.showsEmptyTransactions(
+            isSearching: false, statusFilter: .all, schedulesLoaded: loaded,
+            hasUpcomingSchedules: true, scheduleLoadFailed: true, showUpcomingSchedules: false
+        ))
+    }
 }

@@ -309,6 +309,7 @@ struct ScheduleRow: View {
             }
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("scheduleRow.\(schedule.id)")
     }
@@ -351,13 +352,27 @@ struct ScheduleRow: View {
     }
 }
 
+struct UpcomingSchedulesVisibilityToggle: View {
+    @AppStorage("showUpcomingScheduledTransactions") private var showUpcomingSchedules = true
+
+    var body: some View {
+        Toggle(isOn: $showUpcomingSchedules) {
+            Label("Show Upcoming Scheduled Transactions", systemImage: "calendar.badge.clock")
+        }
+        .accessibilityIdentifier("scheduleRegister.visibility")
+    }
+}
+
 struct UpcomingScheduleSections: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
 
     let entries: [UpcomingScheduleEntry]
     var showRunningBalance = false
+    @AppStorage("upcomingScheduledTransactionsExpanded") private var isExpanded = true
     @State private var actionError: String?
+    @State private var actionSchedule: ScheduleSummary?
+    @State private var editingSchedule: ScheduleSummary?
 
     private func run(_ operation: @escaping () async throws -> Void) {
         Task {
@@ -371,65 +386,112 @@ struct UpcomingScheduleSections: View {
     }
 
     var body: some View {
-        ForEach(entriesByDate, id: \.key) { group in
-            Section(Transaction.formattedDate(from: group.key.yyyymmdd, style: .long)) {
-                ForEach(group.value) { entry in
-                    let schedule = entry.schedule
-                    Menu {
-                        Button {
-                            run { try await budgetStore.postScheduleTransaction(schedule, today: false) }
-                        } label: {
-                            Label(ReportStrings.text("Post Transaction", locale: locale), systemImage: "plus.circle")
+        Section {} header: {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    DisclosureChevron(isExpanded: isExpanded)
+                    Text("Upcoming Scheduled Transactions")
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("scheduleRegister.expansion")
+            .accessibilityValue(isExpanded ? String(localized: "expanded") : String(localized: "collapsed"))
+            .accessibilityHint(isExpanded
+                ? String(localized: "Collapses this section")
+                : String(localized: "Expands this section"))
+            // Present once from the header, rather than once per date section.
+            .confirmationDialog(
+                String(localized: "Scheduled Transactions"),
+                isPresented: Binding(
+                    get: { actionSchedule != nil },
+                    set: {
+                        if !$0 {
+                            actionSchedule = nil
                         }
-                        .accessibilityIdentifier("scheduleRegister.post.\(schedule.id)")
-                        Button {
-                            run { try await budgetStore.postScheduleTransaction(schedule, today: true) }
-                        } label: {
-                            Label(ReportStrings.text("Post Transaction Today", locale: locale), systemImage: "calendar.badge.plus")
-                        }
-                        .accessibilityIdentifier("scheduleRegister.postToday.\(schedule.id)")
-                        if schedule.isRecurring {
-                            Button {
-                                run { try await budgetStore.skipScheduleNextDate(schedule) }
-                            } label: {
-                                Label(ReportStrings.text("Skip Next Date", locale: locale), systemImage: "forward.end")
-                            }
-                            .accessibilityIdentifier("scheduleRegister.skip.\(schedule.id)")
-                        }
-                        NavigationLink {
-                            ScheduleEditView(editing: schedule, budgetStore: budgetStore)
-                        } label: {
-                            Label(ReportStrings.text("Edit", locale: locale), systemImage: "pencil")
-                        }
-                    } label: {
-                        ScheduleRow(
-                            schedule: schedule,
-                            status: budgetStore.scheduleStatuses[schedule.id] ?? .scheduled,
-                            accountName: schedule.accountId.flatMap { id in
-                                budgetStore.accounts.first { $0.id == id }?.name
-                            },
-                            payeeName: schedule.payeeId.flatMap { id in
-                                budgetStore.payees.first { $0.id == id }?.name
-                            },
-                            runningBalance: showRunningBalance ? entry.runningBalance : nil,
-                            showsNextDate: false
-                        )
                     }
-                    .accessibilityIdentifier("scheduleRegister.row.\(schedule.id)")
+                ),
+                titleVisibility: .visible
+            ) {
+                if let schedule = actionSchedule {
+                    Button {
+                        run { try await budgetStore.postScheduleTransaction(schedule, today: false) }
+                    } label: {
+                        Text("Post Transaction")
+                    }
+                    .accessibilityIdentifier("scheduleRegister.post.\(schedule.id)")
+                    Button {
+                        run { try await budgetStore.postScheduleTransaction(schedule, today: true) }
+                    } label: {
+                        Text("Post Transaction Today")
+                    }
+                    .accessibilityIdentifier("scheduleRegister.postToday.\(schedule.id)")
+                    if schedule.isRecurring {
+                        Button {
+                            run { try await budgetStore.skipScheduleNextDate(schedule) }
+                        } label: {
+                            Text("Skip Next Date")
+                        }
+                        .accessibilityIdentifier("scheduleRegister.skip.\(schedule.id)")
+                    }
+                    Button("Edit") { editingSchedule = schedule }
+                        .accessibilityIdentifier("scheduleRegister.edit.\(schedule.id)")
                 }
             }
+            .sheet(item: $editingSchedule) { schedule in
+                NavigationStack {
+                    ScheduleEditView(editing: schedule, budgetStore: budgetStore)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancel") { editingSchedule = nil }
+                                    .accessibilityIdentifier("scheduleRegister.cancelEdit")
+                            }
+                        }
+                }
+            }
+            .alert(ReportStrings.text("Action Failed", locale: locale), isPresented: Binding(
+                get: { actionError != nil },
+                set: {
+                    if !$0 {
+                        actionError = nil
+                    }
+                }
+            )) {
+                Button(ReportStrings.text("OK", locale: locale)) {}
+            } message: {
+                Text(actionError ?? "")
+            }
+            .textCase(nil)
         }
-        .alert(ReportStrings.text("Action Failed", locale: locale), isPresented: Binding(
-            get: { actionError != nil },
-            set: {
-                if !$0 {
-                    actionError = nil
+        if isExpanded {
+            ForEach(entriesByDate, id: \.key) { group in
+                Section(Transaction.formattedDate(from: group.key.yyyymmdd, style: .long)) {
+                    ForEach(group.value) { entry in
+                        let schedule = entry.schedule
+                        Button {
+                            actionSchedule = schedule
+                        } label: {
+                            ScheduleRow(
+                                schedule: schedule,
+                                status: budgetStore.scheduleStatuses[schedule.id] ?? .scheduled,
+                                accountName: schedule.accountId.flatMap { id in
+                                    budgetStore.accounts.first { $0.id == id }?.name
+                                },
+                                payeeName: schedule.payeeId.flatMap { id in
+                                    budgetStore.payees.first { $0.id == id }?.name
+                                },
+                                runningBalance: showRunningBalance ? entry.runningBalance : nil,
+                                showsNextDate: false
+                            )
+                        }
+                        .accessibilityIdentifier("scheduleRegister.row.\(schedule.id)")
+                    }
                 }
             }
-        )) {
-            Button(ReportStrings.text("OK", locale: locale)) {}
-        } message: {
-            Text(actionError ?? "")
         }
     }
 }
@@ -437,6 +499,7 @@ struct UpcomingScheduleSections: View {
 #if DEBUG
 struct ScheduleRowUITestFixture: View {
     var upcoming = false
+    @AppStorage("showUpcomingScheduledTransactions") private var showUpcomingSchedules = true
     private let schedule = ScheduleSummary(
         id: "fixture", name: "Rent", ruleId: nil,
         nextDate: DayDate(year: 2026, month: 10, day: 1), nextDateRowId: nil,
@@ -453,9 +516,22 @@ struct ScheduleRowUITestFixture: View {
         if upcoming {
             NavigationStack {
                 List {
-                    UpcomingScheduleSections(entries: [
-                        UpcomingScheduleEntry(schedule: schedule, date: .today(), runningBalance: nil),
-                    ])
+                    if showUpcomingSchedules {
+                        UpcomingScheduleSections(entries: [
+                            UpcomingScheduleEntry(schedule: schedule, date: .today(), runningBalance: nil),
+                        ])
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        UpcomingSchedulesVisibilityToggle()
+                    }
+                }
+                .onAppear {
+                    if CommandLine.arguments.contains("-resetScheduleRegisterPreferences") {
+                        UserDefaults.standard.set(true, forKey: "showUpcomingScheduledTransactions")
+                        UserDefaults.standard.set(true, forKey: "upcomingScheduledTransactionsExpanded")
+                    }
                 }
             }
         } else {

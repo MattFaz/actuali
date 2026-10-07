@@ -76,4 +76,20 @@ struct TransactionsListViewTests {
             scheduleLoadFailed: true
         ))
     }
+
+    @Test(arguments: [false, true])
+    func hidingSchedulesDoesNotWaitForThemOrSuppressTheEmptyState(loaded: Bool) {
+        #expect(TransactionsListView.showsEmptyState(
+            transactionsEmpty: true, isLoading: false, isSearching: false, statusFilter: .all,
+            schedulesLoaded: loaded, hasUpcomingSchedules: true, showUpcomingSchedules: false
+        ))
+        #expect(!TransactionsListView.showsScheduleLoadFailure(
+            transactionsEmpty: true, isLoading: false, schedulesLoaded: loaded,
+            scheduleLoadFailed: true, showUpcomingSchedules: false
+        ))
+        #expect(!TransactionsListView.showsEmptyState(
+            transactionsEmpty: false, isLoading: false, isSearching: false, statusFilter: .all,
+            schedulesLoaded: loaded, hasUpcomingSchedules: true, showUpcomingSchedules: false
+        ))
+    }
 }
