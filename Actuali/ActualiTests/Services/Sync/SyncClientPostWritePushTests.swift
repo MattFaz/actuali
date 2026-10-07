@@ -34,7 +34,8 @@ struct SyncClientPostWritePushTests {
     private func makeSyncClient(
         database: BudgetDatabase, recording captured: CapturedBodies,
         session: URLSession? = nil, diagnosticLog: DiagnosticLog = DiagnosticLog(),
-        rateLimitWindow: TimeInterval = 3600
+        rateLimitWindow: TimeInterval = 3600,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) async throws -> SyncClient {
         let session = session ?? StubTransport.session { request in
             captured.values.withLock { $0.append(request.bodyData) }
@@ -50,7 +51,7 @@ struct SyncClientPostWritePushTests {
 
         let syncClient = SyncClient(
             serverClient: serverClient, nodeId: "89e0e8e90b203f9e", diagnosticLog: diagnosticLog,
-            rateLimitWindow: rateLimitWindow
+            rateLimitWindow: rateLimitWindow, now: now
         )
         try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
         return syncClient
@@ -178,7 +179,11 @@ struct SyncClientPostWritePushTests {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let captured = CapturedBodies()
-        let syncClient = try await makeSyncClient(database: database, recording: captured)
+        // Keep the rate-limit window independent of CI's scheduling delays.
+        let time = Mutex(Date(timeIntervalSince1970: 1000))
+        let syncClient = try await makeSyncClient(
+            database: database, recording: captured, rateLimitWindow: 1, now: { time.withLock { $0 } }
+        )
 
         await syncClient.syncNow()
         #expect(captured.count == 1)
@@ -186,6 +191,10 @@ struct SyncClientPostWritePushTests {
         await syncClient.automaticSync()
 
         #expect(captured.count == 1)
+
+        time.withLock { $0 = $0.addingTimeInterval(1) }
+        await syncClient.automaticSync()
+        #expect(captured.count == 2)
     }
 
     /// The window only suppresses a pull while it's open. A zero window is

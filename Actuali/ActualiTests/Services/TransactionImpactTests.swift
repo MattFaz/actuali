@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import GRDB
 import class SwiftUI.UIHostingController
@@ -370,7 +371,7 @@ struct TransactionImpactTests {
         #expect(store.spokenImpactText(cue).contains(MonthPicker.title(for: "2020-01")))
     }
 
-    @Test
+    @Test(.timeLimit(.minutes(1)))
     func theCueDismissesAutomatically() async throws {
         let (database, url) = try await makeDatabase()
         let store = try await makeStore(database)
@@ -380,7 +381,12 @@ struct TransactionImpactTests {
         }
         _ = try await store.saveTransaction(form(amount: "1.00", categoryId: "cat-food"))
         #expect(!store.transactionImpactCues.isEmpty)
-        try await Task.sleep(for: .seconds(TransactionImpact.autoDismissSeconds + 0.2))
+        // The dismissal task can start late on a busy runner; await its result.
+        for await cues in store.$transactionImpactCues.values {
+            if cues.isEmpty {
+                break
+            }
+        }
         #expect(store.transactionImpactCues.isEmpty)
     }
 
