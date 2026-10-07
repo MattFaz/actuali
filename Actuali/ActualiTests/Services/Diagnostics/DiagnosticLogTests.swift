@@ -249,10 +249,12 @@ struct DiagnosticLogTests {
         #expect(snapshot.lastNetworkError == nil)
     }
 
-    @Test func networkCompletionFromPreviousSessionIsIgnored() async throws {
+    @Test(.timeLimit(.minutes(5)))
+    func networkCompletionFromPreviousSessionIsIgnored() async throws {
         let log = DiagnosticLog()
         let started = Gate()
         let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
         let session = StubTransport.session { _ in
             started.open()
             release.wait()
@@ -280,7 +282,8 @@ struct DiagnosticLogTests {
         #expect(snapshot.entries.filter { $0.message.hasPrefix("NETWORK ") }.isEmpty)
     }
 
-    @Test func reconfigurationDuringRequestDoesNotExposePrivatePath() async throws {
+    @Test(.timeLimit(.minutes(5)))
+    func reconfigurationDuringRequestDoesNotExposePrivatePath() async throws {
         let log = DiagnosticLog()
         let started = Gate()
         let release = DispatchSemaphore(value: 0)
@@ -288,7 +291,7 @@ struct DiagnosticLogTests {
         let client = ActualServerClient(
             session: StubTransport.session { _ in
                 started.open()
-                _ = release.wait(timeout: .now() + 60)
+                release.wait()
                 return .init(status: 500, contentType: "application/json")
             },
             diagnosticLog: log

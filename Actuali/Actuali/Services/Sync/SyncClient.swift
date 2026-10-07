@@ -56,6 +56,7 @@ actor SyncClient {
 
     private let serverClient: ActualServerClient
     private let diagnosticLog: DiagnosticLog
+    private let now: @Sendable () -> Date
     private var diagnosticSessionID: DiagnosticLog.SessionID?
     private weak var database: BudgetDatabase?
     private let clock: HybridLogicalClock
@@ -122,11 +123,13 @@ actor SyncClient {
         serverClient: ActualServerClient,
         nodeId: String? = nil,
         diagnosticLog: DiagnosticLog = .shared,
-        rateLimitWindow: TimeInterval = 1
+        rateLimitWindow: TimeInterval = 1,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.serverClient = serverClient
         self.diagnosticLog = diagnosticLog
         self.rateLimitWindow = rateLimitWindow
+        self.now = now
         self.diagnosticSessionID = nil
         self.clock = HybridLogicalClock(node: nodeId)
         self.messageGenerator = MessageGenerator(clock: clock)
@@ -2259,7 +2262,7 @@ actor SyncClient {
         guard let lastSync = lastSuccessfulSyncTime else {
             return false // No previous sync, allow it
         }
-        guard Date().timeIntervalSince(lastSync) < rateLimitWindow else {
+        guard now().timeIntervalSince(lastSync) < rateLimitWindow else {
             return false // Outside the window
         }
         return !hasUnsyncedLocalMessages()
@@ -2327,7 +2330,7 @@ actor SyncClient {
             await diagnosticLog.recordSyncFinished(.success, sessionID: diagnosticSessionID)
             stateSubject.send(.idle)
             retryDelay = 5 // reset on success
-            lastSuccessfulSyncTime = Date()
+            lastSuccessfulSyncTime = now()
             return true
         } catch SyncError.offline {
             guard !Task.isCancelled else {
