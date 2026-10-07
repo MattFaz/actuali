@@ -2,10 +2,6 @@ import Foundation
 import Testing
 @testable import Actuali
 
-private enum DiagnosticLogTestError: Error {
-    case timeout
-}
-
 struct DiagnosticLogTests {
     private func formattedReport(from snapshot: DiagnosticLogSnapshot) -> String {
         snapshot.entries
@@ -255,10 +251,10 @@ struct DiagnosticLogTests {
 
     @Test func networkCompletionFromPreviousSessionIsIgnored() async throws {
         let log = DiagnosticLog()
-        let started = AsyncStream<Void>.makeStream()
+        let started = Gate()
         let release = DispatchSemaphore(value: 0)
         let session = StubTransport.session { _ in
-            started.continuation.yield(())
+            started.open()
             release.wait()
             return .init(
                 status: 500,
@@ -273,19 +269,7 @@ struct DiagnosticLogTests {
             try? await client.login(password: "password")
         }
 
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                for await _ in started.stream {
-                    return
-                }
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: 2_000_000_000)
-                throw DiagnosticLogTestError.timeout
-            }
-            _ = try await group.next()
-            group.cancelAll()
-        }
+        await started.wait()
         await log.clear()
         release.signal()
         _ = await requestTask.value
@@ -304,7 +288,7 @@ struct DiagnosticLogTests {
         let client = ActualServerClient(
             session: StubTransport.session { _ in
                 started.open()
-                _ = release.wait(timeout: .now() + 5)
+                _ = release.wait(timeout: .now() + 60)
                 return .init(status: 500, contentType: "application/json")
             },
             diagnosticLog: log

@@ -80,8 +80,10 @@ struct AddTransactionInteractionTests {
         return (store, database, path)
     }
 
+    /// The deadline is only a backstop for a lookup that never happens; a
+    /// loaded CI runner has needed well over 5s to host the form and fire it.
     static func waitUntil(_ predicate: () -> Bool) async throws {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(60))
         while !predicate(), ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(10))
         }
