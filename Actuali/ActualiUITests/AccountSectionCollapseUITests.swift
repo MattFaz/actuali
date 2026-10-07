@@ -6,12 +6,22 @@ import XCTest
 /// contract the budget tab's group collapse honors.
 final class AccountSectionCollapseUITests: XCTestCase {
     @MainActor
-    private func launchOnAccountsTab() -> XCUIApplication {
+    private func launchOnAccountsTab(expandingSections: Bool = true) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData"]
         app.launch()
 
         app.tabBars.buttons["Accounts"].tap()
+        // Expansion persists across runs; normalize only the initial launch.
+        if expandingSections {
+            for identifier in ["on-budget", "off-budget"] {
+                let header = app.buttons["account.group.\(identifier)"]
+                XCTAssertTrue(header.waitForExistence(timeout: 10))
+                if header.label.contains("collapsed") {
+                    header.tap()
+                }
+            }
+        }
         return app
     }
 
@@ -63,7 +73,7 @@ final class AccountSectionCollapseUITests: XCTestCase {
         XCTAssertTrue(app.buttons["account.group.on-budget"].waitForExistence(timeout: 10))
 
         app.terminate()
-        app = launchOnAccountsTab()
+        app = launchOnAccountsTab(expandingSections: false)
 
         let collapsedHeader = app.buttons["account.group.on-budget"]
         XCTAssertTrue(collapsedHeader.waitForExistence(timeout: 10),
