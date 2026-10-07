@@ -5,7 +5,9 @@ struct UpcomingScheduleEntry: Identifiable {
     let date: DayDate
     let runningBalance: Int?
 
-    var id: String { schedule.id }
+    var id: String {
+        schedule.id
+    }
 }
 
 enum ScheduleRegisterProjection {
@@ -13,7 +15,7 @@ enum ScheduleRegisterProjection {
         schedules: [ScheduleSummary],
         statuses: [String: ScheduleStatus],
         accountId: String? = nil,
-        closedAccountIds: Set<String> = [],
+        activeAccountIds: Set<String>,
         startingBalance: Int? = nil,
         today: DayDate = .today()
     ) -> [UpcomingScheduleEntry] {
@@ -22,7 +24,7 @@ enum ScheduleRegisterProjection {
                   let scheduleAccountId = schedule.accountId,
                   date >= today,
                   !schedule.completed,
-                  !closedAccountIds.contains(scheduleAccountId),
+                  activeAccountIds.contains(scheduleAccountId),
                   statuses[schedule.id] == .upcoming || statuses[schedule.id] == .due,
                   accountId == nil || scheduleAccountId == accountId
             else { return nil }
@@ -35,6 +37,7 @@ enum ScheduleRegisterProjection {
             return (first.schedule.sortOrder ?? 0) < (second.schedule.sortOrder ?? 0)
         }
 
+        // Accumulate forward, then display newest first like the transaction register.
         var balance = startingBalance
         return upcoming.map { item in
             if let current = balance {
@@ -45,6 +48,6 @@ enum ScheduleRegisterProjection {
                 date: item.date,
                 runningBalance: balance
             )
-        }
+        }.reversed()
     }
 }

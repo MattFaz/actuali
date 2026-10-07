@@ -31,7 +31,7 @@ struct ScheduleRegisterProjectionTests {
             schedule("today-outflow", date: today, amount: -100, sortOrder: 2),
             schedule("tomorrow", date: today.adding(days: 1), amount: 500),
             schedule("today-inflow", date: today, amount: 50, sortOrder: 1),
-            schedule("other-account", date: today, accountId: "account-2", amount: 1_000),
+            schedule("other-account", date: today, accountId: "account-2", amount: 1000),
             schedule("past", date: today.adding(days: -1), amount: 300),
             schedule("completed", date: today.adding(days: 1), amount: 300, completed: true),
             schedule("outside-upcoming-window", date: today.adding(days: 10), amount: 100),
@@ -53,12 +53,13 @@ struct ScheduleRegisterProjectionTests {
             schedules: schedules,
             statuses: statuses,
             accountId: "account-1",
-            startingBalance: 1_000,
+            activeAccountIds: ["account-1", "account-2"],
+            startingBalance: 1000,
             today: today
         )
 
-        #expect(entries.map(\.schedule.id) == ["today-inflow", "today-outflow", "tomorrow", "later"])
-        #expect(entries.compactMap(\.runningBalance) == [1_050, 950, 1_450, 1_250])
+        #expect(entries.map(\.schedule.id) == ["later", "tomorrow", "today-outflow", "today-inflow"])
+        #expect(entries.compactMap(\.runningBalance) == [1250, 1450, 950, 1050])
     }
 
     @Test func nonPostingSchedulesAreIncluded() {
@@ -69,6 +70,7 @@ struct ScheduleRegisterProjectionTests {
         let entries = ScheduleRegisterProjection.upcomingEntries(
             schedules: schedules,
             statuses: ["manual": .upcoming],
+            activeAccountIds: ["account-1"],
             today: today
         )
 
@@ -79,22 +81,24 @@ struct ScheduleRegisterProjectionTests {
         let schedules = [
             schedule("posting", date: today.adding(days: 1), amount: -100),
             schedule("closed", date: today.adding(days: 2), accountId: "closed", amount: -200),
+            schedule("deleted-account", date: today.adding(days: 2), accountId: "deleted", amount: -200),
             schedule("missing-account", date: today.adding(days: 3), accountId: nil, amount: -300),
         ]
         let statuses: [String: ScheduleStatus] = [
             "posting": .upcoming,
             "closed": .upcoming,
+            "deleted-account": .upcoming,
             "missing-account": .upcoming,
         ]
 
         let entries = ScheduleRegisterProjection.upcomingEntries(
             schedules: schedules,
             statuses: statuses,
-            closedAccountIds: ["closed"],
+            activeAccountIds: ["account-1"],
             today: today
         )
 
-        #expect(entries.map { $0.schedule.id } == ["posting"])
+        #expect(entries.map(\.schedule.id) == ["posting"])
     }
 
     @Test func paidAndScheduledStatusesAreExcluded() {
@@ -112,6 +116,7 @@ struct ScheduleRegisterProjectionTests {
         let entries = ScheduleRegisterProjection.upcomingEntries(
             schedules: schedules,
             statuses: statuses,
+            activeAccountIds: ["account-1"],
             today: today
         )
 
@@ -127,10 +132,11 @@ struct ScheduleRegisterProjectionTests {
         let entries = ScheduleRegisterProjection.upcomingEntries(
             schedules: schedules,
             statuses: ["account-2": .upcoming, "account-1": .upcoming],
+            activeAccountIds: ["account-1", "account-2"],
             today: today
         )
 
-        #expect(entries.map(\.schedule.id) == ["account-2", "account-1"])
+        #expect(entries.map(\.schedule.id) == ["account-1", "account-2"])
         #expect(entries.allSatisfy { $0.runningBalance == nil })
     }
 }

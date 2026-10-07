@@ -1461,6 +1461,9 @@ final class BudgetStore: ObservableObject {
             guard database !== oldValue else { return }
             dismissTransactionImpactCues()
             schedulePoster = nil
+            publishSchedules(([], [:], [:]))
+            schedulesLoaded = false
+            scheduleLoadError = nil
         }
     }
 
@@ -3114,19 +3117,18 @@ final class BudgetStore: ObservableObject {
             ) == "true"
 
             let fetchedSchedules: ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>])?
+            let fetchedScheduleError: String?
             do {
                 fetchedSchedules = try await fetchSchedules(
                     database: database,
                     upcomingLength: fetchedUpcomingLength
                 )
+                fetchedScheduleError = nil
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
                 fetchedSchedules = nil
-                if self.database === database {
-                    scheduleLoadError = error.localizedDescription
-                    schedulesLoaded = true
-                }
+                fetchedScheduleError = error.localizedDescription
             }
             let duesConfigs = creditCardConfigs == creditCardsBefore ? fetchedCreditCards : creditCardConfigs
             let fetchedDues = await fetchCreditCardStatementDues(database: database, accounts: fetchedAccounts,
@@ -3183,11 +3185,9 @@ final class BudgetStore: ObservableObject {
                 let parsed = ActualNumberFormat(rawValue: fetchedNumberFormat) ?? .commaDot
                 assignIfChanged(\.numberFormat, parsed)
             }
-            if let fetchedSchedules {
-                publishSchedules(fetchedSchedules)
-                schedulesLoaded = true
-                scheduleLoadError = nil
-            }
+            publishSchedules(fetchedSchedules ?? ([], [:], [:]))
+            assignIfChanged(\.schedulesLoaded, true)
+            assignIfChanged(\.scheduleLoadError, fetchedScheduleError)
             if creditCardConfigs == duesConfigs {
                 assignIfChanged(\.creditCardStatementDues, fetchedDues)
             }
@@ -7228,9 +7228,20 @@ final class BudgetStore: ObservableObject {
             return
         } catch {
             guard self.database === database else { return }
+            publishSchedules(([], [:], [:]))
             scheduleLoadError = error.localizedDescription
             schedulesLoaded = true
         }
+    }
+
+    func upcomingRegisterEntries(accountId: String? = nil) -> [UpcomingScheduleEntry] {
+        ScheduleRegisterProjection.upcomingEntries(
+            schedules: schedules,
+            statuses: scheduleStatuses,
+            accountId: accountId,
+            activeAccountIds: Set(accounts.filter { !$0.closed }.map(\.id)),
+            startingBalance: accountId.flatMap { id in accounts.first { $0.id == id }?.balance }
+        )
     }
 
     private func publishSchedules(_ fetched: ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>])) {

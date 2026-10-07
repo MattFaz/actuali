@@ -39,7 +39,7 @@ struct ActualiApp: App {
                 if CommandLine.arguments.contains("-showRuleConditionFixture") {
                     RuleConditionUITestFixture()
                 } else if CommandLine.arguments.contains("-showScheduleRowFixture") {
-                    ScheduleRowUITestFixture()
+                    ScheduleRowUITestFixture(upcoming: CommandLine.arguments.contains("-showUpcomingScheduleFixture"))
                 } else {
                     ContentView()
                 }

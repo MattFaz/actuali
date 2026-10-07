@@ -2,7 +2,6 @@ import SwiftUI
 
 struct AccountDetailView: View {
     @EnvironmentObject var budgetStore: BudgetStore
-    @Environment(\.locale) private var locale
     let account: Account
 
     @State private var pager: TransactionPager?
@@ -121,6 +120,17 @@ struct AccountDetailView: View {
             isSearching: searchQuery != nil,
             statusFilter: budgetStore.transactionStatusFilter
         )
+    }
+
+    nonisolated static func showsEmptyTransactions(
+        isSearching: Bool,
+        statusFilter: TransactionStatusFilter,
+        schedulesLoaded: Bool,
+        hasUpcomingSchedules: Bool,
+        scheduleLoadFailed: Bool
+    ) -> Bool {
+        isSearching || statusFilter != .all
+            || (schedulesLoaded && !hasUpcomingSchedules && !scheduleLoadFailed)
     }
 
     /// Pure so tests can reach every branch without a view (same seam as
@@ -796,18 +806,8 @@ struct AccountDetailView: View {
         }
     }
 
-    private var closedAccountIds: Set<String> {
-        Set(budgetStore.accounts.filter(\.closed).map(\.id))
-    }
-
     private var upcomingScheduleEntries: [UpcomingScheduleEntry] {
-        ScheduleRegisterProjection.upcomingEntries(
-            schedules: budgetStore.schedules,
-            statuses: budgetStore.scheduleStatuses,
-            accountId: account.id,
-            closedAccountIds: closedAccountIds,
-            startingBalance: currentBalance
-        )
+        budgetStore.upcomingRegisterEntries(accountId: account.id)
     }
 
     @ViewBuilder private var transactionSection: some View {
@@ -824,7 +824,6 @@ struct AccountDetailView: View {
             if budgetStore.schedulesLoaded {
                 UpcomingScheduleSections(
                     entries: upcomingScheduleEntries,
-                    accountNames: [account.id: account.name],
                     showRunningBalance: showRunningBalance
                 )
             }
@@ -861,8 +860,18 @@ struct AccountDetailView: View {
             // the screen doesn't reflow once the rows land.
             Section("Recent Transactions") {
                 if pager != nil {
-                    Text(emptyTransactionsText)
-                        .foregroundStyle(.secondary)
+                    if Self.showsEmptyTransactions(
+                        isSearching: searchQuery != nil,
+                        statusFilter: budgetStore.transactionStatusFilter,
+                        schedulesLoaded: budgetStore.schedulesLoaded,
+                        hasUpcomingSchedules: !upcomingScheduleEntries.isEmpty,
+                        scheduleLoadFailed: budgetStore.scheduleLoadError != nil
+                    ) {
+                        Text(emptyTransactionsText)
+                            .foregroundStyle(.secondary)
+                    } else if !budgetStore.schedulesLoaded {
+                        ProgressView()
+                    }
                 }
             }
         }

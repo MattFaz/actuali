@@ -265,7 +265,7 @@ struct ScheduleRow: View {
     let status: ScheduleStatus
     let accountName: String?
     let payeeName: String?
-    var runningBalance: Int? = nil
+    var runningBalance: Int?
     var showsNextDate = true
 
     var body: some View {
@@ -356,36 +356,87 @@ struct UpcomingScheduleSections: View {
     @Environment(\.locale) private var locale
 
     let entries: [UpcomingScheduleEntry]
-    let accountNames: [String: String]
     var showRunningBalance = false
+    @State private var actionError: String?
+
+    private func run(_ operation: @escaping () async throws -> Void) {
+        Task {
+            do { try await operation() }
+            catch { actionError = error.localizedDescription }
+        }
+    }
 
     private var entriesByDate: [(key: DayDate, value: [UpcomingScheduleEntry])] {
-        Dictionary(grouping: entries, by: \.date).sorted { $0.key < $1.key }
+        Dictionary(grouping: entries, by: \.date).sorted { $0.key > $1.key }
     }
 
     var body: some View {
         ForEach(entriesByDate, id: \.key) { group in
-            Section(ScheduleDescription.mediumDate(group.key, locale: locale)) {
+            Section(Transaction.formattedDate(from: group.key.yyyymmdd, style: .long)) {
                 ForEach(group.value) { entry in
                     let schedule = entry.schedule
-                    ScheduleRow(
-                        schedule: schedule,
-                        status: budgetStore.scheduleStatuses[schedule.id] ?? .scheduled,
-                        accountName: schedule.accountId.flatMap { accountNames[$0] },
-                        payeeName: schedule.payeeId.flatMap { id in
-                            budgetStore.payees.first { $0.id == id }?.name
-                        },
-                        runningBalance: showRunningBalance ? entry.runningBalance : nil,
-                        showsNextDate: false
-                    )
+                    Menu {
+                        Button {
+                            run { try await budgetStore.postScheduleTransaction(schedule, today: false) }
+                        } label: {
+                            Label(ReportStrings.text("Post Transaction", locale: locale), systemImage: "plus.circle")
+                        }
+                        .accessibilityIdentifier("scheduleRegister.post.\(schedule.id)")
+                        Button {
+                            run { try await budgetStore.postScheduleTransaction(schedule, today: true) }
+                        } label: {
+                            Label(ReportStrings.text("Post Transaction Today", locale: locale), systemImage: "calendar.badge.plus")
+                        }
+                        .accessibilityIdentifier("scheduleRegister.postToday.\(schedule.id)")
+                        if schedule.isRecurring {
+                            Button {
+                                run { try await budgetStore.skipScheduleNextDate(schedule) }
+                            } label: {
+                                Label(ReportStrings.text("Skip Next Date", locale: locale), systemImage: "forward.end")
+                            }
+                            .accessibilityIdentifier("scheduleRegister.skip.\(schedule.id)")
+                        }
+                        NavigationLink {
+                            ScheduleEditView(editing: schedule, budgetStore: budgetStore)
+                        } label: {
+                            Label(ReportStrings.text("Edit", locale: locale), systemImage: "pencil")
+                        }
+                    } label: {
+                        ScheduleRow(
+                            schedule: schedule,
+                            status: budgetStore.scheduleStatuses[schedule.id] ?? .scheduled,
+                            accountName: schedule.accountId.flatMap { id in
+                                budgetStore.accounts.first { $0.id == id }?.name
+                            },
+                            payeeName: schedule.payeeId.flatMap { id in
+                                budgetStore.payees.first { $0.id == id }?.name
+                            },
+                            runningBalance: showRunningBalance ? entry.runningBalance : nil,
+                            showsNextDate: false
+                        )
+                    }
+                    .accessibilityIdentifier("scheduleRegister.row.\(schedule.id)")
                 }
             }
+        }
+        .alert(ReportStrings.text("Action Failed", locale: locale), isPresented: Binding(
+            get: { actionError != nil },
+            set: {
+                if !$0 {
+                    actionError = nil
+                }
+            }
+        )) {
+            Button(ReportStrings.text("OK", locale: locale)) {}
+        } message: {
+            Text(actionError ?? "")
         }
     }
 }
 
 #if DEBUG
 struct ScheduleRowUITestFixture: View {
+    var upcoming = false
     private let schedule = ScheduleSummary(
         id: "fixture", name: "Rent", ruleId: nil,
         nextDate: DayDate(year: 2026, month: 10, day: 1), nextDateRowId: nil,
@@ -399,11 +450,21 @@ struct ScheduleRowUITestFixture: View {
     )
 
     var body: some View {
-        ScheduleRow(
-            schedule: schedule, status: .upcoming,
-            accountName: "Checking", payeeName: "Landlord"
-        )
-        .padding()
+        if upcoming {
+            NavigationStack {
+                List {
+                    UpcomingScheduleSections(entries: [
+                        UpcomingScheduleEntry(schedule: schedule, date: .today(), runningBalance: nil),
+                    ])
+                }
+            }
+        } else {
+            ScheduleRow(
+                schedule: schedule, status: .upcoming,
+                accountName: "Checking", payeeName: "Landlord"
+            )
+            .padding()
+        }
     }
 }
 #endif

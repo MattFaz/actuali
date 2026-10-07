@@ -51,4 +51,31 @@ struct AccountDetailEmptyStateTests {
             supported: false, hidden: false, isSearching: false
         ))
     }
+
+    @Test func accountEmptyStateWaitsForSchedulesAndDoesNotCompeteWithRowsOrErrors() {
+        #expect(!AccountDetailView.showsEmptyTransactions(
+            isSearching: false, statusFilter: .all, schedulesLoaded: false,
+            hasUpcomingSchedules: false, scheduleLoadFailed: false
+        ))
+        #expect(!AccountDetailView.showsEmptyTransactions(
+            isSearching: false, statusFilter: .all, schedulesLoaded: true,
+            hasUpcomingSchedules: true, scheduleLoadFailed: false
+        ))
+        #expect(!AccountDetailView.showsEmptyTransactions(
+            isSearching: false, statusFilter: .all, schedulesLoaded: true,
+            hasUpcomingSchedules: false, scheduleLoadFailed: true
+        ))
+        #expect(AccountDetailView.showsEmptyTransactions(
+            isSearching: false, statusFilter: .all, schedulesLoaded: true,
+            hasUpcomingSchedules: false, scheduleLoadFailed: false
+        ))
+        #expect(AccountDetailView.showsEmptyTransactions(
+            isSearching: true, statusFilter: .all, schedulesLoaded: false,
+            hasUpcomingSchedules: true, scheduleLoadFailed: false
+        ))
+        #expect(AccountDetailView.showsEmptyTransactions(
+            isSearching: false, statusFilter: .cleared, schedulesLoaded: false,
+            hasUpcomingSchedules: true, scheduleLoadFailed: false
+        ))
+    }
 }
