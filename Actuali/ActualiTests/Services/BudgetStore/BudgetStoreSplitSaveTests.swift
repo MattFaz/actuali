@@ -848,6 +848,42 @@ struct BudgetStoreSplitSaveTests {
         #expect(messageRows == 4)
     }
 
+    @Test func editingASplitParentCanReverseItsDirection() async throws {
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(path) }
+        let store = try await makeTestStore(database: database)
+
+        try await database.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, category, amount, date, isParent, isChild, parent_id, sort_order) VALUES
+                    ('parent', 'acct-1', NULL,       -1000, 20261001, 1, 0, NULL,     10),
+                    ('c-1',    'acct-1', 'cat-food',  -600, 20261001, 0, 1, 'parent',  9),
+                    ('c-2',    'acct-1', 'cat-fun',   -400, 20261001, 0, 1, 'parent',  8);
+            """)
+        }
+
+        let original = Transaction(
+            id: "parent", accountId: "acct-1", date: 20_261_001, amount: -1000,
+            payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: true, parentId: nil, tombstone: false, sortOrder: 10,
+            importedPayee: nil
+        )
+        let edit = form(type: .income, amount: "10.00", splits: [
+            .init(childId: "c-1", categoryId: "cat-food", amount: "6.00"),
+            .init(childId: "c-2", categoryId: "cat-fun", amount: "4.00"),
+        ])
+
+        try await store.saveTransaction(edit, editing: original)
+
+        let byId = try Dictionary(uniqueKeysWithValues: rows(path: path).map {
+            ($0["id"] as String, $0)
+        })
+        #expect(byId["parent"]?["amount"] == 1000)
+        #expect(byId["c-1"]?["amount"] == 600)
+        #expect(byId["c-2"]?["amount"] == 400)
+    }
+
     @Test func editingASplitParentKeepsChildPayeeOverrides() async throws {
         let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
