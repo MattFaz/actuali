@@ -48,10 +48,14 @@ private final class FallbackServers: Sendable {
 }
 
 struct ActualServerClientFallbackTests {
+    /// The probe's 5s production timeout is a wall-clock bound a starved CI
+    /// runner has tripped with nothing wrong; the stub answers eventually.
+    private static let probeTimeout: TimeInterval = 3600
+
     private func makeClient(fallbackServerURL: String = "https://fallback.example.com") async throws
         -> (ActualServerClient, FallbackServers) {
         let servers = FallbackServers()
-        let client = ActualServerClient(session: servers.session())
+        let client = ActualServerClient(session: servers.session(), probeTimeout: Self.probeTimeout)
         try await client.configure(
             serverURL: "https://primary.example.com",
             fallbackServerURL: fallbackServerURL
@@ -104,7 +108,12 @@ struct ActualServerClientFallbackTests {
     }
 
     @Test func returnsToPrimaryWhenFallbackFailsLater() async throws {
-        let (client, servers) = try await makeClient()
+        let servers = FallbackServers()
+        let log = DiagnosticLog()
+        let client = ActualServerClient(session: servers.session(), diagnosticLog: log)
+        try await client.configure(
+            serverURL: "https://primary.example.com", fallbackServerURL: "https://fallback.example.com"
+        )
         _ = try await client.login(password: "password")
         servers.failures = ["fallback.example.com": URLError(.cannotConnectToHost)]
 
@@ -116,6 +125,23 @@ struct ActualServerClientFallbackTests {
             "fallback.example.com", "primary.example.com",
             "primary.example.com",
         ])
+        #expect(await log.snapshot().serverRoute == "primary")
+    }
+
+    @Test func cancelledPrimaryProbeDoesNotRecordNetworkFailure() async throws {
+        let servers = FallbackServers()
+        let log = DiagnosticLog()
+        let client = ActualServerClient(
+            session: servers.session(), diagnosticLog: log, probeTimeout: Self.probeTimeout
+        )
+        try await client.configure(
+            serverURL: "https://primary.example.com", fallbackServerURL: "https://fallback.example.com"
+        )
+        _ = try await client.login(password: "password")
+        let before = await log.snapshot()
+        servers.failures = ["primary.example.com": URLError(.cancelled)]
+        await client.retryPrimaryIfRecovered()
+        #expect(await log.snapshot() == before)
     }
 
     @Test func foregroundProbeSwapsBackWhenPrimaryRecovers() async throws {
@@ -208,6 +234,103 @@ struct ActualServerClientFallbackTests {
         #expect(servers.requestedURLs.isEmpty)
     }
 
+    @Test func diagnosticHistoryTracksFallbackAndPrimaryRecovery() async throws {
+        let servers = FallbackServers()
+        let log = DiagnosticLog()
+        let client = ActualServerClient(
+            session: servers.session(),
+            diagnosticLog: log,
+            probeTimeout: Self.probeTimeout
+        )
+        try await client.configure(
+            serverURL: "https://primary.example.com",
+            fallbackServerURL: "https://fallback.example.com"
+        )
+
+        _ = try await client.login(password: "password")
+
+        var snapshot = await log.snapshot()
+        let firstReport = snapshot.entries.map(\.message).joined(separator: "\n")
+        #expect(firstReport.contains(
+            "NETWORK method=POST path=/account/login status=none error=cannot-connect"
+        ))
+        #expect(firstReport.contains(
+            "NETWORK method=POST path=/account/login status=200 error=none"
+        ))
+        #expect(snapshot.serverRoute == "fallback")
+        #expect(firstReport.contains("ROUTE fallback"))
+
+        servers.failures = [:]
+        await client.retryPrimaryIfRecovered()
+
+        snapshot = await log.snapshot()
+        let report = snapshot.entries.map(\.message).joined(separator: "\n")
+        #expect(report.contains(
+            "NETWORK method=GET path=/info status=200 error=none"
+        ))
+        #expect(report.contains("ROUTE primary"))
+        #expect(snapshot.serverRoute == "primary")
+    }
+
+    @Test func diagnosticPathOmitsConfiguredServerPathPrefixes() async throws {
+        let servers = FallbackServers()
+        let log = DiagnosticLog()
+        let client = ActualServerClient(
+            session: servers.session(),
+            diagnosticLog: log
+        )
+
+        try await client.configure(
+            serverURL: "https://primary.example.com/private-route",
+            fallbackServerURL: "https://fallback.example.com/private-route/fallback-secret-route"
+        )
+        _ = try await client.login(password: "password")
+        _ = try await client.login(password: "password")
+
+        let report = await (log.snapshot()).entries
+            .map(\.message)
+            .joined(separator: "\n")
+        #expect(report.contains(
+            "NETWORK method=POST path=/account/login status=200 error=none"
+        ))
+        #expect(!report.contains("/private-route"))
+        #expect(!report.contains("fallback-secret-route"))
+    }
+
+    @Test func diagnosticHistoryTracksFallbackFailure() async throws {
+        let servers = FallbackServers()
+        servers.failures = [
+            "primary.example.com": URLError(.secureConnectionFailed),
+            "fallback.example.com": URLError(.cannotFindHost),
+        ]
+        let log = DiagnosticLog()
+        let client = ActualServerClient(
+            session: servers.session(),
+            diagnosticLog: log
+        )
+        try await client.configure(
+            serverURL: "https://primary.example.com",
+            fallbackServerURL: "https://fallback.example.com"
+        )
+
+        await #expect(throws: ActualServerError.self) {
+            _ = try await client.login(password: "password")
+        }
+
+        let snapshot = await log.snapshot()
+        let report = snapshot.entries.map(\.message).joined(separator: "\n")
+        #expect(
+            report.contains(
+                "NETWORK method=POST path=/account/login status=none error=tls("
+                    + String(URLError.Code.secureConnectionFailed.rawValue)
+                    + ")"
+            )
+        )
+        #expect(report.contains(
+            "NETWORK method=POST path=/account/login status=none error=host-not-found"
+        ))
+    }
+
     @Test func offlineDeviceDoesNotAttemptFallback() async throws {
         let (client, servers) = try await makeClient()
         servers.failures = ["primary.example.com": URLError(.notConnectedToInternet)]
@@ -231,6 +354,26 @@ struct ActualServerClientFallbackTests {
         } catch {
             #expect(error.localizedDescription == "Invalid fallback server URL")
         }
+    }
+
+    @Test func invalidFallbackDoesNotPublishDiagnosticConfiguration() async {
+        let log = DiagnosticLog()
+        let client = ActualServerClient(diagnosticLog: log)
+
+        do {
+            try await client.configure(
+                serverURL: "https://primary.example.com",
+                fallbackServerURL: "https://"
+            )
+            Issue.record("Expected invalid fallback URL")
+        } catch ActualServerError.invalidFallbackURL {
+            // Expected.
+        } catch {
+            Issue.record("Expected invalidFallbackURL, got \(String(describing: error))")
+        }
+
+        let snapshot = await log.snapshot()
+        #expect(snapshot == .empty)
     }
 
     @Test func badFallbackStillConfiguresPrimary() async throws {

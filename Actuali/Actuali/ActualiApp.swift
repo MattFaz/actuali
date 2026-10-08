@@ -39,7 +39,7 @@ struct ActualiApp: App {
                 if CommandLine.arguments.contains("-showRuleConditionFixture") {
                     RuleConditionUITestFixture()
                 } else if CommandLine.arguments.contains("-showScheduleRowFixture") {
-                    ScheduleRowUITestFixture()
+                    ScheduleRowUITestFixture(upcoming: CommandLine.arguments.contains("-showUpcomingScheduleFixture"))
                 } else {
                     ContentView()
                 }
@@ -114,6 +114,7 @@ struct ActualiApp: App {
                         ]
                     }
                 }
+
                 // Stands in for coordinates the Add Transaction form would
                 // have recorded, so PayeeLocationsUITests can clear them.
                 if CommandLine.arguments.contains("-seedPayeeLocations") {

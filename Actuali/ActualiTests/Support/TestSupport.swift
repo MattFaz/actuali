@@ -272,14 +272,15 @@ final class Gate: Sendable {
 /// A `URLProtocol` stub routed per session: each `session(_:)` gets its own
 /// handler, keyed by a header, so suites can stub the network concurrently
 /// instead of serializing on shared static state.
-final class StubTransport: URLProtocol {
+/// Request snapshots are immutable; the mutex serializes cancellation with callbacks.
+final class StubTransport: URLProtocol, @unchecked Sendable {
     struct Response: Sendable {
         var status = 200
         var contentType: String?
         var body = Data()
     }
 
-    /// Runs on the loading thread, so it may block (e.g. on a test gate).
+    /// Runs on a worker thread, so it may block (e.g. on a test gate).
     /// Throwing fails the request with that error.
     typealias Handler = @Sendable (URLRequest) throws -> Response
 
@@ -287,12 +288,18 @@ final class StubTransport: URLProtocol {
     // ponytail: handlers are never removed; one closure per test session is
     // noise for a test process, prune in `stopLoading` if that changes.
     private static let handlers = Mutex<[String: Handler]>([:])
+    private let stopped = Mutex(false)
 
     static func session(_ handler: @escaping Handler) -> URLSession {
         let id = UUID().uuidString
         handlers.withLock { $0[id] = handler }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubTransport.self]
+        // A starved CI runner has taken over a minute to get a stubbed request
+        // to `startLoading`; with the default 60s the stub's error is replaced
+        // by URLError.timedOut and the test fails on the wrong error.
+        configuration.timeoutIntervalForRequest = 3600
+        configuration.timeoutIntervalForResource = 3600
         configuration.httpAdditionalHeaders = [header: id]
         return URLSession(configuration: configuration)
     }
@@ -306,28 +313,40 @@ final class StubTransport: URLProtocol {
     }
 
     override func startLoading() {
+        let request = request
         let id = request.value(forHTTPHeaderField: Self.header) ?? ""
         guard let handler = Self.handlers.withLock({ $0[id] }) else {
             client?.urlProtocol(self, didFailWithError: URLError(.unsupportedURL))
             return
         }
-        do {
-            let stub = try handler(request)
-            let response = HTTPURLResponse(
-                url: request.url!,
-                statusCode: stub.status,
-                httpVersion: "HTTP/1.1",
-                headerFields: stub.contentType.map { ["Content-Type": $0] }
-            )!
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: stub.body)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
+        // A stalled handler must not block URLSession's shared loading thread.
+        DispatchQueue.global().async { [self] in
+            let result = Result { try handler(request) }
+            stopped.withLock { stopped in
+                guard !stopped else { return }
+                switch result {
+                case .success(let stub):
+                    let response = HTTPURLResponse(
+                        url: request.url!,
+                        statusCode: stub.status,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: stub.contentType.map { ["Content-Type": $0] }
+                    )!
+                    client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                    client?.urlProtocol(self, didLoad: stub.body)
+                    client?.urlProtocolDidFinishLoading(self)
+                case .failure(is CancellationError):
+                    client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
+                case .failure(let error):
+                    client?.urlProtocol(self, didFailWithError: error)
+                }
+            }
         }
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        stopped.withLock { $0 = true }
+    }
 }
 
 extension URLRequest {
