@@ -108,7 +108,7 @@ struct PendingImportsView: View {
             }
             .sheet(item: $editingItem, onDismiss: presentDeferredFailure) { item in
                 NavigationStack {
-                    editView(for: item)
+                    PendingImportEditView(item: item)
                 }
             }
         }
@@ -289,72 +289,6 @@ struct PendingImportsView: View {
         return String(localized: resource)
     }
 
-    @ViewBuilder
-    private func editView(for item: PendingImport) -> some View {
-        let targetAccountId = resolveAccountId(for: item)
-        if let accountId = targetAccountId {
-            let approver = PendingImportApprover(store: budgetStore)
-            VStack(spacing: 0) {
-                if let context = Self.currencyContext(
-                    for: item,
-                    activeBudgetId: budgetStore.currentBudgetId,
-                    budgetCurrency: budgetStore.currencyCode,
-                    locale: locale
-                ) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(context)
-                            .font(.callout)
-                            .foregroundStyle(.orange)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        if Self.offersCurrencySettings(
-                            for: item,
-                            activeBudgetId: budgetStore.currentBudgetId,
-                            budgetCurrency: budgetStore.currencyCode
-                        ) {
-                            NavigationLink {
-                                DisplaySettingsView()
-                            } label: {
-                                Label(String(localized: "Currency Settings"), systemImage: "gearshape")
-                                    .font(.subheadline.weight(.semibold))
-                            }
-                            .accessibilityIdentifier("pendingImport.currencySettings")
-                        }
-                    }
-                    .padding()
-                    .background(.orange.opacity(0.12))
-                }
-                AddTransactionView(
-                    accountId: accountId,
-                    payee: item.payee ?? "",
-                    amountCents: item.amount.flatMap { Transaction.cents(fromDollars: $0) },
-                    date: item.date,
-                    notes: item.rawText,
-                    categoryId: nil,
-                    isIncome: item.isIncome,
-                    cleared: false,
-                    saveOverride: { form in
-                        try await approver.saveEdited(item, form: form)
-                    },
-                    onSaved: { _ in
-                        try store.remove(id: item.id)
-                    },
-                    reviewRequirements: item.reviewRequirements(
-                        activeBudgetId: budgetStore.currentBudgetId,
-                        budgetCurrency: budgetStore.currencyCode
-                    )
-                )
-                .environmentObject(budgetStore)
-            }
-        } else {
-            ContentUnavailableView(
-                "No Accounts",
-                systemImage: "building.columns",
-                description: Text("Please add an account before editing this import.")
-            )
-        }
-    }
-
     /// Whether the banner should link to Currency Settings: only when its
     /// message is about the budget's currency, which an adoption prompt or a
     /// legacy import's message isn't.
@@ -424,14 +358,119 @@ struct PendingImportsView: View {
             bundle: bundle
         )
     }
+}
 
-    private func resolveAccountId(for item: PendingImport) -> String? {
+// MARK: - Edit View
+
+private struct PendingImportEditView: View {
+    let item: PendingImport
+    @EnvironmentObject private var budgetStore: BudgetStore
+    @ObservedObject private var store = PendingImportStore.shared
+    @Environment(\.locale) private var locale
+    @State private var mappingDraft: CardMappingDraft?
+
+    private var targetAccountId: String? {
         PendingImportApprover.seedAccountId(
             cardHint: item.cardHint,
             accounts: budgetStore.accounts,
             cardMappings: budgetStore.cardAccountMappings,
             defaultAccountId: budgetStore.defaultAccountId
         )
+    }
+
+    var body: some View {
+        if let accountId = targetAccountId {
+            let approver = PendingImportApprover(store: budgetStore)
+            VStack(spacing: 0) {
+                if let context = PendingImportsView.currencyContext(
+                    for: item,
+                    activeBudgetId: budgetStore.currentBudgetId,
+                    budgetCurrency: budgetStore.currencyCode,
+                    locale: locale
+                ) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(context)
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if PendingImportsView.offersCurrencySettings(
+                            for: item,
+                            activeBudgetId: budgetStore.currentBudgetId,
+                            budgetCurrency: budgetStore.currencyCode
+                        ) {
+                            NavigationLink {
+                                DisplaySettingsView()
+                            } label: {
+                                Label(String(localized: "Currency Settings"), systemImage: "gearshape")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .accessibilityIdentifier("pendingImport.currencySettings")
+                        }
+                    }
+                    .padding()
+                    .background(.orange.opacity(0.12))
+                }
+
+                if let cardHint = item.cardHint,
+                   PendingImportsView.isCardUnmapped(
+                       hint: cardHint,
+                       originBudgetId: item.originBudgetId,
+                       activeBudgetId: budgetStore.currentBudgetId,
+                       accounts: budgetStore.accounts,
+                       cardMappings: budgetStore.cardAccountMappings
+                   ) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(PendingImportsView.cardUnmappedContext(hint: cardHint, locale: locale))
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Button {
+                            mappingDraft = PendingImportsView.mappingDraft(hint: cardHint, accountId: accountId)
+                        } label: {
+                            Label(String(localized: "Map Card"), systemImage: "creditcard")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .accessibilityIdentifier("pendingImport.mapCard")
+                    }
+                    .padding()
+                    .background(.orange.opacity(0.12))
+                }
+
+                AddTransactionView(
+                    accountId: accountId,
+                    payee: item.payee ?? "",
+                    amountCents: item.amount.flatMap { Transaction.cents(fromDollars: $0) },
+                    date: item.date,
+                    notes: item.rawText,
+                    categoryId: nil,
+                    isIncome: item.isIncome,
+                    cleared: false,
+                    saveOverride: { form in
+                        try await approver.saveEdited(item, form: form)
+                    },
+                    onSaved: { _ in
+                        try store.remove(id: item.id)
+                    },
+                    reviewRequirements: item.reviewRequirements(
+                        activeBudgetId: budgetStore.currentBudgetId,
+                        budgetCurrency: budgetStore.currencyCode
+                    )
+                )
+                .environmentObject(budgetStore)
+            }
+            .sheet(item: $mappingDraft) { draft in
+                CardMappingEditor(draft: draft)
+                    .environmentObject(budgetStore)
+            }
+        } else {
+            ContentUnavailableView(
+                "No Accounts",
+                systemImage: "building.columns",
+                description: Text("Please add an account before editing this import.")
+            )
+        }
     }
 }
 
@@ -472,9 +511,23 @@ private struct PendingImportRow: View {
 
             HStack {
                 if let hint = item.cardHint {
-                    Text(PendingImportsView.cardLabel(hint, locale: locale))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Text(PendingImportsView.cardLabel(hint, locale: locale))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if PendingImportsView.isCardUnmapped(
+                            hint: hint,
+                            originBudgetId: item.originBudgetId,
+                            activeBudgetId: budgetStore.currentBudgetId,
+                            accounts: budgetStore.accounts,
+                            cardMappings: budgetStore.cardAccountMappings
+                        ) {
+                            Text(String(localized: "Unmapped"))
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                                .accessibilityIdentifier("pendingImport.unmappedCard")
+                        }
+                    }
                 }
                 Spacer()
                 Text(item.date, style: .date)
@@ -504,6 +557,41 @@ extension PendingImportsView {
         bundle: Bundle = .main
     ) -> String {
         ReportStrings.format("Card ••%@", hint, locale: locale, bundle: bundle)
+    }
+
+    nonisolated static func isCardUnmapped(
+        hint: String?,
+        originBudgetId: String?,
+        activeBudgetId: String?,
+        accounts: [Account],
+        cardMappings: [String: String]
+    ) -> Bool {
+        guard originBudgetId == nil || originBudgetId == activeBudgetId,
+              let hint = hint?.trimmingCharacters(in: .whitespacesAndNewlines), !hint.isEmpty
+        else { return false }
+        return BudgetStore.resolveAccountId(hint: hint, accounts: accounts, cardMappings: cardMappings) == nil
+    }
+
+    nonisolated static func mappingDraft(hint: String, accountId: String) -> CardMappingDraft {
+        CardMappingDraft(
+            accountId: accountId,
+            keywords: [hint.trimmingCharacters(in: .whitespacesAndNewlines)],
+            originalKeywords: []
+        )
+    }
+
+    nonisolated static func cardUnmappedContext(
+        hint: String,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        let label = cardLabel(hint, locale: locale, bundle: bundle)
+        return ReportStrings.format(
+            "%@ is not mapped to an account. Map it to route future imports automatically.",
+            label,
+            locale: locale,
+            bundle: bundle
+        )
     }
 
     nonisolated static func amountString(

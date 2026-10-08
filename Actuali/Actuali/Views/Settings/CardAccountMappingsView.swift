@@ -227,7 +227,7 @@ struct CardAccountMappingsView: View {
 /// hands these to the sheet directly: seeding parent `@State` and flipping an
 /// `isPresented` flag in the same update showed the stale (empty) values on
 /// the first presentation (issue #534).
-private struct CardMappingDraft: Identifiable {
+struct CardMappingDraft: Identifiable {
     let id = UUID()
     let accountId: String
     let keywords: [String]
@@ -239,7 +239,7 @@ private struct CardMappingDraft: Identifiable {
     }
 }
 
-private struct CardMappingEditor: View {
+struct CardMappingEditor: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     let draft: CardMappingDraft

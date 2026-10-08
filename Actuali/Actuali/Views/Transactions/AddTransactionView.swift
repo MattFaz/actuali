@@ -698,6 +698,18 @@ struct AddTransactionView: View {
                         TextField("Notes", text: $notes, axis: .vertical)
                             .lineLimit(1...6)
                             .accessibilityIdentifier("addTransaction.notes")
+                        if !notes.isEmpty {
+                            Button {
+                                notes = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 2)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear text")
+                            .accessibilityIdentifier("addTransaction.notesClear")
+                        }
                     }
                     TagSuggestionBar(text: $notes, availableTags: budgetStore.tags)
                     // Links in the note stay openable while the text is a
