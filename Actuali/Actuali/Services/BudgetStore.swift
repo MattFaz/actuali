@@ -4989,7 +4989,6 @@ final class BudgetStore: ObservableObject {
     /// off-budget, the same rule `updateTransfer` enforces — and dropped
     /// otherwise. That is the shape a loan payment takes: budgeted money
     /// leaving a checking account for an off-budget loan.
-    @discardableResult
     func createTransfer(
         fromAccountId: String,
         toAccountId: String,
@@ -4999,9 +4998,8 @@ final class BudgetStore: ObservableObject {
         cleared: Bool,
         categoryId: String? = nil,
         sourceId: String? = nil,
-        targetId: String? = nil,
         financialId: String? = nil
-    ) async throws -> (sourceId: String, targetId: String) {
+    ) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
@@ -5012,7 +5010,7 @@ final class BudgetStore: ObservableObject {
         )
 
         let sourceId = sourceId ?? UUID().uuidString
-        let targetId = targetId ?? UUID().uuidString
+        let targetId = UUID().uuidString
 
         let offBudgetIds = offBudgetAccountIds
         func categorizable(_ accountId: String, partner: String) -> String? {
@@ -5064,7 +5062,6 @@ final class BudgetStore: ObservableObject {
         try await syncClient.createTransfer(source: source, target: target)
         await publishTransactionsImmediately([sourceId, targetId])
         await refreshDataOnly()
-        return (sourceId, targetId)
     }
 
     /// Everything that can refuse a `createTransfer`, checked without writing

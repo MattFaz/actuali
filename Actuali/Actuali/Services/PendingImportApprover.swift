@@ -302,7 +302,7 @@ final class PendingImportApprover {
                 return .duplicate
             }
 
-            let result = try await store.createTransfer(
+            try await store.createTransfer(
                 fromAccountId: form.accountId,
                 toAccountId: toAccountId,
                 amountCents: unsignedCents,
@@ -313,7 +313,7 @@ final class PendingImportApprover {
                 sourceId: item.id.uuidString,
                 financialId: financialId
             )
-            return .inserted(result.sourceId)
+            return .inserted(item.id.uuidString)
         }
 
         let payeeName = form.payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
