@@ -3537,6 +3537,27 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Whether any transaction row already exists matching either the given
+    /// id or financial_id (including tombstoned rows, so retries do not
+    /// resurrect deleted imports).
+    func transactionExists(id: String, financialId: String? = nil) async throws -> Bool {
+        try await dbQueue.read { db in
+            if let financialId {
+                let count = try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM transactions
+                WHERE id = ? OR financial_id = ?
+                """, arguments: [id, financialId]) ?? 0
+                return count > 0
+            } else {
+                let count = try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM transactions
+                WHERE id = ?
+                """, arguments: [id]) ?? 0
+                return count > 0
+            }
+        }
+    }
+
     // MARK: - Bank Sync
 
     private static func bankSyncLinkMatches(

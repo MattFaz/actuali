@@ -252,11 +252,11 @@ final class PendingImportApprover {
         }
     }
 
-    /// Saves the standard transaction produced by the pending-import editor.
+    /// Saves the transaction produced by the pending-import editor.
     /// The deterministic financial id makes a retry after queue cleanup fails
     /// a successful no-op instead of a second transaction.
     func saveEdited(_ item: PendingImport, form: BudgetStore.TransactionForm) async throws -> SaveResult {
-        guard form.type != .transfer, form.splits.isEmpty,
+        guard form.splits.isEmpty,
               let amount = Double(form.amount),
               let unsignedCents = Transaction.cents(fromDollars: amount),
               unsignedCents > 0 else {
@@ -282,9 +282,40 @@ final class PendingImportApprover {
         guard !account.closed else { throw ApproveError.accountClosed }
 
         let financialId = Self.financialId(for: item)
-        guard store.databaseForLogger != nil else {
+        guard let database = store.databaseForLogger else {
             throw ApproveError.noBudgetLoaded
         }
+
+        if form.type == .transfer {
+            guard let toAccountId = form.transferToAccountId else {
+                throw BudgetStoreError.missingTransferDestination
+            }
+            guard toAccountId != form.accountId else {
+                throw BudgetStoreError.transferAccountsMatch
+            }
+            guard let toAccount = accounts.first(where: { $0.id == toAccountId }) else {
+                throw ApproveError.noAccountAvailable
+            }
+            guard !toAccount.closed else { throw ApproveError.accountClosed }
+
+            if try await database.transactionExists(id: item.id.uuidString, financialId: financialId) {
+                return .duplicate
+            }
+
+            let result = try await store.createTransfer(
+                fromAccountId: form.accountId,
+                toAccountId: toAccountId,
+                amountCents: unsignedCents,
+                date: Transaction.yyyymmdd(from: form.date),
+                notes: form.notes.isEmpty ? nil : form.notes,
+                cleared: form.cleared,
+                categoryId: form.categoryId,
+                sourceId: item.id.uuidString,
+                financialId: financialId
+            )
+            return .inserted(result.sourceId)
+        }
+
         let payeeName = form.payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
         let payee = payeeName.isEmpty ? nil : try await store.findOrCreatePayee(name: payeeName)
         let transaction = Transaction(

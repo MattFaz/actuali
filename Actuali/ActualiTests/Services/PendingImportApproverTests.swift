@@ -588,6 +588,143 @@ struct PendingImportApproverTests {
         #expect(try databaseFinancialIds(at: url) == [PendingImportApprover.financialId(for: item)])
     }
 
+    @Test func saveEditedSavesTransferSuccessfully() async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [
+            account("acct_checking", "Checking"),
+            account("acct_savings", "Savings"),
+        ]
+        store.payees = [
+            Payee(id: "payee-checking", name: "Checking", transferAccountId: "acct_checking", tombstone: false),
+            Payee(id: "payee-savings", name: "Savings", transferAccountId: "acct_savings", tombstone: false),
+        ]
+        let queue = try DatabaseQueue(path: url.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+            INSERT INTO payees (id, name, transfer_acct, tombstone)
+            VALUES ('payee-checking', 'Checking', 'acct_checking', 0),
+                   ('payee-savings', 'Savings', 'acct_savings', 0);
+            INSERT INTO payee_mapping (id, targetId)
+            VALUES ('payee-checking', 'payee-checking'),
+                   ('payee-savings', 'payee-savings');
+            """)
+        }
+
+        let item = PendingImport(
+            originBudgetId: store.currentBudgetId,
+            amount: 50.0,
+            sourceCurrencyCode: "USD",
+            payee: "Savings"
+        )
+        let form = BudgetStore.TransactionForm(
+            accountId: "acct_checking",
+            type: .transfer,
+            amount: "50.00",
+            payeeName: "",
+            transferToAccountId: "acct_savings",
+            categoryId: nil,
+            notes: "Transfer to Savings",
+            date: Date(),
+            cleared: false
+        )
+
+        let approver = PendingImportApprover(store: store)
+        let result = try await approver.saveEdited(item, form: form)
+        #expect(result == .inserted(item.id.uuidString))
+        #expect(try databaseRowCount(at: url) == 2)
+        #expect(try databaseFinancialIds(at: url) == [PendingImportApprover.financialId(for: item)])
+
+        struct TransferRowSnapshot: Sendable {
+            let id: String?
+            let acct: String?
+            let amount: Int?
+            let transferredId: String?
+        }
+        let (sourceRow, targetRow) = try await queue.read { db -> (TransferRowSnapshot?, TransferRowSnapshot?) in
+            let source = try Row.fetchOne(db, sql: "SELECT id, acct, amount, transferred_id FROM transactions WHERE id = ?", arguments: [item.id.uuidString])
+            let target = try Row.fetchOne(db, sql: "SELECT id, acct, amount, transferred_id FROM transactions WHERE id != ?", arguments: [item.id.uuidString])
+            let sourceSnapshot = source.map { TransferRowSnapshot(id: $0["id"], acct: $0["acct"], amount: $0["amount"], transferredId: $0["transferred_id"]) }
+            let targetSnapshot = target.map { TransferRowSnapshot(id: $0["id"], acct: $0["acct"], amount: $0["amount"], transferredId: $0["transferred_id"]) }
+            return (sourceSnapshot, targetSnapshot)
+        }
+
+        #expect(sourceRow?.acct == "acct_checking")
+        #expect(sourceRow?.amount == -5000)
+        #expect(sourceRow?.transferredId == targetRow?.id)
+        #expect(targetRow?.acct == "acct_savings")
+        #expect(targetRow?.amount == 5000)
+        #expect(targetRow?.transferredId == item.id.uuidString)
+
+        // Retry returns duplicate without writing more rows
+        let retryResult = try await approver.saveEdited(item, form: form)
+        #expect(retryResult == .duplicate)
+        #expect(try databaseRowCount(at: url) == 2)
+    }
+
+    @Test func saveEditedTransferRefusesInvalidDestination() async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [
+            account("acct_checking", "Checking"),
+            account("acct_savings", "Savings", closed: true),
+        ]
+        let item = PendingImport(
+            originBudgetId: store.currentBudgetId,
+            amount: 50.0,
+            sourceCurrencyCode: "USD",
+            payee: "Savings"
+        )
+
+        // Missing destination
+        let missingDestForm = BudgetStore.TransactionForm(
+            accountId: "acct_checking",
+            type: .transfer,
+            amount: "50.00",
+            payeeName: "",
+            transferToAccountId: nil,
+            categoryId: nil,
+            notes: "",
+            date: Date(),
+            cleared: false
+        )
+        await #expect(throws: BudgetStoreError.missingTransferDestination) {
+            try await PendingImportApprover(store: store).saveEdited(item, form: missingDestForm)
+        }
+
+        // Matching destination
+        let sameAcctForm = BudgetStore.TransactionForm(
+            accountId: "acct_checking",
+            type: .transfer,
+            amount: "50.00",
+            payeeName: "",
+            transferToAccountId: "acct_checking",
+            categoryId: nil,
+            notes: "",
+            date: Date(),
+            cleared: false
+        )
+        await #expect(throws: BudgetStoreError.transferAccountsMatch) {
+            try await PendingImportApprover(store: store).saveEdited(item, form: sameAcctForm)
+        }
+
+        // Closed destination
+        let closedDestForm = BudgetStore.TransactionForm(
+            accountId: "acct_checking",
+            type: .transfer,
+            amount: "50.00",
+            payeeName: "",
+            transferToAccountId: "acct_savings",
+            categoryId: nil,
+            notes: "",
+            date: Date(),
+            cleared: false
+        )
+        await #expect(throws: PendingImportApprover.ApproveError.accountClosed) {
+            try await PendingImportApprover(store: store).saveEdited(item, form: closedDestForm)
+        }
+    }
+
     private func databaseFinancialIds(at url: URL) throws -> [String] {
         let queue = try DatabaseQueue(path: url.path)
         return try queue.read { db in
