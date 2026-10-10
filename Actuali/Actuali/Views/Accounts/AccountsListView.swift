@@ -178,23 +178,18 @@ struct AccountsListView: View {
     }
 
     private func groupedAccountRowBackground(at index: Int, in bucket: AccountListBucket, among buckets: [AccountListBucket]) -> AccountGroupRowBackground {
-        let roundsBottom = groupedAccountRowsRoundBottom(for: bucket, among: buckets)
+        let roundsBottom = index == bucket.accounts.count - 1 && groupedAccountRowsRoundBottom(for: bucket, among: buckets)
         return AccountGroupRowBackground(
-            position: accountGroupRowPosition(at: index, count: bucket.accounts.count, roundsBottom: roundsBottom),
-            roundsBottom: roundsBottom
+            position: AccountGroupRowLayout.position(roundsTop: index == 0, roundsBottom: roundsBottom)
         )
     }
 
     private func accountGroupHeaderRowPosition(for bucket: AccountListBucket, among buckets: [AccountListBucket]) -> AccountGroupRowPosition {
         let index = buckets.firstIndex(where: { $0.id == bucket.id }) ?? 0
-        let roundsTop = index == 0
-        let roundsBottom = groupedAccountRowsRoundBottom(for: bucket, among: buckets)
-        return switch (roundsTop, roundsBottom) {
-        case (true, true): .single
-        case (true, false): .first
-        case (false, true): .last
-        case (false, false): .middle
-        }
+        return AccountGroupRowLayout.position(
+            roundsTop: index == 0,
+            roundsBottom: groupedAccountRowsRoundBottom(for: bucket, among: buckets)
+        )
     }
 
     private func precedingGroupRowPosition(for account: Account, in bucket: AccountListBucket, among buckets: [AccountListBucket]) -> AccountGroupRowPosition? {
@@ -1167,33 +1162,30 @@ private struct AccountGroupListHeader: View {
     }
 }
 
-private enum AccountGroupRowPosition {
+enum AccountGroupRowPosition: Equatable {
     case single
     case first
     case middle
     case last
 }
 
-private func accountGroupRowPosition(at index: Int, count: Int, roundsBottom: Bool) -> AccountGroupRowPosition {
-    if count == 1 {
-        return roundsBottom ? .single : .first
+enum AccountGroupRowLayout {
+    static func position(roundsTop: Bool, roundsBottom: Bool) -> AccountGroupRowPosition {
+        switch (roundsTop, roundsBottom) {
+        case (true, true): .single
+        case (true, false): .first
+        case (false, true): .last
+        case (false, false): .middle
+        }
     }
-    if index == 0 {
-        return .first
-    }
-    if index == count - 1 {
-        return roundsBottom ? .last : .middle
-    }
-    return .middle
 }
 
 private struct AccountGroupRowBackground: View {
     let position: AccountGroupRowPosition
-    var roundsBottom = true
 
     var body: some View {
         let topRadius: CGFloat = position == .single || position == .first ? 16 : 0
-        let bottomRadius: CGFloat = roundsBottom && (position == .single || position == .last) ? 16 : 0
+        let bottomRadius: CGFloat = position == .single || position == .last ? 16 : 0
 
         UnevenRoundedRectangle(
             topLeadingRadius: topRadius,
