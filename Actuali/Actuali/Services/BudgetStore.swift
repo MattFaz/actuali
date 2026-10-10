@@ -4996,7 +4996,9 @@ final class BudgetStore: ObservableObject {
         date: Int,
         notes: String?,
         cleared: Bool,
-        categoryId: String? = nil
+        categoryId: String? = nil,
+        sourceId: String? = nil,
+        financialId: String? = nil
     ) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
@@ -5007,7 +5009,7 @@ final class BudgetStore: ObservableObject {
             amountCents: amountCents
         )
 
-        let sourceId = UUID().uuidString
+        let sourceId = sourceId ?? UUID().uuidString
         let targetId = UUID().uuidString
 
         let offBudgetIds = offBudgetAccountIds
@@ -5016,7 +5018,7 @@ final class BudgetStore: ObservableObject {
                 ? categoryId : nil
         }
 
-        let source = Transaction(
+        var source = Transaction(
             id: sourceId,
             accountId: fromAccountId,
             date: date,
@@ -5035,6 +5037,7 @@ final class BudgetStore: ObservableObject {
             sortOrder: nil,
             importedPayee: nil
         )
+        source.financialId = financialId
 
         let target = Transaction(
             id: targetId,
@@ -6043,24 +6046,36 @@ final class BudgetStore: ObservableObject {
 
     /// Save the add/edit form: transfers become a paired transfer, everything
     /// else resolves its payee and creates or (when `original` is non-nil)
-    /// updates the transaction.
+    /// updates the transaction. `newId` and `financialId` stamp a created row
+    /// (a transfer's source leg, a split's parent): the pending-import editor
+    /// passes its import's so a retry finds the row. Edits ignore both.
     @discardableResult
-    func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws -> String? {
+    func saveTransaction(
+        _ form: TransactionForm,
+        editing original: Transaction? = nil,
+        newId: String? = nil,
+        financialId: String? = nil
+    ) async throws -> String? {
         // New plain rows collect their target after resolving the payee and
         // applying rules in createTransaction; edits and splits skip rules.
         if original == nil, form.type != .transfer, form.splits.isEmpty {
-            return try await performSaveTransaction(form, editing: original)
+            return try await performSaveTransaction(form, editing: original, newId: newId, financialId: financialId)
         }
         var targets = impactTargets(for: form)
         if let original {
             await targets.formUnion(impactTargets(for: [original]))
         }
         return try await withImpactCue(touching: targets) {
-            try await performSaveTransaction(form, editing: original)
+            try await performSaveTransaction(form, editing: original, newId: newId, financialId: financialId)
         }
     }
 
-    private func performSaveTransaction(_ form: TransactionForm, editing original: Transaction?) async throws -> String? {
+    private func performSaveTransaction(
+        _ form: TransactionForm,
+        editing original: Transaction?,
+        newId: String?,
+        financialId: String?
+    ) async throws -> String? {
         var form = form
         // The form hides categories for off-budget accounts; normalize
         // here too so stale picker or split state cannot bypass that rule.
@@ -6104,7 +6119,9 @@ final class BudgetStore: ObservableObject {
                 date: date,
                 notes: notes,
                 cleared: form.cleared,
-                categoryId: form.categoryId
+                categoryId: form.categoryId,
+                sourceId: newId,
+                financialId: financialId
             )
             return nil
 
@@ -6133,10 +6150,10 @@ final class BudgetStore: ObservableObject {
             }
             let payeeId = try await resolvePayeeId(name: form.payeeName, editing: nil)
             let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
-            let parentId = UUID().uuidString
+            let parentId = newId ?? UUID().uuidString
             // Explicit sort orders keep the children in entry order under the parent
             let parentSort = Date().timeIntervalSince1970 * 1000
-            let parent = Transaction(
+            var parent = Transaction(
                 id: parentId,
                 accountId: form.accountId,
                 date: date,
@@ -6155,6 +6172,7 @@ final class BudgetStore: ObservableObject {
                 sortOrder: parentSort,
                 importedPayee: payeeName
             )
+            parent.financialId = financialId
             var children: [Transaction] = []
             var transferPartners: [Transaction] = []
             for (index, line) in lines.enumerated() {
@@ -6296,7 +6314,7 @@ final class BudgetStore: ObservableObject {
                     form.categoryId
                 }
                 let transaction = Transaction(
-                    id: UUID().uuidString,
+                    id: newId ?? UUID().uuidString,
                     accountId: form.accountId,
                     date: date,
                     amount: amountCents,
@@ -6312,7 +6330,8 @@ final class BudgetStore: ObservableObject {
                     parentId: nil,
                     tombstone: false,
                     sortOrder: nil, // Set to Date.now() during insert
-                    importedPayee: payeeName
+                    importedPayee: payeeName,
+                    financialId: financialId
                 )
                 try await createTransaction(
                     transaction,
