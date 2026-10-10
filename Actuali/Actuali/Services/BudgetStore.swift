@@ -4581,19 +4581,24 @@ final class BudgetStore: ObservableObject {
         let lookbackFloor = DayDate.today()
             .adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
         var oldestDates: [String: Int] = [:]
+        var emptiedAccountIds: Set<String> = []
         var targetStartDays: [String: Int] = [:]
         for target in targets {
             // Both "the read failed" and "the account has no transactions"
             // mean the same thing here: start at the chosen day.
             oldestDates[target.id] = await (try? database.oldestTransactionDate(accountId: target.id)) ?? nil
+            if oldestDates[target.id] == nil,
+               await (try? database.hasAnyTransactionRow(accountId: target.id)) == true {
+                emptiedAccountIds.insert(target.id)
+            }
         }
         func downloadTargets(_ accounts: [BankSyncAccount]) -> [BankSyncTarget] {
             accounts.map {
                 let startDay: Int
                 if let oldest = oldestDates[$0.id] {
                     let incremental = max(lookbackFloor, oldest)
-                    // SimpleFIN matches upstream's `getAccountSyncStartDate`
-                    // exactly. Reaching back to the chosen day would download
+                    // SimpleFIN matches upstream's `getAccountSyncStartDate`.
+                    // Reaching back to the chosen day would download
                     // transactions the person deleted, which the web never
                     // asks for again and which come back as new rows when the
                     // bank has changed their ids (GH #665).
@@ -4605,6 +4610,10 @@ final class BudgetStore: ObservableObject {
                     // quarter, and that form would widen every ongoing sync.
                     startDay = $0.source == .financeKit && importStart < oldest
                         ? importStart : incremental
+                } else if $0.source != .financeKit, emptiedAccountIds.contains($0.id) {
+                    // Only deleted rows left: upstream's window, since the
+                    // chosen day would download every one of them again.
+                    startDay = lookbackFloor
                 } else {
                     startDay = importStart
                 }

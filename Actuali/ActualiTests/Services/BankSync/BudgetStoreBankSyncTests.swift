@@ -755,6 +755,44 @@ struct BudgetStoreBankSyncTests {
         #expect(try rows(path: url, where: "financial_id = 'sf-new-id'").isEmpty)
     }
 
+    /// An emptied account has only deleted rows left. It isn't a first
+    /// import, so it mustn't reach back to the chosen day either.
+    @Test func emptiedAccountDoesNotReachBackToTheImportStartDay() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try await seedDeletedTransaction(at: url, importedId: "sf-old-id", daysAgo: 120)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-new-id", "posted": \(Self.daysAgo(120)), "amount": "-33.45", "payee": "Deleted Merchant"}
+        """))
+        store.setBankSyncImportStartDay(Self.expectedDay(200))
+
+        _ = try await store.syncBankAccounts()
+
+        #expect(try rows(path: url, where: "financial_id = 'sf-new-id'").isEmpty)
+    }
+
+    /// A future-dated row isn't history: it mustn't start the window after
+    /// today, where every download would be dropped.
+    @Test func futureDatedRowDoesNotPushTheWindowPastToday() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let future = Self.expectedDay(-7)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO transactions (id, acct, date, amount, cleared, tombstone, sort_order)
+            VALUES ('tx-bill', 'acct-1', ?, -9900, 0, 0, 1)
+            """, arguments: [future])
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+        """))
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
+
+        _ = try await store.syncBankAccounts()
+
+        #expect(try rows(path: url, where: "financial_id = 'sf-1'").count == 1)
+    }
+
     @Test func disabledReimportKeepsRepeatedSimpleFINRecordsAbsentAcrossSyncs() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
