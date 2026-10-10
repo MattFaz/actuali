@@ -4592,12 +4592,19 @@ final class BudgetStore: ObservableObject {
                 let startDay: Int
                 if let oldest = oldestDates[$0.id] {
                     let incremental = max(lookbackFloor, oldest)
-                    // Reach past existing history only while the chosen day sits
-                    // below it. Note this is not `min(importStart, incremental)`:
-                    // the default day is older than the 90-day floor for any
-                    // budget past its first quarter, and that form would widen
-                    // every ongoing sync to it.
-                    startDay = importStart < oldest ? importStart : incremental
+                    // SimpleFIN matches upstream's `getAccountSyncStartDate`
+                    // exactly. Reaching back to the chosen day would download
+                    // transactions the person deleted, which the web never
+                    // asks for again and which come back as new rows when the
+                    // bank has changed their ids (GH #665).
+                    //
+                    // Wallet reaches past existing history while the chosen
+                    // day sits below it. Note this is not
+                    // `min(importStart, incremental)`: the default day is older
+                    // than the 90-day floor for any budget past its first
+                    // quarter, and that form would widen every ongoing sync.
+                    startDay = $0.source == .financeKit && importStart < oldest
+                        ? importStart : incremental
                 } else {
                     startDay = importStart
                 }

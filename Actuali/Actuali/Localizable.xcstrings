@@ -47539,49 +47539,49 @@
         }
       }
     },
-    "Linked accounts import transactions from this day on. It starts out as the day this budget began; pick an earlier day to pull in older history. Transactions already imported always stay." : {
+    "Linked accounts import transactions from this day on. It starts out as the day this budget began. For Apple Wallet accounts, pick an earlier day to pull in older history. Transactions already imported always stay." : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verknüpfte Konten importieren Transaktionen ab diesem Tag. Er beginnt als der Tag, an dem dieses Budget angelegt wurde; wählen Sie einen früheren Tag, um ältere Verläufe einzubeziehen. Bereits importierte Transaktionen bleiben immer erhalten."
+            "value" : "Verknüpfte Konten importieren Transaktionen ab diesem Tag. Er beginnt als der Tag, an dem dieses Budget angelegt wurde. Wählen Sie für Apple Wallet-Konten einen früheren Tag, um ältere Verläufe einzubeziehen. Bereits importierte Transaktionen bleiben immer erhalten."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Linked accounts import transactions from this day on. It starts out as the day this budget began; pick an earlier day to pull in older history. Transactions already imported always stay."
+            "value" : "Linked accounts import transactions from this day on. It starts out as the day this budget began. For Apple Wallet accounts, pick an earlier day to pull in older history. Transactions already imported always stay."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Las cuentas vinculadas importan transacciones a partir de este día. Empieza siendo el día en que se creó este presupuesto; elija un día anterior para incluir un historial más antiguo. Las transacciones ya importadas siempre permanecen."
+            "value" : "Las cuentas vinculadas importan transacciones a partir de este día. Empieza siendo el día en que se creó este presupuesto. En las cuentas de Apple Wallet, elija un día anterior para incluir un historial más antiguo. Las transacciones ya importadas siempre permanecen."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les comptes liés importent les transactions à partir de ce jour. Il commence par le jour où ce budget a été créé ; choisissez un jour antérieur pour inclure un historique plus ancien. Les transactions déjà importées restent toujours."
+            "value" : "Les comptes liés importent les transactions à partir de ce jour. Il commence par le jour où ce budget a été créé. Pour les comptes Apple Wallet, choisissez un jour antérieur pour inclure un historique plus ancien. Les transactions déjà importées restent toujours."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I conti collegati importano le transazioni a partire da questo giorno. Inizialmente corrisponde al giorno in cui è stato creato questo budget; scegli un giorno precedente per includere una cronologia più vecchia. Le transazioni già importate rimangono sempre."
+            "value" : "I conti collegati importano le transazioni a partire da questo giorno. Inizialmente corrisponde al giorno in cui è stato creato questo budget. Per i conti Apple Wallet, scegli un giorno precedente per includere una cronologia più vecchia. Le transazioni già importate rimangono sempre."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gekoppelde rekeningen importeren transacties vanaf deze dag. Dit begint als de dag waarop dit budget is gestart; kies een eerdere dag om oudere geschiedenis op te halen. Reeds geïmporteerde transacties blijven altijd behouden."
+            "value" : "Gekoppelde rekeningen importeren transacties vanaf deze dag. Dit begint als de dag waarop dit budget is gestart. Kies voor Apple Wallet-rekeningen een eerdere dag om oudere geschiedenis op te halen. Reeds geïmporteerde transacties blijven altijd behouden."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Contas vinculadas importam transações a partir deste dia. Ele começa como o dia em que este orçamento foi criado; escolha um dia anterior para trazer um histórico mais antigo. As transações já importadas sempre permanecem."
+            "value" : "Contas vinculadas importam transações a partir deste dia. Ele começa como o dia em que este orçamento foi criado. Para contas da Apple Wallet, escolha um dia anterior para trazer um histórico mais antigo. As transações já importadas sempre permanecem."
           }
         }
       }
