@@ -150,21 +150,18 @@ extension BudgetStore {
 
     private func showImpactCues(_ cues: [TransactionImpactCue]) {
         guard showTransactionImpactCue, !hideBalances else { return }
-        impactDismissGeneration += 1
-        let generation = impactDismissGeneration
+        impactDismissTask?.cancel()
         transactionImpactCues = cues
         guard !cues.isEmpty else { return }
         UIAccessibility.post(notification: .announcement, argument: cues.map(spokenImpactText).joined(separator: ". "))
         impactDismissTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(TransactionImpact.autoDismissSeconds))
             guard !Task.isCancelled else { return }
-            guard let self, self.impactDismissGeneration == generation else { return }
-            self.transactionImpactCues = []
+            self?.transactionImpactCues = []
         }
     }
 
     func dismissTransactionImpactCues() {
-        impactDismissGeneration += 1
         impactDismissTask?.cancel()
         transactionImpactCues = []
     }
