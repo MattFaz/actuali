@@ -169,6 +169,34 @@ struct AccountsListView: View {
         return accountGroupBackgroundOverrides[id] ?? !collapsedAccountGroups.contains(id)
     }
 
+    private func groupedAccountRowsRoundBottom(for bucket: AccountListBucket, among buckets: [AccountListBucket]) -> Bool {
+        guard let index = buckets.firstIndex(where: { $0.id == bucket.id }),
+              buckets.indices.contains(index + 1),
+              let nextGroup = buckets[index + 1].group
+        else { return true }
+        return accountGroupBackgroundIsClear(nextGroup.id)
+    }
+
+    private func groupedAccountRowBackground(at index: Int, in bucket: AccountListBucket, among buckets: [AccountListBucket]) -> AccountGroupRowBackground {
+        let roundsBottom = groupedAccountRowsRoundBottom(for: bucket, among: buckets)
+        return AccountGroupRowBackground(
+            position: accountGroupRowPosition(at: index, count: bucket.accounts.count, roundsBottom: roundsBottom),
+            roundsBottom: roundsBottom
+        )
+    }
+
+    private func accountGroupHeaderRowPosition(for bucket: AccountListBucket, among buckets: [AccountListBucket]) -> AccountGroupRowPosition {
+        let index = buckets.firstIndex(where: { $0.id == bucket.id }) ?? 0
+        let roundsTop = index == 0
+        let roundsBottom = groupedAccountRowsRoundBottom(for: bucket, among: buckets)
+        return switch (roundsTop, roundsBottom) {
+        case (true, true): .single
+        case (true, false): .first
+        case (false, true): .last
+        case (false, false): .middle
+        }
+    }
+
     private func precedingGroupRowPosition(for account: Account, in bucket: AccountListBucket, among buckets: [AccountListBucket]) -> AccountGroupRowPosition? {
         guard bucket.id == "ungrouped",
               bucket.accounts.last?.id == account.id,
@@ -257,6 +285,7 @@ struct AccountsListView: View {
                                             AccountGroupListHeader(
                                                 group: group,
                                                 total: bucket.accounts.sumBalance,
+                                                rowPosition: accountGroupHeaderRowPosition(for: bucket, among: onBudgetBuckets),
                                                 isExpanded: isSearchingAccounts || !collapsedAccountGroups.contains(group.id),
                                                 isBackgroundClear: accountGroupBackgroundIsClear(group.id),
                                                 allowsCollapse: !isSearchingAccounts,
@@ -265,9 +294,8 @@ struct AccountsListView: View {
                                             if isSearchingAccounts || !collapsedAccountGroups.contains(group.id) {
                                                 ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
                                                     NavigationLink(value: item.element) { AccountRow(account: item.element) }
-                                                        .listRowBackground(AccountGroupRowBackground(
-                                                            position: accountGroupRowPosition(at: item.offset, count: bucket.accounts.count)
-                                                        ))
+                                                        .listRowSeparator(item.offset == bucket.accounts.count - 1 ? .hidden : .visible)
+                                                        .listRowBackground(groupedAccountRowBackground(at: item.offset, in: bucket, among: onBudgetBuckets))
                                                 }
                                             }
                                         } else {
@@ -289,6 +317,7 @@ struct AccountsListView: View {
                                     allowsCollapse: !isSearchingAccounts
                                 )
                             }
+                            .listSectionSeparator(.hidden)
                         }
                         if !filteredOffBudgetAccounts.isEmpty {
                             Section {
@@ -298,14 +327,18 @@ struct AccountsListView: View {
                                             AccountGroupListHeader(
                                                 group: group,
                                                 total: bucket.accounts.sumBalance,
+                                                rowPosition: accountGroupHeaderRowPosition(for: bucket, among: offBudgetBuckets),
                                                 isExpanded: isSearchingAccounts || !collapsedAccountGroups.contains(group.id),
                                                 isBackgroundClear: accountGroupBackgroundIsClear(group.id),
                                                 allowsCollapse: !isSearchingAccounts,
                                                 action: { toggleAccountGroup(group.id) }
                                             )
                                             if isSearchingAccounts || !collapsedAccountGroups.contains(group.id) {
-                                                ForEach(bucket.accounts) { account in
+                                                ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
+                                                    let account = item.element
                                                     NavigationLink(value: account) { AccountRow(account: account) }
+                                                        .listRowSeparator(item.offset == bucket.accounts.count - 1 ? .hidden : .visible)
+                                                        .listRowBackground(groupedAccountRowBackground(at: item.offset, in: bucket, among: offBudgetBuckets))
                                                 }
                                             }
                                         } else {
@@ -327,6 +360,7 @@ struct AccountsListView: View {
                                     allowsCollapse: !isSearchingAccounts
                                 )
                             }
+                            .listSectionSeparator(.hidden)
                         }
                         if !filteredClosedAccounts.isEmpty {
                             Section {
@@ -386,6 +420,7 @@ struct AccountsListView: View {
                                             AccountGroupListHeader(
                                                 group: group,
                                                 total: bucket.accounts.sumBalance,
+                                                rowPosition: accountGroupHeaderRowPosition(for: bucket, among: onBudgetBuckets),
                                                 isExpanded: isSearchingAccounts || !collapsedAccountGroups.contains(group.id),
                                                 isBackgroundClear: accountGroupBackgroundIsClear(group.id),
                                                 allowsCollapse: !isSearchingAccounts,
@@ -395,9 +430,8 @@ struct AccountsListView: View {
                                                 ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
                                                     AccountRow(account: item.element)
                                                         .tag(AccountSelection.account(item.element.id))
-                                                        .listRowBackground(AccountGroupRowBackground(
-                                                            position: accountGroupRowPosition(at: item.offset, count: bucket.accounts.count)
-                                                        ))
+                                                        .listRowSeparator(item.offset == bucket.accounts.count - 1 ? .hidden : .visible)
+                                                        .listRowBackground(groupedAccountRowBackground(at: item.offset, in: bucket, among: onBudgetBuckets))
                                                 }
                                             }
                                         } else {
@@ -421,6 +455,7 @@ struct AccountsListView: View {
                                     totalTrailingPadding: 0
                                 )
                             }
+                            .listSectionSeparator(.hidden)
                         }
                         if !filteredOffBudgetAccounts.isEmpty {
                             Section {
@@ -430,15 +465,19 @@ struct AccountsListView: View {
                                             AccountGroupListHeader(
                                                 group: group,
                                                 total: bucket.accounts.sumBalance,
+                                                rowPosition: accountGroupHeaderRowPosition(for: bucket, among: offBudgetBuckets),
                                                 isExpanded: isSearchingAccounts || !collapsedAccountGroups.contains(group.id),
                                                 isBackgroundClear: accountGroupBackgroundIsClear(group.id),
                                                 allowsCollapse: !isSearchingAccounts,
                                                 action: { toggleAccountGroup(group.id) }
                                             )
                                             if isSearchingAccounts || !collapsedAccountGroups.contains(group.id) {
-                                                ForEach(bucket.accounts) { account in
+                                                ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
+                                                    let account = item.element
                                                     AccountRow(account: account)
                                                         .tag(AccountSelection.account(account.id))
+                                                        .listRowSeparator(item.offset == bucket.accounts.count - 1 ? .hidden : .visible)
+                                                        .listRowBackground(groupedAccountRowBackground(at: item.offset, in: bucket, among: offBudgetBuckets))
                                                 }
                                             }
                                         } else {
@@ -462,6 +501,7 @@ struct AccountsListView: View {
                                     totalTrailingPadding: 0
                                 )
                             }
+                            .listSectionSeparator(.hidden)
                         }
                         if !filteredClosedAccounts.isEmpty {
                             Section {
@@ -1015,9 +1055,10 @@ struct AccountSectionHeader: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            .overlay {
+            .overlay(alignment: .leading) {
                 if identifier != "closed" {
                     sectionTitle
+                        .padding(.leading, 8)
                         .allowsHitTesting(false)
                 }
             }
@@ -1025,7 +1066,6 @@ struct AccountSectionHeader: View {
                 if identifier != "closed" {
                     DisclosureChevron(isExpanded: isExpanded)
                         .frame(width: 12, height: 20)
-                        .offset(x: isExpanded ? 7 : 6)
                         .allowsHitTesting(false)
                 }
             }
@@ -1033,6 +1073,7 @@ struct AccountSectionHeader: View {
         }
         .buttonStyle(.plain)
         .disabled(!allowsCollapse)
+        .listRowSeparator(.hidden)
         .accessibilityAddTraits(.isHeader)
         // State lives in the label, not the hint: hints are read last and can
         // be disabled outright, and a collapsed section is otherwise
@@ -1066,6 +1107,7 @@ private struct AccountGroupListHeader: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     let group: AccountGroup
     let total: Int
+    let rowPosition: AccountGroupRowPosition
     let isExpanded: Bool
     let isBackgroundClear: Bool
     let allowsCollapse: Bool
@@ -1098,12 +1140,9 @@ private struct AccountGroupListHeader: View {
         }
         .buttonStyle(.plain)
         .listRowInsets(EdgeInsets(top: 5, leading: 28, bottom: 5, trailing: 16))
-        .listRowBackground(isBackgroundClear ? Color.clear.transaction {
-            $0.animation = nil
-            $0.disablesAnimations = true
-        } : nil)
-        .listRowSeparator(.visible)
-        .listRowSeparatorTint(.secondary.opacity(0.25))
+        .listRowBackground(rowBackground)
+        .listRowSeparator(isBackgroundClear ? .hidden : .visible, edges: .top)
+        .listRowSeparator(.hidden, edges: .bottom)
         .dropDestination(for: String.self, action: { ids, _ in
             guard let accountId = ids.first else { return false }
             Task { try? await budgetStore.dropAccountIntoGroup(accountId, groupId: group.id) }
@@ -1114,6 +1153,18 @@ private struct AccountGroupListHeader: View {
         .accessibilityLabel(String(format: String(localized: "accounts.group.accessibility"), group.name, isExpanded ? String(localized: "expanded") : String(localized: "collapsed"), totalText))
         .accessibilityIdentifier("account.subgroup.\(group.id)")
     }
+
+    @ViewBuilder
+    private var rowBackground: some View {
+        if isBackgroundClear {
+            Color.clear.transaction {
+                $0.animation = nil
+                $0.disablesAnimations = true
+            }
+        } else {
+            AccountGroupRowBackground(position: rowPosition)
+        }
+    }
 }
 
 private enum AccountGroupRowPosition {
@@ -1123,25 +1174,26 @@ private enum AccountGroupRowPosition {
     case last
 }
 
-private func accountGroupRowPosition(at index: Int, count: Int) -> AccountGroupRowPosition {
+private func accountGroupRowPosition(at index: Int, count: Int, roundsBottom: Bool) -> AccountGroupRowPosition {
     if count == 1 {
-        return .single
+        return roundsBottom ? .single : .first
     }
     if index == 0 {
         return .first
     }
     if index == count - 1 {
-        return .last
+        return roundsBottom ? .last : .middle
     }
     return .middle
 }
 
 private struct AccountGroupRowBackground: View {
     let position: AccountGroupRowPosition
+    var roundsBottom = true
 
     var body: some View {
         let topRadius: CGFloat = position == .single || position == .first ? 16 : 0
-        let bottomRadius: CGFloat = position == .single || position == .last ? 16 : 0
+        let bottomRadius: CGFloat = roundsBottom && (position == .single || position == .last) ? 16 : 0
 
         UnevenRoundedRectangle(
             topLeadingRadius: topRadius,
