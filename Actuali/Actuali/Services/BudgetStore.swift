@@ -4781,6 +4781,17 @@ final class BudgetStore: ObservableObject {
         // start day — one request covers every account, so it reaches back as
         // far as the hungriest of them.
         var candidates = download.candidates
+        // Upstream `normalizeBankSyncTransactions` reads this synced
+        // per-account preference (default true) and drops anything the bank
+        // hasn't booked; it imports on the sync after it posts.
+        let importPending = try await (database.fetchPreference(
+            id: "sync-import-pending-\(target.id)"
+        ) ?? "true") == "true"
+        let skippedPending = importPending ? 0 : candidates.lazy
+            .filter { !$0.cleared }.reduce(0) { $0 + $1.amount }
+        if !importPending {
+            candidates.removeAll { !$0.cleared }
+        }
 
         guard !candidates.isEmpty || existingOldestDay == nil else {
             return (0, 0, [], 0)
@@ -4903,7 +4914,9 @@ final class BudgetStore: ObservableObject {
         var openingInsert: BankSyncOpeningInsert?
         if existingOldestDay == nil,
            let balance = download.currentBalanceCents {
-            let openingAmount = balance - expectedMaterializedInserts
+            // The reported balance still includes skipped pending charges;
+            // leave them out so they aren't counted twice once they post.
+            let openingAmount = balance - skippedPending - expectedMaterializedInserts
                 .filter { $0.transaction.accountId == target.id }
                 .reduce(0) { $0 + $1.transaction.amount }
             if openingAmount != 0 {
