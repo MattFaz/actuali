@@ -98,6 +98,9 @@ protocol AppleWalletReading: Sendable {
     /// more — the caller drops anything before the day — but shouldn't return
     /// meaningfully less-bounded history than asked for.
     func transactions(accountId: String, sinceDay: Int) async throws -> [AppleWalletTransaction]
+    /// Turn FinanceKit background delivery (iOS 26+) on or off. Returns
+    /// whether the request was applied — false where delivery is unsupported.
+    func setBackgroundDelivery(enabled: Bool) -> Bool
 }
 
 /// Turns Wallet data into the same download shape the SimpleFIN providers

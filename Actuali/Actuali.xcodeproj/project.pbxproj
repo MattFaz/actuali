@@ -11,6 +11,7 @@
 		A7550BD92EE7B967007026DC /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = A7550BD82EE7B967007026DC /* SwiftProtobuf */; };
 		A7550BE62EE7BDFE007026DC /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = A7550BE52EE7BDFE007026DC /* ZIPFoundation */; };
 		AC0000000000000000000EDF /* ActualiWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AC00000000000000000001DF /* ActualiWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AD0000000000000000000EDF /* ActualiWalletDelivery.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = AD00000000000000000001DF /* ActualiWalletDelivery.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,6 +36,13 @@
 			remoteGlobalIDString = AC00000000000000000004DF;
 			remoteInfo = ActualiWidgets;
 		};
+		AD0000000000000000000BDF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A7550B7E2EE7B4F7007026DC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AD00000000000000000004DF;
+			remoteInfo = ActualiWalletDelivery;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -49,6 +57,17 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AD0000000000000000000DDF /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				AD0000000000000000000EDF /* ActualiWalletDelivery.appex in Embed ExtensionKit Extensions */,
+			);
+			name = "Embed ExtensionKit Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -56,6 +75,7 @@
 		A79D4A9D2FA1F8F000D5A2DF /* ActualiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ActualiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB0000000000000000000BDF /* ActualiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ActualiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AC00000000000000000001DF /* ActualiWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ActualiWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AD00000000000000000001DF /* ActualiWalletDelivery.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = ActualiWalletDelivery.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -65,6 +85,13 @@
 				Resources/sync.proto,
 			);
 			target = A7550B852EE7B4F7007026DC /* Actuali */;
+		};
+		AD00000000000000000010DF /* Exceptions for "ActualiShared" folder in "ActualiWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				WalletDelivery.swift,
+			);
+			target = AC00000000000000000004DF /* ActualiWidgets */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -94,7 +121,15 @@
 		};
 		AC00000000000000000003DF /* ActualiShared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AD00000000000000000010DF /* Exceptions for "ActualiShared" folder in "ActualiWidgets" target */,
+			);
 			path = ActualiShared;
+			sourceTree = "<group>";
+		};
+		AD00000000000000000002DF /* ActualiWalletDelivery */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ActualiWalletDelivery;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -131,6 +166,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AD00000000000000000006DF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -140,6 +182,7 @@
 				A7550B882EE7B4F7007026DC /* Actuali */,
 				AC00000000000000000003DF /* ActualiShared */,
 				AC00000000000000000002DF /* ActualiWidgets */,
+				AD00000000000000000002DF /* ActualiWalletDelivery */,
 				A79D4A9E2FA1F8F000D5A2DF /* ActualiTests */,
 				AB0000000000000000000ADF /* ActualiUITests */,
 				A7550B872EE7B4F7007026DC /* Products */,
@@ -151,6 +194,7 @@
 			children = (
 				A7550B862EE7B4F7007026DC /* Actuali.app */,
 				AC00000000000000000001DF /* ActualiWidgets.appex */,
+				AD00000000000000000001DF /* ActualiWalletDelivery.appex */,
 				A79D4A9D2FA1F8F000D5A2DF /* ActualiTests.xctest */,
 				AB0000000000000000000BDF /* ActualiUITests.xctest */,
 			);
@@ -168,12 +212,14 @@
 				A7550B832EE7B4F7007026DC /* Frameworks */,
 				A7550B842EE7B4F7007026DC /* Resources */,
 				AC0000000000000000000DDF /* Embed Foundation Extensions */,
+				AD0000000000000000000DDF /* Embed ExtensionKit Extensions */,
 				A7550BC02EE7B600007026DC /* Stamp Build Number */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				AC0000000000000000000CDF /* PBXTargetDependency */,
+				AD0000000000000000000CDF /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A7550B882EE7B4F7007026DC /* Actuali */,
@@ -259,6 +305,30 @@
 			productReference = AC00000000000000000001DF /* ActualiWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		AD00000000000000000004DF /* ActualiWalletDelivery */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AD00000000000000000008DF /* Build configuration list for PBXNativeTarget "ActualiWalletDelivery" */;
+			buildPhases = (
+				AD00000000000000000005DF /* Sources */,
+				AD00000000000000000006DF /* Frameworks */,
+				AD00000000000000000007DF /* Resources */,
+				AD0000000000000000000FDF /* Stamp Build Number */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AD00000000000000000002DF /* ActualiWalletDelivery */,
+				AC00000000000000000003DF /* ActualiShared */,
+			);
+			name = ActualiWalletDelivery;
+			packageProductDependencies = (
+			);
+			productName = ActualiWalletDelivery;
+			productReference = AD00000000000000000001DF /* ActualiWalletDelivery.appex */;
+			productType = "com.apple.product-type.extensionkit-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -309,6 +379,7 @@
 			targets = (
 				A7550B852EE7B4F7007026DC /* Actuali */,
 				AC00000000000000000004DF /* ActualiWidgets */,
+				AD00000000000000000004DF /* ActualiWalletDelivery */,
 				A79D4A9C2FA1F8F000D5A2DF /* ActualiTests */,
 				AB0000000000000000000CDF /* ActualiUITests */,
 			);
@@ -338,6 +409,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AC00000000000000000007DF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AD00000000000000000007DF /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -387,6 +465,26 @@
 			shellPath = /bin/sh;
 			shellScript = "# Same stamp as the app target: App Store validation requires an extension's\n# CFBundleVersion to match its containing app, so the widget must number\n# itself identically.\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif COUNT=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null); then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $((COUNT + 100))\" \"${PLIST}\"\nfi\n";
 		};
+		AD0000000000000000000FDF /* Stamp Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Stamp Build Number";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Same stamp as the app target: App Store validation requires an extension's\n# CFBundleVersion to match its containing app.\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif COUNT=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null); then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $((COUNT + 100))\" \"${PLIST}\"\nfi\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -418,6 +516,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AD00000000000000000005DF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -435,6 +540,11 @@
 			isa = PBXTargetDependency;
 			target = AC00000000000000000004DF /* ActualiWidgets */;
 			targetProxy = AC0000000000000000000BDF /* PBXContainerItemProxy */;
+		};
+		AD0000000000000000000CDF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AD00000000000000000004DF /* ActualiWalletDelivery */;
+			targetProxy = AD0000000000000000000BDF /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -820,6 +930,60 @@
 			};
 			name = Release;
 		};
+		AD00000000000000000009DF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ActualiWalletDelivery.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = GJGY9A384M;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "ActualiWalletDelivery-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Actuali;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LOCALIZATION_EXPORT_SUPPORTED = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mfazz.ActualiOS.WalletDelivery;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AD0000000000000000000ADF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ActualiWalletDelivery.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = GJGY9A384M;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "ActualiWalletDelivery-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Actuali;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LOCALIZATION_EXPORT_SUPPORTED = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mfazz.ActualiOS.WalletDelivery;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -864,6 +1028,15 @@
 			buildConfigurations = (
 				AC00000000000000000009DF /* Debug */,
 				AC0000000000000000000ADF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AD00000000000000000008DF /* Build configuration list for PBXNativeTarget "ActualiWalletDelivery" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AD00000000000000000009DF /* Debug */,
+				AD0000000000000000000ADF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
