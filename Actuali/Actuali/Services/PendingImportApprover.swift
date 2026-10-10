@@ -256,8 +256,7 @@ final class PendingImportApprover {
     /// The deterministic financial id makes a retry after queue cleanup fails
     /// a successful no-op instead of a second transaction.
     func saveEdited(_ item: PendingImport, form: BudgetStore.TransactionForm) async throws -> SaveResult {
-        guard form.splits.isEmpty,
-              let amount = Double(form.amount),
+        guard let amount = Double(form.amount),
               let unsignedCents = Transaction.cents(fromDollars: amount),
               unsignedCents > 0 else {
             throw ApproveError.invalidAmount
@@ -286,33 +285,23 @@ final class PendingImportApprover {
             throw ApproveError.noBudgetLoaded
         }
 
-        if form.type == .transfer {
-            guard let toAccountId = form.transferToAccountId else {
-                throw BudgetStoreError.missingTransferDestination
+        // Transfers and splits write several rows, so they go through the
+        // store's form save. The import's id stamps the first row, which is
+        // what a retry finds.
+        if form.type == .transfer || !form.splits.isEmpty {
+            if form.type == .transfer {
+                guard let toAccountId = form.transferToAccountId else {
+                    throw BudgetStoreError.missingTransferDestination
+                }
+                guard let toAccount = accounts.first(where: { $0.id == toAccountId }) else {
+                    throw ApproveError.noAccountAvailable
+                }
+                guard !toAccount.closed else { throw ApproveError.accountClosed }
             }
-            guard toAccountId != form.accountId else {
-                throw BudgetStoreError.transferAccountsMatch
-            }
-            guard let toAccount = accounts.first(where: { $0.id == toAccountId }) else {
-                throw ApproveError.noAccountAvailable
-            }
-            guard !toAccount.closed else { throw ApproveError.accountClosed }
-
             if try await database.transactionExists(id: item.id.uuidString, financialId: financialId) {
                 return .duplicate
             }
-
-            try await store.createTransfer(
-                fromAccountId: form.accountId,
-                toAccountId: toAccountId,
-                amountCents: unsignedCents,
-                date: Transaction.yyyymmdd(from: form.date),
-                notes: form.notes.isEmpty ? nil : form.notes,
-                cleared: form.cleared,
-                categoryId: form.categoryId,
-                sourceId: item.id.uuidString,
-                financialId: financialId
-            )
+            try await store.saveTransaction(form, newId: item.id.uuidString, financialId: financialId)
             return .inserted(item.id.uuidString)
         }
 
