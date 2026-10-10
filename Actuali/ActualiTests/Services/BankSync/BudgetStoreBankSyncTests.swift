@@ -625,78 +625,6 @@ struct BudgetStoreBankSyncTests {
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')")?["count"] as Int? == messageCountAfterRetry)
     }
 
-    @Test func backfillBankSyncRollsBackBackfillAndOpeningAdjustmentTogether() async throws {
-        let (database, url) = try await makeDatabase()
-        defer { cleanup(url) }
-        let firstBody = accountSet(balance: "100.00", transactions: """
-        {"id": "sf-atomic-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
-        """)
-        let store = try await makeStore(database: database, responseBody: firstBody)
-        store.setBankSyncImportStartDay(Self.expectedDay(30))
-        _ = try await store.syncBankAccounts()
-        let openingBefore = try #require(try row(
-            path: url,
-            sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
-        ))["amount"] as Int
-        let messagesBeforeBackfill = try row(
-            path: url,
-            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')"
-        )?["count"] as Int? ?? 0
-
-        store.setSimpleFINClientForTesting(
-            SimpleFINClient(session: bridgeSession(body: accountSet(balance: "100.00", transactions: """
-            {"id": "sf-atomic-old", "posted": \(Self.daysAgo(10)), "amount": "-7.00", "payee": "Older Merchant"},
-            {"id": "sf-atomic-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
-            """)))
-        )
-        let queue = database.dbQueueForTesting
-        try await queue.write { db in
-            try db.execute(sql: """
-            CREATE TRIGGER reject_bank_opening_update
-            BEFORE UPDATE OF amount ON transactions
-            WHEN OLD.starting_balance_flag = 1
-            BEGIN
-                SELECT RAISE(ABORT, 'blocked opening adjustment');
-            END
-            """)
-        }
-
-        let failed = try await store.syncBankAccounts()
-        #expect(failed.accountsSynced == 0)
-        #expect(failed.problems.contains { $0.contains("blocked opening adjustment") })
-        #expect(try rows(path: url, where: "financial_id = 'sf-atomic-old'").isEmpty)
-        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payees WHERE name = 'Older Merchant'")?["count"] as Int? == 0)
-        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payee_mapping WHERE id IN (SELECT id FROM payees WHERE name = 'Older Merchant')")?["count"] as Int? == 0)
-        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')")?["count"] as Int? == messagesBeforeBackfill)
-        let amountAfterFailure = try #require(try row(
-            path: url,
-            sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
-        ))["amount"] as Int
-        #expect(amountAfterFailure == openingBefore)
-
-        try await queue.write { db in
-            try db.execute(sql: "DROP TRIGGER reject_bank_opening_update")
-        }
-        let retried = try await store.syncBankAccounts()
-        #expect(retried.accountsSynced == 1)
-        #expect(try rows(path: url, where: "financial_id = 'sf-atomic-old'").count == 1)
-        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == openingBefore + 700)
-        let payeeCountAfterRetry = try row(path: url, sql: "SELECT COUNT(*) AS count FROM payees WHERE name IN ('Base Merchant', 'Older Merchant')")?["count"] as Int? ?? 0
-        let mappingCountAfterRetry = try row(path: url, sql: "SELECT COUNT(*) AS count FROM payee_mapping WHERE id IN (SELECT id FROM payees WHERE name IN ('Base Merchant', 'Older Merchant'))")?["count"] as Int? ?? 0
-        let messageCountAfterRetry = try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')")?["count"] as Int? ?? 0
-        #expect(payeeCountAfterRetry == 2)
-        #expect(mappingCountAfterRetry == 2)
-
-        let second = try await store.syncBankAccounts()
-        #expect(second.added == 0)
-        #expect(second.updated == 0)
-        #expect(try rows(path: url, where: "financial_id = 'sf-atomic-old'").count == 1)
-        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == openingBefore + 700)
-        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payees WHERE name IN ('Base Merchant', 'Older Merchant')")?["count"] as Int? == payeeCountAfterRetry)
-        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payee_mapping WHERE id IN (SELECT id FROM payees WHERE name IN ('Base Merchant', 'Older Merchant'))")?["count"] as Int? == mappingCountAfterRetry)
-        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')")?["count"] as Int? == messageCountAfterRetry)
-    }
-
     @Test func identicalProviderIdsImportTwiceAndStayIdempotent() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
@@ -800,6 +728,69 @@ struct BudgetStoreBankSyncTests {
             path: url,
             sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
         )?["amount"] as Int? == 10000)
+    }
+
+    /// Ongoing syncs use upstream's window, not the chosen import day, so a
+    /// transaction the person deleted isn't downloaded again — even when the
+    /// bank now sends it under a new id, which no tombstone could match.
+    @Test func ongoingSyncDoesNotReachPastHistoryToTheImportStartDay() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-live", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+        """))
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
+        _ = try await store.syncBankAccounts()
+        try await seedDeletedTransaction(at: url, importedId: "sf-old-id", daysAgo: 20)
+        store.setSimpleFINClientForTesting(
+            SimpleFINClient(session: bridgeSession(body: accountSet(transactions: """
+            {"id": "sf-new-id", "posted": \(Self.daysAgo(20)), "amount": "-33.45", "payee": "Deleted Merchant"},
+            {"id": "sf-live", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+            """)))
+        )
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.added == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-new-id'").isEmpty)
+    }
+
+    /// An emptied account has only deleted rows left. It isn't a first
+    /// import, so it mustn't reach back to the chosen day either.
+    @Test func emptiedAccountDoesNotReachBackToTheImportStartDay() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try await seedDeletedTransaction(at: url, importedId: "sf-old-id", daysAgo: 120)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-new-id", "posted": \(Self.daysAgo(120)), "amount": "-33.45", "payee": "Deleted Merchant"}
+        """))
+        store.setBankSyncImportStartDay(Self.expectedDay(200))
+
+        _ = try await store.syncBankAccounts()
+
+        #expect(try rows(path: url, where: "financial_id = 'sf-new-id'").isEmpty)
+    }
+
+    /// A future-dated row isn't history: it mustn't start the window after
+    /// today, where every download would be dropped.
+    @Test func futureDatedRowDoesNotPushTheWindowPastToday() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let future = Self.expectedDay(-7)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO transactions (id, acct, date, amount, cleared, tombstone, sort_order)
+            VALUES ('tx-bill', 'acct-1', ?, -9900, 0, 0, 1)
+            """, arguments: [future])
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+        """))
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
+
+        _ = try await store.syncBankAccounts()
+
+        #expect(try rows(path: url, where: "financial_id = 'sf-1'").count == 1)
     }
 
     @Test func disabledReimportKeepsRepeatedSimpleFINRecordsAbsentAcrossSyncs() async throws {
@@ -2062,41 +2053,5 @@ struct BudgetStoreBankSyncTests {
         #expect(account["account_sync_source"] as String? == BankSyncSource.simpleFin.rawValue)
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM bank_sync_local_links WHERE account_id = ?", arguments: [Self.accountId])?["count"] as Int? == 0)
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
-    }
-}
-
-extension BudgetStoreBankSyncTests {
-    @Test(arguments: ["notes = 'Concurrent user edit'", "amount = 22000",
-                      "tombstone = 1", "acct = 'other-account'", "reconciled = 1"])
-    func backfillPreservesConcurrentOpeningEdit(change: String) async throws {
-        let (database, url) = try await makeDatabase()
-        defer { cleanup(url) }
-        let firstBody = accountSet(balance: "100.00", transactions: """
-        {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
-        """)
-        let store = try await makeStore(database: database, responseBody: firstBody)
-        store.setBankSyncImportStartDay(Self.expectedDay(30))
-        _ = try await store.syncBankAccounts()
-        store.setSimpleFINClientForTesting(
-            SimpleFINClient(session: bridgeSession(body: accountSet(balance: "100.00", transactions: """
-            {"id": "sf-review-old", "posted": \(Self.daysAgo(10)), "amount": "-7.00", "payee": "Older Merchant"},
-            {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
-            """)))
-        )
-        store.bankSyncBeforeMaterializationHook = {
-            try! database.dbQueueForTesting.write { db in
-                try db.execute(sql: "UPDATE transactions SET \(change) WHERE starting_balance_flag = 1")
-            }
-        }
-        let result = try await store.syncBankAccounts()
-        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM transactions WHERE starting_balance_flag = 1 AND \(change)")?["count"] as Int? == 1)
-        if change.hasPrefix("notes") {
-            #expect(result.problems.isEmpty)
-            #expect(result.accountsSynced == 1)
-        } else {
-            #expect(!result.problems.isEmpty)
-            #expect(result.accountsSynced == 0)
-            #expect(try rows(path: url, where: "financial_id = 'sf-review-old'").isEmpty)
-        }
     }
 }

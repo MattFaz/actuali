@@ -169,7 +169,7 @@ struct BankSyncSetupView: View {
             } header: {
                 Text("Import Start Date")
             } footer: {
-                Text("Linked accounts import transactions from this day on. It starts out as the day this budget began; pick an earlier day to pull in older history. Transactions already imported always stay.")
+                Text("Linked accounts import transactions from this day on. It starts out as the day this budget began. For Apple Wallet accounts, pick an earlier day to pull in older history. Transactions already imported always stay.")
             }
         }
     }
