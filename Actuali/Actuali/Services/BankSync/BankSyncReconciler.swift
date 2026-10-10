@@ -32,6 +32,8 @@ struct BankSyncExistingTransaction: Sendable, Equatable {
     var cleared: Bool
     var reconciled: Bool
     var tombstone: Bool = false
+    var isParent: Bool = false
+    var transferId: String?
 }
 
 /// The columns a matched transaction takes from the downloaded one.
@@ -43,6 +45,9 @@ struct BankSyncUpdate: Sendable, Equatable {
     var importedPayee: String?
     var notes: String?
     var cleared: Bool
+    /// The provider's new amount, set only when a still-pending transaction
+    /// settled for a different amount; nil keeps the current one.
+    var amount: Int?
 }
 
 struct BankSyncPlan: Sendable, Equatable {
@@ -211,20 +216,29 @@ enum BankSyncReconciler {
     }
 
     /// What a matched transaction ends up with. Anything the person already
-    /// filled in wins — the download only fills blanks — except the two fields
-    /// that are the bank's to state: its transaction id and whether it posted.
+    /// filled in wins — the download only fills blanks — except the fields
+    /// that are the bank's to state: its transaction id, whether it posted,
+    /// and the amount of a charge that is still pending.
     private static func update(
         for candidate: BankSyncCandidate,
         matching existing: BankSyncExistingTransaction
     ) -> BankSyncUpdate {
-        BankSyncUpdate(
+        // A pending charge can settle for a different amount (a tip, a fuel
+        // hold). Upstream never updates amounts; here we follow the bank only
+        // when its own id proves it's the same charge, the row hasn't posted
+        // yet, and it isn't a split or a transfer (whose parts and two sides
+        // must keep matching).
+        let settledAmount = existing.importedId == candidate.importedId && !existing.cleared
+            && !existing.isParent && existing.transferId == nil && existing.amount != candidate.amount
+        return BankSyncUpdate(
             expected: existing,
             existingId: existing.id,
             importedId: candidate.importedId,
             payeeId: existing.payeeId ?? candidate.payeeId,
             importedPayee: candidate.payeeName,
             notes: existing.notes ?? candidate.notes,
-            cleared: existing.cleared || candidate.cleared
+            cleared: existing.cleared || candidate.cleared,
+            amount: settledAmount ? candidate.amount : nil
         )
     }
 
@@ -234,6 +248,7 @@ enum BankSyncReconciler {
             || update.importedPayee != existing.importedPayee
             || update.notes != existing.notes
             || update.cleared != existing.cleared
+            || update.amount != nil
     }
 
     /// Whole days between two `YYYYMMDD` dates, or nil if either isn't a real

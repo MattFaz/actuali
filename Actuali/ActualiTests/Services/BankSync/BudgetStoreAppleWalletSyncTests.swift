@@ -166,6 +166,38 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(store.bankSyncSummary == nil)
     }
 
+    /// A pending purchase that settles for more (a tip) takes the new amount
+    /// on the next sync, so the account keeps matching the card.
+    @Test func aPendingPurchaseThatSettlesForMoreTakesTheNewAmount() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet)
+        _ = try await store.syncBankAccounts()
+        let before = try accountBalance(path: url)
+
+        wallet.transactionsByAccount[Self.externalAccountId]![1] = AppleWalletTransaction(
+            id: "33333333-3333-3333-3333-333333333333",
+            amount: Decimal(string: "14.40")!, isCredit: false,
+            merchantName: nil, description: "Corner Store",
+            status: .booked, date: Self.daysAgo(1)
+        )
+        store.setAppleWalletStoreForTesting(wallet)
+        _ = try await store.syncBankAccounts()
+
+        let row = try #require(try rows(path: url, where: "financial_id = '33333333-3333-3333-3333-333333333333'").first)
+        #expect(row["amount"] == -1440)
+        #expect(row["cleared"] == 1)
+        #expect(try accountBalance(path: url) == before - 240)
+        // The new amount also goes to the server and other devices: a second
+        // amount message after the one the import wrote.
+        let rowId: String = row["id"]
+        let amountMessages = try self.row(path: url, sql: """
+        SELECT COUNT(*) AS n FROM messages_crdt WHERE row = ? AND column = 'amount'
+        """, arguments: [rowId])?["n"] as Int?
+        #expect(amountMessages == 2)
+    }
+
     @Test func pullToRefreshImportsWalletTransactions() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
