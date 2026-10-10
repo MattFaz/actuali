@@ -127,7 +127,8 @@ struct AppleWalletProvider: Sendable {
                 currentBalanceCents: account.balanceCents.map {
                     account.balanceIncludesPending ? $0 : $0 + pending
                 },
-                accountDataReceived: true
+                accountDataReceived: true,
+                rejectedIds: Set(transactions.filter { $0.status == .rejected }.map(\.id))
             )
         }
         return set
