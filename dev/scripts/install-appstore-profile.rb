@@ -2,7 +2,7 @@
 # Downloads the App Store provisioning profiles from App Store Connect and
 # installs them where xcodebuild looks up profiles for manually-signed
 # exports. Auth: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH (path to the .p8);
-# optional PROFILE_NAMES (comma-separated, defaults to the app and widget
+# optional PROFILE_NAMES (comma-separated, defaults to the app and extension
 # profiles).
 require "base64"
 require "json"
@@ -10,7 +10,7 @@ require "net/http"
 require "fileutils"
 require_relative "asc_jwt"
 
-profile_names = ENV.fetch("PROFILE_NAMES", "Actuali App Store,Actuali Widgets App Store").split(",").map(&:strip)
+profile_names = ENV.fetch("PROFILE_NAMES", "Actuali App Store,Actuali Widgets App Store,Actuali Wallet Delivery App Store").split(",").map(&:strip)
 jwt = asc_jwt
 
 profile_names.each do |profile_name|

@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Flips the app and widget targets' Release configurations to manual
+# Flips the app and extension targets' Release configurations to manual
 # distribution signing. Run in the CI checkout before archiving (never
 # committed): automatic signing at archive time signs with a development
 # certificate, and a fresh runner has no key for an existing one, so every
@@ -14,6 +14,7 @@ PBXPROJ = File.expand_path("../../Actuali/Actuali.xcodeproj/project.pbxproj", __
 PROFILES = {
   "com.mfazz.ActualiOS" => "Actuali App Store",
   "com.mfazz.ActualiOS.Widgets" => "Actuali Widgets App Store",
+  "com.mfazz.ActualiOS.WalletDelivery" => "Actuali Wallet Delivery App Store",
 }
 
 src = File.read(PBXPROJ)

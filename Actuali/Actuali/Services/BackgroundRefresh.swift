@@ -28,7 +28,7 @@ extension BGAppRefreshTask: BackgroundRefreshTask {}
 enum BackgroundRefresh {
     /// Must stay listed in BGTaskSchedulerPermittedIdentifiers (both Info
     /// plists) — registering an unlisted identifier crashes at launch.
-    static let taskIdentifier = "com.mfazz.ActualiOS.refresh"
+    static let taskIdentifier = WalletDelivery.refreshTaskIdentifier
 
     /// Hint to iOS for the earliest next run; actual timing is at the
     /// system's discretion and typically less frequent. Kept low — it is only

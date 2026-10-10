@@ -18,6 +18,8 @@
 		<string>Actuali App Store</string>
 		<key>com.mfazz.ActualiOS.Widgets</key>
 		<string>Actuali Widgets App Store</string>
+		<key>com.mfazz.ActualiOS.WalletDelivery</key>
+		<string>Actuali Wallet Delivery App Store</string>
 	</dict>
 	<key>uploadSymbols</key>
 	<true/>

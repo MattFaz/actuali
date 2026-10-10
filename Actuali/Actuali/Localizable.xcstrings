@@ -47115,6 +47115,53 @@
         }
       }
     },
+    "Last Wallet Update" : {
+      "comment" : "Settings label for when Wallet (FinanceKit) last reported changes in the background",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Wallet-Aktualisierung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last Wallet Update"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Última actualización de Wallet"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dernière mise à jour Wallet"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ultimo aggiornamento di Wallet"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laatste Wallet-update"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Última atualização da Wallet"
+          }
+        }
+      }
+    },
     "Layout" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -84332,6 +84379,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Automação do Wallet"
+          }
+        }
+      }
+    },
+    "Wallet refresh request failed: %@" : {
+      "comment" : "Settings footnote when the Wallet delivery extension could not request a background refresh; %@ is the system error",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wallet-Aktualisierungsanforderung fehlgeschlagen: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wallet refresh request failed: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La solicitud de actualización de Wallet falló: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La demande d'actualisation Wallet a échoué : %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richiesta di aggiornamento Wallet non riuscita: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wallet-vernieuwingsverzoek mislukt: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A solicitação de atualização da Wallet falhou: %@"
           }
         }
       }
