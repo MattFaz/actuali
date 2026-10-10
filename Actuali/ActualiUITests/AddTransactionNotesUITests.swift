@@ -41,6 +41,31 @@ final class AddTransactionNotesUITests: XCTestCase {
     }
 
     @MainActor
+    func testNotesClearButtonClearsText() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+
+        let notes = app.descendants(matching: .any)["addTransaction.notes"].firstMatch
+        XCTAssertTrue(notes.waitForExistence(timeout: 5))
+        let clear = app.buttons["addTransaction.notesClear"]
+        XCTAssertFalse(clear.exists, "clear button shouldn't exist when notes are empty")
+
+        notes.tap()
+        notes.typeText("Pending SMS receipt")
+        XCTAssertTrue(clear.waitForExistence(timeout: 5))
+
+        clear.tap()
+        XCTAssertTrue(clear.waitForNonExistence(timeout: 5), "clear button should disappear once notes are empty")
+    }
+
+    @MainActor
     func testSplitLineNotesHaveNoEmptyLinkSpaceAndStillShowLinks() {
         continueAfterFailure = false
         let app = XCUIApplication()

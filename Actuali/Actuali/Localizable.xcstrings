@@ -7199,6 +7199,53 @@
         }
       }
     },
+    "%@ is not mapped to an account. Map it to route future imports automatically." : {
+      "comment" : "Notice in the pending import review banner when the transaction's card hint has no mapped account",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist keinem Konto zugeordnet. Ordnen Sie sie zu, um zukünftige Importe automatisch weiterzuleiten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is not mapped to an account. Map it to route future imports automatically."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ no está asignada a una cuenta. Asígnala para enrutar futuras importaciones automáticamente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ n'est pas associée à un compte. Associez-la pour acheminer automatiquement les futurs imports."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ non è associata a un conto. Associala per instradare automaticamente le importazioni future."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is niet toegewezen aan een rekening. Wijs deze toe om toekomstige importen automatisch te routeren."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ não está associado a uma conta. Associe-o para rotear futuras importações automaticamente."
+          }
+        }
+      }
+    },
     "%@ left to assign" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -49003,6 +49050,53 @@
         }
       }
     },
+    "Map Card" : {
+      "comment" : "Button to create a card mapping for an unmapped card in pending import review",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karte zuordnen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Map Card"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asignar tarjeta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Associer la carte"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mappa carta"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kaart toewijzen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Associar cartão"
+          }
+        }
+      }
+    },
     "Map card last-4 digits or bank keywords (e.g. \"1234\", \"HSBC\") to your accounts. When a shortcut logs a transaction with a card or account hint — such as the card name from an Apple Wallet automation — it routes to the matching account automatically." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -83059,6 +83153,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Desbloquear orçamento"
+          }
+        }
+      }
+    },
+    "Unmapped" : {
+      "comment" : "Badge next to unmapped card hint in pending transactions row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht zugeordnet"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unmapped"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No asignada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non associée"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non associata"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niet toegewezen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não associada"
           }
         }
       }
