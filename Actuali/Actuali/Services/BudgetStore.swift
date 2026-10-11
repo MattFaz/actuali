@@ -4408,12 +4408,27 @@ final class BudgetStore: ObservableObject {
         let walletIds = bankSyncAccounts
             .filter { $0.source == .financeKit && !$0.closed }
             .map(\.id)
-        guard !walletIds.isEmpty else { return [] }
-        guard await appleWalletStore.availability() == .authorized else { return [] }
+        let authorized = walletIds.isEmpty ? false : await appleWalletStore.availability() == .authorized
+        updateWalletBackgroundDelivery(enabled: authorized)
+        guard authorized else { return [] }
         guard let result = try? await syncBankAccounts(accountIds: walletIds),
               !result.importedTransactions.isEmpty else { return [] }
 
         return result.importedTransactions
+    }
+
+    /// Whether this device last turned FinanceKit background delivery on.
+    static let walletBackgroundDeliveryKey = "walletBackgroundDeliveryEnabled"
+
+    /// FinanceKit background delivery wakes the Wallet delivery extension,
+    /// which asks iOS to run this sync in the background (WalletDelivery).
+    /// FinanceKit is only called when the wanted state changes, so budgets
+    /// without Wallet accounts never touch it.
+    private func updateWalletBackgroundDelivery(enabled: Bool) {
+        let defaults = appleWalletLinkDefaults
+        guard defaults.bool(forKey: Self.walletBackgroundDeliveryKey) != enabled,
+              appleWalletStore.setBackgroundDelivery(enabled: enabled) else { return }
+        defaults.set(enabled, forKey: Self.walletBackgroundDeliveryKey)
     }
 
     func linkBankAccount(accountId: String, to remote: BankSyncRemoteAccount) async throws {

@@ -638,6 +638,7 @@ private struct SyncSettingsSection: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
     @State private var refreshRequestError = BackgroundRefreshStatus().lastScheduleError
+    @State private var walletDelivery = WalletDelivery.shared()?.status()
     @State private var showingResetSyncConfirm = false
 
     var body: some View {
@@ -708,6 +709,24 @@ private struct SyncSettingsSection: View {
                     .textSelection(.enabled)
             }
 
+            // When FinanceKit last woke the Wallet delivery extension (iOS
+            // 26+), which asks iOS for the refresh above. Hidden until it has.
+            if let lastWalletDelivery = walletDelivery?.lastDelivery {
+                HStack {
+                    Text("Last Wallet Update")
+                    Spacer()
+                    Text(lastWalletDelivery, style: .relative)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let walletRequestError = walletDelivery?.lastRequestError {
+                Text("Wallet refresh request failed: \(walletRequestError)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
             Button("Sync Now") {
                 Task { await budgetStore.sync() }
             }
@@ -747,6 +766,7 @@ private struct SyncSettingsSection: View {
         let status = BackgroundRefreshStatus()
         lastBackgroundRefresh = status.lastRun
         refreshRequestError = status.lastScheduleError
+        walletDelivery = WalletDelivery.shared()?.status()
     }
 }
 

@@ -87,6 +87,22 @@ struct FinanceKitWalletStore: AppleWalletReading {
         }
     }
 
+    func setBackgroundDelivery(enabled: Bool) -> Bool {
+        #if targetEnvironment(simulator)
+        return false
+        #else
+        guard #available(iOS 26.0, *), FinanceStore.isDataAvailable(.financialData) else { return false }
+        if enabled {
+            // Hourly is the most frequent FinanceKit offers; each delivery
+            // asks iOS for the app's background refresh (WalletDelivery).
+            FinanceStore.shared.enableBackgroundDelivery(for: [.transactions, .accountBalances], frequency: .hourly)
+        } else {
+            FinanceStore.shared.disableAllBackgroundDelivery()
+        }
+        return true
+        #endif
+    }
+
     static func latestBalance(_ balances: [AppleWalletBalance]) -> AppleWalletBalance? {
         balances.max { $0.asOfDate < $1.asOfDate }
     }
