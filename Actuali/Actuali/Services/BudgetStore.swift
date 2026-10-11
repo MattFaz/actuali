@@ -4584,8 +4584,10 @@ final class BudgetStore: ObservableObject {
         var emptiedAccountIds: Set<String> = []
         var targetStartDays: [String: Int] = [:]
         for target in targets {
-            // Both "the read failed" and "the account has no transactions"
-            // mean the same thing here: start at the chosen day.
+            // A nil oldest collapses "the read failed" and "no live
+            // transactions left"; which window that becomes is decided below,
+            // where an account that still has rows (deleted or future-dated)
+            // is treated as emptied rather than a first import.
             oldestDates[target.id] = await (try? database.oldestTransactionDate(accountId: target.id)) ?? nil
             if oldestDates[target.id] == nil,
                await (try? database.hasAnyTransactionRow(accountId: target.id)) == true {
