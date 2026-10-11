@@ -438,6 +438,37 @@ struct BudgetStoreBankSyncTests {
         #expect(opening[0]["date"] == Self.expectedDay(5))
     }
 
+    @Test func disabledImportPendingSkipsPendingUntilTheyPost() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let queue = try DatabaseQueue(path: url.path)
+        let accountId = Self.accountId
+        try await queue.write { db in
+            try db.execute(
+                sql: "INSERT INTO preferences (id, value) VALUES (?, 'false')",
+                arguments: ["sync-import-pending-\(accountId)"]
+            )
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
+        {"id": "sf-2", "posted": 0, "pending": true, "transacted_at": \(Self.daysAgo(1)),
+         "amount": "-12.00", "description": "Corner Store"}
+        """))
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.added == 2)
+        let imported = try rows(path: url, where: "financial_id IS NOT NULL")
+        #expect(imported.count == 1)
+        #expect(imported[0]["financial_id"] == "sf-1")
+        // The reported balance still carries the skipped pending charge, so
+        // the opening leaves it out too; otherwise the account would count
+        // it twice once it posts: 10000 - -3345 - -1200.
+        let opening = try rows(path: url, where: "starting_balance_flag = 1")
+        #expect(opening.count == 1)
+        #expect(opening[0]["amount"] == 14545)
+    }
+
     @Test func bankSyncHookDoesNotLeakFromAnEarlyReturn() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
