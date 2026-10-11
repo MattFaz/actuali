@@ -4902,7 +4902,7 @@ final class BudgetStore: ObservableObject {
             candidates.removeAll { !$0.cleared }
         }
 
-        guard !candidates.isEmpty || existingOldestDay == nil else {
+        guard !candidates.isEmpty || !download.rejectedIds.isEmpty || existingOldestDay == nil else {
             return (0, 0, [], 0)
         }
         let earliest = candidates.map(\.date).min() ?? startingDay
@@ -5084,6 +5084,25 @@ final class BudgetStore: ObservableObject {
             expectedLink: expectedLink,
             preparedRulesFingerprint: prepared.fingerprint
         )
+        // A charge the provider later rejects (a voided hold) never moved money,
+        // but its pending row would otherwise stay forever. Remove it while it
+        // is still pending and unreconciled, so nothing the person confirmed
+        // is touched. Read after the writes above: a reissued charge may have
+        // just claimed the row, and then it no longer carries the rejected id.
+        // An empty date range (0...0) makes this an id-only lookup.
+        let rejectedRows = download.rejectedIds.isEmpty ? [] : try await database.bankSyncWindow(
+            accountId: target.id, from: 0, to: 0, importedIds: download.rejectedIds
+        )
+        var voided: [Transaction] = []
+        for row in rejectedRows where !row.tombstone && !row.cleared && !row.reconciled {
+            if let transaction = try await database.fetchTransaction(id: row.id) {
+                voided.append(transaction)
+            }
+        }
+        if !voided.isEmpty {
+            await performDeleteTransactions(voided)
+        }
+
         let added = materialized.inserted.count + (openingInsert == nil ? 0 : 1)
         return (added, materialized.updatedCount, materialized.inserted, plan.rejectedConflicts)
     }

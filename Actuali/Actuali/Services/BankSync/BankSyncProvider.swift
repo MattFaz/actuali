@@ -22,6 +22,9 @@ struct BankSyncDownload: Sendable, Equatable {
     /// Whether the provider returned the account payload, even if it contained
     /// no transactions. An error-only response leaves this false.
     var accountDataReceived = false
+    /// Ids of transactions the provider now reports as rejected (a voided
+    /// hold): the money never moved.
+    var rejectedIds: Set<String> = []
 }
 
 struct BankSyncDownloadSet: Sendable, Equatable {

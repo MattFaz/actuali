@@ -757,6 +757,88 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(try rows(path: url, where: "starting_balance_flag = 1").count == 1)
     }
 
+    /// The fixture's pending Corner Store purchase, as Wallet reports it once
+    /// the hold is voided.
+    private static let rejectedHold = AppleWalletTransaction(
+        id: "33333333-3333-3333-3333-333333333333",
+        amount: Decimal(string: "12.00")!, isCredit: false,
+        merchantName: nil, description: "Corner Store",
+        status: .rejected, date: daysAgo(1)
+    )
+
+    /// A pending hold that Wallet later rejects is removed on the next sync,
+    /// so the account stops counting money that never moved — even when the
+    /// rejection is all that sync brings.
+    @Test func aRejectedPendingHoldIsRemovedOnTheNextSync() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        wallet.transactionsByAccount[Self.externalAccountId]![0] = AppleWalletTransaction(
+            id: "11111111-1111-1111-1111-111111111111",
+            amount: Decimal(string: "33.45")!, isCredit: false,
+            merchantName: "Blue Bottle", description: "BLUE BOTTLE COFFEE",
+            status: .booked, date: Self.daysAgo(40)
+        )
+        let store = try await makeStore(database: database, walletStore: wallet)
+        _ = try await store.syncBankAccounts()
+        let before = try accountBalance(path: url)
+
+        wallet.transactionsByAccount[Self.externalAccountId] = [Self.rejectedHold]
+        store.setAppleWalletStoreForTesting(wallet)
+        _ = try await store.syncBankAccounts()
+
+        let hold = try #require(try rows(path: url, where: "financial_id = '\(Self.rejectedHold.id)'").first)
+        #expect(hold["tombstone"] == 1)
+        #expect(try accountBalance(path: url) == before + 1200)
+    }
+
+    /// A merchant that voids a hold and charges again for the same amount: the
+    /// new charge takes over the pending row, which then must not be deleted.
+    @Test func aReissuedChargeKeepsTheRowItTookOver() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet)
+        _ = try await store.syncBankAccounts()
+        let before = try accountBalance(path: url)
+
+        wallet.transactionsByAccount[Self.externalAccountId]![1] = Self.rejectedHold
+        wallet.transactionsByAccount[Self.externalAccountId]!.append(AppleWalletTransaction(
+            id: "44444444-4444-4444-4444-444444444444",
+            amount: Decimal(string: "12.00")!, isCredit: false,
+            merchantName: nil, description: "Corner Store",
+            status: .booked, date: Self.daysAgo(1)
+        ))
+        store.setAppleWalletStoreForTesting(wallet)
+        _ = try await store.syncBankAccounts()
+
+        let live = try rows(path: url, where: "amount = -1200 AND tombstone = 0")
+        #expect(live.count == 1)
+        #expect(live.first?["financial_id"] == "44444444-4444-4444-4444-444444444444")
+        #expect(try accountBalance(path: url) == before)
+    }
+
+    /// A row the person already marked cleared is theirs: a later rejection
+    /// leaves it alone.
+    @Test func aRejectedChargeThePersonClearedStays() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet)
+        _ = try await store.syncBankAccounts()
+        let holdId = Self.rejectedHold.id
+        try await DatabaseQueue(path: url.path).write { db in
+            try db.execute(sql: "UPDATE transactions SET cleared = 1 WHERE financial_id = ?", arguments: [holdId])
+        }
+
+        wallet.transactionsByAccount[Self.externalAccountId]![1] = Self.rejectedHold
+        store.setAppleWalletStoreForTesting(wallet)
+        _ = try await store.syncBankAccounts()
+
+        let row = try #require(try rows(path: url, where: "financial_id = '\(Self.rejectedHold.id)'").first)
+        #expect(row["tombstone"] == 0)
+    }
+
     @Test func syncingAgainImportsNothingTwice() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
