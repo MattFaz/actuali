@@ -48,6 +48,44 @@ struct PendingImportsResolveAccountTests {
             == "Bénéficiaire inconnu")
         #expect(PendingImportsView.cardLabel("1234", locale: locale, bundle: appBundle)
             == "Carte ••1234")
+        #expect(PendingImportsView.cardUnmappedContext(hint: "1234", locale: locale, bundle: appBundle)
+            == "Carte ••1234 n'est pas associée à un compte. Associez-la pour acheminer automatiquement les futurs imports.")
+    }
+
+    @Test func unmappedCardDetectionMatchesRoutingChain() {
+        let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
+        let mappings = ["1234": "acct_hsbc"]
+
+        #expect(!PendingImportsView.isCardUnmapped(
+            hint: "1234", originBudgetId: "active", activeBudgetId: "active", accounts: accounts, cardMappings: mappings
+        ))
+        #expect(PendingImportsView.isCardUnmapped(
+            hint: "9999", originBudgetId: "active", activeBudgetId: "active", accounts: accounts, cardMappings: mappings
+        ))
+        // Foreign budget imports should not be flagged as unmapped cards in the active budget.
+        #expect(!PendingImportsView.isCardUnmapped(
+            hint: "9999", originBudgetId: "other", activeBudgetId: "active", accounts: accounts, cardMappings: mappings
+        ))
+        // Legacy or unassigned imports adopt into the active budget.
+        #expect(PendingImportsView.isCardUnmapped(
+            hint: "9999", originBudgetId: nil, activeBudgetId: "active", accounts: accounts, cardMappings: mappings
+        ))
+        #expect(!PendingImportsView.isCardUnmapped(
+            hint: nil, originBudgetId: "active", activeBudgetId: "active", accounts: accounts, cardMappings: mappings
+        ))
+        #expect(!PendingImportsView.isCardUnmapped(
+            hint: "", originBudgetId: "active", activeBudgetId: "active", accounts: accounts, cardMappings: mappings
+        ))
+
+        let draft = PendingImportsView.mappingDraft(hint: " 9999 ", accountId: "acct_hsbc")
+        #expect(draft.accountId == "acct_hsbc")
+        #expect(draft.keywords == ["9999"])
+        #expect(draft.originalKeywords.isEmpty)
+        #expect(!draft.isEditing)
+
+        let enLocale = Locale(identifier: "en_US")
+        #expect(PendingImportsView.cardUnmappedContext(hint: "9999", locale: enLocale, bundle: appBundle)
+            == "Card ••9999 is not mapped to an account. Map it to route future imports automatically.")
     }
 
     @Test func errorsUseInjectedLocale() {
