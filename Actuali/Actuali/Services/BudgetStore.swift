@@ -4408,12 +4408,27 @@ final class BudgetStore: ObservableObject {
         let walletIds = bankSyncAccounts
             .filter { $0.source == .financeKit && !$0.closed }
             .map(\.id)
-        guard !walletIds.isEmpty else { return [] }
-        guard await appleWalletStore.availability() == .authorized else { return [] }
+        let authorized = walletIds.isEmpty ? false : await appleWalletStore.availability() == .authorized
+        updateWalletBackgroundDelivery(enabled: authorized)
+        guard authorized else { return [] }
         guard let result = try? await syncBankAccounts(accountIds: walletIds),
               !result.importedTransactions.isEmpty else { return [] }
 
         return result.importedTransactions
+    }
+
+    /// Whether this device last turned FinanceKit background delivery on.
+    static let walletBackgroundDeliveryKey = "walletBackgroundDeliveryEnabled"
+
+    /// FinanceKit background delivery wakes the Wallet delivery extension,
+    /// which asks iOS to run this sync in the background (WalletDelivery).
+    /// FinanceKit is only called when the wanted state changes, so budgets
+    /// without Wallet accounts never touch it.
+    private func updateWalletBackgroundDelivery(enabled: Bool) {
+        let defaults = appleWalletLinkDefaults
+        guard defaults.bool(forKey: Self.walletBackgroundDeliveryKey) != enabled,
+              appleWalletStore.setBackgroundDelivery(enabled: enabled) else { return }
+        defaults.set(enabled, forKey: Self.walletBackgroundDeliveryKey)
     }
 
     func linkBankAccount(accountId: String, to remote: BankSyncRemoteAccount) async throws {
@@ -4581,23 +4596,41 @@ final class BudgetStore: ObservableObject {
         let lookbackFloor = DayDate.today()
             .adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
         var oldestDates: [String: Int] = [:]
+        var emptiedAccountIds: Set<String> = []
         var targetStartDays: [String: Int] = [:]
         for target in targets {
-            // Both "the read failed" and "the account has no transactions"
-            // mean the same thing here: start at the chosen day.
+            // A nil oldest collapses "the read failed" and "no live
+            // transactions left"; which window that becomes is decided below,
+            // where an account that still has rows (deleted or future-dated)
+            // is treated as emptied rather than a first import.
             oldestDates[target.id] = await (try? database.oldestTransactionDate(accountId: target.id)) ?? nil
+            if oldestDates[target.id] == nil,
+               await (try? database.hasAnyTransactionRow(accountId: target.id)) == true {
+                emptiedAccountIds.insert(target.id)
+            }
         }
         func downloadTargets(_ accounts: [BankSyncAccount]) -> [BankSyncTarget] {
             accounts.map {
                 let startDay: Int
                 if let oldest = oldestDates[$0.id] {
                     let incremental = max(lookbackFloor, oldest)
-                    // Reach past existing history only while the chosen day sits
-                    // below it. Note this is not `min(importStart, incremental)`:
-                    // the default day is older than the 90-day floor for any
-                    // budget past its first quarter, and that form would widen
-                    // every ongoing sync to it.
-                    startDay = importStart < oldest ? importStart : incremental
+                    // SimpleFIN matches upstream's `getAccountSyncStartDate`.
+                    // Reaching back to the chosen day would download
+                    // transactions the person deleted, which the web never
+                    // asks for again and which come back as new rows when the
+                    // bank has changed their ids (GH #665).
+                    //
+                    // Wallet reaches past existing history while the chosen
+                    // day sits below it. Note this is not
+                    // `min(importStart, incremental)`: the default day is older
+                    // than the 90-day floor for any budget past its first
+                    // quarter, and that form would widen every ongoing sync.
+                    startDay = $0.source == .financeKit && importStart < oldest
+                        ? importStart : incremental
+                } else if $0.source != .financeKit, emptiedAccountIds.contains($0.id) {
+                    // Only deleted rows left: upstream's window, since the
+                    // chosen day would download every one of them again.
+                    startDay = lookbackFloor
                 } else {
                     startDay = importStart
                 }
@@ -4781,6 +4814,17 @@ final class BudgetStore: ObservableObject {
         // start day — one request covers every account, so it reaches back as
         // far as the hungriest of them.
         var candidates = download.candidates
+        // Upstream `normalizeBankSyncTransactions` reads this synced
+        // per-account preference (default true) and drops anything the bank
+        // hasn't booked; it imports on the sync after it posts.
+        let importPending = try await (database.fetchPreference(
+            id: "sync-import-pending-\(target.id)"
+        ) ?? "true") == "true"
+        let skippedPending = importPending ? 0 : candidates.lazy
+            .filter { !$0.cleared }.reduce(0) { $0 + $1.amount }
+        if !importPending {
+            candidates.removeAll { !$0.cleared }
+        }
 
         guard !candidates.isEmpty || existingOldestDay == nil else {
             return (0, 0, [], 0)
@@ -4903,7 +4947,9 @@ final class BudgetStore: ObservableObject {
         var openingInsert: BankSyncOpeningInsert?
         if existingOldestDay == nil,
            let balance = download.currentBalanceCents {
-            let openingAmount = balance - expectedMaterializedInserts
+            // The reported balance still includes skipped pending charges;
+            // leave them out so they aren't counted twice once they post.
+            let openingAmount = balance - skippedPending - expectedMaterializedInserts
                 .filter { $0.transaction.accountId == target.id }
                 .reduce(0) { $0 + $1.transaction.amount }
             if openingAmount != 0 {
