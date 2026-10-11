@@ -43,4 +43,35 @@ struct AccountsListViewTests {
             "Tangerine Chequing",
         ])
     }
+
+    @Test func singleAccountGroupRowRoundsBothEndsWhenNextRowHasDifferentBackground() {
+        #expect(AccountGroupRowLayout.position(roundsTop: true, roundsBottom: true) == .single)
+    }
+
+    @Test func firstAndMiddleRowsKeepOnlyTheirOuterTopCorner() {
+        #expect(AccountGroupRowLayout.position(roundsTop: true, roundsBottom: false) == .first)
+        #expect(AccountGroupRowLayout.position(roundsTop: false, roundsBottom: false) == .middle)
+    }
+
+    @Test func lastAccountRowRoundsWhenNextGroupUsesClearBackground() {
+        let nextGroupIsExpanded = true
+        #expect(AccountGroupRowLayout.position(roundsTop: false, roundsBottom: nextGroupIsExpanded) == .last)
+    }
+
+    @Test func lastAccountRowDoesNotRoundWhenNextGroupSharesItsBackground() {
+        let nextGroupIsExpanded = false
+        #expect(AccountGroupRowLayout.position(roundsTop: false, roundsBottom: nextGroupIsExpanded) == .middle)
+    }
+
+    @Test func collapsedGroupHeaderRoundsAtSectionStartAndBeforeExpandedGroup() {
+        let headerIsFirst = true
+        let nextGroupIsExpanded = true
+        #expect(AccountGroupRowLayout.position(roundsTop: headerIsFirst, roundsBottom: nextGroupIsExpanded) == .single)
+    }
+
+    @Test func adjacentCollapsedGroupHeadersShareOneBackgroundWithoutRoundedJoin() {
+        let headerIsFirst = false
+        let nextGroupIsExpanded = false
+        #expect(AccountGroupRowLayout.position(roundsTop: headerIsFirst, roundsBottom: nextGroupIsExpanded) == .middle)
+    }
 }
