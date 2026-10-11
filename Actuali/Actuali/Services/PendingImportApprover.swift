@@ -252,12 +252,11 @@ final class PendingImportApprover {
         }
     }
 
-    /// Saves the standard transaction produced by the pending-import editor.
+    /// Saves the transaction produced by the pending-import editor.
     /// The deterministic financial id makes a retry after queue cleanup fails
     /// a successful no-op instead of a second transaction.
     func saveEdited(_ item: PendingImport, form: BudgetStore.TransactionForm) async throws -> SaveResult {
-        guard form.type != .transfer, form.splits.isEmpty,
-              let amount = Double(form.amount),
+        guard let amount = Double(form.amount),
               let unsignedCents = Transaction.cents(fromDollars: amount),
               unsignedCents > 0 else {
             throw ApproveError.invalidAmount
@@ -282,9 +281,30 @@ final class PendingImportApprover {
         guard !account.closed else { throw ApproveError.accountClosed }
 
         let financialId = Self.financialId(for: item)
-        guard store.databaseForLogger != nil else {
+        guard let database = store.databaseForLogger else {
             throw ApproveError.noBudgetLoaded
         }
+
+        // Transfers and splits write several rows, so they go through the
+        // store's form save. The import's id stamps the first row, which is
+        // what a retry finds.
+        if form.type == .transfer || !form.splits.isEmpty {
+            if form.type == .transfer {
+                guard let toAccountId = form.transferToAccountId else {
+                    throw BudgetStoreError.missingTransferDestination
+                }
+                guard let toAccount = accounts.first(where: { $0.id == toAccountId }) else {
+                    throw ApproveError.noAccountAvailable
+                }
+                guard !toAccount.closed else { throw ApproveError.accountClosed }
+            }
+            if try await database.transactionExists(id: item.id.uuidString, financialId: financialId) {
+                return .duplicate
+            }
+            try await store.saveTransaction(form, newId: item.id.uuidString, financialId: financialId)
+            return .inserted(item.id.uuidString)
+        }
+
         let payeeName = form.payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
         let payee = payeeName.isEmpty ? nil : try await store.findOrCreatePayee(name: payeeName)
         let transaction = Transaction(
