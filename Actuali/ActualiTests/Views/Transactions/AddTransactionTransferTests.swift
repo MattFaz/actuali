@@ -51,15 +51,13 @@ struct AddTransactionTransferTests {
     }
 
     @Test(arguments: [
-        (false, false, false, false, false, true), // New transaction.
-        (false, false, false, true, true, true), // Convertible edit.
-        (true, false, false, false, false, false), // Pending import.
-        (false, true, false, false, false, false), // Split in progress.
-        (false, false, true, true, false, false), // Split parent.
-        (false, false, false, true, false, false), // Non-convertible edit.
+        (false, false, false, false, true), // New transaction or pending import.
+        (false, false, true, true, true), // Convertible edit.
+        (true, false, false, false, false), // Split in progress.
+        (false, true, true, false, false), // Split parent.
+        (false, false, true, false, false), // Non-convertible edit.
     ])
     func transferEligibility(
-        isPendingImportReview: Bool,
         isSplitting: Bool,
         isEditingSplitParent: Bool,
         isEditing: Bool,
@@ -67,7 +65,6 @@ struct AddTransactionTransferTests {
         expected: Bool
     ) {
         #expect(AddTransactionView.offersTransfer(
-            isPendingImportReview: isPendingImportReview,
             isSplitting: isSplitting,
             isEditingSplitParent: isEditingSplitParent,
             isEditing: isEditing,
@@ -77,7 +74,7 @@ struct AddTransactionTransferTests {
 
     @Test func existingTransferOffersReplacementAccounts() {
         #expect(AddTransactionView.offersTransfer(
-            isPendingImportReview: false, isSplitting: false, isEditingSplitParent: false,
+            isSplitting: false, isEditingSplitParent: false,
             isEditing: true, isEditingTransfer: true, canConvertToTransfer: false
         ))
     }
