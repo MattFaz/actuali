@@ -39,6 +39,7 @@ struct AccountDetailView: View {
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
     @State private var cycleSpend: Int = 0
+    @AppStorage("showUpcomingScheduledTransactions") private var showUpcomingSchedules = true
     @AppStorage("showAccountRunningBalance") private var showRunningBalance = true
     @State private var loadedFullHistory = false
     /// What the last `.task` run saw, so only a changed query debounces: a
@@ -120,6 +121,18 @@ struct AccountDetailView: View {
             isSearching: searchQuery != nil,
             statusFilter: budgetStore.transactionStatusFilter
         )
+    }
+
+    nonisolated static func showsEmptyTransactions(
+        isSearching: Bool,
+        statusFilter: TransactionStatusFilter,
+        schedulesLoaded: Bool,
+        hasUpcomingSchedules: Bool,
+        scheduleLoadFailed: Bool,
+        showUpcomingSchedules: Bool = true
+    ) -> Bool {
+        isSearching || statusFilter != .all || !showUpcomingSchedules
+            || (schedulesLoaded && !hasUpcomingSchedules && !scheduleLoadFailed)
     }
 
     /// Pure so tests can reach every branch without a view (same seam as
@@ -795,7 +808,28 @@ struct AccountDetailView: View {
         }
     }
 
+    private var upcomingScheduleEntries: [UpcomingScheduleEntry] {
+        budgetStore.upcomingRegisterEntries(accountId: account.id)
+    }
+
     @ViewBuilder private var transactionSection: some View {
+        if showUpcomingSchedules, searchQuery == nil, budgetStore.transactionStatusFilter == .all {
+            if budgetStore.scheduleLoadError != nil {
+                Section {
+                    Label(
+                        String(localized: "Unable to load scheduled transactions"),
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .foregroundStyle(.secondary)
+                }
+            }
+            if budgetStore.schedulesLoaded, !upcomingScheduleEntries.isEmpty {
+                UpcomingScheduleSections(
+                    entries: upcomingScheduleEntries,
+                    showRunningBalance: showRunningBalance
+                )
+            }
+        }
         if let pager, !pager.transactions.isEmpty {
             let displayedTransactions = transactionsForDisplay
             if budgetStore.transactionDisplayMode == .groupedByDate {
@@ -828,8 +862,19 @@ struct AccountDetailView: View {
             // the screen doesn't reflow once the rows land.
             Section("Recent Transactions") {
                 if pager != nil {
-                    Text(emptyTransactionsText)
-                        .foregroundStyle(.secondary)
+                    if Self.showsEmptyTransactions(
+                        isSearching: searchQuery != nil,
+                        statusFilter: budgetStore.transactionStatusFilter,
+                        schedulesLoaded: budgetStore.schedulesLoaded,
+                        hasUpcomingSchedules: !upcomingScheduleEntries.isEmpty,
+                        scheduleLoadFailed: budgetStore.scheduleLoadError != nil,
+                        showUpcomingSchedules: showUpcomingSchedules
+                    ) {
+                        Text(emptyTransactionsText)
+                            .foregroundStyle(.secondary)
+                    } else if !budgetStore.schedulesLoaded {
+                        ProgressView()
+                    }
                 }
             }
         }
@@ -901,6 +946,9 @@ struct AccountDetailView: View {
         }
         ToolbarItem(placement: .secondaryAction) {
             TransactionGroupingToggle()
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            UpcomingSchedulesVisibilityToggle()
         }
 
         if note.supported {
@@ -1059,6 +1107,7 @@ struct AccountDetailView: View {
             }
             await reload()
         }
+        .task { await budgetStore.loadSchedules() }
         .refreshable {
             await budgetStore.sync()
             // Not every sync bumps dataVersion (no database, a budget switch

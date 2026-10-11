@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Wallet delivery extension Info.plist base (same convention as
+  ActualiWidgets-Info.plist): GENERATE_INFOPLIST_FILE merges the
+  INFOPLIST_KEY_* values on top. Exists only to carry the ExtensionKit
+  extension point, which has no INFOPLIST_KEY_* setting.
+-->
+<plist version="1.0">
+<dict>
+	<key>EXAppExtensionAttributes</key>
+	<dict>
+		<key>EXExtensionPointIdentifier</key>
+		<string>com.apple.financekit.background-delivery</string>
+	</dict>
+</dict>
+</plist>

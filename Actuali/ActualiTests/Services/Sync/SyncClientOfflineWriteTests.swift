@@ -26,8 +26,10 @@ private final class StallingServer: Sendable {
     private let state = Mutex(State())
 
     /// Safety net so a request left in flight can't hold a URLSession thread
-    /// for the life of the suite.
-    private static let maxStall: DispatchTimeInterval = .seconds(60)
+    /// for the life of the suite. Must outlast the tests' time limit: if it
+    /// fired first, a starved runner would see `completionCount` tick over
+    /// with nothing wrong.
+    private static let maxStall: DispatchTimeInterval = .seconds(360)
 
     var session: URLSession {
         StubTransport.session { [self] _ in
@@ -160,8 +162,9 @@ struct SyncClientOfflineWriteTests {
     /// The whole bug: the caller must not wait on the network round trip.
     /// The time limit is half the assertion — the gate stays shut for the
     /// duration of the test, so a caller that awaits the push never returns at
-    /// all rather than returning slowly.
-    @Test(.timeLimit(.minutes(1)))
+    /// all rather than returning slowly. Five minutes because a loaded CI
+    /// runner has taken over a minute for this body with nothing wrong.
+    @Test(.timeLimit(.minutes(5)))
     func createTransactionReturnsWithoutWaitingForTheServer() async throws {
         let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
@@ -185,7 +188,7 @@ struct SyncClientOfflineWriteTests {
         await cancelStalledSync(syncClient, server)
     }
 
-    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    @Test(.timeLimit(.minutes(5)), arguments: [false, true])
     func categoryMovesReturnAndQueueTheirPushWhileTheServerIsStalled(movingGroup: Bool) async throws {
         let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
@@ -226,7 +229,7 @@ struct SyncClientOfflineWriteTests {
     /// Deferred, not dropped: the push still goes out, just off the caller's
     /// thread. The time limit is the failure mode: a dropped push never wakes
     /// `waitForAttempt()`.
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.timeLimit(.minutes(5)))
     func pushStillHappensAfterTheWriteReturns() async throws {
         let (database, path) = try await makeDatabase()
         defer { cleanup(path) }

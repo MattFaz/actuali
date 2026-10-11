@@ -370,6 +370,8 @@ final class BudgetStore: ObservableObject {
     private(set) var tagsByName: [String: Tag] = [:]
     @Published var tagSummaries: [TagSummary] = []
     @Published var schedules: [ScheduleSummary] = []
+    @Published private(set) var schedulesLoaded = false
+    @Published private(set) var scheduleLoadError: String?
     @Published var upcomingScheduledTransactionLength: String?
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var schedulePaymentDates: [String: Set<DayDate>] = [:]
@@ -1460,6 +1462,9 @@ final class BudgetStore: ObservableObject {
             guard database !== oldValue else { return }
             dismissTransactionImpactCues()
             schedulePoster = nil
+            publishSchedules(([], [:], [:]))
+            schedulesLoaded = false
+            scheduleLoadError = nil
         }
     }
 
@@ -2380,6 +2385,8 @@ final class BudgetStore: ObservableObject {
         payees = []
         tags = []
         tagSummaries = []
+        schedulesLoaded = false
+        scheduleLoadError = nil
         syncStatus.state = .idle
         syncStatus.lastSyncTime = nil
         // No budget left to catch up — an in-flight initial sync's banner must
@@ -2724,6 +2731,8 @@ final class BudgetStore: ObservableObject {
         isLoading = true
         isBudgetLoaded = false
         error = nil
+        schedulesLoaded = false
+        scheduleLoadError = nil
         let monthRequestGenerationBeforeLoad = budgetMonthRequestGeneration
         var published = false
 
@@ -3113,7 +3122,20 @@ final class BudgetStore: ObservableObject {
                 id: "flags.goalTemplatesUIEnabled"
             ) == "true"
 
-            let fetchedSchedules = await fetchSchedules(database: database, upcomingLength: fetchedUpcomingLength)
+            let fetchedSchedules: ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>])?
+            let fetchedScheduleError: String?
+            do {
+                fetchedSchedules = try await fetchSchedules(
+                    database: database,
+                    upcomingLength: fetchedUpcomingLength
+                )
+                fetchedScheduleError = nil
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                fetchedSchedules = nil
+                fetchedScheduleError = error.localizedDescription
+            }
             let duesConfigs = creditCardConfigs == creditCardsBefore ? fetchedCreditCards : creditCardConfigs
             let fetchedDues = await fetchCreditCardStatementDues(database: database, accounts: fetchedAccounts,
                                                                  configs: duesConfigs)
@@ -3170,7 +3192,9 @@ final class BudgetStore: ObservableObject {
                 let parsed = ActualNumberFormat(rawValue: fetchedNumberFormat) ?? .commaDot
                 assignIfChanged(\.numberFormat, parsed)
             }
-            publishSchedules(fetchedSchedules)
+            publishSchedules(fetchedSchedules ?? ([], [:], [:]))
+            assignIfChanged(\.schedulesLoaded, true)
+            assignIfChanged(\.scheduleLoadError, fetchedScheduleError)
             if creditCardConfigs == duesConfigs {
                 assignIfChanged(\.creditCardStatementDues, fetchedDues)
             }
@@ -4460,12 +4484,27 @@ final class BudgetStore: ObservableObject {
         let walletIds = bankSyncAccounts
             .filter { $0.source == .financeKit && !$0.closed }
             .map(\.id)
-        guard !walletIds.isEmpty else { return [] }
-        guard await appleWalletStore.availability() == .authorized else { return [] }
+        let authorized = walletIds.isEmpty ? false : await appleWalletStore.availability() == .authorized
+        updateWalletBackgroundDelivery(enabled: authorized)
+        guard authorized else { return [] }
         guard let result = try? await syncBankAccounts(accountIds: walletIds),
               !result.importedTransactions.isEmpty else { return [] }
 
         return result.importedTransactions
+    }
+
+    /// Whether this device last turned FinanceKit background delivery on.
+    static let walletBackgroundDeliveryKey = "walletBackgroundDeliveryEnabled"
+
+    /// FinanceKit background delivery wakes the Wallet delivery extension,
+    /// which asks iOS to run this sync in the background (WalletDelivery).
+    /// FinanceKit is only called when the wanted state changes, so budgets
+    /// without Wallet accounts never touch it.
+    private func updateWalletBackgroundDelivery(enabled: Bool) {
+        let defaults = appleWalletLinkDefaults
+        guard defaults.bool(forKey: Self.walletBackgroundDeliveryKey) != enabled,
+              appleWalletStore.setBackgroundDelivery(enabled: enabled) else { return }
+        defaults.set(enabled, forKey: Self.walletBackgroundDeliveryKey)
     }
 
     func linkBankAccount(accountId: String, to remote: BankSyncRemoteAccount) async throws {
@@ -4633,23 +4672,41 @@ final class BudgetStore: ObservableObject {
         let lookbackFloor = DayDate.today()
             .adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
         var oldestDates: [String: Int] = [:]
+        var emptiedAccountIds: Set<String> = []
         var targetStartDays: [String: Int] = [:]
         for target in targets {
-            // Both "the read failed" and "the account has no transactions"
-            // mean the same thing here: start at the chosen day.
+            // A nil oldest collapses "the read failed" and "no live
+            // transactions left"; which window that becomes is decided below,
+            // where an account that still has rows (deleted or future-dated)
+            // is treated as emptied rather than a first import.
             oldestDates[target.id] = await (try? database.oldestTransactionDate(accountId: target.id)) ?? nil
+            if oldestDates[target.id] == nil,
+               await (try? database.hasAnyTransactionRow(accountId: target.id)) == true {
+                emptiedAccountIds.insert(target.id)
+            }
         }
         func downloadTargets(_ accounts: [BankSyncAccount]) -> [BankSyncTarget] {
             accounts.map {
                 let startDay: Int
                 if let oldest = oldestDates[$0.id] {
                     let incremental = max(lookbackFloor, oldest)
-                    // Reach past existing history only while the chosen day sits
-                    // below it. Note this is not `min(importStart, incremental)`:
-                    // the default day is older than the 90-day floor for any
-                    // budget past its first quarter, and that form would widen
-                    // every ongoing sync to it.
-                    startDay = importStart < oldest ? importStart : incremental
+                    // SimpleFIN matches upstream's `getAccountSyncStartDate`.
+                    // Reaching back to the chosen day would download
+                    // transactions the person deleted, which the web never
+                    // asks for again and which come back as new rows when the
+                    // bank has changed their ids (GH #665).
+                    //
+                    // Wallet reaches past existing history while the chosen
+                    // day sits below it. Note this is not
+                    // `min(importStart, incremental)`: the default day is older
+                    // than the 90-day floor for any budget past its first
+                    // quarter, and that form would widen every ongoing sync.
+                    startDay = $0.source == .financeKit && importStart < oldest
+                        ? importStart : incremental
+                } else if $0.source != .financeKit, emptiedAccountIds.contains($0.id) {
+                    // Only deleted rows left: upstream's window, since the
+                    // chosen day would download every one of them again.
+                    startDay = lookbackFloor
                 } else {
                     startDay = importStart
                 }
@@ -4833,6 +4890,17 @@ final class BudgetStore: ObservableObject {
         // start day — one request covers every account, so it reaches back as
         // far as the hungriest of them.
         var candidates = download.candidates
+        // Upstream `normalizeBankSyncTransactions` reads this synced
+        // per-account preference (default true) and drops anything the bank
+        // hasn't booked; it imports on the sync after it posts.
+        let importPending = try await (database.fetchPreference(
+            id: "sync-import-pending-\(target.id)"
+        ) ?? "true") == "true"
+        let skippedPending = importPending ? 0 : candidates.lazy
+            .filter { !$0.cleared }.reduce(0) { $0 + $1.amount }
+        if !importPending {
+            candidates.removeAll { !$0.cleared }
+        }
 
         guard !candidates.isEmpty || existingOldestDay == nil else {
             return (0, 0, [], 0)
@@ -4955,7 +5023,9 @@ final class BudgetStore: ObservableObject {
         var openingInsert: BankSyncOpeningInsert?
         if existingOldestDay == nil,
            let balance = download.currentBalanceCents {
-            let openingAmount = balance - expectedMaterializedInserts
+            // The reported balance still includes skipped pending charges;
+            // leave them out so they aren't counted twice once they post.
+            let openingAmount = balance - skippedPending - expectedMaterializedInserts
                 .filter { $0.transaction.accountId == target.id }
                 .reduce(0) { $0 + $1.transaction.amount }
             if openingAmount != 0 {
@@ -5048,7 +5118,9 @@ final class BudgetStore: ObservableObject {
         date: Int,
         notes: String?,
         cleared: Bool,
-        categoryId: String? = nil
+        categoryId: String? = nil,
+        sourceId: String? = nil,
+        financialId: String? = nil
     ) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
@@ -5059,7 +5131,7 @@ final class BudgetStore: ObservableObject {
             amountCents: amountCents
         )
 
-        let sourceId = UUID().uuidString
+        let sourceId = sourceId ?? UUID().uuidString
         let targetId = UUID().uuidString
 
         let offBudgetIds = offBudgetAccountIds
@@ -5068,7 +5140,7 @@ final class BudgetStore: ObservableObject {
                 ? categoryId : nil
         }
 
-        let source = Transaction(
+        var source = Transaction(
             id: sourceId,
             accountId: fromAccountId,
             date: date,
@@ -5087,6 +5159,7 @@ final class BudgetStore: ObservableObject {
             sortOrder: nil,
             importedPayee: nil
         )
+        source.financialId = financialId
 
         let target = Transaction(
             id: targetId,
@@ -6095,24 +6168,36 @@ final class BudgetStore: ObservableObject {
 
     /// Save the add/edit form: transfers become a paired transfer, everything
     /// else resolves its payee and creates or (when `original` is non-nil)
-    /// updates the transaction.
+    /// updates the transaction. `newId` and `financialId` stamp a created row
+    /// (a transfer's source leg, a split's parent): the pending-import editor
+    /// passes its import's so a retry finds the row. Edits ignore both.
     @discardableResult
-    func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws -> String? {
+    func saveTransaction(
+        _ form: TransactionForm,
+        editing original: Transaction? = nil,
+        newId: String? = nil,
+        financialId: String? = nil
+    ) async throws -> String? {
         // New plain rows collect their target after resolving the payee and
         // applying rules in createTransaction; edits and splits skip rules.
         if original == nil, form.type != .transfer, form.splits.isEmpty {
-            return try await performSaveTransaction(form, editing: original)
+            return try await performSaveTransaction(form, editing: original, newId: newId, financialId: financialId)
         }
         var targets = impactTargets(for: form)
         if let original {
             await targets.formUnion(impactTargets(for: [original]))
         }
         return try await withImpactCue(touching: targets) {
-            try await performSaveTransaction(form, editing: original)
+            try await performSaveTransaction(form, editing: original, newId: newId, financialId: financialId)
         }
     }
 
-    private func performSaveTransaction(_ form: TransactionForm, editing original: Transaction?) async throws -> String? {
+    private func performSaveTransaction(
+        _ form: TransactionForm,
+        editing original: Transaction?,
+        newId: String?,
+        financialId: String?
+    ) async throws -> String? {
         var form = form
         // The form hides categories for off-budget accounts; normalize
         // here too so stale picker or split state cannot bypass that rule.
@@ -6156,7 +6241,9 @@ final class BudgetStore: ObservableObject {
                 date: date,
                 notes: notes,
                 cleared: form.cleared,
-                categoryId: form.categoryId
+                categoryId: form.categoryId,
+                sourceId: newId,
+                financialId: financialId
             )
             return nil
 
@@ -6185,10 +6272,10 @@ final class BudgetStore: ObservableObject {
             }
             let payeeId = try await resolvePayeeId(name: form.payeeName, editing: nil)
             let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
-            let parentId = UUID().uuidString
+            let parentId = newId ?? UUID().uuidString
             // Explicit sort orders keep the children in entry order under the parent
             let parentSort = Date().timeIntervalSince1970 * 1000
-            let parent = Transaction(
+            var parent = Transaction(
                 id: parentId,
                 accountId: form.accountId,
                 date: date,
@@ -6207,6 +6294,7 @@ final class BudgetStore: ObservableObject {
                 sortOrder: parentSort,
                 importedPayee: payeeName
             )
+            parent.financialId = financialId
             var children: [Transaction] = []
             var transferPartners: [Transaction] = []
             for (index, line) in lines.enumerated() {
@@ -6348,7 +6436,7 @@ final class BudgetStore: ObservableObject {
                     form.categoryId
                 }
                 let transaction = Transaction(
-                    id: UUID().uuidString,
+                    id: newId ?? UUID().uuidString,
                     accountId: form.accountId,
                     date: date,
                     amount: amountCents,
@@ -6364,7 +6452,8 @@ final class BudgetStore: ObservableObject {
                     parentId: nil,
                     tombstone: false,
                     sortOrder: nil, // Set to Date.now() during insert
-                    importedPayee: payeeName
+                    importedPayee: payeeName,
+                    financialId: financialId
                 )
                 try await createTransaction(
                     transaction,
@@ -7261,13 +7350,39 @@ final class BudgetStore: ObservableObject {
     /// on today's date as well as on transactions, so they are derived here on
     /// every refresh rather than cached against a schedule row.
     func loadSchedules() async {
+        scheduleLoadError = nil
         guard let database else {
             publishSchedules(([], [:], [:]))
+            schedulesLoaded = true
             return
         }
-        let fetched = await fetchSchedules(database: database, upcomingLength: upcomingScheduledTransactionLength)
-        guard self.database === database else { return }
-        publishSchedules(fetched)
+
+        do {
+            let fetched = try await fetchSchedules(
+                database: database,
+                upcomingLength: upcomingScheduledTransactionLength
+            )
+            guard self.database === database else { return }
+            publishSchedules(fetched)
+            schedulesLoaded = true
+        } catch is CancellationError {
+            return
+        } catch {
+            guard self.database === database else { return }
+            publishSchedules(([], [:], [:]))
+            scheduleLoadError = error.localizedDescription
+            schedulesLoaded = true
+        }
+    }
+
+    func upcomingRegisterEntries(accountId: String? = nil) -> [UpcomingScheduleEntry] {
+        ScheduleRegisterProjection.upcomingEntries(
+            schedules: schedules,
+            statuses: scheduleStatuses,
+            accountId: accountId,
+            activeAccountIds: Set(accounts.filter { !$0.closed }.map(\.id)),
+            startingBalance: accountId.flatMap { id in accounts.first { $0.id == id }?.balance }
+        )
     }
 
     private func publishSchedules(_ fetched: ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>])) {
@@ -7276,28 +7391,23 @@ final class BudgetStore: ObservableObject {
         assignIfChanged(\.schedulePaymentDates, fetched.2)
     }
 
-    private func fetchSchedules(database: BudgetDatabase, upcomingLength: String?) async
+    private func fetchSchedules(database: BudgetDatabase, upcomingLength: String?) async throws
         -> ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>]) {
-        do {
-            let loaded = try await database.fetchSchedules()
-            let today = DayDate.today()
-            let paid = try await database.fetchPaidScheduleIds(for: loaded, today: today)
-            let paymentDates = try await database.fetchSchedulePaymentDates(for: loaded)
-            var statuses: [String: ScheduleStatus] = [:]
-            for schedule in loaded {
-                statuses[schedule.id] = ScheduleStatusCalculator.status(
-                    nextDate: schedule.nextDate,
-                    completed: schedule.completed,
-                    hasTransaction: paid.contains(schedule.id),
-                    upcomingLength: schedule.customUpcomingLength ?? upcomingLength,
-                    today: today
-                )
-            }
-            return (loaded.sorted(by: Self.scheduleOrder), statuses, paymentDates)
-        } catch {
-            logger.error("Failed to load schedules: \(error, privacy: .public)")
-            return ([], [:], [:])
+        let loaded = try await database.fetchSchedules()
+        let today = DayDate.today()
+        let paid = try await database.fetchPaidScheduleIds(for: loaded, today: today)
+        let paymentDates = try await database.fetchSchedulePaymentDates(for: loaded)
+        var statuses: [String: ScheduleStatus] = [:]
+        for schedule in loaded {
+            statuses[schedule.id] = ScheduleStatusCalculator.status(
+                nextDate: schedule.nextDate,
+                completed: schedule.completed,
+                hasTransaction: paid.contains(schedule.id),
+                upcomingLength: schedule.customUpcomingLength ?? upcomingLength,
+                today: today
+            )
         }
+        return (loaded.sorted(by: Self.scheduleOrder), statuses, paymentDates)
     }
 
     /// Loads the latest statement dues for all active credit cards.
