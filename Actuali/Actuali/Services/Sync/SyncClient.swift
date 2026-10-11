@@ -1053,6 +1053,87 @@ actor SyncClient {
         return group
     }
 
+    func createAccountGroup(id: String, name: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let group = try database.insertAccountGroup(id: id, name: name)
+        let messages = try await messageGenerator.messagesForInsert(group)
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
+    func updateAccountGroup(id: String, name: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        try database.renameAccountGroup(id: id, name: name)
+        let messages = try await messageGenerator.messages(dataset: "account_groups", row: id, fields: [("name", name)])
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
+    func deleteAccountGroup(id: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let accountIds = try database.deleteAccountGroup(id: id)
+        let group = AccountGroup(id: id, name: "", sortOrder: 0, tombstone: true)
+        var messages = try await [messageGenerator.messageForDelete(group)]
+        for accountId in accountIds {
+            messages += try await messageGenerator.messages(dataset: "accounts", row: accountId, fields: [("account_group_id", nil)])
+        }
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
+    func setAccountGroup(accountId: String, groupId: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        try database.setAccountGroup(accountId: accountId, groupId: groupId)
+        let messages = try await messageGenerator.messages(dataset: "accounts", row: accountId, fields: [("account_group_id", groupId)])
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
+    func moveAccount(accountId: String, toGroupId: String?, beforeAccountId: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let result = try database.moveAccount(
+            accountId: accountId,
+            toGroupId: toGroupId,
+            beforeAccountId: beforeAccountId
+        )
+        var fields: [(column: String, value: (any Sendable)?)] = [
+            ("sort_order", result.sortOrder),
+        ]
+        fields.append(("account_group_id", result.groupId))
+        var messages = try await messageGenerator.messages(
+            dataset: "accounts", row: result.accountId, fields: fields
+        )
+        for sibling in result.movedSiblings {
+            messages += try await messageGenerator.messages(
+                dataset: "accounts",
+                row: sibling.id,
+                fields: [("sort_order", sibling.sortOrder)]
+            )
+        }
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     /// Create a category in a group (optimistic local-first), together with
     /// the `category_mapping` row upstream pairs with every category and the
     /// sort_order updates its placement shoved onto the group's other

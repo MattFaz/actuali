@@ -7199,6 +7199,53 @@
         }
       }
     },
+    "%@ is not mapped to an account. Map it to route future imports automatically." : {
+      "comment" : "Notice in the pending import review banner when the transaction's card hint has no mapped account",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist keinem Konto zugeordnet. Ordnen Sie sie zu, um zukünftige Importe automatisch weiterzuleiten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is not mapped to an account. Map it to route future imports automatically."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ no está asignada a una cuenta. Asígnala para enrutar futuras importaciones automáticamente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ n'est pas associée à un compte. Associez-la pour acheminer automatiquement les futurs imports."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ non è associata a un conto. Associala per instradare automaticamente le importazioni future."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is niet toegewezen aan een rekening. Wijs deze toe om toekomstige importen automatisch te routeren."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ não está associado a uma conta. Associe-o para rotear futuras importações automaticamente."
+          }
+        }
+      }
+    },
     "%@ left to assign" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -47115,6 +47162,53 @@
         }
       }
     },
+    "Last Wallet Update" : {
+      "comment" : "Settings label for when Wallet (FinanceKit) last reported changes in the background",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Wallet-Aktualisierung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last Wallet Update"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Última actualización de Wallet"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dernière mise à jour Wallet"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ultimo aggiornamento di Wallet"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laatste Wallet-update"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Última atualização da Wallet"
+          }
+        }
+      }
+    },
     "Layout" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -47539,49 +47633,49 @@
         }
       }
     },
-    "Linked accounts import transactions from this day on. It starts out as the day this budget began; pick an earlier day to pull in older history. Transactions already imported always stay." : {
+    "Linked accounts import transactions from this day on. It starts out as the day this budget began. For Apple Wallet accounts, pick an earlier day to pull in older history. Transactions already imported always stay." : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verknüpfte Konten importieren Transaktionen ab diesem Tag. Er beginnt als der Tag, an dem dieses Budget angelegt wurde; wählen Sie einen früheren Tag, um ältere Verläufe einzubeziehen. Bereits importierte Transaktionen bleiben immer erhalten."
+            "value" : "Verknüpfte Konten importieren Transaktionen ab diesem Tag. Er beginnt als der Tag, an dem dieses Budget angelegt wurde. Wählen Sie für Apple Wallet-Konten einen früheren Tag, um ältere Verläufe einzubeziehen. Bereits importierte Transaktionen bleiben immer erhalten."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Linked accounts import transactions from this day on. It starts out as the day this budget began; pick an earlier day to pull in older history. Transactions already imported always stay."
+            "value" : "Linked accounts import transactions from this day on. It starts out as the day this budget began. For Apple Wallet accounts, pick an earlier day to pull in older history. Transactions already imported always stay."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Las cuentas vinculadas importan transacciones a partir de este día. Empieza siendo el día en que se creó este presupuesto; elija un día anterior para incluir un historial más antiguo. Las transacciones ya importadas siempre permanecen."
+            "value" : "Las cuentas vinculadas importan transacciones a partir de este día. Empieza siendo el día en que se creó este presupuesto. En las cuentas de Apple Wallet, elija un día anterior para incluir un historial más antiguo. Las transacciones ya importadas siempre permanecen."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les comptes liés importent les transactions à partir de ce jour. Il commence par le jour où ce budget a été créé ; choisissez un jour antérieur pour inclure un historique plus ancien. Les transactions déjà importées restent toujours."
+            "value" : "Les comptes liés importent les transactions à partir de ce jour. Il commence par le jour où ce budget a été créé. Pour les comptes Apple Wallet, choisissez un jour antérieur pour inclure un historique plus ancien. Les transactions déjà importées restent toujours."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I conti collegati importano le transazioni a partire da questo giorno. Inizialmente corrisponde al giorno in cui è stato creato questo budget; scegli un giorno precedente per includere una cronologia più vecchia. Le transazioni già importate rimangono sempre."
+            "value" : "I conti collegati importano le transazioni a partire da questo giorno. Inizialmente corrisponde al giorno in cui è stato creato questo budget. Per i conti Apple Wallet, scegli un giorno precedente per includere una cronologia più vecchia. Le transazioni già importate rimangono sempre."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gekoppelde rekeningen importeren transacties vanaf deze dag. Dit begint als de dag waarop dit budget is gestart; kies een eerdere dag om oudere geschiedenis op te halen. Reeds geïmporteerde transacties blijven altijd behouden."
+            "value" : "Gekoppelde rekeningen importeren transacties vanaf deze dag. Dit begint als de dag waarop dit budget is gestart. Kies voor Apple Wallet-rekeningen een eerdere dag om oudere geschiedenis op te halen. Reeds geïmporteerde transacties blijven altijd behouden."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Contas vinculadas importam transações a partir deste dia. Ele começa como o dia em que este orçamento foi criado; escolha um dia anterior para trazer um histórico mais antigo. As transações já importadas sempre permanecem."
+            "value" : "Contas vinculadas importam transações a partir deste dia. Ele começa como o dia em que este orçamento foi criado. Para contas da Apple Wallet, escolha um dia anterior para trazer um histórico mais antigo. As transações já importadas sempre permanecem."
           }
         }
       }
@@ -48999,6 +49093,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gerenciar"
+          }
+        }
+      }
+    },
+    "Map Card" : {
+      "comment" : "Button to create a card mapping for an unmapped card in pending import review",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karte zuordnen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Map Card"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asignar tarjeta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Associer la carte"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mappa carta"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kaart toewijzen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Associar cartão"
           }
         }
       }
@@ -83063,6 +83204,53 @@
         }
       }
     },
+    "Unmapped" : {
+      "comment" : "Badge next to unmapped card hint in pending transactions row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht zugeordnet"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unmapped"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No asignada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non associée"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non associata"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niet toegewezen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não associada"
+          }
+        }
+      }
+    },
     "Unmapped cards found in pending transactions. Tap to create a mapping." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -84332,6 +84520,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Automação do Wallet"
+          }
+        }
+      }
+    },
+    "Wallet refresh request failed: %@" : {
+      "comment" : "Settings footnote when the Wallet delivery extension could not request a background refresh; %@ is the system error",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wallet-Aktualisierungsanforderung fehlgeschlagen: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wallet refresh request failed: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La solicitud de actualización de Wallet falló: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La demande d'actualisation Wallet a échoué : %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richiesta di aggiornamento Wallet non riuscita: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wallet-vernieuwingsverzoek mislukt: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A solicitação de atualização da Wallet falhou: %@"
           }
         }
       }
@@ -88489,6 +88724,241 @@
           }
         }
       }
+    },
+    "Manage Account Groups" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage Account Groups"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontogruppen verwalten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestionar grupos de cuentas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gérer les groupes de comptes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestisci gruppi di account"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accountgroepen beheren"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gerenciar grupos de contas"
+          }
+        }
+      }
+    },
+    "Set Account Group" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set Account Group"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontogruppe festlegen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Establecer grupo de cuenta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Définir le groupe de comptes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imposta gruppo account"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accountgroep instellen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Definir grupo da conta"
+          }
+        }
+      }
+    },
+    "Create Group" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create Group"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gruppe erstellen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crear grupo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Créer un groupe"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crea gruppo"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Groep maken"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Criar grupo"
+          }
+        }
+      }
+    },
+    "Account Groups" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account Groups"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontogruppen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grupos de cuentas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Groupes de comptes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gruppi di account"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accountgroepen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grupos de contas"
+          }
+        }
+      }
+    },
+    "Rename" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umbenennen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renommer"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rinomina"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Naam wijzigen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renomear"
+          }
+        }
+      }
     }
 ,
     "Copy Diagnostic Report" : {
@@ -88770,6 +89240,144 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Privacidade: este relatório exclui credenciais, valores de cabeçalhos personalizados, identificadores de contas e orçamentos, endereços de servidores, conteúdo dos orçamentos, detalhes de transações e valores financeiros."
+          }
+        }
+      }
+    },
+    "Expand All Accounts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Konten erweitern"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expand All Accounts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expandir todas las cuentas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Développer tous les comptes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Espandi tutti i conti"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle rekeningen uitvouwen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expandir todas as contas"
+          }
+        }
+      }
+    },
+    "Collapse All Accounts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Konten einklappen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse All Accounts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contraer todas las cuentas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réduire tous les comptes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprimi tutti i conti"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle rekeningen inklappen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recolher todas as contas"
+          }
+        }
+      }
+    },
+    "Add New" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu hinzufügen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add New"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir nuevo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi nuovo"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nieuwe toevoegen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar novo"
           }
         }
       }

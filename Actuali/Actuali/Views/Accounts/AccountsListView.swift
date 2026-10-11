@@ -12,6 +12,12 @@ private enum AccountSelection: Hashable {
     case account(String)
 }
 
+private struct AccountListBucket: Identifiable {
+    let id: String
+    let group: AccountGroup?
+    let accounts: [Account]
+}
+
 /// A month's totals carried together with the month they were fetched for.
 /// The two travel as one so the summary card can't caption August's figures
 /// with September, which is exactly what happens when the calendar rolls over
@@ -36,6 +42,10 @@ struct AccountsListView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var path = NavigationPath()
     @State private var showingAddAccount = false
+    @State private var showingAccountGroups = false
+    @AppStorage("accountsCollapsedAccountGroupIDs") private var collapsedAccountGroupIDs = ""
+    @State private var accountGroupBackgroundOverrides: [String: Bool] = [:]
+    @State private var pendingAccountGroupTransitions: Set<String> = []
     @State private var showingCreditCards = false
     @State private var showingLoans = false
     @State private var showingDeposits = false
@@ -51,6 +61,11 @@ struct AccountsListView: View {
     @State private var accountSearchText = ""
     @State private var isAccountSearchActive = false
     @FocusState private var isAccountSearchFocused: Bool
+
+    private var collapsedAccountGroups: Set<String> {
+        get { Set(collapsedAccountGroupIDs.split(separator: ",").map(String.init)) }
+        set { collapsedAccountGroupIDs = newValue.sorted().joined(separator: ",") }
+    }
 
     /// Independent expand/collapse state per section, persisted so a
     /// collapsed section stays collapsed across launches — same contract as
@@ -97,16 +112,117 @@ struct AccountsListView: View {
         closedAccounts.sumBalance
     }
 
+    private var onBudgetBuckets: [AccountListBucket] {
+        accountBuckets(for: filteredOnBudgetAccounts)
+    }
+
+    private var offBudgetBuckets: [AccountListBucket] {
+        accountBuckets(for: filteredOffBudgetAccounts)
+    }
+
+    private func accountBuckets(for accounts: [Account]) -> [AccountListBucket] {
+        var buckets: [AccountListBucket] = []
+        let groupIds = Set(budgetStore.accountGroups.map(\.id))
+        let ungrouped = accounts.filter { $0.groupId.map(groupIds.contains) != true }
+        if !ungrouped.isEmpty {
+            buckets.append(AccountListBucket(id: "ungrouped", group: nil, accounts: ungrouped))
+        }
+        for group in budgetStore.accountGroups {
+            let members = accounts.filter { $0.groupId == group.id }
+            if !members.isEmpty {
+                buckets.append(AccountListBucket(id: group.id, group: group, accounts: members))
+            }
+        }
+        return buckets
+    }
+
+    private func toggleAccountGroup(_ id: String) {
+        guard !pendingAccountGroupTransitions.contains(id) else { return }
+        let isExpanding = collapsedAccountGroups.contains(id)
+        pendingAccountGroupTransitions.insert(id)
+        withTransaction(SwiftUI.Transaction(animation: nil)) {
+            accountGroupBackgroundOverrides[id] = isExpanding
+        }
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(AppAnimation.disclosure) {
+                var collapsedGroups = collapsedAccountGroups
+                if isExpanding {
+                    collapsedGroups.remove(id)
+                } else {
+                    collapsedGroups.insert(id)
+                }
+                collapsedAccountGroupIDs = collapsedGroups.sorted().joined(separator: ",")
+            }
+            await Task.yield()
+            withTransaction(SwiftUI.Transaction(animation: nil)) {
+                accountGroupBackgroundOverrides[id] = nil
+            }
+            pendingAccountGroupTransitions.remove(id)
+        }
+    }
+
+    private func accountGroupBackgroundIsClear(_ id: String) -> Bool {
+        if isSearchingAccounts {
+            return true
+        }
+        return accountGroupBackgroundOverrides[id] ?? !collapsedAccountGroups.contains(id)
+    }
+
+    private func groupedAccountRowsRoundBottom(for bucket: AccountListBucket, among buckets: [AccountListBucket]) -> Bool {
+        guard let index = buckets.firstIndex(where: { $0.id == bucket.id }),
+              buckets.indices.contains(index + 1),
+              let nextGroup = buckets[index + 1].group
+        else { return true }
+        return accountGroupBackgroundIsClear(nextGroup.id)
+    }
+
+    private func groupedAccountRowBackground(at index: Int, in bucket: AccountListBucket, among buckets: [AccountListBucket]) -> AccountGroupRowBackground {
+        let roundsBottom = index == bucket.accounts.count - 1 && groupedAccountRowsRoundBottom(for: bucket, among: buckets)
+        return AccountGroupRowBackground(
+            position: AccountGroupRowLayout.position(roundsTop: index == 0, roundsBottom: roundsBottom)
+        )
+    }
+
+    private func accountGroupHeaderRowPosition(for bucket: AccountListBucket, among buckets: [AccountListBucket]) -> AccountGroupRowPosition {
+        let index = buckets.firstIndex(where: { $0.id == bucket.id }) ?? 0
+        return AccountGroupRowLayout.position(
+            roundsTop: index == 0,
+            roundsBottom: groupedAccountRowsRoundBottom(for: bucket, among: buckets)
+        )
+    }
+
+    private func precedingGroupRowPosition(for account: Account, in bucket: AccountListBucket, among buckets: [AccountListBucket]) -> AccountGroupRowPosition? {
+        guard bucket.id == "ungrouped",
+              bucket.accounts.last?.id == account.id,
+              let group = buckets.first(where: { $0.group != nil })?.group,
+              accountGroupBackgroundIsClear(group.id)
+        else { return nil }
+        return .last
+    }
+
     private var filteredOnBudgetAccounts: [Account] {
-        Self.filterAccounts(onBudgetAccounts, matching: accountSearchText)
+        filterAccountsAndGroups(onBudgetAccounts)
     }
 
     private var filteredOffBudgetAccounts: [Account] {
-        Self.filterAccounts(offBudgetAccounts, matching: accountSearchText)
+        filterAccountsAndGroups(offBudgetAccounts)
     }
 
     private var filteredClosedAccounts: [Account] {
         Self.filterAccounts(closedAccounts, matching: accountSearchText)
+    }
+
+    private func filterAccountsAndGroups(_ accounts: [Account]) -> [Account] {
+        let query = accountSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return accounts }
+        let matchingGroupIds = Set(budgetStore.accountGroups
+            .filter { $0.name.localizedCaseInsensitiveContains(query) }
+            .map(\.id))
+        return accounts.filter { account in
+            account.name.localizedCaseInsensitiveContains(query) ||
+                account.groupId.map(matchingGroupIds.contains) == true
+        }
     }
 
     private var isSearchingAccounts: Bool {
@@ -159,9 +275,31 @@ struct AccountsListView: View {
                         if !filteredOnBudgetAccounts.isEmpty {
                             Section {
                                 if isOnBudgetExpanded || isSearchingAccounts {
-                                    ForEach(filteredOnBudgetAccounts) { account in
-                                        NavigationLink(value: account) {
-                                            AccountRow(account: account)
+                                    ForEach(onBudgetBuckets) { bucket in
+                                        if let group = bucket.group {
+                                            AccountGroupListHeader(
+                                                group: group,
+                                                total: bucket.accounts.sumBalance,
+                                                rowPosition: accountGroupHeaderRowPosition(for: bucket, among: onBudgetBuckets),
+                                                isExpanded: isSearchingAccounts || !collapsedAccountGroups.contains(group.id),
+                                                isBackgroundClear: accountGroupBackgroundIsClear(group.id),
+                                                allowsCollapse: !isSearchingAccounts,
+                                                action: { toggleAccountGroup(group.id) }
+                                            )
+                                            if isSearchingAccounts || !collapsedAccountGroups.contains(group.id) {
+                                                ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
+                                                    NavigationLink(value: item.element) { AccountRow(account: item.element) }
+                                                        .listRowSeparator(item.offset == bucket.accounts.count - 1 ? .hidden : .visible)
+                                                        .listRowBackground(groupedAccountRowBackground(at: item.offset, in: bucket, among: onBudgetBuckets))
+                                                }
+                                            }
+                                        } else {
+                                            ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
+                                                NavigationLink(value: item.element) { AccountRow(account: item.element) }
+                                                    .listRowBackground(groupRowBackground(
+                                                        position: precedingGroupRowPosition(for: item.element, in: bucket, among: onBudgetBuckets)
+                                                    ))
+                                            }
                                         }
                                     }
                                 }
@@ -174,13 +312,37 @@ struct AccountsListView: View {
                                     allowsCollapse: !isSearchingAccounts
                                 )
                             }
+                            .listSectionSeparator(.hidden)
                         }
                         if !filteredOffBudgetAccounts.isEmpty {
                             Section {
                                 if isOffBudgetExpanded || isSearchingAccounts {
-                                    ForEach(filteredOffBudgetAccounts) { account in
-                                        NavigationLink(value: account) {
-                                            AccountRow(account: account)
+                                    ForEach(offBudgetBuckets) { bucket in
+                                        if let group = bucket.group {
+                                            AccountGroupListHeader(
+                                                group: group,
+                                                total: bucket.accounts.sumBalance,
+                                                rowPosition: accountGroupHeaderRowPosition(for: bucket, among: offBudgetBuckets),
+                                                isExpanded: isSearchingAccounts || !collapsedAccountGroups.contains(group.id),
+                                                isBackgroundClear: accountGroupBackgroundIsClear(group.id),
+                                                allowsCollapse: !isSearchingAccounts,
+                                                action: { toggleAccountGroup(group.id) }
+                                            )
+                                            if isSearchingAccounts || !collapsedAccountGroups.contains(group.id) {
+                                                ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
+                                                    let account = item.element
+                                                    NavigationLink(value: account) { AccountRow(account: account) }
+                                                        .listRowSeparator(item.offset == bucket.accounts.count - 1 ? .hidden : .visible)
+                                                        .listRowBackground(groupedAccountRowBackground(at: item.offset, in: bucket, among: offBudgetBuckets))
+                                                }
+                                            }
+                                        } else {
+                                            ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
+                                                NavigationLink(value: item.element) { AccountRow(account: item.element) }
+                                                    .listRowBackground(groupRowBackground(
+                                                        position: precedingGroupRowPosition(for: item.element, in: bucket, among: offBudgetBuckets)
+                                                    ))
+                                            }
                                         }
                                     }
                                 }
@@ -193,6 +355,7 @@ struct AccountsListView: View {
                                     allowsCollapse: !isSearchingAccounts
                                 )
                             }
+                            .listSectionSeparator(.hidden)
                         }
                         if !filteredClosedAccounts.isEmpty {
                             Section {
@@ -247,9 +410,34 @@ struct AccountsListView: View {
                         if !filteredOnBudgetAccounts.isEmpty {
                             Section {
                                 if isOnBudgetExpanded || isSearchingAccounts {
-                                    ForEach(filteredOnBudgetAccounts) { account in
-                                        AccountRow(account: account)
-                                            .tag(AccountSelection.account(account.id))
+                                    ForEach(onBudgetBuckets) { bucket in
+                                        if let group = bucket.group {
+                                            AccountGroupListHeader(
+                                                group: group,
+                                                total: bucket.accounts.sumBalance,
+                                                rowPosition: accountGroupHeaderRowPosition(for: bucket, among: onBudgetBuckets),
+                                                isExpanded: isSearchingAccounts || !collapsedAccountGroups.contains(group.id),
+                                                isBackgroundClear: accountGroupBackgroundIsClear(group.id),
+                                                allowsCollapse: !isSearchingAccounts,
+                                                action: { toggleAccountGroup(group.id) }
+                                            )
+                                            if isSearchingAccounts || !collapsedAccountGroups.contains(group.id) {
+                                                ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
+                                                    AccountRow(account: item.element)
+                                                        .tag(AccountSelection.account(item.element.id))
+                                                        .listRowSeparator(item.offset == bucket.accounts.count - 1 ? .hidden : .visible)
+                                                        .listRowBackground(groupedAccountRowBackground(at: item.offset, in: bucket, among: onBudgetBuckets))
+                                                }
+                                            }
+                                        } else {
+                                            ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
+                                                AccountRow(account: item.element)
+                                                    .tag(AccountSelection.account(item.element.id))
+                                                    .listRowBackground(groupRowBackground(
+                                                        position: precedingGroupRowPosition(for: item.element, in: bucket, among: onBudgetBuckets)
+                                                    ))
+                                            }
+                                        }
                                     }
                                 }
                             } header: {
@@ -262,13 +450,40 @@ struct AccountsListView: View {
                                     totalTrailingPadding: 0
                                 )
                             }
+                            .listSectionSeparator(.hidden)
                         }
                         if !filteredOffBudgetAccounts.isEmpty {
                             Section {
                                 if isOffBudgetExpanded || isSearchingAccounts {
-                                    ForEach(filteredOffBudgetAccounts) { account in
-                                        AccountRow(account: account)
-                                            .tag(AccountSelection.account(account.id))
+                                    ForEach(offBudgetBuckets) { bucket in
+                                        if let group = bucket.group {
+                                            AccountGroupListHeader(
+                                                group: group,
+                                                total: bucket.accounts.sumBalance,
+                                                rowPosition: accountGroupHeaderRowPosition(for: bucket, among: offBudgetBuckets),
+                                                isExpanded: isSearchingAccounts || !collapsedAccountGroups.contains(group.id),
+                                                isBackgroundClear: accountGroupBackgroundIsClear(group.id),
+                                                allowsCollapse: !isSearchingAccounts,
+                                                action: { toggleAccountGroup(group.id) }
+                                            )
+                                            if isSearchingAccounts || !collapsedAccountGroups.contains(group.id) {
+                                                ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
+                                                    let account = item.element
+                                                    AccountRow(account: account)
+                                                        .tag(AccountSelection.account(account.id))
+                                                        .listRowSeparator(item.offset == bucket.accounts.count - 1 ? .hidden : .visible)
+                                                        .listRowBackground(groupedAccountRowBackground(at: item.offset, in: bucket, among: offBudgetBuckets))
+                                                }
+                                            }
+                                        } else {
+                                            ForEach(Array(bucket.accounts.enumerated()), id: \.element.id) { item in
+                                                AccountRow(account: item.element)
+                                                    .tag(AccountSelection.account(item.element.id))
+                                                    .listRowBackground(groupRowBackground(
+                                                        position: precedingGroupRowPosition(for: item.element, in: bucket, among: offBudgetBuckets)
+                                                    ))
+                                            }
+                                        }
                                     }
                                 }
                             } header: {
@@ -281,6 +496,7 @@ struct AccountsListView: View {
                                     totalTrailingPadding: 0
                                 )
                             }
+                            .listSectionSeparator(.hidden)
                         }
                         if !filteredClosedAccounts.isEmpty {
                             Section {
@@ -459,6 +675,12 @@ struct AccountsListView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
+                        Button {
+                            showingAccountGroups = true
+                        } label: {
+                            Label(String(localized: "Manage Account Groups"), systemImage: "folder")
+                        }
+                        Divider()
                         if !budgetStore.bankSyncAccounts.isEmpty {
                             Button {
                                 Task { await budgetStore.runBankSync() }
@@ -521,6 +743,9 @@ struct AccountsListView: View {
             .sheet(isPresented: $showingAddAccount) {
                 AddAccountView()
                     .environmentObject(budgetStore)
+            }
+            .sheet(isPresented: $showingAccountGroups) {
+                AccountGroupsSheet().environmentObject(budgetStore)
             }
             .sheet(isPresented: $showingPendingImports) {
                 PendingImportsView()
@@ -805,14 +1030,17 @@ struct AccountSectionHeader: View {
             isExpanded.toggle()
         } label: {
             HStack(spacing: 8) {
-                DisclosureChevron(isExpanded: isExpanded)
-                    .frame(width: 12)
-                Text(title)
+                if identifier == "closed" {
+                    DisclosureChevron(isExpanded: isExpanded)
+                        .frame(width: 12)
+                    sectionTitle
+                }
                 Spacer()
                 Text(totalText)
-                    .fontWeight(.regular)
+                    .font(.headline.weight(.regular))
                     .foregroundStyle(balanceColor(for: total))
                     .animatedAmount(totalText)
+                    .padding(.trailing, identifier == "closed" ? totalTrailingPadding : 20)
                     // Grouped-list headers uppercase their content; fine for
                     // the title (string headers always rendered that way) but
                     // it would mangle alphabetic currency symbols ("kr"→"KR").
@@ -821,12 +1049,26 @@ struct AccountSectionHeader: View {
                     // onto two lines rather than shrinking it.
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .padding(.trailing, totalTrailingPadding)
+            }
+            .overlay(alignment: .leading) {
+                if identifier != "closed" {
+                    sectionTitle
+                        .padding(.leading, 8)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .trailing) {
+                if identifier != "closed" {
+                    DisclosureChevron(isExpanded: isExpanded)
+                        .frame(width: 12, height: 20)
+                        .allowsHitTesting(false)
+                }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!allowsCollapse)
+        .listRowSeparator(.hidden)
         .accessibilityAddTraits(.isHeader)
         // State lives in the label, not the hint: hints are read last and can
         // be disabled outright, and a collapsed section is otherwise
@@ -846,21 +1088,258 @@ struct AccountSectionHeader: View {
     private var expandedState: String {
         isExpanded ? String(localized: "expanded") : String(localized: "collapsed")
     }
+
+    private var sectionTitle: some View {
+        Text(title)
+            .font(.headline.weight(.semibold))
+            .textCase(nil)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+    }
+}
+
+private struct AccountGroupListHeader: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    let group: AccountGroup
+    let total: Int
+    let rowPosition: AccountGroupRowPosition
+    let isExpanded: Bool
+    let isBackgroundClear: Bool
+    let allowsCollapse: Bool
+    let action: () -> Void
+    @State private var isDropTargeted = false
+
+    var body: some View {
+        let totalText = budgetStore.displayBalance(total)
+        Button {
+            if allowsCollapse {
+                action()
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Text(group.name)
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(isExpanded ? .secondary : .primary)
+                Spacer()
+                AccountGroupTotal(totalText: totalText, total: total, isExpanded: isExpanded)
+                    // Match account balances, which reserve room for the
+                    // NavigationLink disclosure chevron at the trailing edge.
+                    .padding(.trailing, 24)
+            }
+            .contentShape(Rectangle())
+            .overlay(alignment: .leading) {
+                DisclosureChevron(isExpanded: isExpanded)
+                    .frame(width: 10)
+                    .offset(x: -20)
+            }
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 5, leading: 28, bottom: 5, trailing: 16))
+        .listRowBackground(rowBackground)
+        .listRowSeparator(isBackgroundClear ? .hidden : .visible, edges: .top)
+        .listRowSeparator(.hidden, edges: .bottom)
+        .dropDestination(for: String.self, action: { ids, _ in
+            guard let accountId = ids.first else { return false }
+            Task { try? await budgetStore.dropAccountIntoGroup(accountId, groupId: group.id) }
+            return true
+        }, isTargeted: { isDropTargeted = $0 })
+        .background(isDropTargeted ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel(String(format: String(localized: "accounts.group.accessibility"), group.name, isExpanded ? String(localized: "expanded") : String(localized: "collapsed"), totalText))
+        .accessibilityIdentifier("account.subgroup.\(group.id)")
+    }
+
+    @ViewBuilder
+    private var rowBackground: some View {
+        if isBackgroundClear {
+            Color.clear.transaction {
+                $0.animation = nil
+                $0.disablesAnimations = true
+            }
+        } else {
+            AccountGroupRowBackground(position: rowPosition)
+        }
+    }
+}
+
+enum AccountGroupRowPosition: Equatable {
+    case single
+    case first
+    case middle
+    case last
+}
+
+enum AccountGroupRowLayout {
+    static func position(roundsTop: Bool, roundsBottom: Bool) -> AccountGroupRowPosition {
+        switch (roundsTop, roundsBottom) {
+        case (true, true): .single
+        case (true, false): .first
+        case (false, true): .last
+        case (false, false): .middle
+        }
+    }
+}
+
+private struct AccountGroupRowBackground: View {
+    let position: AccountGroupRowPosition
+
+    var body: some View {
+        let topRadius: CGFloat = position == .single || position == .first ? 16 : 0
+        let bottomRadius: CGFloat = position == .single || position == .last ? 16 : 0
+
+        UnevenRoundedRectangle(
+            topLeadingRadius: topRadius,
+            bottomLeadingRadius: bottomRadius,
+            bottomTrailingRadius: bottomRadius,
+            topTrailingRadius: topRadius
+        )
+        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+    }
+}
+
+private func groupRowBackground(position: AccountGroupRowPosition?) -> AnyView? {
+    position.map { AnyView(AccountGroupRowBackground(position: $0)) }
+}
+
+private struct AccountGroupTotal: View {
+    let totalText: String
+    let total: Int
+    let isExpanded: Bool
+    @State private var isVisible = true
+
+    var body: some View {
+        Text(totalText)
+            .font(.body)
+            .foregroundStyle(balanceColor(for: total))
+            .textCase(nil)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .fixedSize(horizontal: true, vertical: false)
+            .opacity(isVisible ? 1 : 0)
+            .offset(x: isVisible ? 0 : 12)
+            .frame(width: isVisible ? nil : 0, alignment: .trailing)
+            .clipped()
+            .accessibilityHidden(!isVisible)
+            .onAppear { isVisible = !isExpanded }
+            .onChange(of: isExpanded) { _, expanded in
+                withAnimation(AppAnimation.disclosure) { isVisible = !expanded }
+            }
+    }
 }
 
 struct AccountRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let account: Account
+    @State private var isDropTargeted = false
+    @State private var isCreatingGroup = false
+    @State private var newGroupName = ""
 
     var body: some View {
         let balance = budgetStore.displayBalance(account.balance)
         HStack {
             Text(account.name)
                 .font(.body)
+                .padding(.leading, 8)
             Spacer()
             Text(balance)
                 .foregroundStyle(balanceColor(for: account.balance))
                 .animatedAmount(balance)
+        }
+        .draggable(account.id)
+        .dropDestination(for: String.self, action: { ids, location in
+            guard let draggedAccountId = ids.first else { return false }
+            Task {
+                try? await budgetStore.dropAccount(
+                    draggedAccountId,
+                    on: account.id,
+                    after: location.y > 22
+                )
+            }
+            return true
+        }, isTargeted: { isDropTargeted = $0 })
+        .background(isDropTargeted ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        .contextMenu {
+            Menu(String(localized: "Set Account Group"), systemImage: "folder") {
+                Button(String(localized: "None")) { Task { try? await budgetStore.setAccountGroup(account, groupId: nil) } }
+                ForEach(budgetStore.accountGroups) { group in
+                    Button(group.name) { Task { try? await budgetStore.setAccountGroup(account, groupId: group.id) } }
+                }
+                Divider()
+                Button {
+                    newGroupName = ""
+                    isCreatingGroup = true
+                } label: {
+                    Label(String(localized: "Add New"), systemImage: "plus")
+                }
+            }
+        }
+        .alert(String(localized: "Create Group"), isPresented: $isCreatingGroup) {
+            TextField(String(localized: "Group Name"), text: $newGroupName)
+            Button(String(localized: "Add")) {
+                let groupName = newGroupName
+                Task { try? await budgetStore.createAccountGroup(name: groupName, assignTo: account) }
+            }
+            .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        }
+    }
+}
+
+private struct AccountGroupsSheet: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var isRenaming = false
+    @State private var renameName = ""
+    @State private var renameTarget: AccountGroup?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section(String(localized: "Create Group")) {
+                    HStack {
+                        TextField(String(localized: "Group Name"), text: $name)
+                        Button(String(localized: "Add")) {
+                            Task { try? await budgetStore.createAccountGroup(name: name); name = "" }
+                        }
+                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+                Section(String(localized: "Account Groups")) {
+                    ForEach(budgetStore.accountGroups) { group in
+                        HStack {
+                            Text(group.name)
+                            Spacer()
+                            Button(String(localized: "Rename")) {
+                                renameTarget = group
+                                renameName = group.name
+                                isRenaming = true
+                            }
+                            Button(role: .destructive) {
+                                Task { try? await budgetStore.deleteAccountGroup(group) }
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+            .navigationTitle(String(localized: "Account Groups"))
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "Done")) { dismiss() }
+                }
+            }
+            .alert(String(localized: "Rename Group"), isPresented: $isRenaming) {
+                TextField(String(localized: "Group Name"), text: $renameName)
+                Button(String(localized: "Save")) {
+                    if let renameTarget {
+                        Task { try? await budgetStore.renameAccountGroup(renameTarget, name: renameName) }
+                    }
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {}
+            }
         }
     }
 }
