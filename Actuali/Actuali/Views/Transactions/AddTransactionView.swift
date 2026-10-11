@@ -123,10 +123,6 @@ struct AddTransactionView: View {
         editing != nil
     }
 
-    private var isPendingImportReview: Bool {
-        !reviewRequirements.isEmpty
-    }
-
     /// Presented flows (edit, account-detail "+", notification prefill) can
     /// close themselves; the tab-hosted add flow can't. Cancel, post-save
     /// behavior, and the header all branch on this.
@@ -327,12 +323,11 @@ struct AddTransactionView: View {
         orderedOpenAccounts.filter { $0.id != selectedAccountId }
     }
 
-    /// Whether the payee list may offer accounts as transfers. A pending
-    /// import, a split in progress and an edit that couldn't become a
-    /// transfer (a split parent or child) can't take one.
+    /// Whether the payee list may offer accounts as transfers. A split in
+    /// progress and an edit that couldn't become a transfer (a split parent
+    /// or child) can't take one.
     private var offersTransfer: Bool {
         Self.offersTransfer(
-            isPendingImportReview: isPendingImportReview,
             isSplitting: isSplitting,
             isEditingSplitParent: isEditingSplitParent,
             isEditing: isEditing,
@@ -342,14 +337,13 @@ struct AddTransactionView: View {
     }
 
     nonisolated static func offersTransfer(
-        isPendingImportReview: Bool,
         isSplitting: Bool,
         isEditingSplitParent: Bool,
         isEditing: Bool,
         isEditingTransfer: Bool = false,
         canConvertToTransfer: Bool
     ) -> Bool {
-        !isPendingImportReview && !isSplitting && !isEditingSplitParent
+        !isSplitting && !isEditingSplitParent
             && (!isEditing || isEditingTransfer || canConvertToTransfer)
     }
 
@@ -509,7 +503,7 @@ struct AddTransactionView: View {
             }
         } else if showsCategoryRow, !isSplitting {
             categoryRow
-            if canSplitIntoCategories, !isPendingImportReview {
+            if canSplitIntoCategories {
                 Button {
                     startSplit()
                 } label: {
