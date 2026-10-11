@@ -3857,13 +3857,26 @@ final class BudgetDatabase: Sendable {
     }
 
     /// The date of an account's earliest transaction, or nil when it has none.
-    /// Decides how far back the first sync of an account reaches.
+    /// Decides how far back the first sync of an account reaches. Future-dated
+    /// rows aren't history, as in upstream's `getAccountOldestTransaction`; a
+    /// bill dated next week would otherwise start the window after today.
     func oldestTransactionDate(accountId: String) async throws -> Int? {
         try await dbQueue.read { db in
             try Int.fetchOne(db, sql: """
             SELECT MIN(date) FROM transactions
-            WHERE acct = ? AND date IS NOT NULL AND (tombstone = 0 OR tombstone IS NULL)
-            """, arguments: [accountId])
+            WHERE acct = ? AND date IS NOT NULL AND date <= ?
+              AND (tombstone = 0 OR tombstone IS NULL)
+            """, arguments: [accountId, DayDate.today().yyyymmdd])
+        }
+    }
+
+    /// Whether the account has any transaction row at all, deleted ones
+    /// included — an emptied account is not a first import.
+    func hasAnyTransactionRow(accountId: String) async throws -> Bool {
+        try await dbQueue.read { db in
+            try Bool.fetchOne(db, sql: """
+            SELECT EXISTS (SELECT 1 FROM transactions WHERE acct = ?)
+            """, arguments: [accountId]) ?? false
         }
     }
 
