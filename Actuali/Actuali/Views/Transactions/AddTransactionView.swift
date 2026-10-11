@@ -123,10 +123,6 @@ struct AddTransactionView: View {
         editing != nil
     }
 
-    private var isPendingImportReview: Bool {
-        !reviewRequirements.isEmpty
-    }
-
     /// Presented flows (edit, account-detail "+", notification prefill) can
     /// close themselves; the tab-hosted add flow can't. Cancel, post-save
     /// behavior, and the header all branch on this.
@@ -327,12 +323,11 @@ struct AddTransactionView: View {
         orderedOpenAccounts.filter { $0.id != selectedAccountId }
     }
 
-    /// Whether the payee list may offer accounts as transfers. A pending
-    /// import, a split in progress and an edit that couldn't become a
-    /// transfer (a split parent or child) can't take one.
+    /// Whether the payee list may offer accounts as transfers. A split in
+    /// progress and an edit that couldn't become a transfer (a split parent
+    /// or child) can't take one.
     private var offersTransfer: Bool {
         Self.offersTransfer(
-            isPendingImportReview: isPendingImportReview,
             isSplitting: isSplitting,
             isEditingSplitParent: isEditingSplitParent,
             isEditing: isEditing,
@@ -342,14 +337,13 @@ struct AddTransactionView: View {
     }
 
     nonisolated static func offersTransfer(
-        isPendingImportReview: Bool,
         isSplitting: Bool,
         isEditingSplitParent: Bool,
         isEditing: Bool,
         isEditingTransfer: Bool = false,
         canConvertToTransfer: Bool
     ) -> Bool {
-        !isPendingImportReview && !isSplitting && !isEditingSplitParent
+        !isSplitting && !isEditingSplitParent
             && (!isEditing || isEditingTransfer || canConvertToTransfer)
     }
 
@@ -509,7 +503,7 @@ struct AddTransactionView: View {
             }
         } else if showsCategoryRow, !isSplitting {
             categoryRow
-            if canSplitIntoCategories, !isPendingImportReview {
+            if canSplitIntoCategories {
                 Button {
                     startSplit()
                 } label: {
@@ -941,12 +935,16 @@ struct AddTransactionView: View {
         }
     }
 
-    /// The sign is the direction, as in Actual. A split parent's sign is its
-    /// lines', and an existing transfer's direction is fixed by its two legs,
-    /// so neither flips; converting a row to a transfer keeps its own side.
+    /// The sign is the direction, as in Actual. A split parent flips as a
+    /// whole once its lines load: the save plan applies the new direction to
+    /// every line and keeps each line's flip, and a transfer line's partner
+    /// follows its amount as it does for a per-line flip. Existing transfers
+    /// stay fixed by their two legs; converting a row keeps its own side.
     private var canToggleDirection: Bool {
         Self.canToggleDirection(
             isEditingSplitParent: isEditingSplitParent,
+            // Before the lines load, a save would keep the parent's old amount.
+            splitLoaded: unsplitRequested || !splitLines.isEmpty,
             isEditingTransfer: isEditingTransfer,
             isConvertingToTransfer: isConvertingToTransfer,
             isTransfer: isTransfer,
@@ -956,13 +954,15 @@ struct AddTransactionView: View {
 
     nonisolated static func canToggleDirection(
         isEditingSplitParent: Bool,
+        splitLoaded: Bool,
         isEditingTransfer: Bool,
         isConvertingToTransfer: Bool,
         isTransfer: Bool,
         hasTransferPartner: Bool
     ) -> Bool {
-        !isEditingSplitParent && !isEditingTransfer && !isConvertingToTransfer
-            && (!isTransfer || hasTransferPartner)
+        guard !isEditingTransfer, !isConvertingToTransfer else { return false }
+        guard !isEditingSplitParent || splitLoaded else { return false }
+        return !isTransfer || hasTransferPartner
     }
 
     /// Flip the amount's sign: expense and income swap, and a transfer
