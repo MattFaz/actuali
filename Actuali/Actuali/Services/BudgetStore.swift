@@ -354,6 +354,7 @@ final class BudgetStore: ObservableObject {
 
     @Published var remoteBudgets: [RemoteBudget] = []
     @Published var accounts: [Account] = []
+    @Published var accountGroups: [AccountGroup] = []
     @Published var transactions: [Transaction] = []
     /// How many transactions still need a category (drives the Budget tab
     /// link to UncategorizedTransactionsView).
@@ -2377,6 +2378,7 @@ final class BudgetStore: ObservableObject {
         currentBudgetMonth = nil
         widgetBudgetMonth = nil
         accounts = []
+        accountGroups = []
         transactions = []
         uncategorizedCount = 0
         categoryGroups = []
@@ -2756,6 +2758,7 @@ final class BudgetStore: ObservableObject {
             let fetchedDeposits = try await openedDb.fetchDepositConfigs()
             let fetchedCardMappings = try await openedDb.fetchCardAccountMappings()
             let fetchedAccounts = try await openedDb.fetchAccounts()
+            let fetchedAccountGroups = try await openedDb.fetchAccountGroups()
             let fetchedTransactions = try await openedDb.fetchTransactions()
             let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
@@ -2837,6 +2840,7 @@ final class BudgetStore: ObservableObject {
             cardAccountMappings = fetchedCardMappings.merging(legacyCardMappings) { synced, _ in synced }
 
             accounts = fetchedAccounts
+            accountGroups = fetchedAccountGroups
             // Let observers establish their baseline before the transaction
             // publication is visible as a user change.
             isBudgetLoaded = true
@@ -2971,6 +2975,7 @@ final class BudgetStore: ObservableObject {
                 budgetType = .envelope
                 widgetBudgetMonth = nil
                 accounts = []
+                accountGroups = []
                 transactions = []
                 uncategorizedCount = 0
                 categoryGroups = []
@@ -3076,6 +3081,7 @@ final class BudgetStore: ObservableObject {
             // points between assignments) so overlapping refreshes can't
             // leave the UI with a mixed snapshot.
             let fetchedAccounts = try await database.fetchAccounts()
+            let fetchedAccountGroups = try await database.fetchAccountGroups()
             let fetchedTransactions = try await database.fetchTransactions()
             let fetchedUncategorizedCount = try await database.fetchUncategorizedCount()
             let fetchedGroups = try await database.fetchCategoryGroups()
@@ -3157,6 +3163,7 @@ final class BudgetStore: ObservableObject {
             }
 
             assignIfChanged(\.accounts, fetchedAccounts)
+            assignIfChanged(\.accountGroups, fetchedAccountGroups)
             assignIfChanged(\.transactions, fetchedTransactions)
             assignIfChanged(\.uncategorizedCount, fetchedUncategorizedCount)
             assignIfChanged(\.categoryGroups, fetchedGroups)
@@ -3429,6 +3436,75 @@ final class BudgetStore: ObservableObject {
     }
 
     // MARK: - Accounts
+
+    func createAccountGroup(name: String, assignTo account: Account? = nil) async throws {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, let syncClient else { return }
+        let id = UUID().uuidString
+        try await syncClient.createAccountGroup(id: id, name: clean)
+        if let account {
+            try await syncClient.setAccountGroup(accountId: account.id, groupId: id)
+        }
+        await refreshDataOnly()
+    }
+
+    func renameAccountGroup(_ group: AccountGroup, name: String) async throws {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, let syncClient else { return }
+        try await syncClient.updateAccountGroup(id: group.id, name: clean)
+        await refreshDataOnly()
+    }
+
+    func deleteAccountGroup(_ group: AccountGroup) async throws {
+        guard let syncClient else { return }
+        try await syncClient.deleteAccountGroup(id: group.id)
+        await refreshDataOnly()
+    }
+
+    func setAccountGroup(_ account: Account, groupId: String?) async throws {
+        guard let syncClient else { return }
+        try await syncClient.setAccountGroup(accountId: account.id, groupId: groupId)
+        await refreshDataOnly()
+    }
+
+    func dropAccount(_ accountId: String, on targetId: String, after: Bool) async throws {
+        guard let syncClient,
+              let source = accounts.first(where: { $0.id == accountId }),
+              let target = accounts.first(where: { $0.id == targetId }),
+              source.id != target.id,
+              source.offBudget == target.offBudget,
+              source.closed == target.closed else { return }
+
+        let peers = accounts
+            .filter {
+                $0.id != source.id && $0.offBudget == target.offBudget &&
+                    $0.closed == target.closed && $0.groupId == target.groupId
+            }
+            .sorted {
+                $0.sortOrder == $1.sortOrder ? $0.id < $1.id : $0.sortOrder < $1.sortOrder
+            }
+        let targetIndex = peers.firstIndex(where: { $0.id == target.id })
+        let beforeAccountId: String? = if after, let targetIndex, peers.indices.contains(targetIndex + 1) {
+            peers[targetIndex + 1].id
+        } else {
+            target.id
+        }
+
+        try await syncClient.moveAccount(
+            accountId: source.id,
+            toGroupId: target.groupId,
+            beforeAccountId: beforeAccountId
+        )
+        await refreshDataOnly()
+    }
+
+    func dropAccountIntoGroup(_ accountId: String, groupId: String) async throws {
+        guard let syncClient,
+              accounts.contains(where: { $0.id == accountId && !$0.closed }),
+              accountGroups.contains(where: { $0.id == groupId }) else { return }
+        try await syncClient.moveAccount(accountId: accountId, toGroupId: groupId, beforeAccountId: nil)
+        await refreshDataOnly()
+    }
 
     /// Create a new local (manually-added) account, matching the PWA's own
     /// "Create local account" flow (loot-core `createAccount`): an accounts
@@ -4826,7 +4902,7 @@ final class BudgetStore: ObservableObject {
             candidates.removeAll { !$0.cleared }
         }
 
-        guard !candidates.isEmpty || existingOldestDay == nil else {
+        guard !candidates.isEmpty || !download.rejectedIds.isEmpty || existingOldestDay == nil else {
             return (0, 0, [], 0)
         }
         let earliest = candidates.map(\.date).min() ?? startingDay
@@ -5008,6 +5084,25 @@ final class BudgetStore: ObservableObject {
             expectedLink: expectedLink,
             preparedRulesFingerprint: prepared.fingerprint
         )
+        // A charge the provider later rejects (a voided hold) never moved money,
+        // but its pending row would otherwise stay forever. Remove it while it
+        // is still pending and unreconciled, so nothing the person confirmed
+        // is touched. Read after the writes above: a reissued charge may have
+        // just claimed the row, and then it no longer carries the rejected id.
+        // An empty date range (0...0) makes this an id-only lookup.
+        let rejectedRows = download.rejectedIds.isEmpty ? [] : try await database.bankSyncWindow(
+            accountId: target.id, from: 0, to: 0, importedIds: download.rejectedIds
+        )
+        var voided: [Transaction] = []
+        for row in rejectedRows where !row.tombstone && !row.cleared && !row.reconciled {
+            if let transaction = try await database.fetchTransaction(id: row.id) {
+                voided.append(transaction)
+            }
+        }
+        if !voided.isEmpty {
+            await performDeleteTransactions(voided)
+        }
+
         let added = materialized.inserted.count + (openingInsert == nil ? 0 : 1)
         return (added, materialized.updatedCount, materialized.inserted, plan.rejectedConflicts)
     }

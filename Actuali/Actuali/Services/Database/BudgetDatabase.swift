@@ -67,6 +67,7 @@ struct AccountRecord: Codable, FetchableRecord, TableRecord {
     let closed: Int?
     let tombstone: Int?
     let sortOrder: Double?
+    let accountGroupId: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -76,7 +77,27 @@ struct AccountRecord: Codable, FetchableRecord, TableRecord {
         case closed
         case tombstone
         case sortOrder = "sort_order"
+        case accountGroupId = "account_group_id"
     }
+}
+
+struct AccountGroupRecord: Codable, FetchableRecord, TableRecord {
+    static let databaseTableName = "account_groups"
+    let id: String
+    let name: String?
+    let sortOrder: Double?
+    let tombstone: Int?
+    enum CodingKeys: String, CodingKey {
+        case id, name, tombstone
+        case sortOrder = "sort_order"
+    }
+}
+
+struct AccountMoveResult: Sendable {
+    let accountId: String
+    let groupId: String?
+    let sortOrder: Double
+    let movedSiblings: [SortOrder.Position]
 }
 
 struct TransactionRecord: Codable, FetchableRecord, TableRecord {
@@ -310,6 +331,8 @@ final class BudgetDatabase: Sendable {
         // nowhere for the web UI's own link messages to apply.
         (1_780_606_215_003, "accounts", "account_sync_source", [],
          "ALTER TABLE accounts ADD COLUMN account_sync_source TEXT"),
+        (1_787_013_118_116, "accounts", "account_group_id", [],
+         "ALTER TABLE accounts ADD COLUMN account_group_id TEXT DEFAULT NULL"),
         (1_780_606_215_004, "accounts", "last_sync", [],
          "ALTER TABLE accounts ADD COLUMN last_sync TEXT"),
     ]
@@ -406,6 +429,14 @@ final class BudgetDatabase: Sendable {
                 tombstone INTEGER DEFAULT 0
             )
         """),
+        (1_787_013_118_115, """
+            CREATE TABLE IF NOT EXISTS account_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0
+            )
+        """),
         // Defensive, like the two above: `banks` is upstream base schema, but
         // the bank-sync link writes both the row and the accounts.bank pointer
         // to it, and a runtime check on one without the other would only half
@@ -450,6 +481,7 @@ final class BudgetDatabase: Sendable {
         1_780_606_215_002, // second half of upstream index migration 1780606215001
         1_780_606_215_003, // locally minted accounts.account_sync_source backfill
         1_780_606_215_004, // locally minted accounts.last_sync backfill
+        1_787_013_118_116, // locally minted accounts.account_group_id backfill
         1_770_000_000_003, // defensive CREATE banks
         1_770_000_000_004, // defensive CREATE tags
         1_780_606_215_005, // device-local FinanceKit link identities
@@ -622,9 +654,81 @@ final class BudgetDatabase: Sendable {
                     offBudget: record.offbudget == 1,
                     closed: record.closed == 1,
                     sortOrder: Int(record.sortOrder ?? 0),
+                    groupId: record.accountGroupId,
                     balance: balances[record.id] ?? 0
                 )
             }
+        }
+    }
+
+    func fetchAccountGroups() async throws -> [AccountGroup] {
+        try await dbQueue.read { db in
+            try AccountGroupRecord.filter(Column("tombstone") == 0 || Column("tombstone") == nil)
+                .order(Column("sort_order").asc).fetchAll(db).map {
+                    AccountGroup(id: $0.id, name: $0.name ?? "Unknown", sortOrder: $0.sortOrder ?? 0)
+                }
+        }
+    }
+
+    func insertAccountGroup(id: String, name: String) throws -> AccountGroup {
+        try dbQueue.write { db in
+            let last = try Double.fetchOne(db, sql: "SELECT MAX(sort_order) FROM account_groups WHERE tombstone IS NOT 1") ?? 0
+            let group = AccountGroup(id: id, name: name, sortOrder: last + SortOrder.increment)
+            try db.execute(sql: "INSERT INTO account_groups (id, name, sort_order, tombstone) VALUES (?, ?, ?, 0)", arguments: [id, name, group.sortOrder])
+            return group
+        }
+    }
+
+    func renameAccountGroup(id: String, name: String) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "UPDATE account_groups SET name = ? WHERE id = ?", arguments: [name, id])
+        }
+    }
+
+    func deleteAccountGroup(id: String) throws -> [String] {
+        try dbQueue.write { db in
+            let ids = try String.fetchAll(db, sql: "SELECT id FROM accounts WHERE account_group_id = ?", arguments: [id])
+            try db.execute(sql: "UPDATE accounts SET account_group_id = NULL WHERE account_group_id = ?", arguments: [id])
+            try db.execute(sql: "UPDATE account_groups SET tombstone = 1 WHERE id = ?", arguments: [id])
+            return ids
+        }
+    }
+
+    func setAccountGroup(accountId: String, groupId: String?) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "UPDATE accounts SET account_group_id = ? WHERE id = ?", arguments: [groupId, accountId])
+        }
+    }
+
+    func moveAccount(accountId: String, toGroupId: String?, beforeAccountId: String?) throws -> AccountMoveResult {
+        try dbQueue.write { db in
+            guard let source = try Row.fetchOne(db, sql: "SELECT offbudget, closed FROM accounts WHERE id = ?", arguments: [accountId]) else {
+                throw DatabaseError(message: "Account no longer exists")
+            }
+            let offBudget: Int = source["offbudget"] ?? 0
+            let closed: Int = source["closed"] ?? 0
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT id, sort_order FROM accounts
+            WHERE (tombstone IS NULL OR tombstone != 1)
+              AND COALESCE(offbudget, 0) = ? AND COALESCE(closed, 0) = ?
+              AND account_group_id IS ? AND id != ?
+            ORDER BY sort_order, id
+            """, arguments: [offBudget, closed, toGroupId, accountId])
+            let positions = try rows.map { row -> SortOrder.Position in
+                guard let id: String = row["id"] else { throw DatabaseError(message: "Invalid account row") }
+                return SortOrder.Position(id: id, sortOrder: row["sort_order"] ?? 0)
+            }
+            let placement = SortOrder.shove(positions, before: beforeAccountId)
+            try db.execute(sql: "UPDATE accounts SET account_group_id = ?, sort_order = ? WHERE id = ?", arguments: [toGroupId, placement.sortOrder, accountId])
+            for moved in placement.moved {
+                try db.execute(sql: "UPDATE accounts SET sort_order = ? WHERE id = ?", arguments: [moved.sortOrder, moved.id])
+            }
+            return AccountMoveResult(
+                accountId: accountId,
+                groupId: toGroupId,
+                sortOrder: placement.sortOrder,
+                movedSiblings: placement.moved
+            )
         }
     }
 
