@@ -109,6 +109,7 @@ struct PendingImportsView: View {
             .sheet(item: $editingItem, onDismiss: presentDeferredFailure) { item in
                 NavigationStack {
                     PendingImportEditView(item: item)
+                        .environmentObject(budgetStore)
                 }
             }
         }
