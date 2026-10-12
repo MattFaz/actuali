@@ -347,6 +347,102 @@ struct PendingImportApproverTests {
         #expect(try databaseRowCount(at: url) == 0)
     }
 
+    @Test func saveEditedPreservesExplicitCategoryAgainstMatchingRule() async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [account("acct_checking", "Checking")]
+        let queue = try DatabaseQueue(path: url.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+            INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+            VALUES ('category-rule',
+                '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                '[{"op":"set","field":"category","value":"cat_rule"}]', 0, 'and')
+            """)
+        }
+        let item = PendingImport(
+            originBudgetId: store.currentBudgetId, amount: 12.50,
+            sourceCurrencyCode: "USD", payee: "Coffee"
+        )
+        var form = BudgetStore.TransactionForm(
+            accountId: "acct_checking", type: .expense, amount: "12.50",
+            payeeName: "Coffee", transferToAccountId: nil, categoryId: "cat_user",
+            notes: "edited", date: Date(), cleared: false
+        )
+        form.categoryIsExplicit = true
+
+        let result = try await PendingImportApprover(store: store).saveEdited(item, form: form)
+        #expect(result == .inserted(item.id.uuidString))
+        let savedCategory = try queue.read { db in
+            try String.fetchOne(db, sql: "SELECT category FROM transactions WHERE id = ?", arguments: [item.id.uuidString])
+        }
+        #expect(savedCategory == "cat_user")
+    }
+
+    @Test func saveEditedPreservesExplicitlyClearedCategoryAgainstMatchingRule() async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [account("acct_checking", "Checking")]
+        let queue = try DatabaseQueue(path: url.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+            INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+            VALUES ('category-rule',
+                '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                '[{"op":"set","field":"category","value":"cat_rule"}]', 0, 'and')
+            """)
+        }
+        let item = PendingImport(
+            originBudgetId: store.currentBudgetId, amount: 12.50,
+            sourceCurrencyCode: "USD", payee: "Coffee"
+        )
+        var form = BudgetStore.TransactionForm(
+            accountId: "acct_checking", type: .expense, amount: "12.50",
+            payeeName: "Coffee", transferToAccountId: nil, categoryId: nil,
+            notes: "edited", date: Date(), cleared: false
+        )
+        form.categoryIsExplicit = true
+
+        let result = try await PendingImportApprover(store: store).saveEdited(item, form: form)
+        #expect(result == .inserted(item.id.uuidString))
+        let savedCategory = try queue.read { db in
+            try String.fetchOne(db, sql: "SELECT category FROM transactions WHERE id = ?", arguments: [item.id.uuidString])
+        }
+        #expect(savedCategory == nil)
+    }
+
+    @Test func saveEditedAllowsRuleToApplyWhenCategoryIsNotExplicit() async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [account("acct_checking", "Checking")]
+        let queue = try DatabaseQueue(path: url.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+            INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+            VALUES ('category-rule',
+                '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                '[{"op":"set","field":"category","value":"cat_rule"}]', 0, 'and')
+            """)
+        }
+        let item = PendingImport(
+            originBudgetId: store.currentBudgetId, amount: 12.50,
+            sourceCurrencyCode: "USD", payee: "Coffee"
+        )
+        var form = BudgetStore.TransactionForm(
+            accountId: "acct_checking", type: .expense, amount: "12.50",
+            payeeName: "Coffee", transferToAccountId: nil, categoryId: nil,
+            notes: "edited", date: Date(), cleared: false
+        )
+        form.categoryIsExplicit = false
+
+        let result = try await PendingImportApprover(store: store).saveEdited(item, form: form)
+        #expect(result == .inserted(item.id.uuidString))
+        let savedCategory = try queue.read { db in
+            try String.fetchOne(db, sql: "SELECT category FROM transactions WHERE id = ?", arguments: [item.id.uuidString])
+        }
+        #expect(savedCategory == "cat_rule")
+    }
+
     @Test func concurrentDirectApprovalsCreateOneRawTransactionRow() async throws {
         let (store, url) = try await makeWritableStore()
         defer { try? FileManager.default.removeItem(at: url) }

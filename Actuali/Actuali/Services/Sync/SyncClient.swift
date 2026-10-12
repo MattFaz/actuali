@@ -393,8 +393,8 @@ actor SyncClient {
             }
 
             finalTransaction = result.transaction
-            if preserveCategory, let categoryId = transaction.categoryId {
-                finalTransaction.categoryId = categoryId
+            if preserveCategory {
+                finalTransaction.categoryId = transaction.categoryId
             }
             if let name = result.pendingPayeeName {
                 finalTransaction.payeeId = try await resolvePayee(

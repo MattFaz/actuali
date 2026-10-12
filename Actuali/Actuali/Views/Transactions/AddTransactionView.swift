@@ -211,7 +211,7 @@ struct AddTransactionView: View {
             isSplit: isSplitting,
             isEditing: isEditing,
             categoryIsExplicit: userPickedCategory,
-            applyRules: !isEditing && saveOverride == nil
+            applyRules: !isEditing
         )
     }
 

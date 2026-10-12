@@ -3878,8 +3878,8 @@ final class BudgetStore: ObservableObject {
         var targets = Set<TransactionImpactTarget>()
         if let prepared {
             var final = RulesEngine.apply(transaction, rules: prepared.rules, context: prepared.context).transaction
-            if preserveCategory, let categoryId = transaction.categoryId {
-                final.categoryId = categoryId
+            if preserveCategory {
+                final.categoryId = transaction.categoryId
             }
             targets = await impactTargets(for: [final])
         }
