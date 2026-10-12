@@ -675,12 +675,14 @@ struct AccountsListView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        Button {
-                            showingAccountGroups = true
-                        } label: {
-                            Label(String(localized: "Manage Account Groups"), systemImage: "folder")
+                        if budgetStore.accountGroupWritesEnabled {
+                            Button {
+                                showingAccountGroups = true
+                            } label: {
+                                Label(String(localized: "Manage Account Groups"), systemImage: "folder")
+                            }
+                            Divider()
                         }
-                        Divider()
                         if !budgetStore.bankSyncAccounts.isEmpty {
                             Button {
                                 Task { await budgetStore.runBankSync() }
@@ -1259,17 +1261,19 @@ struct AccountRow: View {
         }, isTargeted: { isDropTargeted = $0 })
         .background(isDropTargeted ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 8))
         .contextMenu {
-            Menu(String(localized: "Set Account Group"), systemImage: "folder") {
-                Button(String(localized: "None")) { Task { try? await budgetStore.setAccountGroup(account, groupId: nil) } }
-                ForEach(budgetStore.accountGroups) { group in
-                    Button(group.name) { Task { try? await budgetStore.setAccountGroup(account, groupId: group.id) } }
-                }
-                Divider()
-                Button {
-                    newGroupName = ""
-                    isCreatingGroup = true
-                } label: {
-                    Label(String(localized: "Add New"), systemImage: "plus")
+            if budgetStore.accountGroupWritesEnabled {
+                Menu(String(localized: "Set Account Group"), systemImage: "folder") {
+                    Button(String(localized: "None")) { Task { try? await budgetStore.setAccountGroup(account, groupId: nil) } }
+                    ForEach(budgetStore.accountGroups) { group in
+                        Button(group.name) { Task { try? await budgetStore.setAccountGroup(account, groupId: group.id) } }
+                    }
+                    Divider()
+                    Button {
+                        newGroupName = ""
+                        isCreatingGroup = true
+                    } label: {
+                        Label(String(localized: "Add New"), systemImage: "plus")
+                    }
                 }
             }
         }

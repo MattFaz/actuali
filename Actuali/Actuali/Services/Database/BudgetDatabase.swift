@@ -96,6 +96,7 @@ struct AccountGroupRecord: Codable, FetchableRecord, TableRecord {
 struct AccountMoveResult: Sendable {
     let accountId: String
     let groupId: String?
+    let groupChanged: Bool
     let sortOrder: Double
     let movedSiblings: [SortOrder.Position]
 }
@@ -702,11 +703,12 @@ final class BudgetDatabase: Sendable {
 
     func moveAccount(accountId: String, toGroupId: String?, beforeAccountId: String?) throws -> AccountMoveResult {
         try dbQueue.write { db in
-            guard let source = try Row.fetchOne(db, sql: "SELECT offbudget, closed FROM accounts WHERE id = ?", arguments: [accountId]) else {
+            guard let source = try Row.fetchOne(db, sql: "SELECT offbudget, closed, account_group_id FROM accounts WHERE id = ?", arguments: [accountId]) else {
                 throw DatabaseError(message: "Account no longer exists")
             }
             let offBudget: Int = source["offbudget"] ?? 0
             let closed: Int = source["closed"] ?? 0
+            let fromGroupId: String? = source["account_group_id"]
             let rows = try Row.fetchAll(db, sql: """
             SELECT id, sort_order FROM accounts
             WHERE (tombstone IS NULL OR tombstone != 1)
@@ -726,6 +728,7 @@ final class BudgetDatabase: Sendable {
             return AccountMoveResult(
                 accountId: accountId,
                 groupId: toGroupId,
+                groupChanged: fromGroupId != toGroupId,
                 sortOrder: placement.sortOrder,
                 movedSiblings: placement.moved
             )
