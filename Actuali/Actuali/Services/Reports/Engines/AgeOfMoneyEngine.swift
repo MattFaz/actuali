@@ -138,11 +138,17 @@ enum AgeOfMoneyEngine {
         // still emit a point (the average carries forward).
         var points: [AgeOfMoneyData.Point] = []
         var agesSoFar: [Int] = []
+        var displayAgeIdx = 0
         var month = monthStart(of: start)
         let lastMonth = monthStart(of: resolvedEnd)
         while month <= lastMonth {
             let monthKey = ymdInt(from: month) / 100 // YYYYMM
-            agesSoFar.append(contentsOf: displayAges.filter { $0.date / 100 == monthKey }.map(\.age))
+            while displayAgeIdx < displayAges.count, displayAges[displayAgeIdx].date / 100 <= monthKey {
+                if displayAges[displayAgeIdx].date / 100 == monthKey {
+                    agesSoFar.append(displayAges[displayAgeIdx].age)
+                }
+                displayAgeIdx += 1
+            }
             if !agesSoFar.isEmpty {
                 let lastTen = agesSoFar.suffix(10)
                 let avg = Int((Double(lastTen.reduce(0, +)) / Double(lastTen.count)).rounded())

@@ -87,8 +87,15 @@ struct AgeOfMoneyEngineTests {
             txs.append(tx("e\(day)", date: 20_260_200 + day, amount: -100_000))
         }
         let data = AgeOfMoneyEngine.compute(meta: meta(), transactions: txs,
-                                            today: today, context: .empty)
+                                            today: today, context: .empty,
+                                            locale: Locale(identifier: "en_US"))
         #expect(data.currentAge == 38)
+        #expect(data.points == [.init(monthLabel: "Feb 2026", age: 38),
+                                .init(monthLabel: "Mar 2026", age: 38),
+                                .init(monthLabel: "Apr 2026", age: 38),
+                                .init(monthLabel: "May 2026", age: 38),
+                                .init(monthLabel: "Jun 2026", age: 38),
+                                .init(monthLabel: "Jul 2026", age: 38)])
     }
 
     @Test func sameDayExpensesKeepUpstreamDescendingSortOrder() {
