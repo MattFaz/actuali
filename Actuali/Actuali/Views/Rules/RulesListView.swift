@@ -37,6 +37,7 @@ struct RulesListView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased(with: locale)
         guard !query.isEmpty else { return budgetStore.rules }
+        let summary = budgetStore.ruleSummary
         return budgetStore.rules.filter {
             summary.searchText($0, locale: locale).contains(query)
         }
