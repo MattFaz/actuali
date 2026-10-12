@@ -5719,8 +5719,6 @@ final class BudgetDatabase: Sendable {
         guard !allTags.isEmpty else { return [] }
 
         return try await dbQueue.read { db in
-            // ponytail: Scan transactions with notes once in memory to compute all tag aggregations
-            // in O(tags * txs_with_notes), extracting note hashtags upfront.
             let rows = try Row.fetchAll(db, sql: """
             SELECT id, amount, notes
             FROM transactions
@@ -5729,41 +5727,31 @@ final class BudgetDatabase: Sendable {
               AND (isChild = 0 OR isChild IS NULL)
             """)
 
-            struct TxInfo {
-                let amount: Int
-                let notes: String
-            }
-
-            let transactionsWithNotes: [TxInfo] = rows.compactMap { row in
-                guard let notes: String = row["notes"], !notes.isEmpty else { return nil }
+            let requestedTags = Set(allTags.map { "#\($0.tag)".lowercased() })
+            var aggregates: [String: (count: Int, spent: Int, net: Int)] = [:]
+            for row in rows {
+                guard let notes: String = row["notes"], !notes.isEmpty else { continue }
                 let amount: Int = row["amount"] ?? 0
-                return TxInfo(amount: amount, notes: notes)
-            }
-
-            let tagged = transactionsWithNotes.map { tx in
-                (tx, Set(TagFilter.extractHashtags(from: tx.notes).map { $0.lowercased() }))
+                let hashtags = Set(TagFilter.extractHashtags(from: notes).map { $0.lowercased() })
+                for needle in hashtags where requestedTags.contains(needle) {
+                    var aggregate = aggregates[needle] ?? (count: 0, spent: 0, net: 0)
+                    aggregate.count += 1
+                    aggregate.net += amount
+                    if amount < 0 {
+                        aggregate.spent += -amount
+                    }
+                    aggregates[needle] = aggregate
+                }
             }
 
             return allTags.map { tag in
                 let needle = "#\(tag.tag)".lowercased()
-                let matches = tagged.filter { $0.1.contains(needle) }
-                var count = 0
-                var spent = 0
-                var net = 0
-
-                for (tx, _) in matches {
-                    count += 1
-                    net += tx.amount
-                    if tx.amount < 0 {
-                        spent += -tx.amount
-                    }
-                }
-
+                let aggregate = aggregates[needle] ?? (count: 0, spent: 0, net: 0)
                 return TagSummary(
                     tag: tag,
-                    transactionCount: count,
-                    totalSpent: spent,
-                    netAmount: net
+                    transactionCount: aggregate.count,
+                    totalSpent: aggregate.spent,
+                    netAmount: aggregate.net
                 )
             }
         }
