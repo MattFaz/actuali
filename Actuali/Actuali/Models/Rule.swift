@@ -77,6 +77,11 @@ struct Rule: Identifiable, Equatable, Hashable, Sendable {
         var options: [String: RuleValue]?
     }
 
+    /// True when this rule was created by and linked to a schedule.
+    var isScheduleRule: Bool {
+        actions.contains { $0.op == "link-schedule" }
+    }
+
     /// A rule with nothing filled in, for the "new rule" editor.
     static func empty(id: String = UUID().uuidString) -> Rule {
         Rule(id: id, stage: .default, conditionsOp: .and, conditions: [], actions: [])

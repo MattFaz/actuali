@@ -839,4 +839,89 @@ struct RulesEngineTests {
         let (updated, _) = applied(tx, rules: [rule])
         #expect(updated.categoryId == nil)
     }
+
+    /// Upstream parity (loot-core runRules): transactions already linked to a
+    /// schedule skip schedule rules so one-off schedule actions don't run twice,
+    /// while general rules continue to apply.
+    @Test func scheduledTransactionSkipsScheduleRules() {
+        let scheduleRule = parseRule(
+            id: "sched-rule-1",
+            conditions: #"[{"op":"is","field":"account","value":"acct-1"}]"#,
+            actions: """
+            [{"op":"link-schedule","value":"sched-1"},
+             {"op":"append-notes","value":" (from schedule)"}]
+            """
+        )
+        let generalRule = parseRule(
+            id: "gen-rule-1",
+            conditions: #"[{"op":"is","field":"account","value":"acct-1"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-general"}]"#
+        )
+
+        var tx = makeTransaction(notes: "initial note")
+        tx.schedule = "sched-1"
+
+        let (updated, _) = applied(tx, rules: [scheduleRule, generalRule])
+
+        #expect(updated.notes == "initial note")
+        #expect(updated.categoryId == "cat-general")
+        #expect(updated.schedule == "sched-1")
+    }
+
+    @Test func isScheduleRuleIdentifiesScheduleRules() {
+        let schedRule = parseRule(
+            conditions: #"[{"op":"is","field":"account","value":"acct-1"}]"#,
+            actions: #"[{"op":"link-schedule","value":"sched-1"}]"#
+        )
+        let normalRule = parseRule(
+            conditions: #"[{"op":"is","field":"account","value":"acct-1"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-1"}]"#
+        )
+        #expect(schedRule.isScheduleRule)
+        #expect(!normalRule.isScheduleRule)
+    }
+
+    @Test func multipleScheduleRulesOnlyFirstLinksUnscheduledTransaction() {
+        let firstScheduleRule = parseRule(
+            id: "sched-1",
+            conditions: #"[{"op":"is","field":"account","value":"acct-1"}]"#,
+            actions: #"[{"op":"link-schedule","value":"sched-1"}]"#
+        )
+        let secondScheduleRule = parseRule(
+            id: "sched-2",
+            conditions: #"[{"op":"is","field":"account","value":"acct-1"}]"#,
+            actions: #"[{"op":"link-schedule","value":"sched-2"}]"#
+        )
+
+        let tx = makeTransaction()
+        let (updated, _) = applied(tx, rules: [firstScheduleRule, secondScheduleRule])
+
+        #expect(updated.schedule == "sched-1")
+    }
+
+    @Test func scheduledTransactionAllowsNonScheduleRulesToFire() {
+        let scheduleRule = parseRule(
+            id: "sched-rule",
+            conditions: #"[{"op":"is","field":"account","value":"acct-1"}]"#,
+            actions: """
+            [{"op":"link-schedule","value":"sched-1"},
+             {"op":"set","field":"notes","value":"from schedule"}]
+            """
+        )
+        let payeeRule = parseRule(
+            id: "payee-rule",
+            conditions: #"[{"op":"is","field":"payee","value":"payee-1"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-groceries"}]"#
+        )
+
+        var tx = makeTransaction(payeeId: "payee-1", notes: "existing note")
+        tx.schedule = "sched-1"
+
+        let (updated, changed) = applied(tx, rules: [scheduleRule, payeeRule])
+
+        #expect(updated.notes == "existing note")
+        #expect(updated.categoryId == "cat-groceries")
+        #expect(changed.contains("category"))
+        #expect(!changed.contains("notes"))
+    }
 }

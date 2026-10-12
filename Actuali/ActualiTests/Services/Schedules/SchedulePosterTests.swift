@@ -302,6 +302,53 @@ struct SchedulePosterTests {
         #expect(scheduleId == "sched-1")
     }
 
+    /// GH #690: Manual posting via SyncClient must apply rule actions (set notes, set cleared)
+    /// to ordinary non-transfer schedules too.
+    @Test func manualOrdinaryScheduleAppliesRuleActions() async throws {
+        let (db, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, actions: """
+        [{"op":"link-schedule","value":"sched-1"},
+         {"op":"set","field":"notes","value":"electric bill"},
+         {"op":"set","field":"cleared","value":true}]
+        """, nextDate: 20_260_715)
+        let schedule = try #require(await db.fetchSchedules().first)
+        let client = try await makeTestSyncClient(database: db)
+
+        try await client.postScheduleTransaction(schedule, today: false)
+
+        let (notes, cleared, scheduleId) = try await db.dbQueueForTesting.read { conn in
+            guard let row = try Row.fetchOne(conn, sql: "SELECT notes, cleared, schedule FROM transactions") else {
+                return (nil as String?, false, nil as String?)
+            }
+            let notes: String? = row["notes"]
+            let cleared: Bool = (row["cleared"] as Int? ?? 0) != 0
+            let schedule: String? = row["schedule"]
+            return (notes, cleared, schedule)
+        }
+        #expect(notes == "electric bill")
+        #expect(cleared)
+        #expect(scheduleId == "sched-1")
+    }
+
+    @Test func manualOrdinaryScheduleWithDeleteActionDoesNotPost() async throws {
+        let (db, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, actions: """
+        [{"op":"link-schedule","value":"sched-1"},
+         {"op":"delete-transaction","value":null}]
+        """, nextDate: 20_260_715)
+        let schedule = try #require(await db.fetchSchedules().first)
+        let client = try await makeTestSyncClient(database: db)
+
+        try await client.postScheduleTransaction(schedule, today: false)
+
+        let rowCount = try await db.dbQueueForTesting.read { conn in
+            try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM transactions") ?? 0
+        }
+        #expect(rowCount == 0)
+    }
+
     @Test func transferScheduleAppliesRuleActionsBeforePairing() async throws {
         let (db, url) = try await makeDatabase()
         defer { cleanup(url) }
@@ -412,6 +459,62 @@ struct SchedulePosterTests {
 
         let txn = try #require(actions.created.first)
         #expect(txn.categoryId == "cat-rent")
+    }
+
+    /// GH #690: rule actions (set notes, set cleared, etc.) must fire for
+    /// ordinary (non-transfer) schedules too — not just transfers.
+    @Test func postedNonTransferTransactionAppliesRuleActions() async throws {
+        let (db, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, actions: """
+        [{"op":"link-schedule","value":"sched-1"},
+         {"op":"set","field":"notes","value":"monthly rent"},
+         {"op":"set","field":"cleared","value":true}]
+        """, nextDate: 20_260_715)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
+
+        let txn = try #require(actions.created.first)
+        #expect(txn.notes == "monthly rent")
+        #expect(txn.cleared)
+    }
+
+    @Test func postedNonTransferScheduleAppliesPrependAndAppendNotes() async throws {
+        let (db, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, actions: """
+        [{"op":"link-schedule","value":"sched-1"},
+         {"op":"set","field":"notes","value":"rent"},
+         {"op":"prepend-notes","value":"July "},
+         {"op":"append-notes","value":" paid"}]
+        """, nextDate: 20_260_715)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
+
+        let txn = try #require(actions.created.first)
+        #expect(txn.notes == "July rent paid")
+    }
+
+    @Test func deletedNonTransferScheduleAdvancesWithoutCreatingTransaction() async throws {
+        let (db, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, actions: """
+        [{"op":"link-schedule","value":"sched-1"},
+         {"op":"delete-transaction","value":null}]
+        """, nextDate: 20_260_715)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
+
+        #expect(posted == 1)
+        #expect(actions.created.isEmpty)
+        let advanced = try #require(actions.advances.first)
+        #expect(advanced.newNextDate == 20_260_815)
     }
 
     @Test func threeMissedMonthsCatchUpWithAdvancesBetweenEach() async throws {
