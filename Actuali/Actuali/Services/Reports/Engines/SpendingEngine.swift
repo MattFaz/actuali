@@ -207,18 +207,35 @@ enum SpendingEngine {
 
         guard let startMonth, startMonth <= endMonth else { return 0 }
 
-        var sum = 0
-        var count = 0
+        var monthlyNets: [Int] = []
+        var boundsByMonth: [Int: (start: Int, end: Int, index: Int)] = [:]
         var month = startMonth
         while month <= endMonth {
-            sum += monthSpending(transactions: transactions,
-                                 monthStart: month,
-                                 calendar: calendar,
-                                 throughDay: throughDay)
-            count += 1
-            guard let next = calendar.date(byAdding: .month, value: 1, to: month) else { break }
+            let index = monthlyNets.count
+            monthlyNets.append(0)
+            let next = calendar.date(byAdding: .month, value: 1, to: month)
+            if let next,
+               let monthEnd = calendar.date(byAdding: .day, value: -1, to: next) {
+                let lastDay = calendar.component(.day, from: monthEnd)
+                let endDay = throughDay.map { min($0, lastDay) } ?? lastDay
+                if let cutoff = calendar.date(byAdding: .day, value: endDay - 1, to: month) {
+                    let startYMD = ymdInt(from: month, calendar: calendar)
+                    let endYMD = ymdInt(from: cutoff, calendar: calendar)
+                    boundsByMonth[startYMD / 100] = (startYMD, endYMD, index)
+                }
+            }
+            guard let next else { break }
             month = next
         }
+
+        for transaction in transactions {
+            guard let bounds = boundsByMonth[transaction.date / 100],
+                  transaction.date >= bounds.start,
+                  transaction.date <= bounds.end else { continue }
+            monthlyNets[bounds.index] += transaction.amount
+        }
+        let sum = monthlyNets.reduce(0) { $0 + -$1 }
+        let count = monthlyNets.count
         guard count > 0 else { return 0 }
         return Int((Double(sum) / Double(count)).rounded())
     }

@@ -179,6 +179,38 @@ struct SpendingEngineTests {
         #expect(result.comparisonCents == 2000) // 10000 / 5
     }
 
+    @Test(arguments: [(14, 130), (28, 310)])
+    func averageRangeAllTimePreservesConditionedMonthTotals(day: Int, expectedComparison: Int) {
+        let duplicate = tx(date: 20_260_210, amount: -100)
+        var transactions = [
+            duplicate,
+            duplicate,
+            tx(date: 20_260_414, amount: -500),
+            tx(date: 20_260_415, amount: -900),
+            tx(date: 20_260_410, amount: 50), // refund
+            tx(date: 20_260_400, amount: -9000), // before April's numeric start
+            tx(date: 20_260_230, amount: -9000), // after February's numeric end
+            tx(date: 20_260_501, amount: -70),
+        ]
+        for index in transactions.indices {
+            transactions[index].categoryId = "groceries"
+        }
+        // Excluded by the condition, but still establishes the Dec–Apr window.
+        transactions.append(tx(date: 20_251_210, amount: -999))
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let today = calendar.date(bySetting: .day, value: day, of: asOf)!
+        let condition = WidgetRuleCondition.makeMock(op: "is", field: "category", stringValue: "groceries")
+        let range = SpendingAverageRange(mode: "all-time", months: nil)
+        let result = SpendingEngine.compute(
+            meta: meta(conditions: [condition], mode: .average, averageRange: range),
+            transactions: transactions, today: today
+        )
+        #expect(result.currentSpentCents == 70)
+        #expect(result.comparisonCents == expectedComparison)
+    }
+
     @Test func singleMonthCompareTo() {
         let transactions = [
             tx(date: 20_260_301, amount: -7777), // March
