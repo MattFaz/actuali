@@ -21,6 +21,10 @@ struct NetWorthEngineTests {
         )
     }
 
+    private func utcDate(_ day: String) -> Date {
+        ISO8601DateFormatter().date(from: "\(day)T00:00:00Z")!
+    }
+
     @Test func emptyTransactionsReturnsZeros() {
         let meta = NetWorthMeta(name: nil, timeFrame: nil, conditions: nil,
                                 conditionsOp: nil, interval: .monthly, mode: nil)
@@ -67,5 +71,50 @@ struct NetWorthEngineTests {
                                 interval: .monthly, mode: nil)
         let result = NetWorthEngine.compute(meta: meta, transactions: [], today: asOf)
         #expect(result.points.count == 5)
+    }
+
+    @Test(arguments: [
+        (NetWorthMeta.Interval.daily, ["2026-01-30", "2026-01-31", "2026-02-01", "2026-02-02"], [100, 150, 130, 130]),
+        (.weekly, ["2026-01-31"], [150]),
+        (.monthly, ["2026-01-31", "2026-02-02"], [150, 130]),
+        (.yearly, ["2026-02-02"], [130]),
+    ])
+    func shuffledTransactionsPreserveBoundaryBalances(
+        interval: NetWorthMeta.Interval, expectedDates: [String], expectedBalances: [Int]
+    ) {
+        let duplicate = tx(date: 20_260_131, amount: 25)
+        let transactions = [
+            tx(date: 20_260_203, amount: 999),
+            duplicate,
+            tx(date: 20_251_231, amount: 100),
+            tx(date: 20_260_201, amount: -20),
+            duplicate,
+        ]
+        let meta = NetWorthMeta(name: nil,
+                                timeFrame: WidgetTimeFrame(start: "2026-01-30", end: "2026-02-02", mode: .static),
+                                conditions: nil, conditionsOp: nil,
+                                interval: interval, mode: nil)
+        let result = NetWorthEngine.compute(meta: meta, transactions: transactions, today: asOf)
+        #expect(result.points.map(\.date) == expectedDates.map { utcDate($0) })
+        #expect(result.points.map(\.balanceCents) == expectedBalances)
+    }
+
+    @Test func nilMetaUsesSingleMonthlyBoundary() {
+        let transactions = [
+            tx(date: 20_260_601, amount: 999),
+            tx(date: 20_260_430, amount: 100),
+            tx(date: 20_260_531, amount: 25),
+        ]
+        let result = NetWorthEngine.compute(meta: nil, transactions: transactions, today: asOf)
+        #expect(result.points == [NetWorthPoint(date: utcDate("2026-05-31"), balanceCents: 125)])
+    }
+
+    @Test func reversedDailyRangeReturnsNoPoints() {
+        let meta = NetWorthMeta(name: nil,
+                                timeFrame: WidgetTimeFrame(start: "2026-02-02", end: "2026-01-30", mode: .static),
+                                conditions: nil, conditionsOp: nil,
+                                interval: .daily, mode: nil)
+        let result = NetWorthEngine.compute(meta: meta, transactions: [tx(date: 20_260_101, amount: 100)], today: asOf)
+        #expect(result.points.isEmpty)
     }
 }

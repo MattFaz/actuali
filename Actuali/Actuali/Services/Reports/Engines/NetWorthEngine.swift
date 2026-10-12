@@ -24,12 +24,38 @@ enum NetWorthEngine {
             .filter { ConditionsFilter.matches(transaction: $0, conditions: meta?.conditions, op: meta?.conditionsOp, context: context) }
 
         let boundaries = intervalBoundaries(from: start, to: end, interval: interval)
+        guard let firstBoundary = boundaries.first else { return NetWorthData(points: []) }
 
-        let points = boundaries.map { boundary -> NetWorthPoint in
-            let boundaryYMD = ymdInt(from: boundary)
-            let balance = filtered
-                .filter { $0.date <= boundaryYMD }
-                .reduce(0) { $0 + $1.amount }
+        if boundaries.count == 1 {
+            let boundaryYMD = ymdInt(from: firstBoundary)
+            let balance = filtered.reduce(0) { balance, transaction in
+                transaction.date <= boundaryYMD ? balance + transaction.amount : balance
+            }
+            return NetWorthData(points: [NetWorthPoint(date: firstBoundary, balanceCents: balance)])
+        }
+
+        let boundaryYMDs = boundaries.map { ymdInt(from: $0) }
+        var deltas = [Int](repeating: 0, count: boundaries.count)
+        for transaction in filtered {
+            // Each amount starts contributing at the first eligible boundary.
+            var low = 0
+            var high = boundaries.count
+            while low < high {
+                let mid = low + (high - low) / 2
+                if boundaryYMDs[mid] < transaction.date {
+                    low = mid + 1
+                } else {
+                    high = mid
+                }
+            }
+            if low < deltas.count {
+                deltas[low] += transaction.amount
+            }
+        }
+
+        var balance = 0
+        let points = boundaries.enumerated().map { index, boundary -> NetWorthPoint in
+            balance += deltas[index]
             return NetWorthPoint(date: boundary, balanceCents: balance)
         }
 
