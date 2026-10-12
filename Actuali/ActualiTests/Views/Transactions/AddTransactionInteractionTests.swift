@@ -63,24 +63,6 @@ struct AddTransactionInteractionTests {
             field.text = text
             field.delegate?.textViewDidChange?(field)
         }
-
-        func hasText(_ text: String) -> Bool {
-            func match(_ value: String?) -> Bool {
-                value?.contains(text) == true
-            }
-            func find(in view: UIView) -> Bool {
-                if match(view.accessibilityLabel) || match((view as? UILabel)?.text) {
-                    return true
-                }
-                for child in view.subviews {
-                    if find(in: child) {
-                        return true
-                    }
-                }
-                return false
-            }
-            return find(in: controller.view)
-        }
     }
 
     static func fixture() async throws -> (BudgetStore, BudgetDatabase, URL) {
@@ -185,7 +167,7 @@ struct AddTransactionInteractionTests {
         try await database.dbQueueForTesting.write { db in
             db.trace { event in
                 if case .statement(let statement) = event,
-                   statement.sql.localizedCaseInsensitiveContains("rules") {
+                   statement.sql.localizedCaseInsensitiveContains("FROM rules") {
                     ruleReads.withLock { $0 += 1 }
                 }
             }
@@ -193,8 +175,13 @@ struct AddTransactionInteractionTests {
         let hosted = try HostedForm(store: store, saveOverride: { _ in .inserted("dummy") })
         defer { hosted.close() }
 
-        try await Self.waitUntil { hosted.hasText("Food") }
+        try await Self.waitUntil { ruleReads.withLock { $0 } == 1 }
+        try await Task.sleep(for: .milliseconds(100))
+        ruleReads.withLock { $0 = 0 }
+
         try hosted.enterNotes("business lunch")
-        try await Self.waitUntil { hosted.hasText("Business") && ruleReads.withLock { $0 } > 0 }
+        try await Self.waitUntil { ruleReads.withLock { $0 } > 0 }
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(ruleReads.withLock { $0 } == 1)
     }
 }

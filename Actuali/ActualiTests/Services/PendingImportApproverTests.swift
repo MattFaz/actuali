@@ -448,7 +448,7 @@ struct PendingImportApproverTests {
         defer { try? FileManager.default.removeItem(at: url) }
         store.accounts = [
             Account(id: "acct_offbudget", name: "Investment", type: .investment,
-                    offBudget: true, closed: false, sortOrder: 0, balance: 0)
+                    offBudget: true, closed: false, sortOrder: 0, balance: 0),
         ]
         let item = PendingImport(
             originBudgetId: store.currentBudgetId, amount: 12.50,
