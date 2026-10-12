@@ -307,6 +307,7 @@ final class PendingImportApprover {
 
         let payeeName = form.payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
         let payee = payeeName.isEmpty ? nil : try await store.findOrCreatePayee(name: payeeName)
+        let categoryId: String? = account.offBudget ? nil : form.ruleInputCategoryId
         let transaction = Transaction(
             id: item.id.uuidString,
             accountId: account.id,
@@ -314,7 +315,7 @@ final class PendingImportApprover {
             amount: form.type == .income ? unsignedCents : -unsignedCents,
             payeeId: payee?.id,
             payeeName: payee?.name,
-            categoryId: form.categoryId,
+            categoryId: categoryId,
             categoryName: nil,
             notes: form.notes.isEmpty ? nil : form.notes,
             cleared: form.cleared,
@@ -327,7 +328,7 @@ final class PendingImportApprover {
             importedPayee: payeeName.isEmpty ? nil : form.payeeName,
             financialId: financialId
         )
-        switch try await store.createTransaction(transaction) {
+        switch try await store.createTransaction(transaction, preserveCategory: form.categoryIsExplicit) {
         case .inserted(let id): return .inserted(id)
         case .duplicate: return .duplicate
         case .suppressedByRule: return .suppressedByRule

@@ -14,12 +14,20 @@ struct AddTransactionInteractionTests {
         let window: UIWindow
         let previousWindow: UIWindow?
 
-        init(store: BudgetStore) throws {
+        init(
+            store: BudgetStore,
+            saveOverride: ((BudgetStore.TransactionForm) async throws -> PendingImportApprover.SaveResult)? = nil
+        ) throws {
             let scene = try #require(UIApplication.shared.connectedScenes.first as? UIWindowScene)
             previousWindow = scene.windows.first { $0.isKeyWindow }
             controller = UIHostingController(rootView: AnyView(
-                AddTransactionView(accountId: "acct-1", payee: "Cafe", amountCents: 1000)
-                    .environmentObject(store)
+                AddTransactionView(
+                    accountId: "acct-1",
+                    payee: "Cafe",
+                    amountCents: 1000,
+                    saveOverride: saveOverride
+                )
+                .environmentObject(store)
             ))
             window = UIWindow(windowScene: scene)
             window.frame = CGRect(x: 0, y: 0, width: 430, height: 1500)
@@ -150,5 +158,30 @@ struct AddTransactionInteractionTests {
             try String.fetchOne(db, sql: "SELECT category FROM transactions WHERE id = ?", arguments: [id])
         }
         #expect(category == "business")
+    }
+
+    @Test func pendingImportReviewPreviewsRuleCategory() async throws {
+        let (store, database, path) = try await Self.fixture()
+        defer { cleanup(path) }
+        let ruleReads = Mutex(0)
+        try await database.dbQueueForTesting.write { db in
+            db.trace { event in
+                if case .statement(let statement) = event,
+                   statement.sql.localizedCaseInsensitiveContains("FROM rules") {
+                    ruleReads.withLock { $0 += 1 }
+                }
+            }
+        }
+        let hosted = try HostedForm(store: store, saveOverride: { _ in .inserted("dummy") })
+        defer { hosted.close() }
+
+        try await Self.waitUntil { ruleReads.withLock { $0 } == 1 }
+        try await Task.sleep(for: .milliseconds(100))
+        ruleReads.withLock { $0 = 0 }
+
+        try hosted.enterNotes("business lunch")
+        try await Self.waitUntil { ruleReads.withLock { $0 } > 0 }
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(ruleReads.withLock { $0 } == 1)
     }
 }
