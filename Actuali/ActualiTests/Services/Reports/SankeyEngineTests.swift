@@ -346,6 +346,59 @@ struct SankeyEngineTests {
         #expect(none.isEmpty)
     }
 
+    // MARK: - Entry building
+
+    @Test func transactionEntriesPreserveCategoryAndBucketOrder() {
+        let groceries = tx(date: 20_240_105, amount: -100, category: "c_groceries")
+        let transactions = [
+            groceries,
+            tx(date: 20_240_105, amount: 200, account: "a_savings", category: "c_salary"),
+            tx(date: 20_240_105, amount: -300, category: "c_restaurants"),
+            tx(date: 20_240_105, amount: 400, category: "c_salary", payeeId: "p_employer", payeeName: "First employer"),
+            groceries,
+            tx(date: 20_240_105, amount: -50, account: "a_savings", category: "c_groceries"),
+            tx(date: 20_240_105, amount: 100, category: "c_salary", payeeId: "p_employer", payeeName: "Later employer"),
+            tx(date: 20_240_105, amount: 9000),
+        ]
+        let entries = SankeyEngine.transactionEntries(
+            categoryGroups: groups, transactions: transactions,
+            conditions: nil, conditionsOp: nil, groupAccounts: false, context: context
+        )
+
+        #expect(entries.map(\.categoryGroupId) == ["g_income", "g_income", "g_food", "g_food", "g_food"])
+        #expect(entries.map(\.categoryId) == ["c_salary", "c_salary", "c_groceries", "c_groceries", "c_restaurants"])
+        #expect(entries.map(\.accountId) == ["a_savings", "a_checking", "a_checking", "a_savings", "a_checking"])
+        #expect(entries.map(\.payeeName) == [nil, "First employer", nil, nil, nil])
+        #expect(entries.map(\.value) == [200, 500, 200, 50, 300])
+        #expect(entries.map(\.isNegative) == [false, false, true, true, true])
+    }
+
+    @Test func budgetEntriesKeepIncomeUnconditioned() {
+        let transactions = [
+            tx(date: 20_240_105, amount: 100, category: "c_salary", payeeId: "p_employer"),
+            tx(date: 20_240_105, amount: 200, category: "c_salary", payeeId: "p_other"),
+        ]
+        let condition = WidgetRuleCondition(
+            op: "is", field: "payee", value: AnyCodable(rawJSON: Data("\"p_employer\"".utf8)),
+            options: nil, customName: nil
+        )
+        let spent = SankeyEngine.transactionEntries(
+            categoryGroups: groups, transactions: transactions,
+            conditions: [condition], conditionsOp: "and", groupAccounts: false, context: context
+        )
+        let entries = SankeyEngine.budgetEntries(
+            categoryGroups: groups, conditions: [condition], conditionsOp: "and",
+            budget: SankeyBudgetInput(entries: [
+                SankeyBudgetInput.Entry(month: 202_401, categoryId: "c_groceries", amountCents: 50),
+            ]),
+            transactions: transactions, months: [202_401]
+        )
+
+        #expect(spent.map(\.value) == [100])
+        #expect(entries.map(\.categoryId) == ["c_salary", "c_groceries"])
+        #expect(entries.map(\.value) == [300, 50])
+    }
+
     // MARK: - Engine compute (spent)
 
     @Test func spentModeBuildsPayeeIncomeAccountAndCategoryFlows() {
