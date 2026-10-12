@@ -28,12 +28,14 @@ struct BankSyncReconcilerTests {
         notes: String? = nil,
         cleared: Bool = false,
         reconciled: Bool = false,
-        tombstone: Bool = false
+        tombstone: Bool = false,
+        isParent: Bool = false,
+        transferId: String? = nil
     ) -> BankSyncExistingTransaction {
         BankSyncExistingTransaction(
             id: id, date: date, amount: amount, payeeId: payeeId, importedId: importedId,
             importedPayee: importedPayee, notes: notes, cleared: cleared,
-            reconciled: reconciled, tombstone: tombstone
+            reconciled: reconciled, tombstone: tombstone, isParent: isParent, transferId: transferId
         )
     }
 
@@ -71,6 +73,40 @@ struct BankSyncReconcilerTests {
         let update = try #require(plan.updates.first)
         #expect(update.existingId == "tx-1")
         #expect(update.cleared)
+    }
+
+    /// Once posted, the amount is settled: a later download never changes it.
+    @Test func aPostedTransactionKeepsItsAmount() {
+        let plan = BankSyncReconciler.plan(
+            candidates: [candidate(importedId: "sf-1", amount: -1500)],
+            existing: [existing(amount: -1250, importedId: "sf-1", importedPayee: "Blue Bottle", cleared: true)]
+        )
+
+        #expect(plan.isEmpty)
+    }
+
+    /// While a charge is still pending, a download doesn't change its amount,
+    /// so a hand edit (say, adding the tip) stands until the charge posts.
+    @Test func aStillPendingChargeKeepsItsAmount() {
+        let plan = BankSyncReconciler.plan(
+            candidates: [candidate(importedId: "sf-1", amount: -1500, cleared: false)],
+            existing: [existing(amount: -1250, importedId: "sf-1", importedPayee: "Blue Bottle", cleared: false)]
+        )
+
+        #expect(plan.isEmpty)
+    }
+
+    /// A split's parts and a transfer's two sides must keep matching, so
+    /// neither follows a new amount.
+    @Test(arguments: [(true, nil), (false, "tx-partner")] as [(Bool, String?)])
+    func aPendingSplitOrTransferKeepsItsAmount(isParent: Bool, transferId: String?) throws {
+        let plan = BankSyncReconciler.plan(
+            candidates: [candidate(importedId: "sf-1", amount: -1500, cleared: true)],
+            existing: [existing(amount: -1250, importedId: "sf-1", importedPayee: "Blue Bottle",
+                                cleared: false, isParent: isParent, transferId: transferId)]
+        )
+
+        #expect(try #require(plan.updates.first).amount == nil)
     }
 
     @Test func aLiveIdMatchWinsOverADeletedOne() throws {

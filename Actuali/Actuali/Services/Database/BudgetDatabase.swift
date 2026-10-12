@@ -3936,7 +3936,7 @@ final class BudgetDatabase: Sendable {
             arguments.append(contentsOf: importedIds.map { $0 as any DatabaseValueConvertible })
             return try Row.fetchAll(db, sql: """
             SELECT id, date, amount, description, financial_id, imported_description,
-                   notes, cleared, reconciled, tombstone
+                   notes, cleared, reconciled, tombstone, isParent, transferred_id
             FROM transactions
             WHERE acct = ?
               AND ((date IS NOT NULL AND date >= ? AND date <= ?)
@@ -3954,7 +3954,9 @@ final class BudgetDatabase: Sendable {
                     notes: row["notes"],
                     cleared: row["cleared"] == 1,
                     reconciled: row["reconciled"] == 1,
-                    tombstone: row["tombstone"] == 1
+                    tombstone: row["tombstone"] == 1,
+                    isParent: row["isParent"] == 1,
+                    transferId: row["transferred_id"]
                 )
             }
         }
@@ -3999,7 +4001,7 @@ final class BudgetDatabase: Sendable {
                 try db.execute(sql: """
                 UPDATE transactions
                 SET financial_id = ?, description = ?, imported_description = ?,
-                    notes = ?, cleared = ?
+                    notes = ?, cleared = ?, amount = COALESCE(?, amount)
                 WHERE id = ? AND (? IS NULL OR acct IS ?)
                                         AND (tombstone = 0 OR tombstone IS NULL)
                                         AND (reconciled = 0 OR reconciled IS NULL)
@@ -4012,12 +4014,15 @@ final class BudgetDatabase: Sendable {
                                         AND imported_description IS ?
                                         AND notes IS ?
                                         AND COALESCE(cleared, 0) = ?
+                                        AND (? IS NULL OR ((isParent = 0 OR isParent IS NULL)
+                                                           AND transferred_id IS NULL))
                 """, arguments: [
                     update.importedId,
                     update.payeeId,
                     update.importedPayee,
                     update.notes,
                     update.cleared ? 1 : 0,
+                    update.amount,
                     update.existingId,
                     expectedLink.accountId,
                     expectedLink.accountId,
@@ -4028,6 +4033,7 @@ final class BudgetDatabase: Sendable {
                     update.expected.importedPayee,
                     update.expected.notes,
                     update.expected.cleared ? 1 : 0,
+                    update.amount,
                 ])
                 if db.changesCount > 0 {
                     appliedIds.insert(update.existingId)
@@ -4061,7 +4067,7 @@ final class BudgetDatabase: Sendable {
                 try db.execute(sql: """
                 UPDATE transactions
                 SET financial_id = ?, description = ?, imported_description = ?,
-                    notes = ?, cleared = ?
+                    notes = ?, cleared = ?, amount = COALESCE(?, amount)
                 WHERE id = ? AND acct IS ?
                                         AND (tombstone = 0 OR tombstone IS NULL)
                                         AND (reconciled = 0 OR reconciled IS NULL)
@@ -4074,12 +4080,15 @@ final class BudgetDatabase: Sendable {
                                         AND imported_description IS ?
                                         AND notes IS ?
                                         AND COALESCE(cleared, 0) = ?
+                                        AND (? IS NULL OR ((isParent = 0 OR isParent IS NULL)
+                                                           AND transferred_id IS NULL))
                 """, arguments: [
                     update.importedId,
                     update.payeeId,
                     update.importedPayee,
                     update.notes,
                     update.cleared ? 1 : 0,
+                    update.amount,
                     update.existingId,
                     expectedLink.accountId,
                     update.expected.date,
@@ -4089,6 +4098,7 @@ final class BudgetDatabase: Sendable {
                     update.expected.importedPayee,
                     update.expected.notes,
                     update.expected.cleared ? 1 : 0,
+                    update.amount,
                 ])
                 if db.changesCount > 0 {
                     appliedIds.insert(update.existingId)
