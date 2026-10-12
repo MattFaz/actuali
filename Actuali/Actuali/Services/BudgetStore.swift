@@ -852,6 +852,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether a new transaction with no chosen category takes the category of
+    /// the payee's most recent transaction. Persisted to UserDefaults,
+    /// defaults to on. Rules still run after the pick.
+    @Published var suggestCategoryFromPayeeHistory: Bool = true {
+        didSet {
+            UserDefaults.standard.set(suggestCategoryFromPayeeHistory, forKey: "suggestCategoryFromPayeeHistory")
+        }
+    }
+
     /// Whether monetary values are obscured wherever the app displays them:
     /// account balances, the budget table, reports, and transaction lists.
     /// Screens where the user is actively working with an amount (entering a
@@ -1682,6 +1691,13 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// The payee's most recent category, or nil when the user turned the
+    /// payee-history pick off. Every history pick goes through here.
+    func payeeHistoryCategoryId(forPayeeId payeeId: String) async throws -> String? {
+        guard suggestCategoryFromPayeeHistory, let database else { return nil }
+        return try await database.mostRecentCategoryId(forPayeeId: payeeId)
+    }
+
     /// `id` if that category still exists, else nil — so a category deleted
     /// since a shortcut was configured is dropped instead of written as a
     /// dangling id.
@@ -1974,6 +1990,9 @@ final class BudgetStore: ObservableObject {
         )
         _conventionalAmountEntry = Published(
             initialValue: persistedBool("conventionalAmountEntry", default: false)
+        )
+        _suggestCategoryFromPayeeHistory = Published(
+            initialValue: persistedBool("suggestCategoryFromPayeeHistory", default: true)
         )
         _hideBalances = Published(
             initialValue: persistedBool("hideBalances", default: false)
@@ -6041,8 +6060,8 @@ final class BudgetStore: ObservableObject {
             !$0.tombstone && $0.transferAccountId == nil &&
                 $0.name.caseInsensitiveCompare(trimmedPayee) == .orderedSame
         }?.id
-        let historyCategoryId: String? = if let payeeId, let database {
-            try await database.mostRecentCategoryId(forPayeeId: payeeId)
+        let historyCategoryId: String? = if let payeeId {
+            try await payeeHistoryCategoryId(forPayeeId: payeeId)
         } else {
             nil
         }

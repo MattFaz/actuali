@@ -398,10 +398,9 @@ struct AddTransactionView: View {
     }
 
     private func applyEditCategoryFromHistory(payeeId: String) {
-        guard isEditing, !userPickedCategory,
-              let database = budgetStore.databaseForLogger else { return }
+        guard isEditing, !userPickedCategory else { return }
         Task { @MainActor in
-            guard let categoryId = try? await database.mostRecentCategoryId(
+            guard let categoryId = try? await budgetStore.payeeHistoryCategoryId(
                 forPayeeId: payeeId
             ) else { return }
             guard !userPickedCategory,

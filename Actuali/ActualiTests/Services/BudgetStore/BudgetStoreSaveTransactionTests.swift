@@ -242,6 +242,43 @@ struct BudgetStoreSaveTransactionTests {
         #expect(historyOnly.resultCategoryId == "cat-gifts")
     }
 
+    @Test func payeeHistoryOffSkipsHistoryButKeepsRules() async throws {
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
+        defer { cleanup(path) }
+        let store = try await makeTestStore(database: database)
+        defer { store.suggestCategoryFromPayeeHistory = true }
+        store.payees = [
+            payee(id: "payee-cafe", name: "Cafe"),
+            payee(id: "payee-shop", name: "Shop"),
+        ]
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO payees (id, name) VALUES ('payee-cafe', 'Cafe'), ('payee-shop', 'Shop')
+            """)
+            try db.execute(sql: """
+            INSERT INTO transactions
+                (id, acct, category, amount, description, date, tombstone)
+            VALUES
+                ('previous-cafe', 'acct-1', 'cat-gifts', -500, 'payee-cafe', 20260913, 0),
+                ('previous-shop', 'acct-1', 'cat-gifts', -500, 'payee-shop', 20260913, 0)
+            """)
+            try db.execute(sql: """
+            INSERT INTO rules (id, conditions_op, conditions, actions)
+            VALUES ('cafe-category', 'and',
+                '[{"op":"is","field":"description","value":"payee-cafe"}]',
+                '[{"op":"set","field":"category","value":"cat-dining"}]')
+            """)
+        }
+        store.suggestCategoryFromPayeeHistory = false
+
+        let ruled = try await store.automaticCategoryPreview(for: form(payeeName: "Cafe"))
+        let unruled = try await store.automaticCategoryPreview(for: form(payeeName: "Shop"))
+
+        #expect(ruled.sourceCategoryId == nil)
+        #expect(ruled.resultCategoryId == "cat-dining")
+        #expect(unruled.resultCategoryId == nil)
+    }
+
     @Test func automaticCategoryPreviewDoesNotChangeTheSaveRuleInput() async throws {
         let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
