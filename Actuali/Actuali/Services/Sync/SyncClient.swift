@@ -393,8 +393,8 @@ actor SyncClient {
             }
 
             finalTransaction = result.transaction
-            if preserveCategory, let categoryId = transaction.categoryId {
-                finalTransaction.categoryId = categoryId
+            if preserveCategory {
+                finalTransaction.categoryId = transaction.categoryId
             }
             if let name = result.pendingPayeeName {
                 finalTransaction.payeeId = try await resolvePayee(
@@ -961,7 +961,7 @@ actor SyncClient {
                     ("imported_description", update.importedPayee),
                     ("notes", update.notes),
                     ("cleared", update.cleared ? 1 : 0),
-                ]
+                ] + (update.amount.map { [("amount", $0)] } ?? [])
             )
         }
 
@@ -1001,7 +1001,7 @@ actor SyncClient {
                     ("imported_description", update.importedPayee),
                     ("notes", update.notes),
                     ("cleared", update.cleared ? 1 : 0),
-                ]
+                ] + (update.amount.map { [("amount", $0)] } ?? [])
             )
         }
         let result = try database.materializeBankSync(

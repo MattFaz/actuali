@@ -172,6 +172,39 @@ struct BudgetDatabaseTagTests {
         #expect(travelSummary?.totalSpent == 15000)
     }
 
+    @Test func tagSummariesPreserveTagRowsAndTransactionPopulation() async throws {
+        let (database, path) = try await makeDatabase(seedSQL: """
+        INSERT INTO tags (id, tag, hidden) VALUES
+        ('t-work', 'Work', 0), ('t-unused', 'unused', 0), ('t-hidden', 'hidden', 1);
+        INSERT INTO transactions (id, acct, amount, notes, date, isParent, isChild, tombstone) VALUES
+        ('tx-parent', 'acct-1', -700, '#WORK #work #hidden #unmanaged', 20260101, 1, 0, 0),
+        ('tx-normal', 'acct-1', -300, '#work ##unused', 20260102, 0, 0, 0),
+        ('tx-child', 'acct-1', -9000, '#work #hidden #unused', 20260101, 0, 1, 0),
+        ('tx-deleted', 'acct-1', -8000, '#work #hidden #unused', 20260103, 0, 0, 1);
+        """)
+        defer { cleanup(path) }
+
+        let summaries = try await database.fetchTagSummaries()
+        #expect(summaries.map(\.id) == ["t-hidden", "t-unused", "t-work"])
+
+        let hidden = try #require(summaries.first { $0.id == "t-hidden" })
+        #expect(hidden.tag.hidden)
+        #expect(hidden.transactionCount == 1)
+        #expect(hidden.totalSpent == 700)
+        #expect(hidden.netAmount == -700)
+
+        let unused = try #require(summaries.first { $0.id == "t-unused" })
+        #expect(unused.transactionCount == 0)
+        #expect(unused.totalSpent == 0)
+        #expect(unused.netAmount == 0)
+
+        let work = try #require(summaries.first { $0.id == "t-work" })
+        #expect(work.tag.tag == "Work")
+        #expect(work.transactionCount == 2)
+        #expect(work.totalSpent == 1000)
+        #expect(work.netAmount == -1000)
+    }
+
     @Test func fetchTransactionsTaggedWithFiltersCorrectly() async throws {
         let (database, path) = try await makeDatabase(seedSQL: """
         INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking');
