@@ -53,6 +53,29 @@ struct CashFlowEngineTests {
         #expect(result.points.allSatisfy { $0.incomeCents == 0 && $0.expenseCents == 0 })
     }
 
+    @Test func staticPartialRangePreservesWholeMonthsAndDateBounds() {
+        let januaryExpense = tx(date: 20_260_131, amount: -200)
+        let transactions = [
+            tx(date: 20_260_101, amount: 1000),
+            januaryExpense,
+            januaryExpense,
+            tx(date: 20_260_301, amount: 500),
+            tx(date: 20_260_331, amount: -300),
+            tx(date: 20_260_100, amount: 90000),
+            tx(date: 20_260_230, amount: -90000),
+            tx(date: 20_260_332, amount: 90000),
+            tx(date: 20_260_401, amount: -90000),
+        ]
+        let meta = CashFlowMeta(name: nil,
+                                timeFrame: WidgetTimeFrame(start: "2026-01-15", end: "2026-03-10", mode: .static),
+                                conditions: nil, conditionsOp: nil, showBalance: false)
+        let result = CashFlowEngine.compute(meta: meta, transactions: transactions, today: asOf)
+
+        #expect(result.points.map { month(of: $0.periodStart) } == [1, 2, 3])
+        #expect(result.points.map(\.incomeCents) == [1000, 0, 500])
+        #expect(result.points.map(\.expenseCents) == [400, 0, 300])
+    }
+
     @Test func excludesTransferLegsFromIncomeAndExpense() {
         // A €100.00 move between two on-budget accounts produces equal and
         // opposite legs; counting them inflates BOTH income and expense

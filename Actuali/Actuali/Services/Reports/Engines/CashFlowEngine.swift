@@ -34,24 +34,35 @@ enum CashFlowEngine {
             .filter { !offBudgetAccountIds.contains($0.accountId) }
             .filter { ConditionsFilter.matches(transaction: $0, conditions: meta?.conditions, op: meta?.conditionsOp, context: context) }
 
-        let points = months.map { monthStart -> CashFlowPoint in
+        let monthKeys = months.map { ymdInt(from: $0, calendar: cal) / 100 }
+        var monthlyTotals: [Int: (startYMD: Int, endYMD: Int, income: Int, expense: Int)] = [:]
+        for (monthStart, monthKey) in zip(months, monthKeys) {
             guard let nextMonth = cal.date(byAdding: .month, value: 1, to: monthStart),
                   let monthEnd = cal.date(byAdding: .day, value: -1, to: nextMonth) else {
-                return CashFlowPoint(periodStart: monthStart, incomeCents: 0, expenseCents: 0)
+                continue
             }
             let startYMD = ymdInt(from: monthStart, calendar: cal)
             let endYMD = ymdInt(from: monthEnd, calendar: cal)
+            monthlyTotals[monthKey] = (startYMD, endYMD, 0, 0)
+        }
 
-            var income = 0
-            var expense = 0
-            for tx in filtered where tx.date >= startYMD && tx.date <= endYMD {
-                if tx.amount >= 0 {
-                    income += tx.amount
-                } else {
-                    expense += -tx.amount
-                }
+        for tx in filtered {
+            let monthKey = tx.date / 100
+            guard var totals = monthlyTotals[monthKey],
+                  tx.date >= totals.startYMD, tx.date <= totals.endYMD else { continue }
+            if tx.amount >= 0 {
+                totals.income += tx.amount
+            } else {
+                totals.expense += -tx.amount
             }
-            return CashFlowPoint(periodStart: monthStart, incomeCents: income, expenseCents: expense)
+            monthlyTotals[monthKey] = totals
+        }
+
+        let points = zip(months, monthKeys).map { monthStart, monthKey -> CashFlowPoint in
+            let totals = monthlyTotals[monthKey]
+            return CashFlowPoint(periodStart: monthStart,
+                                 incomeCents: totals?.income ?? 0,
+                                 expenseCents: totals?.expense ?? 0)
         }
 
         return CashFlowData(points: points)
