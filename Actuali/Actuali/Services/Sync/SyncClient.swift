@@ -2008,16 +2008,19 @@ actor SyncClient {
             importedPayee: nil
         )
         transaction.schedule = schedule.id
+        // Apply the linked rule's actions directly (loot-core parity).
+        // RulesEngine.apply skips schedule rules when transaction.schedule is
+        // already set, so actions fire once here and won't double-apply during
+        // createTransaction's general rules pass.
+        let actionResult = RulesEngine.apply(
+            actions: ScheduleConditions.actions(from: schedule.actionsJSON),
+            to: transaction,
+            ruleId: schedule.id
+        )
+        guard !actionResult.isDeleted else { return }
+        transaction = actionResult.transaction
+        transaction.schedule = schedule.id
         if try database.transferAccountId(forPayeeId: transaction.payeeId) != nil {
-            let actionResult = RulesEngine.apply(
-                actions: ScheduleConditions.actions(from: schedule.actionsJSON),
-                to: transaction,
-                ruleId: schedule.id
-            )
-            guard !actionResult.isDeleted else { return }
-            transaction = actionResult.transaction
-            transaction.schedule = schedule.id
-
             if let transfer = try scheduledTransfer(for: transaction, in: database) {
                 try await createTransfer(source: transfer.source, target: transfer.target)
             } else {

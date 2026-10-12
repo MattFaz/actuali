@@ -46,7 +46,15 @@ enum RulesEngine {
         var bag = TransactionBag(transaction, context: context)
         let original = bag.snapshot()
 
-        for rule in RuleRanker.rank(rules) where evalConditions(rule, bag: bag) {
+        for rule in RuleRanker.rank(rules) {
+            // Upstream parity (loot-core runRules): when a transaction already
+            // has a schedule, its schedule rule actions were already applied at
+            // post time. Rules linked to schedules are skipped here so one-off
+            // actions don't run twice and other schedules don't hijack the link.
+            if bag.string(for: "schedule") != nil, rule.isScheduleRule {
+                continue
+            }
+            guard evalConditions(rule, bag: bag) else { continue }
             for action in rule.actions {
                 apply(action, bag: &bag, ruleId: rule.id)
             }
