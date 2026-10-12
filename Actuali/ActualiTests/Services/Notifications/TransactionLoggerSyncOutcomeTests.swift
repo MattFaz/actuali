@@ -208,7 +208,9 @@ struct TransactionLoggerSyncOutcomeTests {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, serverReachable: true)
-        defer { store.suggestCategoryFromPayeeHistory = true }
+        let key = "suggestCategoryFromPayeeHistory"
+        let original = UserDefaults.standard.object(forKey: key)
+        defer { restoreUserDefault(key, to: original) }
 
         _ = try await log(to: store, categoryId: "cat-coffee")
         store.suggestCategoryFromPayeeHistory = false

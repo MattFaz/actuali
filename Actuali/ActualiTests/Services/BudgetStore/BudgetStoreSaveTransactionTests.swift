@@ -246,7 +246,9 @@ struct BudgetStoreSaveTransactionTests {
         let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
         let store = try await makeTestStore(database: database)
-        defer { store.suggestCategoryFromPayeeHistory = true }
+        let key = "suggestCategoryFromPayeeHistory"
+        let original = UserDefaults.standard.object(forKey: key)
+        defer { restoreUserDefault(key, to: original) }
         store.payees = [
             payee(id: "payee-cafe", name: "Cafe"),
             payee(id: "payee-shop", name: "Shop"),
