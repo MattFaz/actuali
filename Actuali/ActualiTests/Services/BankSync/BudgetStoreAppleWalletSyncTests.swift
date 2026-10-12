@@ -200,6 +200,8 @@ struct BudgetStoreAppleWalletSyncTests {
         SELECT COUNT(*) AS n FROM messages_crdt WHERE row = ? AND column = 'amount'
         """, arguments: [rowId])?["n"] as Int?
         #expect(amountMessages == 2)
+    }
+
     /// A linked, authorized Wallet turns on FinanceKit background delivery,
     /// whose extension asks iOS for this same sync. Once it's on, later syncs
     /// leave FinanceKit alone.
