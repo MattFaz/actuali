@@ -961,7 +961,7 @@ actor SyncClient {
                     ("imported_description", update.importedPayee),
                     ("notes", update.notes),
                     ("cleared", update.cleared ? 1 : 0),
-                ]
+                ] + (update.amount.map { [("amount", $0)] } ?? [])
             )
         }
 
@@ -1001,7 +1001,7 @@ actor SyncClient {
                     ("imported_description", update.importedPayee),
                     ("notes", update.notes),
                     ("cleared", update.cleared ? 1 : 0),
-                ]
+                ] + (update.amount.map { [("amount", $0)] } ?? [])
             )
         }
         let result = try database.materializeBankSync(
