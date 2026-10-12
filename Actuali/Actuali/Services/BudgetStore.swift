@@ -6015,6 +6015,13 @@ final class BudgetStore: ObservableObject {
         /// True for a picker choice or prefill; false for payee-history suggestions.
         var categoryIsExplicit: Bool = false
         var automaticCategoryPreview: AutomaticCategoryPreview?
+
+        /// Category the rules pass starts from: an explicit pick stands, and an
+        /// untouched preview reverts to its pre-rule source so rules run once.
+        var ruleInputCategoryId: String? {
+            guard !categoryIsExplicit, let preview = automaticCategoryPreview else { return categoryId }
+            return preview.sourceCategoryId
+        }
     }
 
     /// Category the add form should show before the user makes an explicit
@@ -6447,13 +6454,7 @@ final class BudgetStore: ObservableObject {
                 }
                 return nil
             } else {
-                let categoryId: String? = if form.categoryIsExplicit {
-                    form.categoryId
-                } else if let preview = form.automaticCategoryPreview {
-                    preview.sourceCategoryId
-                } else {
-                    form.categoryId
-                }
+                let categoryId = form.ruleInputCategoryId
                 let transaction = Transaction(
                     id: newId ?? UUID().uuidString,
                     accountId: form.accountId,

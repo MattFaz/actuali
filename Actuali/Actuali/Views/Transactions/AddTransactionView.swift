@@ -195,7 +195,6 @@ struct AddTransactionView: View {
         var isSplit: Bool
         var isEditing: Bool
         var categoryIsExplicit: Bool
-        var applyRules: Bool
     }
 
     private var automaticCategoryInput: AutomaticCategoryInput {
@@ -210,8 +209,7 @@ struct AddTransactionView: View {
             cleared: cleared,
             isSplit: isSplitting,
             isEditing: isEditing,
-            categoryIsExplicit: userPickedCategory,
-            applyRules: !isEditing
+            categoryIsExplicit: userPickedCategory
         )
     }
 
@@ -390,10 +388,7 @@ struct AddTransactionView: View {
         let form = currentForm()
         let preview: BudgetStore.AutomaticCategoryPreview
         do {
-            preview = try await budgetStore.automaticCategoryPreview(
-                for: form,
-                applyRules: input.applyRules
-            )
+            preview = try await budgetStore.automaticCategoryPreview(for: form)
         } catch { return }
         guard !Task.isCancelled,
               !userPickedCategory,

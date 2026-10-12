@@ -307,13 +307,7 @@ final class PendingImportApprover {
 
         let payeeName = form.payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
         let payee = payeeName.isEmpty ? nil : try await store.findOrCreatePayee(name: payeeName)
-        let categoryId: String? = if form.categoryIsExplicit {
-            form.categoryId
-        } else if let preview = form.automaticCategoryPreview {
-            preview.sourceCategoryId
-        } else {
-            form.categoryId
-        }
+        let categoryId: String? = account.offBudget ? nil : form.ruleInputCategoryId
         let transaction = Transaction(
             id: item.id.uuidString,
             accountId: account.id,
