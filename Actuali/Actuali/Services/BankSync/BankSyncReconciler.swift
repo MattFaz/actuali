@@ -218,18 +218,22 @@ enum BankSyncReconciler {
     /// What a matched transaction ends up with. Anything the person already
     /// filled in wins — the download only fills blanks — except the fields
     /// that are the bank's to state: its transaction id, whether it posted,
-    /// and the amount of a charge that is still pending.
+    /// and the final amount of a pending charge once it posts.
     private static func update(
         for candidate: BankSyncCandidate,
         matching existing: BankSyncExistingTransaction
     ) -> BankSyncUpdate {
         // A pending charge can settle for a different amount (a tip, a fuel
-        // hold). Upstream never updates amounts; here we follow the bank only
-        // when its own id proves it's the same charge, the row hasn't posted
-        // yet, and it isn't a split or a transfer (whose parts and two sides
-        // must keep matching).
-        let settledAmount = existing.importedId == candidate.importedId && !existing.cleared
-            && !existing.isParent && existing.transferId == nil && existing.amount != candidate.amount
+        // hold). Upstream never updates amounts; here we follow the bank at the
+        // one point its number is final — the download that posts the charge —
+        // and only when its own id proves it's the same charge and the row
+        // isn't a split or a transfer (whose parts and two sides must keep
+        // matching). While the charge is still pending, a hand-edited amount
+        // stands.
+        let settledAmount = candidate.cleared && !existing.cleared
+            && existing.importedId == candidate.importedId
+            && !existing.isParent && existing.transferId == nil
+            && existing.amount != candidate.amount
         return BankSyncUpdate(
             expected: existing,
             existingId: existing.id,

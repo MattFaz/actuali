@@ -4014,6 +4014,8 @@ final class BudgetDatabase: Sendable {
                                         AND imported_description IS ?
                                         AND notes IS ?
                                         AND COALESCE(cleared, 0) = ?
+                                        AND (? IS NULL OR ((isParent = 0 OR isParent IS NULL)
+                                                           AND transferred_id IS NULL))
                 """, arguments: [
                     update.importedId,
                     update.payeeId,
@@ -4031,6 +4033,7 @@ final class BudgetDatabase: Sendable {
                     update.expected.importedPayee,
                     update.expected.notes,
                     update.expected.cleared ? 1 : 0,
+                    update.amount,
                 ])
                 if db.changesCount > 0 {
                     appliedIds.insert(update.existingId)
@@ -4077,6 +4080,8 @@ final class BudgetDatabase: Sendable {
                                         AND imported_description IS ?
                                         AND notes IS ?
                                         AND COALESCE(cleared, 0) = ?
+                                        AND (? IS NULL OR ((isParent = 0 OR isParent IS NULL)
+                                                           AND transferred_id IS NULL))
                 """, arguments: [
                     update.importedId,
                     update.payeeId,
@@ -4093,6 +4098,7 @@ final class BudgetDatabase: Sendable {
                     update.expected.importedPayee,
                     update.expected.notes,
                     update.expected.cleared ? 1 : 0,
+                    update.amount,
                 ])
                 if db.changesCount > 0 {
                     appliedIds.insert(update.existingId)

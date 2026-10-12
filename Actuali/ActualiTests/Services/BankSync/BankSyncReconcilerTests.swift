@@ -85,6 +85,17 @@ struct BankSyncReconcilerTests {
         #expect(plan.isEmpty)
     }
 
+    /// While a charge is still pending, a download doesn't change its amount,
+    /// so a hand edit (say, adding the tip) stands until the charge posts.
+    @Test func aStillPendingChargeKeepsItsAmount() {
+        let plan = BankSyncReconciler.plan(
+            candidates: [candidate(importedId: "sf-1", amount: -1500, cleared: false)],
+            existing: [existing(amount: -1250, importedId: "sf-1", importedPayee: "Blue Bottle", cleared: false)]
+        )
+
+        #expect(plan.isEmpty)
+    }
+
     /// A split's parts and a transfer's two sides must keep matching, so
     /// neither follows a new amount.
     @Test(arguments: [(true, nil), (false, "tx-partner")] as [(Bool, String?)])
