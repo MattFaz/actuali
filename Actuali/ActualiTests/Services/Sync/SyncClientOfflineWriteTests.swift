@@ -628,6 +628,49 @@ struct SyncClientOfflineWriteTests {
         } == 5)
     }
 
+    /// A settled amount is only written if the row is still not a split or a
+    /// transfer, as it was when the sync planned the update.
+    @Test(arguments: ["isParent = 1", "transferred_id = 'tx-partner'"])
+    func bankSyncAmountSkipsARowThatBecameASplitOrTransfer(_ change: String) async throws {
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+
+        let id = "tx-bank-settle"
+        var existing = transaction(id: id)
+        existing.financialId = "financial-settle"
+        try database.insertTransaction(existing)
+        let candidate = BankSyncCandidate(
+            importedId: "financial-settle",
+            date: existing.date,
+            amount: -1500,
+            payeeName: "Coffee",
+            payeeId: nil,
+            notes: nil,
+            cleared: true
+        )
+        let window = try await database.bankSyncWindow(
+            accountId: existing.accountId,
+            from: candidate.date - 7,
+            to: candidate.date + 7,
+            importedIds: [candidate.importedId]
+        )
+        let update = try #require(BankSyncReconciler.plan(candidates: [candidate], existing: window).updates.first)
+        #expect(update.amount == -1500)
+
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "UPDATE transactions SET \(change) WHERE id = ?", arguments: [id])
+        }
+        let applied = try await syncClient.applyBankSyncUpdates(
+            [update], expectedLink: Self.expectedBankSyncLink
+        )
+
+        #expect(applied == 0)
+        #expect(try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT amount FROM transactions WHERE id = ?", arguments: [id])
+        } == -1234)
+    }
+
     @Test func standaloneBankAPIsRejectAStaleLinkWithoutWriting() async throws {
         let (database, path) = try await makeDatabase()
         defer { cleanup(path) }

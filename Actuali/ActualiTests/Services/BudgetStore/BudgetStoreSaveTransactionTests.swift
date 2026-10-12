@@ -185,14 +185,23 @@ struct BudgetStoreSaveTransactionTests {
                 categoryIsExplicit: true
             )
         ))
+        let explicitNilId = try #require(try await store.saveTransaction(
+            form(
+                payeeName: "Amazon",
+                categoryId: nil,
+                categoryIsExplicit: true
+            )
+        ))
         let suggestedId = try #require(try await store.saveTransaction(
             form(payeeName: "Amazon", categoryId: "cat-groceries")
         ))
 
         let rows = try transactionRows(path: path)
         let explicitRow = try #require(rows.first { $0["id"] == explicitId })
+        let explicitNilRow = try #require(rows.first { $0["id"] == explicitNilId })
         let suggestedRow = try #require(rows.first { $0["id"] == suggestedId })
         #expect(explicitRow["category"] == "cat-groceries")
+        #expect(explicitNilRow["category"] == nil)
         #expect(suggestedRow["category"] == "cat-clothing")
     }
 
