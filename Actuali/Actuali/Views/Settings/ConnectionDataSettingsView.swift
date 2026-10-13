@@ -297,6 +297,16 @@ private struct ServerConnectionSettingsSection: View {
                 editingServerConnection = false
             }
         }
+        // Discover login methods once a URL is known, including on return
+        // after Disconnect, so OpenID shows without a password attempt first.
+        .task(id: budgetStore.isConnected ? nil : budgetStore.serverURL) {
+            guard !budgetStore.isConnected, !budgetStore.serverURL.isEmpty else { return }
+            // Cancellation skips the probe while the URL is still being typed.
+            do {
+                try await Task.sleep(for: .milliseconds(500))
+            } catch { return }
+            await budgetStore.discoverLoginMethods()
+        }
     }
 }
 

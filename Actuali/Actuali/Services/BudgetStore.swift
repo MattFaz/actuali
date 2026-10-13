@@ -2304,6 +2304,31 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Quiet login-methods probe for the URL still being typed on the connect
+    /// screen, so OpenID is offered before any password attempt — upstream
+    /// fetches login methods as soon as the server URL is set. Leaves the
+    /// field's text alone and any failure unprobed (`[]`): Connect re-probes
+    /// through `checkLoginMethods()` and reports what's wrong.
+    func discoverLoginMethods() async {
+        let probedURL = serverURL
+        let normalized = Self.normalizedServerURL(probedURL)
+        guard !isConnected, Self.isValidServerURL(normalized) else { return }
+        await applyCustomHeadersToClientNow()
+        // Same configuration connect() applies, so a probe that lands after
+        // Connect can't drop the fallback from the live client.
+        try? await serverClient.configure(
+            serverURL: normalized,
+            fallbackServerURL: Self.normalizedServerURL(fallbackServerURL)
+        )
+        let methods = await (try? serverClient.fetchLoginMethods()) ?? []
+        // The user kept typing or connected meanwhile; this answer is stale.
+        guard serverURL == probedURL, !isConnected else { return }
+        availableLoginMethods = methods
+        if supportsOpenIDLogin {
+            ownerExists = await serverClient.fetchOwnerCreated()
+        }
+    }
+
     /// Run the OpenID/OAuth browser sign-in flow end to end: ask the server for
     /// an authorization URL, present it via `ASWebAuthenticationSession`, then
     /// persist the returned token exactly like a password login.
@@ -5288,8 +5313,8 @@ final class BudgetStore: ObservableObject {
         }
 
         let offBudgetIds = offBudgetAccountIds
-        /// The edited leg takes the form's category, the partner keeps its own —
-        /// then both are cleared unless that leg is the categorizable side.
+        // The edited leg takes the form's category, the partner keeps its own —
+        // then both are cleared unless that leg is the categorizable side.
         func resolvedCategory(for leg: Transaction, accountId: String,
                               otherAccountId: String) -> String? {
             guard Self.transferLegTakesCategory(
