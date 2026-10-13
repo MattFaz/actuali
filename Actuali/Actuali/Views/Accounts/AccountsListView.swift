@@ -235,6 +235,15 @@ struct AccountsListView: View {
         }
     }
 
+    /// Expand/collapse all touch only the open budget's groups; ids
+    /// remembered for other budget files stay put (GH #130).
+    nonisolated static func collapsedGroupIDs(
+        _ collapsed: Set<String>, groupIDs: [String], collapsing: Bool
+    ) -> String {
+        let groups = collapsing ? collapsed.union(groupIDs) : collapsed.subtracting(groupIDs)
+        return groups.sorted().joined(separator: ",")
+    }
+
     private func toggleAccountGroup(_ id: String) {
         guard !pendingAccountGroupTransitions.contains(id) else { return }
         let isExpanding = collapsedAccountGroups.contains(id)
@@ -718,6 +727,25 @@ struct AccountsListView: View {
                         } label: {
                             Label("Bills & Calendar", systemImage: "calendar")
                         }
+                        Divider()
+                        Button(String(localized: "Expand All Accounts"), systemImage: "chevron.down") {
+                            collapsedAccountGroupIDs = Self.collapsedGroupIDs(
+                                collapsedAccountGroups, groupIDs: budgetStore.accountGroups.map(\.id), collapsing: false
+                            )
+                            isOnBudgetExpanded = true
+                            isOffBudgetExpanded = true
+                            isClosedExpanded = true
+                        }
+                        .accessibilityIdentifier("accounts.expandAll")
+                        Button(String(localized: "Collapse All Accounts"), systemImage: "chevron.right") {
+                            collapsedAccountGroupIDs = Self.collapsedGroupIDs(
+                                collapsedAccountGroups, groupIDs: budgetStore.accountGroups.map(\.id), collapsing: true
+                            )
+                            isOnBudgetExpanded = false
+                            isOffBudgetExpanded = false
+                            isClosedExpanded = false
+                        }
+                        .accessibilityIdentifier("accounts.collapseAll")
                         Divider()
                         Toggle(isOn: $budgetStore.hideClosedAccounts) {
                             Label(String(localized: "Hide Closed"), systemImage: "archivebox")

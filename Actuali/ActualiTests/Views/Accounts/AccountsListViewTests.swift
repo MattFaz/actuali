@@ -120,4 +120,19 @@ struct AccountsListViewTests {
         let (_, _, cash) = dropRows()
         #expect(AccountsListView.dropSlot(in: [.header(cash)], at: 0) == nil)
     }
+
+    @Test func collapseAllKeepsOtherBudgetsCollapsedGroups() {
+        let ids = AccountsListView.collapsedGroupIDs(["other-budget"], groupIDs: ["b", "a"], collapsing: true)
+        #expect(ids == "a,b,other-budget")
+    }
+
+    @Test func expandAllKeepsOtherBudgetsCollapsedGroups() {
+        let ids = AccountsListView.collapsedGroupIDs(["a", "other-budget"], groupIDs: ["a", "b"], collapsing: false)
+        #expect(ids == "other-budget")
+    }
+
+    @Test func collapseAllBeforeGroupsLoadKeepsRememberedGroups() {
+        let ids = AccountsListView.collapsedGroupIDs(["a", "b"], groupIDs: [], collapsing: true)
+        #expect(ids == "a,b")
+    }
 }

@@ -85,4 +85,36 @@ final class AccountSectionCollapseUITests: XCTestCase {
         collapsedHeader.tap()
         XCTAssertTrue(app.staticTexts["Chase Checking"].firstMatch.waitForExistence(timeout: 10))
     }
+
+    @MainActor
+    func testOptionsMenuCollapsesAndExpandsAllSections() {
+        let app = launchOnAccountsTab()
+
+        let chase = app.staticTexts["Chase Checking"].firstMatch
+        XCTAssertTrue(chase.waitForExistence(timeout: 10))
+        let vanguard = app.staticTexts["Vanguard Brokerage"].firstMatch
+        XCTAssertTrue(vanguard.waitForExistence(timeout: 10))
+
+        let menuButton = app.buttons["Accounts options"]
+        XCTAssertTrue(menuButton.waitForExistence(timeout: 10))
+        menuButton.tap()
+        let collapseAll = app.buttons["accounts.collapseAll"]
+        XCTAssertTrue(collapseAll.waitForExistence(timeout: 10))
+        collapseAll.tap()
+
+        XCTAssertTrue(chase.waitForNonExistence(timeout: 10),
+                      "collapse all should hide the on-budget accounts")
+        XCTAssertFalse(vanguard.exists,
+                       "collapse all should also hide the off-budget accounts")
+
+        menuButton.tap()
+        let expandAll = app.buttons["accounts.expandAll"]
+        XCTAssertTrue(expandAll.waitForExistence(timeout: 10))
+        expandAll.tap()
+
+        XCTAssertTrue(chase.waitForExistence(timeout: 10),
+                      "expand all should restore the on-budget accounts")
+        XCTAssertTrue(vanguard.waitForExistence(timeout: 10),
+                      "expand all should restore the off-budget accounts")
+    }
 }
