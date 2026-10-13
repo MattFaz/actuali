@@ -56810,6 +56810,52 @@
         }
       }
     },
+    "Open Settings to Allow Wallet Access" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnen Sie die Einstellungen, um den Zugriff auf Wallet zu erlauben"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings to Allow Wallet Access"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir Ajustes para permitir el acceso a Wallet"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrir Réglages pour autoriser l’accès à Cartes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apri Impostazioni per consentire l’accesso a Wallet"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Instellingen om toegang tot Wallet toe te staan"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir Ajustes para permitir o acesso à Carteira"
+          }
+        }
+      }
+    },
     "Open Shortcuts" : {
       "comment" : "Wallet automation link to Apple Shortcuts",
       "extractionState" : "stale",
@@ -84470,53 +84516,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "vs. orçamento"
-          }
-        }
-      }
-    },
-    "Wallet access is turned off" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wallet-Zugriff ist deaktiviert"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wallet access is turned off"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El acceso a Wallet está desactivado"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "L'accès à Wallet est désactivé"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "L'accesso a Wallet è disattivato"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wallet-toegang is uitgeschakeld"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O acesso à Wallet está desativado"
           }
         }
       }
