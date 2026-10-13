@@ -385,6 +385,13 @@ struct UpcomingScheduleSections: View {
         Dictionary(grouping: entries, by: \.date).sorted { $0.key > $1.key }
     }
 
+    /// A row's dialog goes away with its row (a sync posts or completes the
+    /// schedule) without running its binding's setter, so a pending schedule
+    /// would reopen the menu untapped when its row comes back.
+    nonisolated static func hasStaleAction(_ actionId: String?, visibleIds: [String]) -> Bool {
+        actionId.map { !visibleIds.contains($0) } ?? false
+    }
+
     @ViewBuilder private func scheduleActions(_ schedule: ScheduleSummary) -> some View {
         Button {
             run { try await budgetStore.postScheduleTransaction(schedule, today: false) }
@@ -451,6 +458,11 @@ struct UpcomingScheduleSections: View {
                 Button(ReportStrings.text("OK", locale: locale)) {}
             } message: {
                 Text(actionError ?? "")
+            }
+            .onChange(of: entries.map(\.id)) { _, ids in
+                if Self.hasStaleAction(actionSchedule?.id, visibleIds: ids) {
+                    actionSchedule = nil
+                }
             }
             .textCase(nil)
         }

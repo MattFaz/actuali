@@ -28,3 +28,9 @@ struct SchedulesListLocalizationTests {
 @Test func approximateScheduleAmountSeparatesTheMarkerFromTheSign() {
     #expect(ScheduleRow.formattedAmount("-1200.00", amountOp: .isApprox) == "~ -1200.00")
 }
+
+@Test func upcomingActionGoesStaleOnlyWhenItsRowLeaves() {
+    #expect(!UpcomingScheduleSections.hasStaleAction(nil, visibleIds: []))
+    #expect(!UpcomingScheduleSections.hasStaleAction("rent", visibleIds: ["rent", "gym"]))
+    #expect(UpcomingScheduleSections.hasStaleAction("rent", visibleIds: ["gym"]))
+}
