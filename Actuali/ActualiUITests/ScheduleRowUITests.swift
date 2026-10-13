@@ -24,6 +24,8 @@ final class ScheduleRowUITests: XCTestCase {
         row.tap()
         XCTAssertTrue(app.buttons["scheduleRegister.post.fixture"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["scheduleRegister.skip.fixture"].exists)
+        // GH #675: the menu anchors to the tapped row, so it sits beside the row instead of over it.
+        XCTAssertFalse(app.buttons["scheduleRegister.post.fixture"].firstMatch.frame.intersects(row.frame))
         app.buttons["scheduleRegister.postToday.fixture"].firstMatch.tap()
         XCTAssertTrue(app.alerts["Action Failed"].waitForExistence(timeout: 5))
         app.alerts["Action Failed"].buttons["OK"].tap()

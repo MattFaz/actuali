@@ -385,6 +385,31 @@ struct UpcomingScheduleSections: View {
         Dictionary(grouping: entries, by: \.date).sorted { $0.key > $1.key }
     }
 
+    @ViewBuilder private func scheduleActions(_ schedule: ScheduleSummary) -> some View {
+        Button {
+            run { try await budgetStore.postScheduleTransaction(schedule, today: false) }
+        } label: {
+            Text("Post Transaction")
+        }
+        .accessibilityIdentifier("scheduleRegister.post.\(schedule.id)")
+        Button {
+            run { try await budgetStore.postScheduleTransaction(schedule, today: true) }
+        } label: {
+            Text("Post Transaction Today")
+        }
+        .accessibilityIdentifier("scheduleRegister.postToday.\(schedule.id)")
+        if schedule.isRecurring {
+            Button {
+                run { try await budgetStore.skipScheduleNextDate(schedule) }
+            } label: {
+                Text("Skip Next Date")
+            }
+            .accessibilityIdentifier("scheduleRegister.skip.\(schedule.id)")
+        }
+        Button("Edit") { editingSchedule = schedule }
+            .accessibilityIdentifier("scheduleRegister.edit.\(schedule.id)")
+    }
+
     var body: some View {
         Section {} header: {
             Button {
@@ -404,44 +429,6 @@ struct UpcomingScheduleSections: View {
             .accessibilityHint(isExpanded
                 ? String(localized: "Collapses this section")
                 : String(localized: "Expands this section"))
-            // Present once from the header, rather than once per date section.
-            .confirmationDialog(
-                String(localized: "Scheduled Transactions"),
-                isPresented: Binding(
-                    get: { actionSchedule != nil },
-                    set: {
-                        if !$0 {
-                            actionSchedule = nil
-                        }
-                    }
-                ),
-                titleVisibility: .visible
-            ) {
-                if let schedule = actionSchedule {
-                    Button {
-                        run { try await budgetStore.postScheduleTransaction(schedule, today: false) }
-                    } label: {
-                        Text("Post Transaction")
-                    }
-                    .accessibilityIdentifier("scheduleRegister.post.\(schedule.id)")
-                    Button {
-                        run { try await budgetStore.postScheduleTransaction(schedule, today: true) }
-                    } label: {
-                        Text("Post Transaction Today")
-                    }
-                    .accessibilityIdentifier("scheduleRegister.postToday.\(schedule.id)")
-                    if schedule.isRecurring {
-                        Button {
-                            run { try await budgetStore.skipScheduleNextDate(schedule) }
-                        } label: {
-                            Text("Skip Next Date")
-                        }
-                        .accessibilityIdentifier("scheduleRegister.skip.\(schedule.id)")
-                    }
-                    Button("Edit") { editingSchedule = schedule }
-                        .accessibilityIdentifier("scheduleRegister.edit.\(schedule.id)")
-                }
-            }
             .sheet(item: $editingSchedule) { schedule in
                 NavigationStack {
                     ScheduleEditView(editing: schedule, budgetStore: budgetStore)
@@ -489,6 +476,21 @@ struct UpcomingScheduleSections: View {
                             )
                         }
                         .accessibilityIdentifier("scheduleRegister.row.\(schedule.id)")
+                        // Per row, so the iOS 26 popover anchors to the tapped row (GH #675).
+                        .confirmationDialog(
+                            String(localized: "Scheduled Transactions"),
+                            isPresented: Binding(
+                                get: { actionSchedule?.id == schedule.id },
+                                set: {
+                                    if !$0 {
+                                        actionSchedule = nil
+                                    }
+                                }
+                            ),
+                            titleVisibility: .visible
+                        ) {
+                            scheduleActions(schedule)
+                        }
                     }
                 }
             }
