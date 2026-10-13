@@ -3482,45 +3482,21 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
-    func dropAccount(_ accountId: String, on targetId: String, after: Bool) async throws {
+    /// Move an account to `index` within a displayed run of accounts that
+    /// share a group (`peers`, top to bottom), the way List reports a drop.
+    func dropAccount(_ accountId: String, at index: Int, among peers: [Account], groupId: String?) async throws {
         guard let syncClient,
               let source = accounts.first(where: { $0.id == accountId }),
-              let target = accounts.first(where: { $0.id == targetId }),
-              source.id != target.id,
-              source.offBudget == target.offBudget,
-              source.closed == target.closed,
+              let section = peers.first,
+              source.offBudget == section.offBudget,
+              source.closed == section.closed,
               // A plain reorder is safe on any server; changing group is not.
-              accountGroupWritesEnabled || source.groupId == target.groupId else { return }
+              accountGroupWritesEnabled || source.groupId == groupId else { return }
 
-        let peers = accounts
-            .filter {
-                $0.id != source.id && $0.offBudget == target.offBudget &&
-                    $0.closed == target.closed && $0.groupId == target.groupId
-            }
-            .sorted {
-                $0.sortOrder == $1.sortOrder ? $0.id < $1.id : $0.sortOrder < $1.sortOrder
-            }
-        let targetIndex = peers.firstIndex(where: { $0.id == target.id })
-        let beforeAccountId: String? = if after, let targetIndex {
-            // nil appends: a drop below the last peer means "move to the end".
-            peers.indices.contains(targetIndex + 1) ? peers[targetIndex + 1].id : nil
-        } else {
-            target.id
-        }
-
-        try await syncClient.moveAccount(
-            accountId: source.id,
-            toGroupId: target.groupId,
-            beforeAccountId: beforeAccountId
-        )
-        await refreshDataOnly()
-    }
-
-    func dropAccountIntoGroup(_ accountId: String, groupId: String) async throws {
-        guard accountGroupWritesEnabled, let syncClient,
-              accounts.contains(where: { $0.id == accountId && !$0.closed }),
-              accountGroups.contains(where: { $0.id == groupId }) else { return }
-        try await syncClient.moveAccount(accountId: accountId, toGroupId: groupId, beforeAccountId: nil)
+        // The first peer at or below the drop point, skipping the dragged
+        // account itself; nil appends, which is what a drop at the end means.
+        let beforeAccountId = peers.dropFirst(index).first { $0.id != accountId }?.id
+        try await syncClient.moveAccount(accountId: accountId, toGroupId: groupId, beforeAccountId: beforeAccountId)
         await refreshDataOnly()
     }
 

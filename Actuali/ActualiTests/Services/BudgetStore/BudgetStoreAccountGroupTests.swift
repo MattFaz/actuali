@@ -36,20 +36,31 @@ struct BudgetStoreAccountGroupTests {
         }
     }
 
-    @Test func dropBelowTheLastAccountMovesItToTheEnd() async throws {
+    @Test func dropAtTheEndMovesItToTheEnd() async throws {
         let (store, database, url) = try await makeStore(groupWrites: true)
         defer { cleanup(url) }
 
-        try await store.dropAccount("x", on: "b", after: true)
+        try await store.dropAccount("x", at: 3, among: store.accounts, groupId: nil)
 
         #expect(try await order(database) == ["a", "b", "x"])
+    }
+
+    @Test func dropOnItsOwnSlotLeavesTheOrderAlone() async throws {
+        let (store, database, url) = try await makeStore(groupWrites: true)
+        defer { cleanup(url) }
+
+        // List reports index 0, which is the dragged account itself; the
+        // neighbour below it is the anchor, not an append.
+        try await store.dropAccount("x", at: 0, among: store.accounts, groupId: nil)
+
+        #expect(try await order(database) == ["x", "a", "b"])
     }
 
     @Test func reorderWorksWithoutGroupSupportAndSendsOnlySortOrder() async throws {
         let (store, database, url) = try await makeStore(groupWrites: false)
         defer { cleanup(url) }
 
-        try await store.dropAccount("x", on: "b", after: false)
+        try await store.dropAccount("x", at: 2, among: store.accounts, groupId: nil)
 
         #expect(try await order(database) == ["a", "x", "b"])
         // A pre-26.9 server has no account_group_id column to accept.
@@ -59,10 +70,9 @@ struct BudgetStoreAccountGroupTests {
     @Test func groupWritesAreSkippedWithoutServerSupport() async throws {
         let (store, database, url) = try await makeStore(groupWrites: false)
         defer { cleanup(url) }
-        store.accountGroups = [AccountGroup(id: "cash", name: "Cash", sortOrder: 16384)]
 
         try await store.createAccountGroup(name: "Savings")
-        try await store.dropAccountIntoGroup("x", groupId: "cash")
+        try await store.dropAccount("x", at: 0, among: store.accounts, groupId: "cash")
 
         let messageCount = try await database.dbQueueForTesting.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
@@ -73,9 +83,8 @@ struct BudgetStoreAccountGroupTests {
     @Test func droppingIntoAGroupSendsTheGroupColumn() async throws {
         let (store, database, url) = try await makeStore(groupWrites: true)
         defer { cleanup(url) }
-        store.accountGroups = [AccountGroup(id: "cash", name: "Cash", sortOrder: 16384)]
 
-        try await store.dropAccountIntoGroup("x", groupId: "cash")
+        try await store.dropAccount("x", at: 0, among: store.accounts, groupId: "cash")
 
         #expect(try await messagedColumns(database, row: "x") == ["account_group_id", "sort_order"])
     }
