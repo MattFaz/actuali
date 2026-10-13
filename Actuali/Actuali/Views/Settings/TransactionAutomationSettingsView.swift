@@ -111,7 +111,7 @@ struct TransactionAutomationSettingsView: View {
                             Text(String(localized: "Card & Account Mappings"))
                             Spacer()
                             if !budgetStore.cardAccountMappings.isEmpty {
-                                Text("\(budgetStore.cardAccountMappings.count)")
+                                Text("\(CardAccountMappingsView.mappedAccountCount(cardMappings: budgetStore.cardAccountMappings))")
                                     .foregroundStyle(.secondary)
                             }
                         }

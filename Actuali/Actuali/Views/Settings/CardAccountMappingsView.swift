@@ -44,6 +44,11 @@ struct CardAccountMappingsView: View {
         }.sorted { $0.accountName.localizedCaseInsensitiveCompare($1.accountName) == .orderedAscending }
     }
 
+    /// One per row `groupByAccount` lists; several keywords can map to the same account.
+    nonisolated static func mappedAccountCount(cardMappings: [String: String]) -> Int {
+        Set(cardMappings.values).count
+    }
+
     private var mappedAccounts: [MappedAccount] {
         Self.groupByAccount(cardMappings: budgetStore.cardAccountMappings, accounts: budgetStore.accounts)
     }
