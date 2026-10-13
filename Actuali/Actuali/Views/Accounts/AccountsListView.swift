@@ -680,7 +680,9 @@ struct AccountsListView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        if budgetStore.accountGroupWritesEnabled {
+                        // Stays reachable while local groups exist, so the
+                        // sheet can say why they can't be edited.
+                        if budgetStore.accountGroupWritesEnabled || !budgetStore.accountGroups.isEmpty {
                             Button {
                                 showingAccountGroups = true
                             } label: {
@@ -1234,8 +1236,18 @@ struct AccountRow: View {
     @State private var newGroupName = ""
 
     var body: some View {
+        // The group menu is the only context-menu item, so without it there
+        // is no menu at all rather than an empty one.
+        if budgetStore.accountGroupWritesEnabled {
+            row.contextMenu { groupMenu }
+        } else {
+            row
+        }
+    }
+
+    private var row: some View {
         let balance = budgetStore.displayBalance(account.balance)
-        HStack {
+        return HStack {
             Text(account.name)
                 .font(.body)
                 .padding(.leading, 8)
@@ -1243,23 +1255,6 @@ struct AccountRow: View {
             Text(balance)
                 .foregroundStyle(balanceColor(for: account.balance))
                 .animatedAmount(balance)
-        }
-        .contextMenu {
-            if budgetStore.accountGroupWritesEnabled {
-                Menu(String(localized: "Set Account Group"), systemImage: "folder") {
-                    Button(String(localized: "None")) { Task { try? await budgetStore.setAccountGroup(account, groupId: nil) } }
-                    ForEach(budgetStore.accountGroups) { group in
-                        Button(group.name) { Task { try? await budgetStore.setAccountGroup(account, groupId: group.id) } }
-                    }
-                    Divider()
-                    Button {
-                        newGroupName = ""
-                        isCreatingGroup = true
-                    } label: {
-                        Label(String(localized: "Add New"), systemImage: "plus")
-                    }
-                }
-            }
         }
         .alert(String(localized: "Create Group"), isPresented: $isCreatingGroup) {
             TextField(String(localized: "Group Name"), text: $newGroupName)
@@ -1269,6 +1264,22 @@ struct AccountRow: View {
             }
             .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button(String(localized: "Cancel"), role: .cancel) {}
+        }
+    }
+
+    private var groupMenu: some View {
+        Menu(String(localized: "Set Account Group"), systemImage: "folder") {
+            Button(String(localized: "None")) { Task { try? await budgetStore.setAccountGroup(account, groupId: nil) } }
+            ForEach(budgetStore.accountGroups) { group in
+                Button(group.name) { Task { try? await budgetStore.setAccountGroup(account, groupId: group.id) } }
+            }
+            Divider()
+            Button {
+                newGroupName = ""
+                isCreatingGroup = true
+            } label: {
+                Label(String(localized: "Add New"), systemImage: "plus")
+            }
         }
     }
 }
@@ -1284,16 +1295,18 @@ private struct AccountGroupsSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section(String(localized: "Create Group")) {
-                    HStack {
-                        TextField(String(localized: "Group Name"), text: $name)
-                        Button(String(localized: "Add")) {
-                            Task { try? await budgetStore.createAccountGroup(name: name); name = "" }
+                if budgetStore.accountGroupWritesEnabled {
+                    Section(String(localized: "Create Group")) {
+                        HStack {
+                            TextField(String(localized: "Group Name"), text: $name)
+                            Button(String(localized: "Add")) {
+                                Task { try? await budgetStore.createAccountGroup(name: name); name = "" }
+                            }
+                            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
-                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
-                Section(String(localized: "Account Groups")) {
+                Section {
                     ForEach(budgetStore.accountGroups) { group in
                         HStack {
                             Text(group.name)
@@ -1310,6 +1323,13 @@ private struct AccountGroupsSheet: View {
                             }
                         }
                         .buttonStyle(.borderless)
+                        .disabled(!budgetStore.accountGroupWritesEnabled)
+                    }
+                } header: {
+                    Text(String(localized: "Account Groups"))
+                } footer: {
+                    if !budgetStore.accountGroupWritesEnabled {
+                        Text(String(localized: "Account groups require Actual Server 26.9.0 or later."))
                     }
                 }
             }

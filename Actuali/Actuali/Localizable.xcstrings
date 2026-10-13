@@ -88866,6 +88866,52 @@
         }
       }
     },
+    "Account groups require Actual Server 26.9.0 or later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontogruppen erfordern Actual Server 26.9.0 oder neuer."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account groups require Actual Server 26.9.0 or later."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los grupos de cuentas requieren Actual Server 26.9.0 o posterior."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les groupes de comptes nécessitent Actual Server 26.9.0 ou une version ultérieure."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I gruppi di account richiedono Actual Server 26.9.0 o successivo."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accountgroepen vereisen Actual Server 26.9.0 of hoger."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grupos de contas exigem o Actual Server 26.9.0 ou posterior."
+          }
+        }
+      }
+    },
     "Account Groups" : {
       "extractionState" : "manual",
       "localizations" : {

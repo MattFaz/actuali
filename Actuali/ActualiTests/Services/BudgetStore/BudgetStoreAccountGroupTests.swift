@@ -71,7 +71,12 @@ struct BudgetStoreAccountGroupTests {
         let (store, database, url) = try await makeStore(groupWrites: false)
         defer { cleanup(url) }
 
+        let cash = AccountGroup(id: "cash", name: "Cash", sortOrder: 16384)
         try await store.createAccountGroup(name: "Savings")
+        try await store.renameAccountGroup(cash, name: "Wallet")
+        try await store.deleteAccountGroup(cash)
+        try await store.setAccountGroup(store.accounts[0], groupId: "cash")
+        // A drag across groups is a group change too.
         try await store.dropAccount("x", at: 0, among: store.accounts, groupId: "cash")
 
         let messageCount = try await database.dbQueueForTesting.read { db in
