@@ -94,7 +94,7 @@ final class TransactionLogger {
         let categoryId: String? = if let pinnedCategoryId {
             pinnedCategoryId
         } else {
-            try await database.mostRecentCategoryId(forPayeeId: payee.id)
+            try await store.payeeHistoryCategoryId(forPayeeId: payee.id)
         }
 
         // Use the un-normalized merchant string as imported_payee so user rules
