@@ -5316,8 +5316,8 @@ final class BudgetStore: ObservableObject {
         }
 
         let offBudgetIds = offBudgetAccountIds
-        // The edited leg takes the form's category, the partner keeps its own —
-        // then both are cleared unless that leg is the categorizable side.
+        /// The edited leg takes the form's category, the partner keeps its own —
+        /// then both are cleared unless that leg is the categorizable side.
         func resolvedCategory(for leg: Transaction, accountId: String,
                               otherAccountId: String) -> String? {
             guard Self.transferLegTakesCategory(
