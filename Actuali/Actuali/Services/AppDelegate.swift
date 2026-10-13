@@ -24,14 +24,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// scroll view's insets already exclude the keyboard.
     @objc private func scrollCaretToVisible(_ notification: Notification) {
         guard let textView = notification.object as? UITextView,
-              let caret = textView.selectedTextRange?.end else { return }
-        var ancestor = textView.superview
-        while let view = ancestor, !(view is UIScrollView) {
-            ancestor = view.superview
-        }
-        guard let scrollView = ancestor as? UIScrollView else { return }
-        let rect = textView.convert(textView.caretRect(for: caret), to: scrollView)
-        scrollView.scrollRectToVisible(rect.insetBy(dx: 0, dy: -12), animated: true)
+              let (scrollView, rect) = Self.caretScrollTarget(for: textView) else { return }
+        scrollView.scrollRectToVisible(rect, animated: true)
+    }
+
+    /// The scroll view enclosing `textView`, and the rect in it to keep visible.
+    static func caretScrollTarget(for textView: UITextView) -> (UIScrollView, CGRect)? {
+        guard let end = textView.selectedTextRange?.end,
+              let scrollView = sequence(first: textView.superview, next: { $0?.superview })
+              .lazy.compactMap({ $0 as? UIScrollView }).first
+        else { return nil }
+        // A field at its line limit scrolls inside itself, and may not have
+        // caught up with the caret yet, so never aim the form past the field.
+        let caret = textView.caretRect(for: end)
+        let target = caret.intersects(textView.bounds) ? caret : textView.bounds
+        return (scrollView, textView.convert(target, to: scrollView).insetBy(dx: 0, dy: -12))
     }
 
     func application(
