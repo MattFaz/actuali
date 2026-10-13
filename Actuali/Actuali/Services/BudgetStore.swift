@@ -439,6 +439,11 @@ final class BudgetStore: ObservableObject {
     /// URL so offline launches keep the last known answer.
     @Published private(set) var payeeLocationWritesEnabled = false
 
+    /// Whether we may WRITE account_groups / accounts.account_group_id CRDT
+    /// messages (server >= 26.9.0). Probed and persisted like
+    /// `payeeLocationWritesEnabled`.
+    @Published private(set) var accountGroupWritesEnabled = false
+
     /// Synced credit card configurations loaded from the preferences table (accountId -> CreditCardConfig).
     @Published var creditCardConfigs: [String: CreditCardConfig] = [:]
 
@@ -1813,6 +1818,11 @@ final class BudgetStore: ObservableObject {
         subscribeToSyncState()
     }
 
+    /// Test-only: stand in for a `GET /info` probe of a server >= 26.9.0.
+    func setAccountGroupWritesEnabledForTesting(_ enabled: Bool) {
+        accountGroupWritesEnabled = enabled
+    }
+
     /// Test-only: install an already-completed load task that produced no
     /// database, simulating an init()-time load that failed (actios-tq4w).
     func simulateFailedInitialLoadForTesting() {
@@ -2217,7 +2227,7 @@ final class BudgetStore: ObservableObject {
             )
             serverURL = normalized
             fallbackServerURL = normalizedFallback
-            refreshPayeeLocationSupport()
+            refreshServerCapabilities()
             return true
         } catch {
             self.error = error.localizedDescription
@@ -2977,7 +2987,7 @@ final class BudgetStore: ObservableObject {
                 }
             }
 
-            refreshPayeeLocationSupport()
+            refreshServerCapabilities()
             await scheduleCreditCardDueNotifications()
 
         } catch {
@@ -3010,14 +3020,16 @@ final class BudgetStore: ObservableObject {
         isLoading = false
     }
 
-    /// Seed `payeeLocationWritesEnabled` from the last cached answer for the
+    /// Seed the version-gated write flags from the last cached answer for the
     /// configured server, then probe `GET /info` in the background. A failed
     /// probe (unreachable, 404, parse error) keeps the cached answer; a
     /// successful one overwrites it. Never blocks or fails budget load.
-    private func refreshPayeeLocationSupport() {
+    private func refreshServerCapabilities() {
         let capturedURL = serverURL
         let key = "payeeLocationWritesEnabled_\(capturedURL)"
+        let groupsKey = "accountGroupWritesEnabled_\(capturedURL)"
         payeeLocationWritesEnabled = UserDefaults.standard.bool(forKey: key)
+        accountGroupWritesEnabled = UserDefaults.standard.bool(forKey: groupsKey)
         Task { [weak self] in
             guard let self else { return }
             guard let version = await self.serverClient.fetchServerVersion() else {
@@ -3030,6 +3042,9 @@ final class BudgetStore: ObservableObject {
             let supported = ServerVersion.supportsPayeeLocations(version)
             self.payeeLocationWritesEnabled = supported
             UserDefaults.standard.set(supported, forKey: key)
+            let groupsSupported = ServerVersion.supportsAccountGroups(version)
+            self.accountGroupWritesEnabled = groupsSupported
+            UserDefaults.standard.set(groupsSupported, forKey: groupsKey)
         }
     }
 
@@ -3458,7 +3473,7 @@ final class BudgetStore: ObservableObject {
 
     func createAccountGroup(name: String, assignTo account: Account? = nil) async throws {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, let syncClient else { return }
+        guard accountGroupWritesEnabled, !clean.isEmpty, let syncClient else { return }
         let id = UUID().uuidString
         try await syncClient.createAccountGroup(id: id, name: clean)
         if let account {
@@ -3469,59 +3484,38 @@ final class BudgetStore: ObservableObject {
 
     func renameAccountGroup(_ group: AccountGroup, name: String) async throws {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, let syncClient else { return }
+        guard accountGroupWritesEnabled, !clean.isEmpty, let syncClient else { return }
         try await syncClient.updateAccountGroup(id: group.id, name: clean)
         await refreshDataOnly()
     }
 
     func deleteAccountGroup(_ group: AccountGroup) async throws {
-        guard let syncClient else { return }
+        guard accountGroupWritesEnabled, let syncClient else { return }
         try await syncClient.deleteAccountGroup(id: group.id)
         await refreshDataOnly()
     }
 
     func setAccountGroup(_ account: Account, groupId: String?) async throws {
-        guard let syncClient else { return }
+        guard accountGroupWritesEnabled, let syncClient else { return }
         try await syncClient.setAccountGroup(accountId: account.id, groupId: groupId)
         await refreshDataOnly()
     }
 
-    func dropAccount(_ accountId: String, on targetId: String, after: Bool) async throws {
+    /// Move an account to `index` within a displayed run of accounts that
+    /// share a group (`peers`, top to bottom), the way List reports a drop.
+    func dropAccount(_ accountId: String, at index: Int, among peers: [Account], groupId: String?) async throws {
         guard let syncClient,
               let source = accounts.first(where: { $0.id == accountId }),
-              let target = accounts.first(where: { $0.id == targetId }),
-              source.id != target.id,
-              source.offBudget == target.offBudget,
-              source.closed == target.closed else { return }
+              let section = peers.first,
+              source.offBudget == section.offBudget,
+              source.closed == section.closed,
+              // A plain reorder is safe on any server; changing group is not.
+              accountGroupWritesEnabled || source.groupId == groupId else { return }
 
-        let peers = accounts
-            .filter {
-                $0.id != source.id && $0.offBudget == target.offBudget &&
-                    $0.closed == target.closed && $0.groupId == target.groupId
-            }
-            .sorted {
-                $0.sortOrder == $1.sortOrder ? $0.id < $1.id : $0.sortOrder < $1.sortOrder
-            }
-        let targetIndex = peers.firstIndex(where: { $0.id == target.id })
-        let beforeAccountId: String? = if after, let targetIndex, peers.indices.contains(targetIndex + 1) {
-            peers[targetIndex + 1].id
-        } else {
-            target.id
-        }
-
-        try await syncClient.moveAccount(
-            accountId: source.id,
-            toGroupId: target.groupId,
-            beforeAccountId: beforeAccountId
-        )
-        await refreshDataOnly()
-    }
-
-    func dropAccountIntoGroup(_ accountId: String, groupId: String) async throws {
-        guard let syncClient,
-              accounts.contains(where: { $0.id == accountId && !$0.closed }),
-              accountGroups.contains(where: { $0.id == groupId }) else { return }
-        try await syncClient.moveAccount(accountId: accountId, toGroupId: groupId, beforeAccountId: nil)
+        // The first peer at or below the drop point, skipping the dragged
+        // account itself; nil appends, which is what a drop at the end means.
+        let beforeAccountId = peers.dropFirst(index).first { $0.id != accountId }?.id
+        try await syncClient.moveAccount(accountId: accountId, toGroupId: groupId, beforeAccountId: beforeAccountId)
         await refreshDataOnly()
     }
 

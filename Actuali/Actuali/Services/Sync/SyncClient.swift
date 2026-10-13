@@ -1115,7 +1115,11 @@ actor SyncClient {
         var fields: [(column: String, value: (any Sendable)?)] = [
             ("sort_order", result.sortOrder),
         ]
-        fields.append(("account_group_id", result.groupId))
+        // Upstream moveAccount only sends account_group_id when the caller
+        // passes one, so a plain reorder stays valid on pre-26.9 servers.
+        if result.groupChanged {
+            fields.append(("account_group_id", result.groupId))
+        }
         var messages = try await messageGenerator.messages(
             dataset: "accounts", row: result.accountId, fields: fields
         )
