@@ -250,6 +250,25 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(!defaults.bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
     }
 
+    /// Disconnecting leaves no budget whose sync could turn delivery off, so
+    /// closing the budget does it; otherwise FinanceKit keeps waking the
+    /// extension for a refresh with nothing to do.
+    @Test func logoutTurnsOffWalletBackgroundDelivery() async throws {
+        let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
+        defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet)
+        await store.autoSyncAppleWalletAccounts()
+
+        // Keeps budget files: this suite shares the Budgets directory.
+        await store.logout(clearLocalData: false)
+
+        #expect(wallet.deliveryLog.requests.withLock { $0 } == [true, false])
+        #expect(try !walletDefaults(for: url).bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
+    }
+
     /// Where delivery isn't supported (before iOS 26) nothing is recorded as
     /// on, so a later sync on a supported OS still turns it on.
     @Test func unsupportedWalletBackgroundDeliveryIsNotRecordedAsOn() async throws {

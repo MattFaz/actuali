@@ -2451,6 +2451,10 @@ final class BudgetStore: ObservableObject {
         isInitialSyncing = false
         dataVersion += 1
         clearWidgetSnapshot()
+        // Delivery is device-wide FinanceKit state, and with no budget loaded
+        // autoSyncAppleWalletAccounts can't run to turn it off; the next
+        // budget's first sync turns it back on if that budget has Wallet links.
+        updateWalletBackgroundDelivery(enabled: false)
     }
 
     // MARK: - Budget Deletion

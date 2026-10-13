@@ -14,7 +14,9 @@ struct WalletDeliveryTests {
     }
 
     /// The extension can only ask for the app's own refresh task — iOS rejects
-    /// identifiers the app doesn't permit — and it asks for no start delay.
+    /// identifiers that aren't permitted — and it asks for no start delay.
+    /// Both the app (which runs the task) and the embedded extension (which
+    /// submits it) must permit it; see ActualiWalletDelivery-Info.plist.
     @Test func aDeliveryAsksForTheAppsRefreshWithNoDelay() throws {
         let (delivery, dir) = try makeDelivery()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -24,10 +26,15 @@ struct WalletDeliveryTests {
         delivery.requestRefresh(now: now) { submitted.append($0) }
 
         let request = try #require(submitted.first)
-        let permitted = Bundle.main.object(forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers") as? [String]
+        let extensionBundle = try #require(Bundle(
+            url: Bundle.main.bundleURL.appendingPathComponent("Extensions/ActualiWalletDelivery.appex")
+        ))
+        for bundle in [Bundle.main, extensionBundle] {
+            let permitted = bundle.object(forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers") as? [String]
+            #expect(permitted?.contains(request.identifier) == true, "\(bundle.bundleURL.lastPathComponent)")
+        }
         #expect(submitted.count == 1)
         #expect(request is BGAppRefreshTaskRequest)
-        #expect(permitted?.contains(request.identifier) == true)
         #expect(request.earliestBeginDate == nil)
         #expect(delivery.status() == WalletDelivery.Status(lastDelivery: now))
     }
