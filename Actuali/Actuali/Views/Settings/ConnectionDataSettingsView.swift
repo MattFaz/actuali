@@ -63,6 +63,7 @@ private struct ServerConnectionSettingsSection: View {
     @State private var editedServerURL = ""
     @State private var editedFallbackServerURL = ""
     @FocusState private var passwordFocused: Bool
+    @FocusState private var serverURLFocused: Bool
 
     private func beginEditingServerConnection() {
         editedServerURL = budgetStore.serverURL
@@ -117,6 +118,7 @@ private struct ServerConnectionSettingsSection: View {
         fallbackServerURL: Binding<String>
     ) -> some View {
         TextField(String(localized: "Server URL"), text: serverURL)
+            .focused($serverURLFocused)
             .textContentType(.URL)
             .autocapitalization(.none)
             .keyboardType(.URL)
@@ -296,6 +298,15 @@ private struct ServerConnectionSettingsSection: View {
             if !isConnected {
                 editingServerConnection = false
             }
+        }
+        // Discover login methods once a URL is known, including on return
+        // after Disconnect, so OpenID shows without a password attempt first.
+        // Wait for the URL field to lose focus: the probe carries the custom
+        // headers, which can hold a proxy service token, so it must not reach
+        // a half-typed host.
+        .task(id: budgetStore.isConnected || serverURLFocused ? nil : budgetStore.serverURL) {
+            guard !budgetStore.isConnected, !serverURLFocused, !budgetStore.serverURL.isEmpty else { return }
+            await budgetStore.discoverLoginMethods()
         }
     }
 }
