@@ -93,6 +93,63 @@ final class AddTransactionNotesUITests: XCTestCase {
                       "split notes with a URL should still show a tappable link")
     }
 
+    /// GH #674: as the focused Notes field grows past the keyboard, the
+    /// form has to scroll it back into view without a manual scroll.
+    @MainActor
+    func testNotesStaysAboveKeyboardWhileTyping() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+
+        let notes = app.descendants(matching: .any)["addTransaction.notes"].firstMatch
+        XCTAssertTrue(notes.waitForExistence(timeout: 5))
+        notes.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        assertAboveKeyboard(notes, in: app, "Notes is hidden once focused")
+        let focusedTop = notes.frame.minY
+
+        // Real key taps: typeText skips the change notification a keystroke
+        // posts, and on iOS 27 it reads as a hardware keyboard, which
+        // minimizes the software one.
+        let text = "lunch with the whole team at the usual place downtown paid on the shared card and "
+            + "split later with everyone who came along including the two new starters"
+        for character in text {
+            let key = character == " " ? "space" : String(character)
+            // The keyboard starts shifted, so the first letter is a capital key.
+            (app.keys[key].exists ? app.keys[key] : app.keys[key.uppercased()]).tap()
+        }
+        assertAboveKeyboard(notes, in: app, "Notes is hidden after it grows")
+        XCTAssertLessThan(notes.frame.minY, focusedTop, "the form did not scroll Notes up as it grew")
+    }
+
+    @MainActor
+    private func assertAboveKeyboard(
+        _ field: XCUIElement,
+        in app: XCUIApplication,
+        _ message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        // The scroll is animated; let it land before reading frames.
+        Thread.sleep(forTimeInterval: 1)
+        let keyboard = app.keyboards.firstMatch.frame
+        XCTAssertLessThan(keyboard.minY, app.frame.maxY, "software keyboard is not on screen",
+                          file: file, line: line)
+        // The predictions bar sits on top of the keys and hides rows too.
+        let assistant = app.otherElements["SystemInputAssistantView"]
+        let keyboardTop = assistant.exists ? min(keyboard.minY, assistant.frame.minY) : keyboard.minY
+        XCTAssertTrue(field.isHittable, message, file: file, line: line)
+        XCTAssertLessThanOrEqual(field.frame.maxY, keyboardTop,
+                                 "\(message): field bottom \(field.frame.maxY), keyboard top \(keyboardTop)",
+                                 file: file, line: line)
+    }
+
     @MainActor
     private func assertNoBlankRow(
         between notes: XCUIElement,
