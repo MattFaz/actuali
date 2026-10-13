@@ -197,6 +197,16 @@ func makeTestSyncClient(database: BudgetDatabase) async throws -> SyncClient {
     return syncClient
 }
 
+/// Puts a UserDefaults key back the way the test host had it, so a test that
+/// flips a persisted `BudgetStore` preference leaves no residue.
+func restoreUserDefault(_ key: String, to original: Any?) {
+    if let original {
+        UserDefaults.standard.set(original, forKey: key)
+    } else {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+}
+
 /// A preview store writing through `database`, with a sync client that has
 /// no server configured (so writes queue locally and never push).
 @MainActor

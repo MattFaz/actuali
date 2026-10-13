@@ -69,7 +69,7 @@ struct TransactionAutomationSettingsView: View {
                 Text(String(localized: "New transactions, Siri Shortcuts, and Wallet automation use the Default Account when no account is chosen. Conventional Amount Entry types 324 as 324.00 instead of filling cents first."))
             }
 
-            Section(String(localized: "Transaction Behavior")) {
+            Section {
                 Picker(String(localized: "View Transactions As"), selection: $budgetStore.transactionDisplayMode) {
                     ForEach(TransactionDisplayMode.allCases) { mode in
                         Text(mode.label(locale: locale)).tag(mode)
@@ -81,6 +81,13 @@ struct TransactionAutomationSettingsView: View {
                         Text(action.label(locale: locale)).tag(action)
                     }
                 }
+
+                Toggle(String(localized: "Category from Payee History"), isOn: $budgetStore.suggestCategoryFromPayeeHistory)
+                    .accessibilityIdentifier("transactionAutomation.categoryFromPayeeHistory")
+            } header: {
+                Text(String(localized: "Transaction Behavior"))
+            } footer: {
+                Text(String(localized: "Category from Payee History gives a new transaction the category of the last transaction at the same payee when no category is chosen. Rules still run after it."))
             }
 
             Section {
