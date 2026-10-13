@@ -81,10 +81,25 @@ struct BankSyncSetupView: View {
 
     // MARK: - Apple Wallet
 
+    enum WalletRow: Equatable {
+        case accounts, connect, openSettings
+    }
+
+    /// Backing out of Apple's consent sheet reports `.denied`, and FinanceKit
+    /// never shows it again — only Settings can grant access from there, so
+    /// the denied row has to lead to it (GH #555).
+    nonisolated static func walletRow(for availability: AppleWalletAvailability) -> WalletRow {
+        switch availability {
+        case .authorized: .accounts
+        case .denied: .openSettings
+        case .notDetermined, .unsupported: .connect
+        }
+    }
+
     private var walletSection: some View {
         Section {
-            switch budgetStore.appleWalletAvailability {
-            case .authorized:
+            switch Self.walletRow(for: budgetStore.appleWalletAvailability) {
+            case .accounts:
                 if isLoadingWalletAccounts {
                     HStack {
                         ProgressView()
@@ -104,10 +119,16 @@ struct BankSyncSetupView: View {
                         .buttonStyle(.plain)
                     }
                 }
-            case .denied:
-                Label("Wallet access is turned off", systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.secondary)
-            default:
+            case .openSettings:
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Label("Open Settings to Allow Wallet Access", systemImage: "gear")
+                }
+                .accessibilityIdentifier("bankSync.wallet.openSettings")
+            case .connect:
                 Button {
                     connectWallet()
                 } label: {
@@ -125,12 +146,12 @@ struct BankSyncSetupView: View {
         } header: {
             Text("Apple Wallet")
         } footer: {
-            switch budgetStore.appleWalletAvailability {
-            case .authorized:
+            switch Self.walletRow(for: budgetStore.appleWalletAvailability) {
+            case .accounts:
                 Text("Tap an account to link it. Apple Card, Apple Cash and Savings transactions import automatically when you open the app or pull to refresh — read from this device's Wallet and stored in your budget file like any other transaction.")
-            case .denied:
+            case .openSettings:
                 Text("Allow Actuali to read Wallet data in Settings to sync Apple Card, Apple Cash and Savings.")
-            default:
+            case .connect:
                 Text("Link Apple Card, Apple Cash and Savings so their transactions and balances import automatically when you sync. Apple asks once which data Actuali may read.")
             }
         }
