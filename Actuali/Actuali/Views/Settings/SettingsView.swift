@@ -18,10 +18,6 @@ struct SettingsLinkItem {
 
 struct SettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
-    @AppStorage("accountsCollapsedAccountGroupIDs") private var collapsedAccountGroupIDs = ""
-    @AppStorage("accountsOnBudgetExpanded") private var isOnBudgetExpanded = true
-    @AppStorage("accountsOffBudgetExpanded") private var isOffBudgetExpanded = true
-    @AppStorage("accountsClosedExpanded") private var isClosedExpanded = true
 
     static var preferencesItems: [SettingsItem] {
         [
@@ -122,23 +118,6 @@ struct SettingsView: View {
                     } label: {
                         Label("History", systemImage: "clock.arrow.circlepath")
                     }
-                }
-                Section(String(localized: "Accounts")) {
-                    Button(String(localized: "Expand All Accounts"), systemImage: "arrow.down") {
-                        collapsedAccountGroupIDs = ""
-                        isOnBudgetExpanded = true
-                        isOffBudgetExpanded = true
-                        isClosedExpanded = true
-                    }
-                    .accessibilityIdentifier("settings.expandAllAccounts")
-
-                    Button(String(localized: "Collapse All Accounts"), systemImage: "arrow.up") {
-                        collapsedAccountGroupIDs = budgetStore.accountGroups.map(\.id).sorted().joined(separator: ",")
-                        isOnBudgetExpanded = false
-                        isOffBudgetExpanded = false
-                        isClosedExpanded = false
-                    }
-                    .accessibilityIdentifier("settings.collapseAllAccounts")
                 }
                 Section {
                     ForEach(Self.shortcutItems, id: \.title) { item in

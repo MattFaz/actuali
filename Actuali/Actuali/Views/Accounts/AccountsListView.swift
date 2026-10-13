@@ -719,6 +719,21 @@ struct AccountsListView: View {
                             Label("Bills & Calendar", systemImage: "calendar")
                         }
                         Divider()
+                        Button(String(localized: "Expand All Accounts"), systemImage: "chevron.down") {
+                            collapsedAccountGroupIDs = ""
+                            isOnBudgetExpanded = true
+                            isOffBudgetExpanded = true
+                            isClosedExpanded = true
+                        }
+                        .accessibilityIdentifier("accounts.expandAll")
+                        Button(String(localized: "Collapse All Accounts"), systemImage: "chevron.right") {
+                            collapsedAccountGroupIDs = budgetStore.accountGroups.map(\.id).sorted().joined(separator: ",")
+                            isOnBudgetExpanded = false
+                            isOffBudgetExpanded = false
+                            isClosedExpanded = false
+                        }
+                        .accessibilityIdentifier("accounts.collapseAll")
+                        Divider()
                         Toggle(isOn: $budgetStore.hideClosedAccounts) {
                             Label(String(localized: "Hide Closed"), systemImage: "archivebox")
                         }
