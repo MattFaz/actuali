@@ -2307,8 +2307,8 @@ final class BudgetStore: ObservableObject {
     /// Quiet login-methods probe for the URL still being typed on the connect
     /// screen, so OpenID is offered before any password attempt — upstream
     /// fetches login methods as soon as the server URL is set. Leaves the
-    /// field's text alone and any failure unprobed (`[]`): Connect re-probes
-    /// through `checkLoginMethods()` and reports what's wrong.
+    /// field's text alone and stays quiet on failure: Connect re-probes through
+    /// `checkLoginMethods()` and reports what's wrong.
     func discoverLoginMethods() async {
         let probedURL = serverURL
         let normalized = Self.normalizedServerURL(probedURL)
@@ -2320,9 +2320,12 @@ final class BudgetStore: ObservableObject {
             serverURL: normalized,
             fallbackServerURL: Self.normalizedServerURL(fallbackServerURL)
         )
-        let methods = await (try? serverClient.fetchLoginMethods()) ?? []
+        let methods = try? await serverClient.fetchLoginMethods()
         // The user kept typing or connected meanwhile; this answer is stale.
         guard serverURL == probedURL, !isConnected else { return }
+        // A failed probe says nothing about the server, so keep what the last
+        // successful probe found rather than hiding a working OpenID button.
+        guard let methods else { return }
         availableLoginMethods = methods
         if supportsOpenIDLogin {
             ownerExists = await serverClient.fetchOwnerCreated()
