@@ -12,6 +12,7 @@ private let simpleFINBridgeURL = URL(string: "https://bridge.simplefin.org/")!
 /// worth saying out loud: only the server's is shared with the web app.
 struct BankSyncSetupView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var setupToken = ""
     @State private var isConnecting = false
@@ -47,16 +48,19 @@ struct BankSyncSetupView: View {
             let day = await budgetStore.resolvedBankSyncImportStartDay()
             importStartDate = Transaction.date(fromYYYYMMDD: day)
             savedImportStartDay = day
-            await budgetStore.refreshAppleWalletAvailability()
-            if budgetStore.appleWalletAvailability == .authorized {
-                await loadWalletAccounts()
-            }
+            await refreshWallet()
             // Which half of the SimpleFIN screen applies depends on whether
             // the server does SimpleFIN itself, so ask before deciding.
             await budgetStore.refreshBankSyncSource()
             if budgetStore.canSyncBanks, remoteAccounts.isEmpty {
                 await loadRemoteAccounts()
             }
+        }
+        // Wallet access is granted in Settings, outside the app, and .task
+        // doesn't re-run on return — without this the denied row stays stale.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await refreshWallet() }
         }
         .sheet(item: $linkTarget) { remote in
             BankAccountLinkView(remote: remote)
@@ -397,6 +401,13 @@ struct BankSyncSetupView: View {
             } catch {
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    private func refreshWallet() async {
+        await budgetStore.refreshAppleWalletAvailability()
+        if budgetStore.appleWalletAvailability == .authorized {
+            await loadWalletAccounts()
         }
     }
 

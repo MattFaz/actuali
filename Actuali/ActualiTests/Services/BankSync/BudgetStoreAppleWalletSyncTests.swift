@@ -640,6 +640,25 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
     }
 
+    /// Access denied in-app is granted in Settings, outside it — the setup
+    /// screen re-asks on return, and that refresh must pick the grant up (GH #555).
+    @Test func refreshPicksUpAccessGrantedInSettings() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        wallet.availabilityValue = .denied
+        let store = try await makeStore(database: database, walletStore: wallet)
+
+        #expect(try await store.connectAppleWallet() == false)
+        #expect(store.appleWalletAvailability == .denied)
+
+        wallet.availabilityValue = .authorized
+        store.setAppleWalletStoreForTesting(wallet)
+        await store.refreshAppleWalletAvailability()
+
+        #expect(store.appleWalletAvailability == .authorized)
+    }
+
     /// A device that can't serve the feed skips the automatic pass entirely —
     /// no import, and no alert nobody asked for.
     @Test func autoSyncStaysQuietWhenWalletCantAnswer() async throws {
