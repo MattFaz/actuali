@@ -1,7 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 
-const effectiveDate = "April 19, 2026";
+const effectiveDate = "October 13, 2026";
 ---
 
 <Layout title="Privacy Policy · Actuali" description="Privacy policy for the Actuali app.">
@@ -22,7 +22,8 @@ const effectiveDate = "April 19, 2026";
       <p class="text-neutral-700">
         <strong>Short version:</strong> the app collects no personal data for the
         developer. Your financial data stays on your device and on the Actual Budget
-        server you configure. Nothing is sent anywhere else.
+        server you configure. If you turn on SimpleFIN bank sync, the app also
+        connects to SimpleFIN to download your bank transactions.
       </p>
     </section>
 
@@ -44,6 +45,14 @@ const effectiveDate = "April 19, 2026";
           Your authentication token for the server you configure, held in the
           iOS Keychain.
         </li>
+        <li>
+          Your SimpleFIN access key, if you set up bank sync in the app, held
+          in the iOS Keychain.
+        </li>
+        <li>
+          Payee locations, if you allow location access, held in your budget
+          data.
+        </li>
       </ul>
       <p class="text-neutral-700">
         This data never leaves your device except to synchronise with the
@@ -54,16 +63,37 @@ const effectiveDate = "April 19, 2026";
     <section class="space-y-2">
       <h2 class="text-xl font-semibold">Data sent over the network</h2>
       <p class="text-neutral-700">
-        The app communicates only with the Actual Budget server URL you enter
-        in Settings. What it sends is whatever your Actual server requires:
-        your login credentials, encrypted or plain sync messages, and budget
-        file downloads. No other network destinations are contacted by the
-        app.
+        The app communicates with the Actual Budget server URL you enter in
+        Settings. What it sends is whatever your Actual server requires: your
+        login credentials, encrypted or plain sync messages, and budget file
+        downloads.
+      </p>
+      <p class="text-neutral-700">
+        If you set up SimpleFIN bank sync in the app, the app also connects to
+        the SimpleFIN server named in your access key. It sends that key and
+        downloads your bank accounts, balances, and transactions. SimpleFIN
+        handles that data under its own privacy policy. If you set up SimpleFIN
+        on your Actual server instead, the app talks only to your Actual
+        server. No other network destinations are contacted by the app.
       </p>
       <p class="text-neutral-700">
         The developer of the app does not operate a server, does not see your
         traffic, and does not receive your data. If your server is
         self-hosted, your data stays entirely between you and your server.
+      </p>
+    </section>
+
+    <section class="space-y-2">
+      <h2 class="text-xl font-semibold">Apple Wallet (FinanceKit)</h2>
+      <p class="text-neutral-700">
+        If you link Apple Wallet accounts, the app uses Apple's FinanceKit to
+        read the accounts, balances, and transactions you allow. It imports
+        them into your budget, which then syncs to your Actual Budget server.
+        You can turn off access at any time in iOS Settings.
+      </p>
+      <p class="text-neutral-700">
+        Wallet data is never sold, used for advertising, or sent to the
+        developer.
       </p>
     </section>
 
