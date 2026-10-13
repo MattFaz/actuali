@@ -33,6 +33,10 @@ private final class CountingWalletStore: AppleWalletReading {
     func transactions(accountId: String, sinceDay: Int) async throws -> [AppleWalletTransaction] {
         try await base.transactions(accountId: accountId, sinceDay: sinceDay)
     }
+
+    func setBackgroundDelivery(enabled: Bool) -> Bool {
+        base.setBackgroundDelivery(enabled: enabled)
+    }
 }
 
 @MainActor
@@ -196,6 +200,87 @@ struct BudgetStoreAppleWalletSyncTests {
         SELECT COUNT(*) AS n FROM messages_crdt WHERE row = ? AND column = 'amount'
         """, arguments: [rowId])?["n"] as Int?
         #expect(amountMessages == 2)
+    }
+
+    /// A linked, authorized Wallet turns on FinanceKit background delivery,
+    /// whose extension asks iOS for this same sync. Once it's on, later syncs
+    /// leave FinanceKit alone.
+    @Test func autoSyncTurnsOnWalletBackgroundDeliveryOnce() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet)
+
+        await store.autoSyncAppleWalletAccounts()
+        await store.autoSyncAppleWalletAccounts()
+
+        #expect(wallet.deliveryLog.requests.withLock { $0 } == [true])
+        #expect(try walletDefaults(for: url).bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
+    }
+
+    /// With no Wallet account left to sync, delivery that was on is turned off
+    /// so the extension stops waking the app for nothing.
+    @Test func autoSyncTurnsOffWalletBackgroundDeliveryWithoutWalletAccounts() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet, linked: false)
+        let defaults = try walletDefaults(for: url)
+        defaults.set(true, forKey: BudgetStore.walletBackgroundDeliveryKey)
+
+        await store.autoSyncAppleWalletAccounts()
+
+        #expect(wallet.deliveryLog.requests.withLock { $0 } == [false])
+        #expect(!defaults.bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
+    }
+
+    /// Revoked Wallet access turns delivery off as well.
+    @Test func autoSyncTurnsOffWalletBackgroundDeliveryWhenAccessIsRevoked() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        wallet.availabilityValue = .denied
+        let store = try await makeStore(database: database, walletStore: wallet)
+        let defaults = try walletDefaults(for: url)
+        defaults.set(true, forKey: BudgetStore.walletBackgroundDeliveryKey)
+
+        await store.autoSyncAppleWalletAccounts()
+
+        #expect(wallet.deliveryLog.requests.withLock { $0 } == [false])
+        #expect(!defaults.bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
+    }
+
+    /// Disconnecting leaves no budget whose sync could turn delivery off, so
+    /// closing the budget does it; otherwise FinanceKit keeps waking the
+    /// extension for a refresh with nothing to do.
+    @Test func logoutTurnsOffWalletBackgroundDelivery() async throws {
+        let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
+        defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet)
+        await store.autoSyncAppleWalletAccounts()
+
+        // Keeps budget files: this suite shares the Budgets directory.
+        await store.logout(clearLocalData: false)
+
+        #expect(wallet.deliveryLog.requests.withLock { $0 } == [true, false])
+        #expect(try !walletDefaults(for: url).bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
+    }
+
+    /// Where delivery isn't supported (before iOS 26) nothing is recorded as
+    /// on, so a later sync on a supported OS still turns it on.
+    @Test func unsupportedWalletBackgroundDeliveryIsNotRecordedAsOn() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        wallet.backgroundDeliverySupported = false
+        let store = try await makeStore(database: database, walletStore: wallet)
+
+        await store.autoSyncAppleWalletAccounts()
+
+        #expect(try !walletDefaults(for: url).bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
     }
 
     @Test func pullToRefreshImportsWalletTransactions() async throws {
