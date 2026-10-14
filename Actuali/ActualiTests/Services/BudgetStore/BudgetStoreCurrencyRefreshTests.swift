@@ -129,19 +129,25 @@ struct BudgetStoreCurrencyRefreshTests {
 
     /// Upstream compatibility: Actual web/desktop resets `defaultCurrencyCode`
     /// if `flags.currency` is not enabled (GH #668). An existing budget with a
-    /// currency configured must self-heal by writing `flags.currency = "true"`.
+    /// currency configured must self-heal by syncing `flags.currency = "true"`,
+    /// once: the second load finds the flag and stays silent.
     @Test func loadMigratesCurrencyFlagWhenCurrencyIsConfigured() async throws {
         let (store, manager, id, root) = makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, currency: "USD", in: manager, groupId: "g-1")
 
         await store.loadLocalBudget(id)
+        await store.loadLocalBudget(id)
 
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
-        let flag = try await dbQueue.read { db in
-            try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'flags.currency'")
+        let (flag, messageCount) = try await dbQueue.read { db in
+            try (
+                String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'flags.currency'"),
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE row = 'flags.currency'") ?? 0
+            )
         }
         #expect(flag == "true")
+        #expect(messageCount == 1)
     }
 
     /// The published `currencyCode` falls back to a global default, so a
