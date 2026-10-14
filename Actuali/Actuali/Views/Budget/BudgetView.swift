@@ -469,6 +469,10 @@ struct BudgetView: View {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
+            HideBalancesToggle()
+                .tint(.primary)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
             // Every "how should this look" control lives here (GH #157).
             // Whole-table expand/collapse is a menu rather than a long-press
             // on the group headers: SwiftUI context menus don't fire inside

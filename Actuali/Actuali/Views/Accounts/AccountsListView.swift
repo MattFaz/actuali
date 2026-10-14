@@ -680,6 +680,9 @@ struct AccountsListView: View {
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
+                    HideBalancesToggle()
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         showingAddAccount = true
                     } label: {
