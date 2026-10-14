@@ -2842,6 +2842,9 @@ final class BudgetStore: ObservableObject {
             let fetchedGoalTemplatesUIFlag = try await openedDb.fetchPreference(
                 id: "flags.goalTemplatesUIEnabled"
             ) == "true"
+            let fetchedCurrencyFlag = try await openedDb.fetchPreference(
+                id: "flags.currency"
+            ) == "true"
 
             // If a concurrent load replaced the database while we were
             // fetching (e.g. demo seed during launch), drop our stale snapshot.
@@ -3015,6 +3018,19 @@ final class BudgetStore: ObservableObject {
                         }
                     } else if !savedCardMappings.isEmpty {
                         UserDefaults.standard.removeObject(forKey: "cardAccountMappings_\(budgetId)")
+                    }
+
+                    // Upstream compatibility: Actual web/desktop resets
+                    // `defaultCurrencyCode` if `flags.currency` is not enabled (GH #668).
+                    // Gate on the budget's own preference row: the published
+                    // `currencyCode` falls back to a global default and to the previous
+                    // budget's value, so it cannot stand in for "a currency is configured".
+                    if let fetchedCurrencyCode, !fetchedCurrencyCode.isEmpty, !fetchedCurrencyFlag {
+                        do {
+                            try await syncClient.setPreference(key: "flags.currency", value: "true")
+                        } catch {
+                            logger.error("Currency flag migration failed: \(error.localizedDescription, privacy: .public)")
+                        }
                     }
                 }
             }

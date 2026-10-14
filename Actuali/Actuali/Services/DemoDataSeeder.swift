@@ -827,7 +827,7 @@ enum DemoDataSeeder {
 
         // --- Preferences ---
         try db.execute(sql: """
-        INSERT INTO preferences (id, value) VALUES ('defaultCurrencyCode', 'USD')
+        INSERT INTO preferences (id, value) VALUES ('defaultCurrencyCode', 'USD'), ('flags.currency', 'true')
         """)
         // Mirror a real tracking file: budgetType drives which budget table is
         // live when both exist (harmless here where only one does).
