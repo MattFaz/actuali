@@ -1,0 +1,53 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSFaceIDUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali verwendet Face ID, um die App zu entsperren, wenn die App-Sperre aktiviert ist."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali uses Face ID to unlock the app when App Lock is on."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali usa Face ID para desbloquear la app cuando el bloqueo de la app está activado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali utilise Face ID pour déverrouiller l’app lorsque le verrouillage de l’app est activé."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali usa Face ID per sbloccare l’app quando il blocco dell’app è attivo."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali gebruikt Face ID om de app te ontgrendelen wanneer App Lock is ingeschakeld."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Actuali usa o Face ID para desbloquear o app quando o bloqueio do app está ativado."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

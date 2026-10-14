@@ -101,6 +101,75 @@ struct BudgetStoreAppLockTests {
         #expect(!store.isAppLocked)
     }
 
+    @Test func unlockFinishingAfterBackgroundStaysLocked() async {
+        let saved = UserDefaults.standard.object(forKey: Self.key)
+        defer { restoreUserDefault(Self.key, to: saved) }
+        let store = BudgetStore.previewInstance()
+        store.requireAppUnlock = true
+        store.lockApp()
+        let entered = Gate()
+        let release = Gate()
+        store.setAuthenticatorForTesting { _ in
+            entered.open()
+            await release.wait()
+            return true
+        }
+        let unlock = Task { await store.promptAppUnlockIfPending() }
+        await entered.wait()
+        store.lockApp()
+        release.open()
+        await unlock.value
+        #expect(store.isAppLocked)
+
+        store.setAuthenticatorForTesting { _ in true }
+        await store.promptAppUnlockIfPending()
+        #expect(!store.isAppLocked)
+    }
+
+    @Test func concurrentUnlocksOnlyPromptOnce() async {
+        let saved = UserDefaults.standard.object(forKey: Self.key)
+        defer { restoreUserDefault(Self.key, to: saved) }
+        let store = BudgetStore.previewInstance()
+        store.requireAppUnlock = true
+        store.lockApp()
+        let entered = Gate()
+        let release = Gate()
+        var count = 0
+        store.setAuthenticatorForTesting { _ in
+            count += 1
+            guard count == 1 else { return false }
+            entered.open()
+            await release.wait()
+            return true
+        }
+        let unlock = Task { await store.promptAppUnlockIfPending() }
+        await entered.wait()
+        await store.unlockApp()
+        #expect(count == 1)
+        release.open()
+        await unlock.value
+        #expect(!store.isAppLocked)
+    }
+
+    @Test func enablingFinishingAfterBackgroundStaysOff() async {
+        let saved = UserDefaults.standard.object(forKey: Self.key)
+        defer { restoreUserDefault(Self.key, to: saved) }
+        let store = BudgetStore.previewInstance()
+        let entered = Gate()
+        let release = Gate()
+        store.setAuthenticatorForTesting { _ in
+            entered.open()
+            await release.wait()
+            return true
+        }
+        let enable = Task { await store.enableAppLock() }
+        await entered.wait()
+        store.lockApp()
+        release.open()
+        await enable.value
+        #expect(!store.requireAppUnlock)
+    }
+
     @Test func turningOffUnlocks() {
         let saved = UserDefaults.standard.object(forKey: Self.key)
         defer { restoreUserDefault(Self.key, to: saved) }

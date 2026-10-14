@@ -916,6 +916,8 @@ final class BudgetStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(requireAppUnlock, forKey: "requireAppUnlock")
             if !requireAppUnlock {
+                appLockGeneration += 1
+                appUnlockPromptPending = false
                 isAppLocked = false
             }
         }
@@ -928,6 +930,8 @@ final class BudgetStore: ObservableObject {
     /// follows, so a cancelled prompt leaves the Unlock button rather than
     /// re-prompting on the inactive → active bounce the prompt itself causes.
     private var appUnlockPromptPending = false
+    private var appAuthenticationInProgress = false
+    private var appLockGeneration = 0
 
     private var authenticateDeviceOwner: (String) async -> Bool = DeviceOwnerAuth.authenticate
 
@@ -939,7 +943,12 @@ final class BudgetStore: ObservableObject {
     #endif
 
     func enableAppLock() async {
-        guard await authenticateDeviceOwner(String(localized: "Turn on App Lock")) else { return }
+        guard !appAuthenticationInProgress else { return }
+        appAuthenticationInProgress = true
+        defer { appAuthenticationInProgress = false }
+        let generation = appLockGeneration
+        guard await authenticateDeviceOwner(String(localized: "Turn on App Lock")),
+              generation == appLockGeneration else { return }
         requireAppUnlock = true
     }
 
@@ -954,6 +963,8 @@ final class BudgetStore: ObservableObject {
 
     /// Called on backgrounding, so the app-switcher snapshot is already covered.
     func lockApp() {
+        // Results from before this background transition no longer authorize access.
+        appLockGeneration += 1
         guard requireAppUnlock else { return }
         isAppLocked = true
         appUnlockPromptPending = true
@@ -961,14 +972,18 @@ final class BudgetStore: ObservableObject {
 
     /// Called whenever the scene becomes active.
     func promptAppUnlockIfPending() async {
-        guard appUnlockPromptPending else { return }
+        guard appUnlockPromptPending, !appAuthenticationInProgress else { return }
         appUnlockPromptPending = false
         await unlockApp()
     }
 
     func unlockApp() async {
-        guard isAppLocked else { return }
-        if await authenticateDeviceOwner(String(localized: "Unlock your budget")) {
+        guard isAppLocked, !appAuthenticationInProgress else { return }
+        appAuthenticationInProgress = true
+        defer { appAuthenticationInProgress = false }
+        let generation = appLockGeneration
+        if await authenticateDeviceOwner(String(localized: "Unlock your budget")),
+           generation == appLockGeneration {
             isAppLocked = false
         }
     }
@@ -1966,9 +1981,9 @@ final class BudgetStore: ObservableObject {
 
     private init() {
         let defaults = UserDefaults.standard
-        /// Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
-        /// same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
-        /// overrides as strings; checking for existence first preserves non-false defaults.
+        // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
+        // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
+        // overrides as strings; checking for existence first preserves non-false defaults.
         func persistedBool(_ key: String, default defaultValue: Bool) -> Bool {
             defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
         }
@@ -5419,8 +5434,8 @@ final class BudgetStore: ObservableObject {
         }
 
         let offBudgetIds = offBudgetAccountIds
-        /// The edited leg takes the form's category, the partner keeps its own —
-        /// then both are cleared unless that leg is the categorizable side.
+        // The edited leg takes the form's category, the partner keeps its own —
+        // then both are cleared unless that leg is the categorizable side.
         func resolvedCategory(for leg: Transaction, accountId: String,
                               otherAccountId: String) -> String? {
             guard Self.transferLegTakesCategory(
