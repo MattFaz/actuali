@@ -929,12 +929,27 @@ final class BudgetStore: ObservableObject {
     /// re-prompting on the inactive → active bounce the prompt itself causes.
     private var appUnlockPromptPending = false
 
-    /// Swapped by tests; the real prompt can't run in a unit test.
-    var authenticateDeviceOwner: (String) async -> Bool = DeviceOwnerAuth.authenticate
+    private var authenticateDeviceOwner: (String) async -> Bool = DeviceOwnerAuth.authenticate
+
+    #if DEBUG
+    /// Test-only: the real system prompt can't run in a unit test.
+    func setAuthenticatorForTesting(_ authenticate: @escaping (String) async -> Bool) {
+        authenticateDeviceOwner = authenticate
+    }
+    #endif
 
     func enableAppLock() async {
         guard await authenticateDeviceOwner(String(localized: "Turn on App Lock")) else { return }
         requireAppUnlock = true
+    }
+
+    /// A cold launch locks just like returning from the background. Sets the
+    /// backing storage so restoring doesn't write the preference back.
+    private func restoreAppLock(from defaults: UserDefaults) {
+        let requireAppUnlock = defaults.bool(forKey: "requireAppUnlock")
+        _requireAppUnlock = Published(initialValue: requireAppUnlock)
+        _isAppLocked = Published(initialValue: requireAppUnlock)
+        appUnlockPromptPending = requireAppUnlock
     }
 
     /// Called on backgrounding, so the app-switcher snapshot is already covered.
@@ -2064,11 +2079,7 @@ final class BudgetStore: ObservableObject {
         _hideDecimalPlaces = Published(
             initialValue: persistedBool("hideDecimalPlaces", default: false)
         )
-        let requireAppUnlock = persistedBool("requireAppUnlock", default: false)
-        _requireAppUnlock = Published(initialValue: requireAppUnlock)
-        // A cold launch locks just like returning from the background.
-        _isAppLocked = Published(initialValue: requireAppUnlock)
-        appUnlockPromptPending = requireAppUnlock
+        restoreAppLock(from: defaults)
         _recordPayeeLocations = Published(
             initialValue: persistedBool("recordPayeeLocations", default: true)
         )
@@ -2131,6 +2142,7 @@ final class BudgetStore: ObservableObject {
     private init(forPreview mode: PreviewMode) {
         switch mode {
         case .loadPersistedPreferences:
+            restoreAppLock(from: UserDefaults.standard)
             _categoryStatusDotColors = Published(
                 initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard)
             )

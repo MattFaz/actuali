@@ -168,10 +168,16 @@ struct ActualiApp: App {
                     }
                 }
                 if newPhase == .active {
+                    // Also covers a scene that connected after the lock went
+                    // up, or one missing when the launch-time update ran.
+                    AppLockWindow.update(locked: budgetStore.isAppLocked, store: budgetStore)
                     Task { await budgetStore.promptAppUnlockIfPending() }
                 }
                 if newPhase == .background {
                     budgetStore.lockApp()
+                    // Cover the screen in this same turn: the app-switcher
+                    // snapshot is taken before SwiftUI applies the change.
+                    AppLockWindow.update(locked: budgetStore.isAppLocked, store: budgetStore)
                     BackgroundRefresh.schedule()
                     budgetStore.backupOnBackground()
                     #if DEBUG

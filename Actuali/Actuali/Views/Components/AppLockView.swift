@@ -25,27 +25,36 @@ struct AppLockView: View {
     }
 }
 
-/// Hosts `AppLockView` in its own window above the app's, because an overlay
-/// on the root view would leave any open sheet or alert uncovered.
+/// Hosts `AppLockView` in its own window above each of the app's, because an
+/// overlay on the root view would leave any open sheet or alert uncovered.
+/// One per scene: on iPad a second app window would otherwise stay usable.
 @MainActor
 enum AppLockWindow {
-    private static var window: UIWindow?
+    /// The lock window and the window that was key before it, by scene session.
+    private static var windows: [String: (lock: UIWindow, previousKey: UIWindow?)] = [:]
 
     static func update(locked: Bool, store: BudgetStore) {
-        if !locked {
-            window?.isHidden = true
-            window = nil
+        guard locked else {
+            for (lock, previousKey) in windows.values {
+                lock.isHidden = true
+                previousKey?.makeKey()
+            }
+            windows.removeAll()
             return
         }
-        guard window == nil,
-              let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first
-        else { return }
         // Dismiss the keyboard: its window sits above any level we can pick.
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        let window = UIWindow(windowScene: scene)
-        window.windowLevel = .alert + 1
-        window.rootViewController = UIHostingController(rootView: AppLockView().environmentObject(store))
-        window.isHidden = false
-        self.window = window
+        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene })
+            where windows[scene.session.persistentIdentifier] == nil {
+            let previousKey = scene.keyWindow
+            let host = UIHostingController(rootView: AppLockView().environmentObject(store))
+            // Keeps VoiceOver from reading balances in the windows below.
+            host.view.accessibilityViewIsModal = true
+            let window = UIWindow(windowScene: scene)
+            window.windowLevel = .alert + 1
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            windows[scene.session.persistentIdentifier] = (window, previousKey)
+        }
     }
 }

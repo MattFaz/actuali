@@ -5,9 +5,16 @@ import Testing
 
 /// GH #717: App Lock covers the app after backgrounding and on launch, and
 /// only an authenticated user gets back in or turns the lock on.
+///
+/// Serialized and restoring `requireAppUnlock`: the test host shares its
+/// defaults with the installed app, and a leftover `true` would launch it
+/// locked behind a prompt no automated run can answer.
 @MainActor
+@Suite(.serialized)
 struct BudgetStoreAppLockTests {
-    /// A preview store whose authenticator answers `result` and counts prompts.
+    private static let key = "requireAppUnlock"
+
+    /// Answers every prompt with `result` and counts them.
     private final class Prompter {
         var result: Bool
         var count = 0
@@ -16,10 +23,12 @@ struct BudgetStoreAppLockTests {
         }
     }
 
-    private func makeStore(authenticates: Bool) -> (BudgetStore, Prompter) {
-        let store = BudgetStore.previewInstance()
+    private func makeStore(
+        authenticates: Bool,
+        _ store: BudgetStore = .previewInstance()
+    ) -> (BudgetStore, Prompter) {
         let prompter = Prompter(result: authenticates)
-        store.authenticateDeviceOwner = { _ in
+        store.setAuthenticatorForTesting { _ in
             prompter.count += 1
             return prompter.result
         }
@@ -35,18 +44,36 @@ struct BudgetStoreAppLockTests {
     }
 
     @Test func enablingRequiresAuthentication() async {
+        let saved = UserDefaults.standard.object(forKey: Self.key)
+        defer { restoreUserDefault(Self.key, to: saved) }
         let (store, prompter) = makeStore(authenticates: false)
         await store.enableAppLock()
         #expect(!store.requireAppUnlock)
         prompter.result = true
         await store.enableAppLock()
         #expect(store.requireAppUnlock)
-        #expect(UserDefaults.standard.object(forKey: "requireAppUnlock") as? Bool == true)
+        #expect(UserDefaults.standard.object(forKey: Self.key) as? Bool == true)
         store.requireAppUnlock = false
-        #expect(UserDefaults.standard.object(forKey: "requireAppUnlock") as? Bool == false)
+        #expect(UserDefaults.standard.object(forKey: Self.key) as? Bool == false)
+    }
+
+    @Test func coldLaunchStartsLockedAndPrompts() async {
+        let saved = UserDefaults.standard.object(forKey: Self.key)
+        defer { restoreUserDefault(Self.key, to: saved) }
+        UserDefaults.standard.set(true, forKey: Self.key)
+        let (store, prompter) = makeStore(
+            authenticates: true,
+            .previewInstanceLoadingPersistedPreferencesForTesting()
+        )
+        #expect(store.isAppLocked)
+        await store.promptAppUnlockIfPending()
+        #expect(!store.isAppLocked)
+        #expect(prompter.count == 1)
     }
 
     @Test func returningPromptsOnceAndUnlocks() async {
+        let saved = UserDefaults.standard.object(forKey: Self.key)
+        defer { restoreUserDefault(Self.key, to: saved) }
         let (store, prompter) = makeStore(authenticates: true)
         store.requireAppUnlock = true
         store.lockApp()
@@ -54,12 +81,13 @@ struct BudgetStoreAppLockTests {
         await store.promptAppUnlockIfPending()
         #expect(!store.isAppLocked)
         #expect(prompter.count == 1)
-        store.requireAppUnlock = false
     }
 
     /// A cancelled prompt bounces the scene inactive → active; that must not
     /// re-prompt in a loop, but the Unlock button must still work.
     @Test func cancelledPromptStaysLockedWithoutRePrompting() async {
+        let saved = UserDefaults.standard.object(forKey: Self.key)
+        defer { restoreUserDefault(Self.key, to: saved) }
         let (store, prompter) = makeStore(authenticates: false)
         store.requireAppUnlock = true
         store.lockApp()
@@ -71,10 +99,11 @@ struct BudgetStoreAppLockTests {
         prompter.result = true
         await store.unlockApp()
         #expect(!store.isAppLocked)
-        store.requireAppUnlock = false
     }
 
     @Test func turningOffUnlocks() {
+        let saved = UserDefaults.standard.object(forKey: Self.key)
+        defer { restoreUserDefault(Self.key, to: saved) }
         let (store, _) = makeStore(authenticates: false)
         store.requireAppUnlock = true
         store.lockApp()
