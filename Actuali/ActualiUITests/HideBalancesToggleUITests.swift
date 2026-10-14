@@ -1,37 +1,30 @@
 import XCTest
 
-/// The toolbar eye flips the same Hide Balances preference as Settings →
-/// Privacy, from both the Accounts and Budget tabs.
+/// The Accounts toolbar eye flips the same Hide Balances preference as
+/// Settings → Privacy.
 final class HideBalancesToggleUITests: XCTestCase {
     @MainActor
     func testToolbarToggleMasksAndRevealsBalances() {
         let app = XCUIApplication()
         // Start unmasked whatever an earlier run left persisted.
-        app.launchArguments = ["-loadDemoData", "-hideBalances", "NO",
-                               "-budgetDisplayStyle", "clean"]
+        app.launchArguments = ["-loadDemoData", "-hideBalances", "NO"]
         app.launch()
 
-        let masked = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", "\u{2022}\u{2022}\u{2022}\u{2022}"))
-            .firstMatch
-        let toggle = app.descendants(matching: .any)
-            .matching(identifier: "toolbar.hideBalances")
-            .firstMatch
+        let accountsTab = app.tabBars.buttons["Accounts"]
+        XCTAssertTrue(accountsTab.waitForExistence(timeout: 10))
+        accountsTab.tap()
+        let group = app.buttons["account.group.on-budget"]
+        XCTAssertTrue(group.waitForExistence(timeout: 10))
+        XCTAssertFalse(group.label.contains("••••"))
 
-        app.tabBars.buttons["Accounts"].tap()
-        XCTAssertTrue(app.buttons["account.group.on-budget"].waitForExistence(timeout: 10))
-        XCTAssertFalse(masked.exists)
+        let toggle = app.buttons["accounts.hideBalances"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         toggle.tap()
-        XCTAssertTrue(masked.waitForExistence(timeout: 5),
-                      "Accounts toggle did not mask balances")
+        expectation(for: NSPredicate(format: "label CONTAINS '••••'"), evaluatedWith: group)
+        waitForExpectations(timeout: 10)
 
-        app.tabBars.buttons["Budget"].tap()
-        XCTAssertTrue(app.buttons["Details for Groceries"].waitForExistence(timeout: 10))
-        XCTAssertTrue(masked.waitForExistence(timeout: 5))
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         toggle.tap()
-        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: masked)
-        waitForExpectations(timeout: 5)
+        expectation(for: NSPredicate(format: "NOT (label CONTAINS '••••')"), evaluatedWith: group)
+        waitForExpectations(timeout: 10)
     }
 }

@@ -680,7 +680,18 @@ struct AccountsListView: View {
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    HideBalancesToggle()
+                    // One-tap shortcut for Settings → Privacy → Hide Balances,
+                    // like the web app's privacy-mode eye. Accounts only: the
+                    // Budget bar is held to one trailing button (GH #157).
+                    Toggle(isOn: $budgetStore.hideBalances) {
+                        Label(
+                            String(localized: "Hide Balances"),
+                            systemImage: budgetStore.hideBalances ? "eye.slash" : "eye"
+                        )
+                        .labelStyle(.iconOnly)
+                    }
+                    .toggleStyle(.button)
+                    .accessibilityIdentifier("accounts.hideBalances")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
