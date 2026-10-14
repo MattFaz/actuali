@@ -729,6 +729,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Actuali;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Actuali uses Face ID to unlock the app when App Lock is on.";
 				INFOPLIST_KEY_NSFinancialDataUsageDescription = "Actuali imports the Wallet transactions you select into your budget. They are stored in your budget file on your own server.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Actuali uses your location to suggest nearby payees and remember where you transact. Location data stays in your budget file on your own server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -773,6 +774,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Actuali;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Actuali uses Face ID to unlock the app when App Lock is on.";
 				INFOPLIST_KEY_NSFinancialDataUsageDescription = "Actuali imports the Wallet transactions you select into your budget. They are stored in your budget file on your own server.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Actuali uses your location to suggest nearby payees and remember where you transact. Location data stays in your budget file on your own server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

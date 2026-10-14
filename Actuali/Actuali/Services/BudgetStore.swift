@@ -907,6 +907,57 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    // MARK: - App Lock
+
+    /// Whether opening the app asks for Face ID, Touch ID, or the passcode.
+    /// Persisted to UserDefaults, defaults to off. Turn it on through
+    /// `enableAppLock()` so the user proves they can unlock first.
+    @Published var requireAppUnlock: Bool = false {
+        didSet {
+            UserDefaults.standard.set(requireAppUnlock, forKey: "requireAppUnlock")
+            if !requireAppUnlock {
+                isAppLocked = false
+            }
+        }
+    }
+
+    /// Whether the lock screen covers the app.
+    @Published private(set) var isAppLocked = false
+
+    /// Set when the app locks, cleared by the one automatic prompt that
+    /// follows, so a cancelled prompt leaves the Unlock button rather than
+    /// re-prompting on the inactive → active bounce the prompt itself causes.
+    private var appUnlockPromptPending = false
+
+    /// Swapped by tests; the real prompt can't run in a unit test.
+    var authenticateDeviceOwner: (String) async -> Bool = DeviceOwnerAuth.authenticate
+
+    func enableAppLock() async {
+        guard await authenticateDeviceOwner(String(localized: "Turn on App Lock")) else { return }
+        requireAppUnlock = true
+    }
+
+    /// Called on backgrounding, so the app-switcher snapshot is already covered.
+    func lockApp() {
+        guard requireAppUnlock else { return }
+        isAppLocked = true
+        appUnlockPromptPending = true
+    }
+
+    /// Called whenever the scene becomes active.
+    func promptAppUnlockIfPending() async {
+        guard appUnlockPromptPending else { return }
+        appUnlockPromptPending = false
+        await unlockApp()
+    }
+
+    func unlockApp() async {
+        guard isAppLocked else { return }
+        if await authenticateDeviceOwner(String(localized: "Unlock your budget")) {
+            isAppLocked = false
+        }
+    }
+
     /// Whether Budget hides categories with no budget left this month.
     /// Persisted to UserDefaults, defaults to off.
     @Published var hideZeroBudgetCategories: Bool = false {
@@ -2013,6 +2064,11 @@ final class BudgetStore: ObservableObject {
         _hideDecimalPlaces = Published(
             initialValue: persistedBool("hideDecimalPlaces", default: false)
         )
+        let requireAppUnlock = persistedBool("requireAppUnlock", default: false)
+        _requireAppUnlock = Published(initialValue: requireAppUnlock)
+        // A cold launch locks just like returning from the background.
+        _isAppLocked = Published(initialValue: requireAppUnlock)
+        appUnlockPromptPending = requireAppUnlock
         _recordPayeeLocations = Published(
             initialValue: persistedBool("recordPayeeLocations", default: true)
         )

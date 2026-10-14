@@ -167,7 +167,11 @@ struct ActualiApp: App {
                         await budgetStore.syncOnForeground()
                     }
                 }
+                if newPhase == .active {
+                    Task { await budgetStore.promptAppUnlockIfPending() }
+                }
                 if newPhase == .background {
+                    budgetStore.lockApp()
                     BackgroundRefresh.schedule()
                     budgetStore.backupOnBackground()
                     #if DEBUG
@@ -198,6 +202,9 @@ struct ActualiApp: App {
                 }
             }
             .animation(AppAnimation.appearance, value: budgetStore.transactionImpactCues)
+            .onChange(of: budgetStore.isAppLocked, initial: true) { _, locked in
+                AppLockWindow.update(locked: locked, store: budgetStore)
+            }
         }
     }
 }

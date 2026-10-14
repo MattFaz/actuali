@@ -1,3 +1,4 @@
+import LocalAuthentication
 import SwiftUI
 
 struct PrivacySettingsView: View {
@@ -14,10 +15,42 @@ struct PrivacySettingsView: View {
             } footer: {
                 Text(String(localized: "Hide Balances masks amounts across the app while leaving amount entry and reconciliation visible. Shake to Toggle lets you quickly mask or unmask amounts by shaking your phone. Hide Decimal Places rounds displayed amounts to whole units without changing their values."))
             }
+
+            // A device without a passcode has nothing to lock with; keep the
+            // row while on so a lock set up before the passcode was removed
+            // can still be turned off.
+            if DeviceOwnerAuth.isAvailable || budgetStore.requireAppUnlock {
+                Section {
+                    Toggle(Self.appLockTitle(for: DeviceOwnerAuth.biometryType), isOn: Binding(
+                        get: { budgetStore.requireAppUnlock },
+                        set: { isOn in
+                            if isOn {
+                                Task { await budgetStore.enableAppLock() }
+                            } else {
+                                budgetStore.requireAppUnlock = false
+                            }
+                        }
+                    ))
+                    .accessibilityIdentifier("privacy.requireAppUnlock")
+                } header: {
+                    Text(String(localized: "App Lock"))
+                } footer: {
+                    Text(String(localized: "Ask to unlock Actuali each time you open it or return to it, so no one else can see your budget on this device."))
+                }
+            }
         }
         .readableWidth()
         .navigationTitle(String(localized: "Privacy"))
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.horizontal, 6, for: .scrollContent)
+    }
+
+    nonisolated static func appLockTitle(for biometry: LABiometryType) -> String {
+        switch biometry {
+        case .faceID: String(localized: "Require Face ID")
+        case .touchID: String(localized: "Require Touch ID")
+        case .opticID: String(localized: "Require Optic ID")
+        default: String(localized: "Require Passcode")
+        }
     }
 }
