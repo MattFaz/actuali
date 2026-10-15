@@ -422,6 +422,139 @@ struct BudgetStoreDuplicationTests {
     }
 
     @Test
+    func unlinkingKeepsTheLinesOwnPayee() async throws {
+        let (database, tempURL) = try await makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, syncClient) = try await makeStore(database: database)
+
+        // The line is still a line of its split, so detaching it must not blank
+        // its payee: that would leave the split with an unnamed line.
+        try await syncClient.createSplit(
+            parent: Transaction(
+                id: "split-parent", accountId: "acct-2", date: 20_260_810, amount: 4000,
+                payeeId: nil, payeeName: "Paycheck", categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: nil,
+                isParent: true, parentId: nil, tombstone: false, sortOrder: 50
+            ),
+            children: [
+                Transaction(
+                    id: "child-transfer", accountId: "acct-2", date: 20_260_810, amount: 4000,
+                    payeeId: "payee-transfer-1", payeeName: nil, categoryId: nil, categoryName: nil,
+                    notes: nil, cleared: false, reconciled: false, transferId: "leg-out",
+                    isParent: false, parentId: "split-parent", tombstone: false, sortOrder: 100
+                ),
+            ]
+        )
+        try await syncClient.createTransaction(
+            Transaction(
+                id: "leg-out", accountId: "acct-1", date: 20_260_810, amount: -4000,
+                payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: "child-transfer",
+                isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+            ),
+            applyRules: false
+        )
+
+        let leg = try #require(try await database.fetchTransaction(id: "leg-out"))
+        await store.deleteTransaction(leg)
+
+        let line = try #require(try await database.fetchTransaction(id: "child-transfer", includingChildren: true))
+        #expect(line.transferId == nil)
+        #expect(line.payeeId == "payee-transfer-1")
+    }
+
+    @Test
+    func deletingAParentAndALinkedLegLeavesTheLineDeleted() async throws {
+        let (database, tempURL) = try await makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, syncClient) = try await makeStore(database: database)
+
+        // Selecting both the split that owns a transfer line and the line's
+        // partner in one batch: the line is both tombstoned (the split goes) and
+        // a candidate for unlinking (its partner goes). It must stay deleted —
+        // `updateTransactionRow` writes every column, so a later unlink write
+        // would put it back.
+        try await syncClient.createSplit(
+            parent: Transaction(
+                id: "split-parent", accountId: "acct-2", date: 20_260_810, amount: 4000,
+                payeeId: nil, payeeName: "Paycheck", categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: nil,
+                isParent: true, parentId: nil, tombstone: false, sortOrder: 50
+            ),
+            children: [
+                Transaction(
+                    id: "child-transfer", accountId: "acct-2", date: 20_260_810, amount: 4000,
+                    payeeId: "payee-transfer-1", payeeName: nil, categoryId: nil, categoryName: nil,
+                    notes: nil, cleared: false, reconciled: false, transferId: "leg-out",
+                    isParent: false, parentId: "split-parent", tombstone: false, sortOrder: 100
+                ),
+            ]
+        )
+        try await syncClient.createTransaction(
+            Transaction(
+                id: "leg-out", accountId: "acct-1", date: 20_260_810, amount: -4000,
+                payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: "child-transfer",
+                isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+            ),
+            applyRules: false
+        )
+
+        let parent = try #require(try await database.fetchTransaction(id: "split-parent"))
+        let leg = try #require(try await database.fetchTransaction(id: "leg-out"))
+        await store.deleteTransactions([parent, leg])
+
+        #expect(try await rawRow(database, id: "split-parent")?.tombstone == 1)
+        #expect(try await rawRow(database, id: "child-transfer")?.tombstone == 1)
+        #expect(try await rawRow(database, id: "leg-out")?.tombstone == 1)
+    }
+
+    @Test
+    func editingATransferRefusesAPartnerThatIsASplitLine() async throws {
+        let (database, tempURL) = try await makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, syncClient) = try await makeStore(database: database)
+
+        // updateTransfer rewrites the partner's account, amount and date. A line
+        // of a split must not be dragged out of its split that way, so the edit
+        // is refused rather than corrupting the split.
+        try await syncClient.createTransaction(
+            Transaction(
+                id: "child-transfer", accountId: "acct-2", date: 20_260_810, amount: 4000,
+                payeeId: "payee-transfer-1", payeeName: nil, categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: "leg-out",
+                isParent: false, parentId: "split-parent", tombstone: false, sortOrder: 100
+            ),
+            applyRules: false
+        )
+        try await syncClient.createTransaction(
+            Transaction(
+                id: "leg-out", accountId: "acct-1", date: 20_260_810, amount: -4000,
+                payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: "child-transfer",
+                isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+            ),
+            applyRules: false
+        )
+
+        let leg = try #require(try await database.fetchTransaction(id: "leg-out"))
+        let before = try #require(try await database.fetchTransaction(id: "child-transfer", includingChildren: true))
+        await #expect(throws: BudgetStoreError.transferPartnerMissing) {
+            try await store.updateTransfer(
+                original: leg, fromAccountId: "acct-1", toAccountId: "acct-2",
+                amountCents: 9999, date: 20_260_901, notes: "moved", cleared: true, categoryId: nil
+            )
+        }
+        // Refused means refused: the line keeps its account, amount, date and
+        // spot in the split.
+        let after = try #require(try await database.fetchTransaction(id: "child-transfer", includingChildren: true))
+        #expect(after.accountId == before.accountId)
+        #expect(after.amount == before.amount)
+        #expect(after.date == before.date)
+        #expect(after.parentId == "split-parent")
+    }
+
+    @Test
     func deletingTransferLegTakesAPartnerSplitWithIt() async throws {
         let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }

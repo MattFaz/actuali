@@ -5299,6 +5299,20 @@ final class BudgetStore: ObservableObject {
         payees.first { $0.transferAccountId == accountId && !$0.tombstone }
     }
 
+    /// The same row with its transfer link removed, for the case where the
+    /// partner is a line of a split. That line has to survive its partner: a
+    /// split's parent amount is the sum of its live children, so deleting the
+    /// line would leave the parent claiming an amount the rest no longer adds
+    /// up to, and the list would print a total the account balance disagrees
+    /// with. Upstream's `removeTransfer` unlinks that leg too. Only
+    /// `transferred_id` changes — the row is still a line of its split, so it
+    /// keeps the payee it has.
+    nonisolated static func unlinkedTransferLeg(_ partner: Transaction) -> Transaction {
+        var leg = partner
+        leg.transferId = nil
+        return leg
+    }
+
     /// Ids of the off-budget accounts, for the category rules shared by the
     /// transaction rows, the sync notification and transfer saves.
     var offBudgetAccountIds: Set<String> {
@@ -5345,8 +5359,13 @@ final class BudgetStore: ObservableObject {
         guard amountCents > 0 else {
             throw BudgetStoreError.transferAmountNotPositive
         }
+        // A partner that is a line of a split isn't an editable leg: this
+        // rewrites the row's account, amount and date, and the row would then
+        // leave the split it belongs to. Upstream's updateTransfer has the same
+        // shape, and the pre-existing read never saw a child row at all.
         guard let partnerId = original.transferId,
-              let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) else {
+              let partner = try await database.fetchTransaction(id: partnerId),
+              partner.parentId == nil else {
             throw BudgetStoreError.transferPartnerMissing
         }
         let fromTransferPayee = transferPayee(forAccountId: fromAccountId)
@@ -5525,9 +5544,12 @@ final class BudgetStore: ObservableObject {
             return
         }
         var deleted: [Transaction] = []
-        // Legs to detach rather than delete, keyed by id so a second visit
-        // can't queue the same row twice.
-        var unlinked: [String: (original: Transaction, unlinked: Transaction, payee: Payee?)] = [:]
+        // Legs to detach rather than delete. A split line that is one leg of a
+        // transfer must survive its partner: the split's parent amount is the
+        // sum of its live children, so dropping the line would leave the parent
+        // claiming an amount the rest no longer adds up to. Upstream's
+        // removeTransfer unlinks that leg for the same reason.
+        var unlinked: [(original: Transaction, leg: Transaction)] = []
         // Rows already handled in this batch. The `tombstone` guard can't do
         // this job: the link is followed by re-reading the partner row, so a
         // transferId cycle (seen in upstream data) would recurse forever.
@@ -5536,57 +5558,10 @@ final class BudgetStore: ObservableObject {
         // logical transaction, so deleting either leg deletes both: upstream's
         // onDelete → removeTransfer does the same, and a leg left behind is a
         // one-sided transfer in an account the user never touched (GH #724).
-        // Tombstoned rows and repeats are skipped, so selecting both legs — or a
-        // split whose lines share a partner — writes each row once.
+        // Tombstoned rows and repeats are skipped, so selecting both legs writes
+        // each row once.
         func delete(_ tx: Transaction) async {
             guard !tx.tombstone, visited.insert(tx.id).inserted else { return }
-            var copy = tx
-            copy.tombstone = true
-            deleted.append(copy)
-            // A transfer partner can itself be a split, and a split's parent
-            // amount is the sum of its live children, so the parent has to go
-            // with them (`aliveChildPredicate` drops children whose parent is
-            // tombstoned).
-            if tx.isParent, let database {
-                do {
-                    for child in try await database.fetchChildTransactions(parentId: tx.id) {
-                        await delete(child)
-                    }
-                } catch {
-                    // The parent still goes; its children couldn't be read.
-                    self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
-                }
-            }
-            guard followsTransferLinks, let partnerId = tx.transferId, let database else { return }
-            do {
-                guard let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) else { return }
-                if partner.parentId != nil {
-                    // Upstream's removeTransfer turns a split line into a plain
-                    // transaction instead of deleting it: dropping the line
-                    // would leave the split's other lines short of an amount the
-                    // parent still claims, and the list would print a total the
-                    // account balance doesn't match.
-                    unlink(partner)
-                } else {
-                    await delete(partner)
-                }
-            } catch {
-                // The leg itself still goes; its partner can't be read.
-                self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
-            }
-        }
-        // Detach one leg of a transfer and give it back its account's payee —
-        // leaving a transfer-only payee on a row with no partner is what the
-        // reports and the editor would then have to guard against.
-        func unlink(_ tx: Transaction) {
-            guard unlinked.index(forKey: tx.id) == nil else { return }
-            var leg = tx
-            leg.transferId = nil
-            let payee = transferPayee(forAccountId: tx.accountId)
-            unlinked[tx.id] = (original: tx, unlinked: leg, payee: payee)
-        }
-
-        for tx in transactions {
             // Deleting a split deletes its children too — orphaned children
             // would be invisible in the list but still feed reports.
             if tx.isParent, let database {
@@ -5598,19 +5573,41 @@ final class BudgetStore: ObservableObject {
                     // Skip the parent when its children couldn't be read —
                     // tombstoning it anyway would orphan them.
                     self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
-                    continue
+                    return
                 }
             }
+            var copy = tx
+            copy.tombstone = true
+            deleted.append(copy)
+            guard followsTransferLinks, let partnerId = tx.transferId, let database else { return }
+            do {
+                guard let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) else { return }
+                if partner.parentId != nil {
+                    unlink(partner)
+                } else {
+                    await delete(partner)
+                }
+            } catch {
+                // The leg itself still goes; its partner can't be read.
+                self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
+            }
+        }
+        // A partner that is a line of a split is left in its split; see
+        // `unlinkedTransferLeg`.
+        func unlink(_ tx: Transaction) {
+            guard !unlinked.contains(where: { $0.original.id == tx.id }) else { return }
+            unlinked.append((original: tx, leg: Self.unlinkedTransferLeg(tx)))
+        }
+
+        for tx in transactions {
             await delete(tx)
         }
         var updates = deleted.map { (transaction: $0, changedFields: Set(["tombstone"])) }
-        for entry in unlinked.values {
-            // `changedFields` maps a payee change onto "description", which is
-            // the column that carries it.
-            var leg = entry.unlinked
-            leg.payeeId = entry.payee?.id
-            leg.payeeName = entry.payee?.name
-            updates.append((leg, Self.changedFields(original: entry.original, updated: leg)))
+        // A row this batch already tombstoned must not be written back live:
+        // `updateTransactionRow` writes every column, and the unlinked entries
+        // are appended after the tombstones.
+        for entry in unlinked where !visited.contains(entry.original.id) {
+            updates.append((entry.leg, ["transferred_id"]))
         }
         do {
             try await syncClient.updateTransactions(updates)
@@ -5911,9 +5908,16 @@ final class BudgetStore: ObservableObject {
                 for child in dropChildren {
                     deleted.append(child)
                     // Split transfers must lose both legs, as in deleteTransactions.
+                    // A partner that is itself a split line is unlinked instead:
+                    // dropping it would leave that split's parent claiming an
+                    // amount its remaining lines no longer add up to.
                     if let partnerId = child.transferId,
                        let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) {
-                        deleted.append(partner)
+                        if partner.parentId != nil {
+                            updates.append((Self.unlinkedTransferLeg(partner), ["transferred_id"]))
+                        } else {
+                            deleted.append(partner)
+                        }
                     }
                 }
             }
@@ -6871,9 +6875,18 @@ final class BudgetStore: ObservableObject {
                     try await syncClient.updateTransaction(updated, changedFields: changes)
                 }
                 if let partnerId = existing.transferId,
-                   var partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) {
-                    partner.tombstone = true
-                    try await syncClient.updateTransaction(partner, changedFields: ["tombstone"])
+                   let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) {
+                    if partner.parentId != nil {
+                        // A line of a split in the other account: unlink it, or
+                        // that split's parent amount goes stale.
+                        try await syncClient.updateTransaction(
+                            Self.unlinkedTransferLeg(partner), changedFields: ["transferred_id"]
+                        )
+                    } else {
+                        var removed = partner
+                        removed.tombstone = true
+                        try await syncClient.updateTransaction(removed, changedFields: ["tombstone"])
+                    }
                 }
             } else {
                 // Rules are skipped, matching createSplit — the user just
@@ -6890,9 +6903,18 @@ final class BudgetStore: ObservableObject {
             deleted.tombstone = true
             try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
             if let partnerId = child.transferId,
-               var partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) {
-                partner.tombstone = true
-                try await syncClient.updateTransaction(partner, changedFields: ["tombstone"])
+               let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) {
+                if partner.parentId != nil {
+                    // A line of a split in the other account: unlink it, or that
+                    // split's parent amount goes stale.
+                    try await syncClient.updateTransaction(
+                        Self.unlinkedTransferLeg(partner), changedFields: ["transferred_id"]
+                    )
+                } else {
+                    var removed = partner
+                    removed.tombstone = true
+                    try await syncClient.updateTransaction(removed, changedFields: ["tombstone"])
+                }
             }
         }
 
@@ -7145,9 +7167,18 @@ final class BudgetStore: ObservableObject {
             deleted.tombstone = true
             try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
             if let partnerId = child.transferId,
-               var partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) {
-                partner.tombstone = true
-                try await syncClient.updateTransaction(partner, changedFields: ["tombstone"])
+               let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) {
+                if partner.parentId != nil {
+                    // A line of a split in the other account: unlink it, or that
+                    // split's parent amount goes stale.
+                    try await syncClient.updateTransaction(
+                        Self.unlinkedTransferLeg(partner), changedFields: ["transferred_id"]
+                    )
+                } else {
+                    var removed = partner
+                    removed.tombstone = true
+                    try await syncClient.updateTransaction(removed, changedFields: ["tombstone"])
+                }
             }
         }
 
