@@ -17,10 +17,10 @@ struct BudgetStoreCurrencyRefreshTests {
     }
 
     /// An on-disk budget with the full schema loadLocalBudget reads. `groupId`
-    /// stays nil so the load leaves sync unconfigured and nothing reaches the
-    /// network — the currency paths under test are pure database reads.
+    /// defaults to nil so loads leave sync unconfigured and nothing reaches the
+    /// network; migration tests pass a group id to wire up local sync.
     private func seedBudget(
-        id: String, currency: String?, in manager: BudgetFileManager
+        id: String, currency: String?, in manager: BudgetFileManager, groupId: String? = nil
     ) throws {
         let dir = manager.budgetDirectory(for: id)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -29,7 +29,7 @@ struct BudgetStoreCurrencyRefreshTests {
             try db.execute(sql: TestSchema.upstream)
         }
         try JSONEncoder().encode(BudgetMetadata(
-            id: id, budgetName: "Seed", cloudFileId: "cf-1", groupId: nil,
+            id: id, budgetName: "Seed", cloudFileId: "cf-1", groupId: groupId,
             resetClock: nil, lastUploaded: nil, encryptKeyId: nil
         )).write(to: manager.metadataPath(for: id))
         if let currency {
@@ -125,6 +125,46 @@ struct BudgetStoreCurrencyRefreshTests {
         await store.loadLocalBudget(id)
 
         #expect(store.currencyCode == "GBP")
+    }
+
+    /// Upstream compatibility: Actual web/desktop resets `defaultCurrencyCode`
+    /// if `flags.currency` is not enabled (GH #668). An existing budget with a
+    /// currency configured must self-heal by syncing `flags.currency = "true"`,
+    /// once: the second load finds the flag and stays silent.
+    @Test func loadMigratesCurrencyFlagWhenCurrencyIsConfigured() async throws {
+        let (store, manager, id, root) = makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(id: id, currency: "USD", in: manager, groupId: "g-1")
+
+        await store.loadLocalBudget(id)
+        await store.loadLocalBudget(id)
+
+        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
+        let (flag, messageCount) = try await dbQueue.read { db in
+            try (
+                String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'flags.currency'"),
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE row = 'flags.currency'") ?? 0
+            )
+        }
+        #expect(flag == "true")
+        #expect(messageCount == 1)
+    }
+
+    /// The published `currencyCode` falls back to a global default, so a
+    /// budget with no `defaultCurrencyCode` row must stay untouched (GH #668).
+    @Test func loadLeavesCurrencyFlagUnsetWhenNoCurrencyIsConfigured() async throws {
+        let (store, manager, id, root) = makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(id: id, currency: nil, in: manager, groupId: "g-1")
+
+        store.currencyCode = "USD"
+        await store.loadLocalBudget(id)
+
+        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
+        let flag = try await dbQueue.read { db in
+            try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'flags.currency'")
+        }
+        #expect(flag == nil)
     }
 
     // MARK: - Refresh

@@ -30,15 +30,43 @@ struct SyncClientUpdateCurrencyCodeTests {
         let stored = try await database.fetchCurrencyCode()
         #expect(stored == "EUR")
 
-        // One replicated message, shaped exactly like upstream saveSyncedPrefs
-        // (dataset "preferences", row = pref key, column "value").
+        // Upstream Actual web/desktop resets defaultCurrencyCode unless
+        // flags.currency is true (GH #668).
+        let flagStored = try await database.fetchPreference(id: "flags.currency")
+        #expect(flagStored == "true")
+
+        // Two replicated messages: defaultCurrencyCode and flags.currency
+        let messages = try messageRows(path: path)
+        #expect(messages.count == 2)
+        let ccyMessage = try #require(messages.first(where: { $0["row"] == "defaultCurrencyCode" }))
+        #expect(ccyMessage["dataset"] == "preferences")
+        #expect(ccyMessage["column"] == "value")
+        #expect(ccyMessage["value"] == "S:EUR")
+
+        let flagMessage = try #require(messages.first(where: { $0["row"] == "flags.currency" }))
+        #expect(flagMessage["dataset"] == "preferences")
+        #expect(flagMessage["column"] == "value")
+        #expect(flagMessage["value"] == "S:true")
+    }
+
+    @Test func emptyCurrencyDoesNotSetFlag() async throws {
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeTestSyncClient(database: database)
+
+        try await syncClient.updateCurrencyCode("")
+
+        let stored = try await database.fetchCurrencyCode()
+        #expect(stored == "")
+
+        let flagStored = try await database.fetchPreference(id: "flags.currency")
+        #expect(flagStored == nil)
+
         let messages = try messageRows(path: path)
         #expect(messages.count == 1)
         let message = try #require(messages.first)
-        #expect(message["dataset"] == "preferences")
         #expect(message["row"] == "defaultCurrencyCode")
-        #expect(message["column"] == "value")
-        #expect(message["value"] == "S:EUR")
+        #expect(message["value"] == "S:")
     }
 
     @Test func secondChangeOverwritesRowInPlace() async throws {
@@ -52,14 +80,17 @@ struct SyncClientUpdateCurrencyCodeTests {
         let stored = try await database.fetchCurrencyCode()
         #expect(stored == "NZD")
 
-        // Still a single preferences row, but both edits replicated so other
-        // clients converge on the latest by timestamp.
+        let flagStored = try await database.fetchPreference(id: "flags.currency")
+        #expect(flagStored == "true")
+
+        // preferences table contains defaultCurrencyCode and flags.currency
         let queue = try DatabaseQueue(path: path.path)
         let rowCount = try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM preferences") ?? 0
         }
-        #expect(rowCount == 1)
-        #expect(try messageRows(path: path).count == 2)
+        #expect(rowCount == 2)
+        // 2 messages for EUR (ccy + flag), 2 for NZD (ccy + flag)
+        #expect(try messageRows(path: path).count == 4)
     }
 
     @Test func missingPreferencesTableStillRecordsMessage() async throws {
@@ -73,6 +104,6 @@ struct SyncClientUpdateCurrencyCodeTests {
 
         try await syncClient.updateCurrencyCode("EUR")
 
-        #expect(try messageRows(path: path).count == 1)
+        #expect(try messageRows(path: path).count == 2)
     }
 }

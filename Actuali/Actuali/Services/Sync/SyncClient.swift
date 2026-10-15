@@ -1424,8 +1424,18 @@ actor SyncClient {
     /// Persist the currency code to the budget's `preferences` table (Actual's
     /// `defaultCurrencyCode`), so the choice survives a relaunch and syncs to
     /// other clients (GH #59).
+    ///
+    /// Upstream compatibility: Actual's web/desktop Settings view
+    /// (`packages/desktop-client/src/components/settings/index.tsx`) treats
+    /// currency support as an experimental feature and resets `defaultCurrencyCode`
+    /// to empty if `flags.currency` is not enabled. Persisting `flags.currency = "true"`
+    /// alongside a non-empty currency code prevents upstream from wiping the
+    /// preference on the user's next visit to Settings (GH #668).
     func updateCurrencyCode(_ code: String) async throws {
         try await setPreference(key: "defaultCurrencyCode", value: code)
+        if !code.isEmpty {
+            try await setPreference(key: "flags.currency", value: "true")
+        }
     }
 
     /// Persists or clears a credit card account configuration in the budget's `preferences` table
