@@ -5515,20 +5515,38 @@ final class BudgetStore: ObservableObject {
             return
         }
         var deleted: [Transaction] = []
+        // Rows already handled in this batch. The `tombstone` guard can't do
+        // this job: the link is followed by re-reading the partner row, so a
+        // transferId cycle (seen in upstream data) would recurse forever.
+        var visited = Set<String>()
+        // Tombstone `tx` and the other leg of its transfer. A transfer is one
+        // logical transaction, so deleting either leg deletes both: upstream's
+        // onDelete → removeTransfer does the same, and a leg left behind is a
+        // one-sided transfer in an account the user never touched (GH #724).
+        // Tombstoned rows and repeats are skipped, so selecting both legs — or a
+        // split whose lines share a partner — writes each row once.
+        func delete(_ tx: Transaction) async {
+            guard !tx.tombstone, visited.insert(tx.id).inserted else { return }
+            var copy = tx
+            copy.tombstone = true
+            deleted.append(copy)
+            guard let partnerId = tx.transferId, let database else { return }
+            do {
+                if let partner = try await database.fetchTransaction(id: partnerId) {
+                    await delete(partner)
+                }
+            } catch {
+                // The leg itself still goes; its partner can't be read.
+                self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
+            }
+        }
         for tx in transactions {
             // Deleting a split deletes its children too — orphaned children
             // would be invisible in the list but still feed reports.
             if tx.isParent, let database {
                 do {
                     for child in try await database.fetchChildTransactions(parentId: tx.id) {
-                        var deletedChild = child
-                        deletedChild.tombstone = true
-                        deleted.append(deletedChild)
-                        if let partnerId = child.transferId,
-                           var partner = try await database.fetchTransaction(id: partnerId) {
-                            partner.tombstone = true
-                            deleted.append(partner)
-                        }
+                        await delete(child)
                     }
                 } catch {
                     // Skip the parent when its children couldn't be read —
@@ -5537,9 +5555,7 @@ final class BudgetStore: ObservableObject {
                     continue
                 }
             }
-            var copy = tx
-            copy.tombstone = true
-            deleted.append(copy)
+            await delete(tx)
         }
         do {
             try await syncClient.updateTransactions(deleted, changedFields: ["tombstone"])

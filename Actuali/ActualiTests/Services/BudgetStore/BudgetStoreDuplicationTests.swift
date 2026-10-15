@@ -274,7 +274,7 @@ struct BudgetStoreDuplicationTests {
     }
 
     @Test
-    func deleteSingleTransferDoesNotDeletePartner() async throws {
+    func deleteSingleTransferDeletesPartner() async throws {
         let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
@@ -288,12 +288,68 @@ struct BudgetStoreDuplicationTests {
         #expect(initialTxs.count == 2)
         guard let firstLeg = initialTxs.first else { return }
 
-        // Deleting a single leg via deleteTransaction must not delete the partner leg
+        // Deleting one leg of a transfer deletes the pair: upstream's
+        // removeTransfer tombstones the partner, and leaving one leg behind
+        // strands a one-sided transfer (GH #724).
         await store.deleteTransaction(firstLeg)
 
         let activeTxs = try await database.fetchTransactions(limit: 1000)
-        #expect(activeTxs.count == 1)
-        #expect(activeTxs.first?.id != firstLeg.id)
+        #expect(activeTxs.isEmpty)
+        #expect(store.error == nil)
+    }
+
+    @Test
+    func deleteTransferLegWhosePartnerIsAlreadyGone() async throws {
+        let (database, tempURL) = try await makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, _) = try await makeStore(database: database)
+
+        // A dangling link — upstream files can contain one. The delete must
+        // not fail or resurrect anything.
+        let orphan = Transaction(
+            id: "tx-orphan", accountId: "acct-1", date: 20_260_810, amount: -5000,
+            payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: "tx-missing",
+            isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+        )
+        try await store.createTransaction(orphan)
+
+        await store.deleteTransaction(orphan)
+
+        let activeTxs = try await database.fetchTransactions(limit: 1000)
+        #expect(activeTxs.isEmpty)
+        #expect(store.error == nil)
+    }
+
+    @Test
+    func deleteTransferLegWithinPartnerCycleTerminates() async throws {
+        let (database, tempURL) = try await makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, syncClient) = try await makeStore(database: database)
+
+        // Degenerate data a bad upstream file can carry: the transferId links
+        // form a cycle instead of a pair. Following them must still terminate —
+        // each hop re-reads the row, so the tombstone set in memory doesn't
+        // stop the walk.
+        func leg(_ id: String, partner: String) -> Transaction {
+            Transaction(
+                id: id, accountId: "acct-1", date: 20_260_810, amount: -1000,
+                payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: partner,
+                isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+            )
+        }
+        try await syncClient.createTransaction(leg("cycle-a", partner: "cycle-b"), applyRules: false)
+        try await syncClient.createTransaction(leg("cycle-b", partner: "cycle-c"), applyRules: false)
+        try await syncClient.createTransaction(leg("cycle-c", partner: "cycle-a"), applyRules: false)
+
+        let first = try await database.fetchTransaction(id: "cycle-a")
+        #expect(first != nil)
+        guard let first else { return }
+        await store.deleteTransaction(first)
+
+        let activeTxs = try await database.fetchTransactions(limit: 1000)
+        #expect(activeTxs.isEmpty)
     }
 
     @Test
