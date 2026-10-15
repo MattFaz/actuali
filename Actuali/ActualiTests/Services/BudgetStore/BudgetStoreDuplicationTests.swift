@@ -21,6 +21,21 @@ struct BudgetStoreDuplicationTests {
         """] + seedSQL)
     }
 
+    /// `fetchTransaction` hides children and tombstones, so it can't answer what
+    /// happened to a split line. `Row` can't leave the read closure, so project
+    /// the columns this suite asserts on.
+    private struct RawRow: Sendable {
+        var tombstone = 0
+        var transferredId: String?
+    }
+
+    private func rawRow(_ database: BudgetDatabase, id: String) async throws -> RawRow? {
+        try await database.dbQueueForTesting.read { db in
+            try Row.fetchOne(db, sql: "SELECT tombstone, transferred_id FROM transactions WHERE id = ?", arguments: [id])
+                .map { RawRow(tombstone: $0["tombstone"] ?? 0, transferredId: $0["transferred_id"]) }
+        }
+    }
+
     private func makeStore(database: BudgetDatabase) async throws -> (BudgetStore, SyncClient) {
         let store = BudgetStore.previewInstance()
         let syncClient = try await makeTestSyncClient(database: database)
@@ -350,6 +365,103 @@ struct BudgetStoreDuplicationTests {
 
         let activeTxs = try await database.fetchTransactions(limit: 1000)
         #expect(activeTxs.isEmpty)
+    }
+
+    @Test
+    func deletingTransferLegUnlinksPartnerThatIsASplitLine() async throws {
+        let (database, tempURL) = try await makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, syncClient) = try await makeStore(database: database)
+
+        // The transfer partner is one line of a split in the other account.
+        // Tombstoning it would leave the split's parent claiming more than its
+        // remaining lines, so the line survives as a plain transaction.
+        let partner = Transaction(
+            id: "child-transfer", accountId: "acct-2", date: 20_260_810, amount: 4000,
+            payeeId: "payee-transfer-1", payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: "leg-out",
+            isParent: false, parentId: "split-parent", tombstone: false, sortOrder: 100
+        )
+        try await syncClient.createSplit(
+            parent: Transaction(
+                id: "split-parent", accountId: "acct-2", date: 20_260_810, amount: 10000,
+                payeeId: nil, payeeName: "Paycheck", categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: nil,
+                isParent: true, parentId: nil, tombstone: false, sortOrder: 50
+            ),
+            children: [
+                Transaction(
+                    id: "child-groceries", accountId: "acct-2", date: 20_260_810, amount: 6000,
+                    payeeId: nil, payeeName: "Paycheck", categoryId: nil, categoryName: nil,
+                    notes: nil, cleared: false, reconciled: false, transferId: nil,
+                    isParent: false, parentId: "split-parent", tombstone: false, sortOrder: 100
+                ),
+                partner,
+            ]
+        )
+        try await syncClient.createTransaction(
+            Transaction(
+                id: "leg-out", accountId: "acct-1", date: 20_260_810, amount: -4000,
+                payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: "child-transfer",
+                isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+            ),
+            applyRules: false
+        )
+
+        let leg = try #require(try await database.fetchTransaction(id: "leg-out"))
+        await store.deleteTransaction(leg)
+
+        #expect(try await rawRow(database, id: "leg-out")?.tombstone == 1)
+        // The split line is detached, not deleted: the split stays whole.
+        let line = try #require(try await rawRow(database, id: "child-transfer"))
+        #expect(line.tombstone == 0)
+        #expect(line.transferredId == nil)
+        #expect(try await rawRow(database, id: "split-parent")?.tombstone == 0)
+        #expect(try await rawRow(database, id: "child-groceries")?.tombstone == 0)
+    }
+
+    @Test
+    func deletingTransferLegTakesAPartnerSplitWithIt() async throws {
+        let (database, tempURL) = try await makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, syncClient) = try await makeStore(database: database)
+
+        // The partner is a whole split. Tombstoning it alone would strand its
+        // children behind a parent that no balance query counts.
+        try await syncClient.createSplit(
+            parent: Transaction(
+                id: "partner-parent", accountId: "acct-2", date: 20_260_810, amount: 4000,
+                payeeId: nil, payeeName: "Store", categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: "leg-out",
+                isParent: true, parentId: nil, tombstone: false, sortOrder: 50
+            ),
+            children: [
+                Transaction(
+                    id: "partner-child", accountId: "acct-2", date: 20_260_810, amount: 4000,
+                    payeeId: nil, payeeName: "Store", categoryId: nil, categoryName: nil,
+                    notes: nil, cleared: false, reconciled: false, transferId: nil,
+                    isParent: false, parentId: "partner-parent", tombstone: false, sortOrder: 100
+                ),
+            ]
+        )
+        try await syncClient.createTransaction(
+            Transaction(
+                id: "leg-out", accountId: "acct-1", date: 20_260_810, amount: -4000,
+                payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: "partner-parent",
+                isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+            ),
+            applyRules: false
+        )
+
+        let leg = try #require(try await database.fetchTransaction(id: "leg-out"))
+        await store.deleteTransaction(leg)
+
+        #expect(try await rawRow(database, id: "leg-out")?.tombstone == 1)
+        #expect(try await rawRow(database, id: "partner-parent")?.tombstone == 1)
+        #expect(try await rawRow(database, id: "partner-child")?.tombstone == 1)
+        #expect(try await database.fetchTransactions(limit: 1000).isEmpty)
     }
 
     @Test

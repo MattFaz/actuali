@@ -1900,9 +1900,9 @@ final class BudgetStore: ObservableObject {
 
     private init() {
         let defaults = UserDefaults.standard
-        /// Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
-        /// same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
-        /// overrides as strings; checking for existence first preserves non-false defaults.
+        // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
+        // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
+        // overrides as strings; checking for existence first preserves non-false defaults.
         func persistedBool(_ key: String, default defaultValue: Bool) -> Bool {
             defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
         }
@@ -5161,7 +5161,12 @@ final class BudgetStore: ObservableObject {
             }
         }
         if !voided.isEmpty {
-            await performDeleteTransactions(voided)
+            // `followsTransferLinks: false`: a voided hold may be a transfer leg,
+            // and this runs inside a background sync the person never started.
+            // Its partner is a real row in another account — possibly one they
+            // cleared or reconciled — so the delete stays on the voided row,
+            // like `!cleared && !reconciled` above intends.
+            await performDeleteTransactions(voided, followsTransferLinks: false)
         }
 
         let added = materialized.inserted.count + (openingInsert == nil ? 0 : 1)
@@ -5341,7 +5346,7 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.transferAmountNotPositive
         }
         guard let partnerId = original.transferId,
-              let partner = try await database.fetchTransaction(id: partnerId) else {
+              let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) else {
             throw BudgetStoreError.transferPartnerMissing
         }
         let fromTransferPayee = transferPayee(forAccountId: fromAccountId)
@@ -5351,8 +5356,8 @@ final class BudgetStore: ObservableObject {
         }
 
         let offBudgetIds = offBudgetAccountIds
-        /// The edited leg takes the form's category, the partner keeps its own —
-        /// then both are cleared unless that leg is the categorizable side.
+        // The edited leg takes the form's category, the partner keeps its own —
+        // then both are cleared unless that leg is the categorizable side.
         func resolvedCategory(for leg: Transaction, accountId: String,
                               otherAccountId: String) -> String? {
             guard Self.transferLegTakesCategory(
@@ -5509,12 +5514,20 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    private func performDeleteTransactions(_ transactions: [Transaction]) async {
+    /// - Parameter followsTransferLinks: `false` for callers that delete
+    ///   without the person asking — a transfer's other leg is a real row in
+    ///   another account, so those callers must not reach it.
+    private func performDeleteTransactions(
+        _ transactions: [Transaction], followsTransferLinks: Bool = true
+    ) async {
         guard let syncClient else {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
         }
         var deleted: [Transaction] = []
+        // Legs to detach rather than delete, keyed by id so a second visit
+        // can't queue the same row twice.
+        var unlinked: [String: (original: Transaction, unlinked: Transaction, payee: Payee?)] = [:]
         // Rows already handled in this batch. The `tombstone` guard can't do
         // this job: the link is followed by re-reading the partner row, so a
         // transferId cycle (seen in upstream data) would recurse forever.
@@ -5530,9 +5543,31 @@ final class BudgetStore: ObservableObject {
             var copy = tx
             copy.tombstone = true
             deleted.append(copy)
-            guard let partnerId = tx.transferId, let database else { return }
+            // A transfer partner can itself be a split, and a split's parent
+            // amount is the sum of its live children, so the parent has to go
+            // with them (`aliveChildPredicate` drops children whose parent is
+            // tombstoned).
+            if tx.isParent, let database {
+                do {
+                    for child in try await database.fetchChildTransactions(parentId: tx.id) {
+                        await delete(child)
+                    }
+                } catch {
+                    // The parent still goes; its children couldn't be read.
+                    self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
+                }
+            }
+            guard followsTransferLinks, let partnerId = tx.transferId, let database else { return }
             do {
-                if let partner = try await database.fetchTransaction(id: partnerId) {
+                guard let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) else { return }
+                if partner.parentId != nil {
+                    // Upstream's removeTransfer turns a split line into a plain
+                    // transaction instead of deleting it: dropping the line
+                    // would leave the split's other lines short of an amount the
+                    // parent still claims, and the list would print a total the
+                    // account balance doesn't match.
+                    unlink(partner)
+                } else {
                     await delete(partner)
                 }
             } catch {
@@ -5540,6 +5575,17 @@ final class BudgetStore: ObservableObject {
                 self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
             }
         }
+        // Detach one leg of a transfer and give it back its account's payee —
+        // leaving a transfer-only payee on a row with no partner is what the
+        // reports and the editor would then have to guard against.
+        func unlink(_ tx: Transaction) {
+            guard unlinked.index(forKey: tx.id) == nil else { return }
+            var leg = tx
+            leg.transferId = nil
+            let payee = transferPayee(forAccountId: tx.accountId)
+            unlinked[tx.id] = (original: tx, unlinked: leg, payee: payee)
+        }
+
         for tx in transactions {
             // Deleting a split deletes its children too — orphaned children
             // would be invisible in the list but still feed reports.
@@ -5557,8 +5603,17 @@ final class BudgetStore: ObservableObject {
             }
             await delete(tx)
         }
+        var updates = deleted.map { (transaction: $0, changedFields: Set(["tombstone"])) }
+        for entry in unlinked.values {
+            // `changedFields` maps a payee change onto "description", which is
+            // the column that carries it.
+            var leg = entry.unlinked
+            leg.payeeId = entry.payee?.id
+            leg.payeeName = entry.payee?.name
+            updates.append((leg, Self.changedFields(original: entry.original, updated: leg)))
+        }
         do {
-            try await syncClient.updateTransactions(deleted, changedFields: ["tombstone"])
+            try await syncClient.updateTransactions(updates)
         } catch {
             self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
         }
@@ -5857,7 +5912,7 @@ final class BudgetStore: ObservableObject {
                     deleted.append(child)
                     // Split transfers must lose both legs, as in deleteTransactions.
                     if let partnerId = child.transferId,
-                       let partner = try await database.fetchTransaction(id: partnerId) {
+                       let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) {
                         deleted.append(partner)
                     }
                 }
@@ -6689,7 +6744,7 @@ final class BudgetStore: ObservableObject {
             }
             guard let childId = line.childId,
                   let partnerId = childrenById[childId]?.transferId else { continue }
-            guard let partner = try await database.fetchTransaction(id: partnerId) else {
+            guard let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) else {
                 throw BudgetStoreError.transferPartnerMissing
             }
             existingPartners[partnerId] = partner
@@ -6816,7 +6871,7 @@ final class BudgetStore: ObservableObject {
                     try await syncClient.updateTransaction(updated, changedFields: changes)
                 }
                 if let partnerId = existing.transferId,
-                   var partner = try await database.fetchTransaction(id: partnerId) {
+                   var partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) {
                     partner.tombstone = true
                     try await syncClient.updateTransaction(partner, changedFields: ["tombstone"])
                 }
@@ -6835,7 +6890,7 @@ final class BudgetStore: ObservableObject {
             deleted.tombstone = true
             try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
             if let partnerId = child.transferId,
-               var partner = try await database.fetchTransaction(id: partnerId) {
+               var partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) {
                 partner.tombstone = true
                 try await syncClient.updateTransaction(partner, changedFields: ["tombstone"])
             }
@@ -7090,7 +7145,7 @@ final class BudgetStore: ObservableObject {
             deleted.tombstone = true
             try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
             if let partnerId = child.transferId,
-               var partner = try await database.fetchTransaction(id: partnerId) {
+               var partner = try await database.fetchTransaction(id: partnerId, includingChildren: true) {
                 partner.tombstone = true
                 try await syncClient.updateTransaction(partner, changedFields: ["tombstone"])
             }

@@ -875,9 +875,15 @@ final class BudgetDatabase: Sendable {
 
     /// Single live transaction by id, with display names. Nil when missing or
     /// tombstoned (notification tap-through falls back to the list).
-    func fetchTransaction(id: String) async throws -> Transaction? {
-        try await dbQueue.read { db in
-            try Row.fetchOne(db, sql: Self.transactionSelect + " AND t.id = ?", arguments: [id])
+    ///
+    /// `transactionSelect` hides split children because the lists show a parent
+    /// instead, so following a `transferred_id` needs `includingChildren: true`:
+    /// a transfer leg can be one line of a split, and the filtered read returns
+    /// nil for it.
+    func fetchTransaction(id: String, includingChildren: Bool = false) async throws -> Transaction? {
+        let select = includingChildren ? Self.childTransactionSelect : Self.transactionSelect
+        return try await dbQueue.read { db in
+            try Row.fetchOne(db, sql: select + " AND t.id = ?", arguments: [id])
                 .map(Self.mapTransaction)
         }
     }

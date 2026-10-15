@@ -88,6 +88,52 @@ struct BudgetStoreAppleWalletSyncTests {
         """])
     }
 
+    /// A transfer partner of a rejected hold is a real row in another account.
+    /// The void runs inside a background sync, so it must stop at the row the
+    /// provider rejected — the partner keeps its cleared/reconciled status and
+    /// is not deleted.
+    @Test func aVoidedHoldLeavesItsTransferPartnerAlone() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        _ = try await store.syncBankAccounts()
+
+        // Link the imported hold to a partner row, through the store's own
+        // queue: the suite's store and a second `DatabaseQueue` on the same
+        // file fight over the write lock mid-sync.
+        let rowId = try #require(try row(
+            path: url, sql: "SELECT id FROM transactions WHERE financial_id = ?",
+            arguments: [Self.rejectedHold.id]
+        ))?["id"] as String?
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+            VALUES ('partner-acct', 'Checking', 'checking', 0, 0, 0, 2)
+            """)
+            try db.execute(sql: """
+            INSERT INTO transactions
+                (id, acct, date, amount, description, transferred_id, tombstone, cleared, reconciled)
+            VALUES ('partner-leg', 'partner-acct', 20260101, 1200, NULL, ?, 0, 1, 1)
+            """, arguments: [rowId])
+            try db.execute(sql: """
+            UPDATE transactions SET transferred_id = 'partner-leg' WHERE id = ?
+            """, arguments: [rowId])
+        }
+
+        var wallet = appleCard()
+        wallet.transactionsByAccount[Self.externalAccountId]![1] = Self.rejectedHold
+        store.setAppleWalletStoreForTesting(wallet)
+        _ = try await store.syncBankAccounts()
+
+        let hold = try #require(try row(path: url, sql: "SELECT * FROM transactions WHERE id = ?", arguments: [rowId]))
+        #expect(hold["tombstone"] == 1)
+
+        let partner = try #require(try row(path: url, sql: "SELECT * FROM transactions WHERE id = 'partner-leg'"))
+        #expect(partner["tombstone"] == 0)
+        #expect(partner["reconciled"] == 1)
+        #expect(partner["cleared"] == 1)
+    }
+
     /// One defaults suite per budget file, so Wallet links never leak between
     /// tests and `cleanup` removes them along with the file.
     private static func defaultsSuite(for url: URL) -> String {
