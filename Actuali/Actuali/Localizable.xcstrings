@@ -826,52 +826,6 @@
         }
       }
     },
-    "Ask to unlock Actuali each time you open it or return to it, so no one else can see your budget on this device." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Actuali bei jedem Öffnen oder Zurückkehren entsperren lassen, damit niemand sonst dein Budget auf diesem Gerät sehen kann."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ask to unlock Actuali each time you open it or return to it, so no one else can see your budget on this device."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pide desbloquear Actuali cada vez que la abras o vuelvas a ella, para que nadie más pueda ver tu presupuesto en este dispositivo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Demander de déverrouiller Actuali à chaque ouverture ou retour dans l’app, pour que personne d’autre ne puisse voir votre budget sur cet appareil."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chiedi di sbloccare Actuali ogni volta che la apri o ci torni, così nessun altro può vedere il tuo budget su questo dispositivo."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vraag om Actuali te ontgrendelen telkens wanneer je de app opent of ernaar terugkeert, zodat niemand anders je budget op dit apparaat kan zien."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pedir para desbloquear o Actuali sempre que você abrir ou voltar ao app, para que ninguém mais veja seu orçamento neste dispositivo."
-          }
-        }
-      }
-    },
     "App Lock" : {
       "localizations" : {
         "de" : {
@@ -4439,186 +4393,48 @@
         }
       }
     },
-    "Require Touch ID" : {
+    "Require App Unlock" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Touch ID erforderlich"
+            "value" : "Entsperren der App erforderlich"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Require Touch ID"
+            "value" : "Require App Unlock"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Requerir Touch ID"
+            "value" : "Requerir desbloqueo de la app"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Exiger Touch ID"
+            "value" : "Exiger le déverrouillage de l’app"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Richiedi Touch ID"
+            "value" : "Richiedi sblocco dell’app"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vereis Touch ID"
+            "value" : "App-ontgrendeling vereisen"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Exigir Touch ID"
-          }
-        }
-      }
-    },
-    "Require Passcode" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Code erforderlich"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Require Passcode"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Requerir código"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Exiger le code"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Richiedi codice"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vereis toegangscode"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Exigir código"
-          }
-        }
-      }
-    },
-    "Require Optic ID" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Optic ID erforderlich"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Require Optic ID"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Requerir Optic ID"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Exiger Optic ID"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Richiedi Optic ID"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vereis Optic ID"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Exigir Optic ID"
-          }
-        }
-      }
-    },
-    "Require Face ID" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Face ID erforderlich"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Require Face ID"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Requerir Face ID"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Exiger Face ID"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Richiedi Face ID"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vereis Face ID"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Exigir Face ID"
+            "value" : "Exigir desbloqueio do app"
           }
         }
       }
@@ -83705,6 +83521,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Desbloquear"
+          }
+        }
+      }
+    },
+    "Unlock Actuali with Face ID, Touch ID, Optic ID, or your device passcode each time you open it or return to it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entsperre Actuali bei jedem Öffnen oder Zurückkehren mit Face ID, Touch ID, Optic ID oder deinem Gerätecode."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unlock Actuali with Face ID, Touch ID, Optic ID, or your device passcode each time you open it or return to it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desbloquea Actuali con Face ID, Touch ID, Optic ID o el código de tu dispositivo cada vez que abras la app o vuelvas a ella."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Déverrouillez Actuali avec Face ID, Touch ID, Optic ID ou le code de votre appareil à chaque ouverture ou retour dans l’app."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sblocca Actuali con Face ID, Touch ID, Optic ID o il codice del dispositivo ogni volta che apri l’app o ci torni."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ontgrendel Actuali met Face ID, Touch ID, Optic ID of de toegangscode van je apparaat telkens wanneer je de app opent of ernaar terugkeert."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desbloqueie o Actuali com Face ID, Touch ID, Optic ID ou o código do dispositivo sempre que abrir ou voltar ao app."
           }
         }
       }

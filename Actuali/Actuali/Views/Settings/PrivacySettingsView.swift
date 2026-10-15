@@ -1,4 +1,3 @@
-import LocalAuthentication
 import SwiftUI
 
 struct PrivacySettingsView: View {
@@ -21,7 +20,7 @@ struct PrivacySettingsView: View {
             // can still be turned off.
             if DeviceOwnerAuth.isAvailable || budgetStore.requireAppUnlock {
                 Section {
-                    Toggle(Self.appLockTitle(for: DeviceOwnerAuth.biometryType), isOn: Binding(
+                    Toggle(String(localized: "Require App Unlock"), isOn: Binding(
                         get: { budgetStore.requireAppUnlock },
                         set: { isOn in
                             if isOn {
@@ -35,7 +34,7 @@ struct PrivacySettingsView: View {
                 } header: {
                     Text(String(localized: "App Lock"))
                 } footer: {
-                    Text(String(localized: "Ask to unlock Actuali each time you open it or return to it, so no one else can see your budget on this device."))
+                    Text(String(localized: "Unlock Actuali with Face ID, Touch ID, Optic ID, or your device passcode each time you open it or return to it."))
                 }
             }
         }
@@ -43,14 +42,5 @@ struct PrivacySettingsView: View {
         .navigationTitle(String(localized: "Privacy"))
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.horizontal, 6, for: .scrollContent)
-    }
-
-    nonisolated static func appLockTitle(for biometry: LABiometryType) -> String {
-        switch biometry {
-        case .faceID: String(localized: "Require Face ID")
-        case .touchID: String(localized: "Require Touch ID")
-        case .opticID: String(localized: "Require Optic ID")
-        default: String(localized: "Require Passcode")
-        }
     }
 }

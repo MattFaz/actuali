@@ -9,13 +9,6 @@ enum DeviceOwnerAuth {
         LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil)
     }
 
-    /// The biometry the system prompt will use; `.none` means passcode only.
-    nonisolated static var biometryType: LABiometryType {
-        let context = LAContext()
-        _ = context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil)
-        return context.biometryType
-    }
-
     /// True once the user authenticates. A device that lost its passcode since
     /// the lock was turned on also passes: otherwise the lock could never be
     /// opened again, and without a passcode the phone itself is unprotected.

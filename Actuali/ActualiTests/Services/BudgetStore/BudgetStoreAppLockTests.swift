@@ -1,5 +1,4 @@
 import Foundation
-import LocalAuthentication
 import Testing
 @testable import Actuali
 
@@ -178,11 +177,5 @@ struct BudgetStoreAppLockTests {
         store.lockApp()
         store.requireAppUnlock = false
         #expect(!store.isAppLocked)
-    }
-
-    @Test func toggleTitleNamesTheDevicesBiometry() {
-        #expect(PrivacySettingsView.appLockTitle(for: .faceID) == String(localized: "Require Face ID"))
-        #expect(PrivacySettingsView.appLockTitle(for: .touchID) == String(localized: "Require Touch ID"))
-        #expect(PrivacySettingsView.appLockTitle(for: .none) == String(localized: "Require Passcode"))
     }
 }
