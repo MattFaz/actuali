@@ -293,16 +293,38 @@ struct CustomReportWidgetView: View {
             if rows.isEmpty {
                 emptyText
             } else {
+                let totalUnits = rows.reduce(0.0) { $0 + $1.totalUnits }
+
                 VStack(spacing: 6) {
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                         HStack {
-                            Text(row.name).font(.subheadline)
-                            Spacer()
-                            Text(budgetStore.displayBalance(cents(row.totalUnits), locale: locale))
+                            Text(row.name)
                                 .font(.subheadline)
-                                .monospacedDigit()
+                            Spacer()
+                            Text(budgetStore.displayBalance(
+                                cents(row.totalUnits),
+                                locale: locale
+                            ))
+                            .font(.subheadline)
+                            .monospacedDigit()
                         }
                     }
+
+                    Divider()
+                        .padding(.top, 4)
+
+                    HStack {
+                        Text(ReportStrings.text("Total", locale: locale))
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text(budgetStore.displayBalance(
+                            cents(totalUnits),
+                            locale: locale
+                        ))
+                        .font(.subheadline.weight(.semibold))
+                        .monospacedDigit()
+                    }
+                    .padding(.top, 2)
                 }
             }
 
