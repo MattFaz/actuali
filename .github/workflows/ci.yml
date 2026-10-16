@@ -3,6 +3,22 @@
 # checks; ci-noop.yml provides the same check names for PRs that don't touch
 # app code. UI tests are too slow to gate a PR (~50 min) — they run nightly in
 # ui-tests.yml.
+#
+# Which leg runs when. Both legs run the whole suite and they run in parallel,
+# so the PR wall-clock is whichever is slower — measured over four recent runs,
+# the iOS 18 leg was slower by between 0 and 105 seconds, so taking it off the
+# PR path buys about a minute, not the 4-5 the first draft of this expected.
+# It runs nightly instead:
+#
+#   pull_request              → iOS 26
+#   pull_request + label      → both (`ci-ios18`, for SQL / SF Symbols /
+#                               @available changes)
+#   nightly schedule          → iOS 18
+#   manual dispatch           → both
+#
+# So the iOS 18 job is skipped on most PRs. A job skipped by an `if` reports
+# Success, so the required check is still satisfied (this is the job-level case;
+# a whole skipped *workflow* would leave the check pending forever).
 name: CI
 
 on:
@@ -16,6 +32,10 @@ on:
     paths:
       - "Actuali/**"
       - ".github/workflows/**"
+  schedule:
+    # 13:17 UTC, an hour before ui-tests.yml's 14:00, so the nightly floor check
+    # is done before the UI suite starts competing for runners.
+    - cron: "17 13 * * *"
   workflow_dispatch:
 
 permissions:
@@ -45,10 +65,35 @@ jobs:
 
   test-ios26:
     name: Unit Tests (iOS 26)
+    # Not on the nightly schedule: that run is for the floor.
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: macos-26
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+
+      # Part of the cache key below, and the one thing about the runner that
+      # changes under us without the repo changing.
+      - name: Toolchain version
+        id: toolchain
+        run: echo "xcode=$(xcodebuild -version | head -1 | tr -d ' .')" >> "$GITHUB_OUTPUT"
+
+      # Caches the package checkouts, not DerivedData. DerivedData is not worth
+      # caching here: the checkout rewrites every source file's mtime, and the
+      # build system keys reuse off mtime, so it recompiles everything anyway.
+      # Measured locally: a warm no-change build takes 12s, the same build after
+      # touching every source takes 50s, and the ~1 GB round-trip costs about
+      # what that saves. The checkouts are the part worth caching — resolving
+      # the graph and cloning GRDB and friends is network bound, and that is
+      # also where the "Resolve Package Graph" hang (papercut pc-0007) shows up.
+      # Keyed on the project file so a target or dependency change misses on
+      # purpose, and on runner.os + Xcode so neither leg restores the other's.
+      - name: Cache Swift package checkouts
+        uses: actions/cache@v4
+        with:
+          path: .spm-packages
+          key: spm-${{ runner.os }}-${{ steps.toolchain.outputs.xcode }}-${{ hashFiles('Actuali/Actuali.xcodeproj/project.pbxproj') }}
+          restore-keys: spm-${{ runner.os }}-${{ steps.toolchain.outputs.xcode }}-
 
       # Pinned to iOS 26 rather than "first available iPhone": paired with the
       # test-ios18 job, that names which runtime each leg actually covers. The
@@ -72,6 +117,12 @@ jobs:
       # xcbeautify (preinstalled on macOS runners) keeps the log readable;
       # --quiet drops passing-task noise but keeps warnings and errors;
       # pipefail preserves xcodebuild's exit code through the pipe.
+      #
+      # No -parallel-testing-enabled here: it needs more than one test bundle to
+      # shard into, and this suite is one Swift Testing bundle. Measured with the
+      # flag on and a worker count of 3, all 3,077 tests still ran on "Clone 1",
+      # an extra simulator clone was booted for nothing, and the wall clock was
+      # the same. The suite already parallelizes inside its process.
       - name: Build and run unit tests on iOS 26
         run: |
           set -o pipefail
@@ -79,6 +130,7 @@ jobs:
             -project Actuali/Actuali.xcodeproj \
             -scheme Actuali \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
+            -clonedSourcePackagesDirPath .spm-packages \
             -testLanguage en \
             -testRegion US \
             -skip-testing:ActualiUITests \
@@ -87,12 +139,17 @@ jobs:
   # IPHONEOS_DEPLOYMENT_TARGET is 18.0, so the floor needs a runtime of its
   # own: the compiler rejects an unavailable API, but a missing SF Symbol or
   # a behaviour difference only shows up when the tests actually run there.
+  # It runs nightly rather than on every PR — see the header for the numbers —
+  # and on a PR that carries the ci-ios18 label.
   # macos-15 rather than macos-26: its image ships iOS 18 runtimes and devices
   # alongside Xcode 26, which saves the ~9 GB runtime download macos-26 needs
   # (~4 min, plus a slower build while the fresh runtime settles). The
   # download below stays as a fallback for when the image drops them.
   test-ios18:
     name: Unit Tests (iOS 18)
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'ci-ios18')
     runs-on: macos-15
     timeout-minutes: 60
     steps:
@@ -102,6 +159,18 @@ jobs:
       # newest Xcode 26 on the image rather than pinning one the image may
       # later prune; the iOS 26 leg still builds on the current toolchain.
       - run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+
+      # Reads the xcodebuild selected above, so this has to stay after it.
+      - name: Toolchain version
+        id: toolchain
+        run: echo "xcode=$(xcodebuild -version | head -1 | tr -d ' .')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Swift package checkouts
+        uses: actions/cache@v4
+        with:
+          path: .spm-packages
+          key: spm-${{ runner.os }}-${{ steps.toolchain.outputs.xcode }}-${{ hashFiles('Actuali/Actuali.xcodeproj/project.pbxproj') }}
+          restore-keys: spm-${{ runner.os }}-${{ steps.toolchain.outputs.xcode }}-
 
       - name: Select iOS 18 simulator
         id: sim
@@ -135,6 +204,7 @@ jobs:
             -project Actuali/Actuali.xcodeproj \
             -scheme Actuali \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
+            -clonedSourcePackagesDirPath .spm-packages \
             -testLanguage en \
             -testRegion US \
             -skip-testing:ActualiUITests \

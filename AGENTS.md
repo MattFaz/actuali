@@ -35,7 +35,7 @@ Requirements: Xcode with the iOS 26.1+ SDK. Swift Package Manager resolves depen
 
 `IPHONEOS_DEPLOYMENT_TARGET` is 18.0, so the app ships to iOS 18 while still building against the iOS 26 SDK — the two are independent and both are needed. Code may use an iOS 26 API behind `@available` / `#available` (`.prominent` in `AddTransactionView`, `FoundationModels` in `TransactionTextParser`), which is why the newer SDK stays a hard requirement. Adding an iOS 26 API without a gate is a compile error, so the build itself guards the floor.
 
-What the compiler can't guard is anything the OS resolves at runtime, so CI runs the unit suite twice: once on the newest runtime and once on iOS 18. Two known traps live in that gap — SF Symbols added after SF Symbols 6 render blank rather than failing, and SQLite in iOS 18 predates 3.46.0, so a numeric separator inside a SQL string (`500_000`) throws `unrecognized token` at runtime. Plain Swift numeric literals are fine; only digits inside a SQL string matter.
+What the compiler can't guard is anything the OS resolves at runtime, so CI also runs the unit suite on iOS 18 — nightly rather than on every PR, because that leg costs as much wall-clock as the iOS 26 one and a PR waits for the slower of the two. Add the `ci-ios18` label to a PR that touches SQL, SF Symbols, or `@available` code to check the floor before it lands. Two known traps live in that gap — SF Symbols added after SF Symbols 6 render blank rather than failing, and SQLite in iOS 18 predates 3.46.0, so a numeric separator inside a SQL string (`500_000`) throws `unrecognized token` at runtime. Plain Swift numeric literals are fine; only digits inside a SQL string matter.
 
 ### Notes for agents
 
@@ -135,7 +135,7 @@ Not lazy about:
 
 - Every behavior change needs test coverage. Unit tests use Swift Testing (`@Test` / `#expect`); UI tests (`ActualiUITests/`) use XCTest.
 - `ActualiTests/` mirrors the app source tree: put a test in the folder matching where the primary type under test lives (e.g. tests for `Services/Sync/*` go in `ActualiTests/Services/Sync/`). Exceptions: `BudgetStore` tests get their own `Services/BudgetStore/`, and notification tests live in `Services/Notifications/` even though those sources sit loose in `Services/`.
-- Run the unit test suite locally before opening a PR. CI runs it on every PR that touches `Actuali/**` and the check is required.
+- Run the unit test suite locally before opening a PR. CI runs it on every PR that touches `Actuali/**` and the check is required; the iOS 18 leg runs nightly, or on a PR carrying the `ci-ios18` label.
 - The sync fixture tests (`SyncEngineFixtureTests.swift` and friends) verify CRDT behavior against fixtures derived from upstream Actual Budget. They must keep passing — never regenerate fixtures or loosen assertions to make a failure go away; a failure there usually means the change breaks sync compatibility.
 - Never weaken, skip, or delete an existing test to get a green build. If a test genuinely no longer describes desired behavior, say so explicitly in the PR.
 - Test behavior through the public surface (e.g. `BudgetStore` / `BudgetDatabase` APIs) rather than reaching into internals.
