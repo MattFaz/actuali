@@ -33,6 +33,10 @@ private final class CountingWalletStore: AppleWalletReading {
     func transactions(accountId: String, sinceDay: Int) async throws -> [AppleWalletTransaction] {
         try await base.transactions(accountId: accountId, sinceDay: sinceDay)
     }
+
+    func setBackgroundDelivery(enabled: Bool) -> Bool {
+        base.setBackgroundDelivery(enabled: enabled)
+    }
 }
 
 @MainActor
@@ -164,6 +168,119 @@ struct BudgetStoreAppleWalletSyncTests {
 
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
         #expect(store.bankSyncSummary == nil)
+    }
+
+    /// A pending purchase that settles for more (a tip) takes the new amount
+    /// on the next sync, so the account keeps matching the card.
+    @Test func aPendingPurchaseThatSettlesForMoreTakesTheNewAmount() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet)
+        _ = try await store.syncBankAccounts()
+        let before = try accountBalance(path: url)
+
+        wallet.transactionsByAccount[Self.externalAccountId]![1] = AppleWalletTransaction(
+            id: "33333333-3333-3333-3333-333333333333",
+            amount: Decimal(string: "14.40")!, isCredit: false,
+            merchantName: nil, description: "Corner Store",
+            status: .booked, date: Self.daysAgo(1)
+        )
+        store.setAppleWalletStoreForTesting(wallet)
+        _ = try await store.syncBankAccounts()
+
+        let row = try #require(try rows(path: url, where: "financial_id = '33333333-3333-3333-3333-333333333333'").first)
+        #expect(row["amount"] == -1440)
+        #expect(row["cleared"] == 1)
+        #expect(try accountBalance(path: url) == before - 240)
+        // The new amount also goes to the server and other devices: a second
+        // amount message after the one the import wrote.
+        let rowId: String = row["id"]
+        let amountMessages = try self.row(path: url, sql: """
+        SELECT COUNT(*) AS n FROM messages_crdt WHERE row = ? AND column = 'amount'
+        """, arguments: [rowId])?["n"] as Int?
+        #expect(amountMessages == 2)
+    }
+
+    /// A linked, authorized Wallet turns on FinanceKit background delivery,
+    /// whose extension asks iOS for this same sync. Once it's on, later syncs
+    /// leave FinanceKit alone.
+    @Test func autoSyncTurnsOnWalletBackgroundDeliveryOnce() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet)
+
+        await store.autoSyncAppleWalletAccounts()
+        await store.autoSyncAppleWalletAccounts()
+
+        #expect(wallet.deliveryLog.requests.withLock { $0 } == [true])
+        #expect(try walletDefaults(for: url).bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
+    }
+
+    /// With no Wallet account left to sync, delivery that was on is turned off
+    /// so the extension stops waking the app for nothing.
+    @Test func autoSyncTurnsOffWalletBackgroundDeliveryWithoutWalletAccounts() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet, linked: false)
+        let defaults = try walletDefaults(for: url)
+        defaults.set(true, forKey: BudgetStore.walletBackgroundDeliveryKey)
+
+        await store.autoSyncAppleWalletAccounts()
+
+        #expect(wallet.deliveryLog.requests.withLock { $0 } == [false])
+        #expect(!defaults.bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
+    }
+
+    /// Revoked Wallet access turns delivery off as well.
+    @Test func autoSyncTurnsOffWalletBackgroundDeliveryWhenAccessIsRevoked() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        wallet.availabilityValue = .denied
+        let store = try await makeStore(database: database, walletStore: wallet)
+        let defaults = try walletDefaults(for: url)
+        defaults.set(true, forKey: BudgetStore.walletBackgroundDeliveryKey)
+
+        await store.autoSyncAppleWalletAccounts()
+
+        #expect(wallet.deliveryLog.requests.withLock { $0 } == [false])
+        #expect(!defaults.bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
+    }
+
+    /// Disconnecting leaves no budget whose sync could turn delivery off, so
+    /// closing the budget does it; otherwise FinanceKit keeps waking the
+    /// extension for a refresh with nothing to do.
+    @Test func logoutTurnsOffWalletBackgroundDelivery() async throws {
+        let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
+        defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet)
+        await store.autoSyncAppleWalletAccounts()
+
+        // Keeps budget files: this suite shares the Budgets directory.
+        await store.logout(clearLocalData: false)
+
+        #expect(wallet.deliveryLog.requests.withLock { $0 } == [true, false])
+        #expect(try !walletDefaults(for: url).bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
+    }
+
+    /// Where delivery isn't supported (before iOS 26) nothing is recorded as
+    /// on, so a later sync on a supported OS still turns it on.
+    @Test func unsupportedWalletBackgroundDeliveryIsNotRecordedAsOn() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        wallet.backgroundDeliverySupported = false
+        let store = try await makeStore(database: database, walletStore: wallet)
+
+        await store.autoSyncAppleWalletAccounts()
+
+        #expect(try !walletDefaults(for: url).bool(forKey: BudgetStore.walletBackgroundDeliveryKey))
     }
 
     @Test func pullToRefreshImportsWalletTransactions() async throws {
@@ -340,6 +457,90 @@ struct BudgetStoreAppleWalletSyncTests {
 
         #expect(try rows(path: url, where: "starting_balance_flag = 1").isEmpty)
         #expect(try accountBalance(path: url) == -4545)
+    }
+
+    /// A backfill's rows and its opening adjustment land together or not at
+    /// all, so a failed run leaves nothing half-applied for the retry.
+    @Test func aBackfillRollsBackWithItsOpeningAdjustment() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        store.setBankSyncImportStartDay(Self.expectedDay(2))
+        _ = try await store.syncBankAccounts()
+        let backfilled = "financial_id = '11111111-1111-1111-1111-111111111111'"
+        let opening = "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
+        let payees = "SELECT COUNT(*) AS count FROM payees WHERE name = 'Blue Bottle'"
+        let mappings = "SELECT COUNT(*) AS count FROM payee_mapping WHERE id IN (SELECT id FROM payees WHERE name = 'Blue Bottle')"
+        let messages = "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')"
+        let openingBefore = try #require(try row(path: url, sql: opening))["amount"] as Int
+        let messagesBefore = try row(path: url, sql: messages)?["count"] as Int? ?? 0
+        let queue = database.dbQueueForTesting
+        try await queue.write { db in
+            try db.execute(sql: """
+            CREATE TRIGGER reject_bank_opening_update
+            BEFORE UPDATE OF amount ON transactions
+            WHEN OLD.starting_balance_flag = 1
+            BEGIN
+                SELECT RAISE(ABORT, 'blocked opening adjustment');
+            END
+            """)
+        }
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
+
+        let failed = try await store.syncBankAccounts()
+        #expect(failed.accountsSynced == 0)
+        #expect(failed.problems.contains { $0.contains("blocked opening adjustment") })
+        #expect(try rows(path: url, where: backfilled).isEmpty)
+        #expect(try row(path: url, sql: payees)?["count"] as Int? == 0)
+        #expect(try row(path: url, sql: mappings)?["count"] as Int? == 0)
+        #expect(try row(path: url, sql: messages)?["count"] as Int? == messagesBefore)
+        #expect(try row(path: url, sql: opening)?["amount"] as Int? == openingBefore)
+
+        try await queue.write { db in
+            try db.execute(sql: "DROP TRIGGER reject_bank_opening_update")
+        }
+        let retried = try await store.syncBankAccounts()
+        #expect(retried.accountsSynced == 1)
+        #expect(try rows(path: url, where: backfilled).count == 1)
+        #expect(try row(path: url, sql: opening)?["amount"] as Int? == openingBefore + 3345)
+        #expect(try row(path: url, sql: payees)?["count"] as Int? == 1)
+        #expect(try row(path: url, sql: mappings)?["count"] as Int? == 1)
+        let messagesAfterRetry = try row(path: url, sql: messages)?["count"] as Int? ?? 0
+
+        let second = try await store.syncBankAccounts()
+        #expect(second.added == 0)
+        #expect(second.updated == 0)
+        #expect(try rows(path: url, where: backfilled).count == 1)
+        #expect(try row(path: url, sql: opening)?["amount"] as Int? == openingBefore + 3345)
+        #expect(try row(path: url, sql: messages)?["count"] as Int? == messagesAfterRetry)
+    }
+
+    @Test(arguments: ["notes = 'Concurrent user edit'", "amount = 22000",
+                      "tombstone = 1", "acct = 'other-account'", "reconciled = 1"])
+    func aBackfillPreservesAConcurrentOpeningEdit(change: String) async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        store.setBankSyncImportStartDay(Self.expectedDay(2))
+        _ = try await store.syncBankAccounts()
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
+        store.bankSyncBeforeMaterializationHook = {
+            try! database.dbQueueForTesting.write { db in
+                try db.execute(sql: "UPDATE transactions SET \(change) WHERE starting_balance_flag = 1")
+            }
+        }
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM transactions WHERE starting_balance_flag = 1 AND \(change)")?["count"] as Int? == 1)
+        if change.hasPrefix("notes") {
+            #expect(result.problems.isEmpty)
+            #expect(result.accountsSynced == 1)
+        } else {
+            #expect(!result.problems.isEmpty)
+            #expect(result.accountsSynced == 0)
+            #expect(try rows(path: url, where: "financial_id = '11111111-1111-1111-1111-111111111111'").isEmpty)
+        }
     }
 
     /// Once the reach has landed, ordinary syncs stop asking for it — and
@@ -524,6 +725,25 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
     }
 
+    /// Access denied in-app is granted in Settings, outside it — the setup
+    /// screen re-asks on return, and that refresh must pick the grant up (GH #555).
+    @Test func refreshPicksUpAccessGrantedInSettings() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        wallet.availabilityValue = .denied
+        let store = try await makeStore(database: database, walletStore: wallet)
+
+        #expect(try await store.connectAppleWallet() == false)
+        #expect(store.appleWalletAvailability == .denied)
+
+        wallet.availabilityValue = .authorized
+        store.setAppleWalletStoreForTesting(wallet)
+        await store.refreshAppleWalletAvailability()
+
+        #expect(store.appleWalletAvailability == .authorized)
+    }
+
     /// A device that can't serve the feed skips the automatic pass entirely —
     /// no import, and no alert nobody asked for.
     @Test func autoSyncStaysQuietWhenWalletCantAnswer() async throws {
@@ -605,6 +825,88 @@ struct BudgetStoreAppleWalletSyncTests {
 
         #expect(second.added == 0)
         #expect(try rows(path: url, where: "starting_balance_flag = 1").count == 1)
+    }
+
+    /// The fixture's pending Corner Store purchase, as Wallet reports it once
+    /// the hold is voided.
+    private static let rejectedHold = AppleWalletTransaction(
+        id: "33333333-3333-3333-3333-333333333333",
+        amount: Decimal(string: "12.00")!, isCredit: false,
+        merchantName: nil, description: "Corner Store",
+        status: .rejected, date: daysAgo(1)
+    )
+
+    /// A pending hold that Wallet later rejects is removed on the next sync,
+    /// so the account stops counting money that never moved — even when the
+    /// rejection is all that sync brings.
+    @Test func aRejectedPendingHoldIsRemovedOnTheNextSync() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        wallet.transactionsByAccount[Self.externalAccountId]![0] = AppleWalletTransaction(
+            id: "11111111-1111-1111-1111-111111111111",
+            amount: Decimal(string: "33.45")!, isCredit: false,
+            merchantName: "Blue Bottle", description: "BLUE BOTTLE COFFEE",
+            status: .booked, date: Self.daysAgo(40)
+        )
+        let store = try await makeStore(database: database, walletStore: wallet)
+        _ = try await store.syncBankAccounts()
+        let before = try accountBalance(path: url)
+
+        wallet.transactionsByAccount[Self.externalAccountId] = [Self.rejectedHold]
+        store.setAppleWalletStoreForTesting(wallet)
+        _ = try await store.syncBankAccounts()
+
+        let hold = try #require(try rows(path: url, where: "financial_id = '\(Self.rejectedHold.id)'").first)
+        #expect(hold["tombstone"] == 1)
+        #expect(try accountBalance(path: url) == before + 1200)
+    }
+
+    /// A merchant that voids a hold and charges again for the same amount: the
+    /// new charge takes over the pending row, which then must not be deleted.
+    @Test func aReissuedChargeKeepsTheRowItTookOver() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet)
+        _ = try await store.syncBankAccounts()
+        let before = try accountBalance(path: url)
+
+        wallet.transactionsByAccount[Self.externalAccountId]![1] = Self.rejectedHold
+        wallet.transactionsByAccount[Self.externalAccountId]!.append(AppleWalletTransaction(
+            id: "44444444-4444-4444-4444-444444444444",
+            amount: Decimal(string: "12.00")!, isCredit: false,
+            merchantName: nil, description: "Corner Store",
+            status: .booked, date: Self.daysAgo(1)
+        ))
+        store.setAppleWalletStoreForTesting(wallet)
+        _ = try await store.syncBankAccounts()
+
+        let live = try rows(path: url, where: "amount = -1200 AND tombstone = 0")
+        #expect(live.count == 1)
+        #expect(live.first?["financial_id"] == "44444444-4444-4444-4444-444444444444")
+        #expect(try accountBalance(path: url) == before)
+    }
+
+    /// A row the person already marked cleared is theirs: a later rejection
+    /// leaves it alone.
+    @Test func aRejectedChargeThePersonClearedStays() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        let store = try await makeStore(database: database, walletStore: wallet)
+        _ = try await store.syncBankAccounts()
+        let holdId = Self.rejectedHold.id
+        try await DatabaseQueue(path: url.path).write { db in
+            try db.execute(sql: "UPDATE transactions SET cleared = 1 WHERE financial_id = ?", arguments: [holdId])
+        }
+
+        wallet.transactionsByAccount[Self.externalAccountId]![1] = Self.rejectedHold
+        store.setAppleWalletStoreForTesting(wallet)
+        _ = try await store.syncBankAccounts()
+
+        let row = try #require(try rows(path: url, where: "financial_id = '\(Self.rejectedHold.id)'").first)
+        #expect(row["tombstone"] == 0)
     }
 
     @Test func syncingAgainImportsNothingTwice() async throws {

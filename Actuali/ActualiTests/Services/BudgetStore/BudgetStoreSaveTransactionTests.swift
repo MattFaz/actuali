@@ -185,14 +185,23 @@ struct BudgetStoreSaveTransactionTests {
                 categoryIsExplicit: true
             )
         ))
+        let explicitNilId = try #require(try await store.saveTransaction(
+            form(
+                payeeName: "Amazon",
+                categoryId: nil,
+                categoryIsExplicit: true
+            )
+        ))
         let suggestedId = try #require(try await store.saveTransaction(
             form(payeeName: "Amazon", categoryId: "cat-groceries")
         ))
 
         let rows = try transactionRows(path: path)
         let explicitRow = try #require(rows.first { $0["id"] == explicitId })
+        let explicitNilRow = try #require(rows.first { $0["id"] == explicitNilId })
         let suggestedRow = try #require(rows.first { $0["id"] == suggestedId })
         #expect(explicitRow["category"] == "cat-groceries")
+        #expect(explicitNilRow["category"] == nil)
         #expect(suggestedRow["category"] == "cat-clothing")
     }
 
@@ -231,6 +240,45 @@ struct BudgetStoreSaveTransactionTests {
         #expect(preview.sourceCategoryId == "cat-gifts")
         #expect(preview.resultCategoryId == "cat-dining")
         #expect(historyOnly.resultCategoryId == "cat-gifts")
+    }
+
+    @Test func payeeHistoryOffSkipsHistoryButKeepsRules() async throws {
+        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
+        defer { cleanup(path) }
+        let store = try await makeTestStore(database: database)
+        let key = "suggestCategoryFromPayeeHistory"
+        let original = UserDefaults.standard.object(forKey: key)
+        defer { restoreUserDefault(key, to: original) }
+        store.payees = [
+            payee(id: "payee-cafe", name: "Cafe"),
+            payee(id: "payee-shop", name: "Shop"),
+        ]
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO payees (id, name) VALUES ('payee-cafe', 'Cafe'), ('payee-shop', 'Shop')
+            """)
+            try db.execute(sql: """
+            INSERT INTO transactions
+                (id, acct, category, amount, description, date, tombstone)
+            VALUES
+                ('previous-cafe', 'acct-1', 'cat-gifts', -500, 'payee-cafe', 20260913, 0),
+                ('previous-shop', 'acct-1', 'cat-gifts', -500, 'payee-shop', 20260913, 0)
+            """)
+            try db.execute(sql: """
+            INSERT INTO rules (id, conditions_op, conditions, actions)
+            VALUES ('cafe-category', 'and',
+                '[{"op":"is","field":"description","value":"payee-cafe"}]',
+                '[{"op":"set","field":"category","value":"cat-dining"}]')
+            """)
+        }
+        store.suggestCategoryFromPayeeHistory = false
+
+        let ruled = try await store.automaticCategoryPreview(for: form(payeeName: "Cafe"))
+        let unruled = try await store.automaticCategoryPreview(for: form(payeeName: "Shop"))
+
+        #expect(ruled.sourceCategoryId == nil)
+        #expect(ruled.resultCategoryId == "cat-dining")
+        #expect(unruled.resultCategoryId == nil)
     }
 
     @Test func automaticCategoryPreviewDoesNotChangeTheSaveRuleInput() async throws {

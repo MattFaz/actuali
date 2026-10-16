@@ -195,7 +195,6 @@ struct AddTransactionView: View {
         var isSplit: Bool
         var isEditing: Bool
         var categoryIsExplicit: Bool
-        var applyRules: Bool
     }
 
     private var automaticCategoryInput: AutomaticCategoryInput {
@@ -210,8 +209,7 @@ struct AddTransactionView: View {
             cleared: cleared,
             isSplit: isSplitting,
             isEditing: isEditing,
-            categoryIsExplicit: userPickedCategory,
-            applyRules: !isEditing && saveOverride == nil
+            categoryIsExplicit: userPickedCategory
         )
     }
 
@@ -390,10 +388,7 @@ struct AddTransactionView: View {
         let form = currentForm()
         let preview: BudgetStore.AutomaticCategoryPreview
         do {
-            preview = try await budgetStore.automaticCategoryPreview(
-                for: form,
-                applyRules: input.applyRules
-            )
+            preview = try await budgetStore.automaticCategoryPreview(for: form)
         } catch { return }
         guard !Task.isCancelled,
               !userPickedCategory,
@@ -403,10 +398,9 @@ struct AddTransactionView: View {
     }
 
     private func applyEditCategoryFromHistory(payeeId: String) {
-        guard isEditing, !userPickedCategory,
-              let database = budgetStore.databaseForLogger else { return }
+        guard isEditing, !userPickedCategory else { return }
         Task { @MainActor in
-            guard let categoryId = try? await database.mostRecentCategoryId(
+            guard let categoryId = try? await budgetStore.payeeHistoryCategoryId(
                 forPayeeId: payeeId
             ) else { return }
             guard !userPickedCategory,
@@ -692,6 +686,18 @@ struct AddTransactionView: View {
                         TextField("Notes", text: $notes, axis: .vertical)
                             .lineLimit(1...6)
                             .accessibilityIdentifier("addTransaction.notes")
+                        if !notes.isEmpty {
+                            Button {
+                                notes = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 2)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear text")
+                            .accessibilityIdentifier("addTransaction.notesClear")
+                        }
                     }
                     TagSuggestionBar(text: $notes, availableTags: budgetStore.tags)
                     // Links in the note stay openable while the text is a

@@ -63,4 +63,100 @@ struct BudgetStoreLoginProbeTests {
         #expect(store.error == nil)
         #expect(store.passwordLoginActive)
     }
+
+    // MARK: - Discovery before Connect (GH #671)
+
+    /// An unconfigured store whose stub server offers OpenID only at
+    /// `budget.example.com`, so a probe of any other host fails.
+    private func makeOpenIDStore() -> BudgetStore {
+        let session = StubTransport.session { request in
+            guard request.url?.host == "budget.example.com" else {
+                throw URLError(.cannotFindHost)
+            }
+            return StubTransport.Response(
+                status: 200,
+                contentType: "application/json",
+                body: Data(#"{"status":"ok","methods":[{"method":"openid","displayName":"OpenID","active":1}]}"#.utf8)
+            )
+        }
+        let store = BudgetStore.previewInstance()
+        store.setServerClientForTesting(ActualServerClient(session: session))
+        return store
+    }
+
+    /// OpenID sign-in has to be offered as soon as the server URL is typed,
+    /// not only after a password attempt has gone through Connect.
+    @Test func typedServerURLDiscoversOpenIDBeforeAnyPasswordAttempt() async {
+        let store = makeOpenIDStore()
+        store.serverURL = "budget.example.com"
+
+        await store.discoverLoginMethods()
+
+        #expect(store.supportsOpenIDLogin)
+        #expect(!store.passwordLoginActive)
+        #expect(store.serverURL == "budget.example.com", "discovery must not rewrite the field mid-typing")
+    }
+
+    /// Discovery runs while the user is still typing, so a half-typed or
+    /// unreachable URL must not raise an alert — Connect reports that.
+    @Test func discoveryAgainstAnUnreachableURLStaysQuietAndUnprobed() async {
+        let store = makeOpenIDStore()
+        store.serverURL = "budget.example"
+
+        await store.discoverLoginMethods()
+
+        #expect(store.error == nil)
+        #expect(store.availableLoginMethods.isEmpty)
+    }
+
+    /// A live session owns the server client, so a probe must not reconfigure
+    /// it or republish its login methods.
+    @Test func discoveryLeavesAConnectedSessionAlone() async {
+        let store = makeOpenIDStore()
+        store.serverURL = "budget.example.com"
+        store.isConnected = true
+
+        await store.discoverLoginMethods()
+
+        #expect(store.availableLoginMethods.isEmpty)
+    }
+
+    /// A probe for a URL the user has since edited must not publish that old
+    /// server's methods against the new URL.
+    @Test func discoveryDropsAnAnswerForAURLTheUserHasSinceEdited() async {
+        let store = BudgetStore.previewInstance()
+        let session = StubTransport.session { _ in
+            // The handler runs on a worker thread while the store awaits it.
+            DispatchQueue.main.sync {
+                MainActor.assumeIsolated { store.serverURL = "budget.example.com.au" }
+            }
+            return StubTransport.Response(
+                status: 200,
+                contentType: "application/json",
+                body: Data(#"{"status":"ok","methods":[{"method":"openid","displayName":"OpenID","active":1}]}"#.utf8)
+            )
+        }
+        store.setServerClientForTesting(ActualServerClient(session: session))
+        store.serverURL = "budget.example.com"
+
+        await store.discoverLoginMethods()
+
+        #expect(store.availableLoginMethods.isEmpty)
+    }
+
+    /// A failed probe says nothing about the server; it must not hide the
+    /// OpenID button an earlier probe of the same URL found.
+    @Test func failedDiscoveryKeepsMethodsFromTheLastSuccessfulProbe() async {
+        let store = makeOpenIDStore()
+        store.serverURL = "budget.example.com"
+        await store.discoverLoginMethods()
+        store.setServerClientForTesting(ActualServerClient(session: StubTransport.session { _ in
+            throw URLError(.notConnectedToInternet)
+        }))
+
+        await store.discoverLoginMethods()
+
+        #expect(store.error == nil)
+        #expect(store.supportsOpenIDLogin)
+    }
 }

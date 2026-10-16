@@ -63,6 +63,7 @@ private struct ServerConnectionSettingsSection: View {
     @State private var editedServerURL = ""
     @State private var editedFallbackServerURL = ""
     @FocusState private var passwordFocused: Bool
+    @FocusState private var serverURLFocused: Bool
 
     private func beginEditingServerConnection() {
         editedServerURL = budgetStore.serverURL
@@ -117,6 +118,7 @@ private struct ServerConnectionSettingsSection: View {
         fallbackServerURL: Binding<String>
     ) -> some View {
         TextField(String(localized: "Server URL"), text: serverURL)
+            .focused($serverURLFocused)
             .textContentType(.URL)
             .autocapitalization(.none)
             .keyboardType(.URL)
@@ -296,6 +298,15 @@ private struct ServerConnectionSettingsSection: View {
             if !isConnected {
                 editingServerConnection = false
             }
+        }
+        // Discover login methods once a URL is known, including on return
+        // after Disconnect, so OpenID shows without a password attempt first.
+        // Wait for the URL field to lose focus: the probe carries the custom
+        // headers, which can hold a proxy service token, so it must not reach
+        // a half-typed host.
+        .task(id: budgetStore.isConnected || serverURLFocused ? nil : budgetStore.serverURL) {
+            guard !budgetStore.isConnected, !serverURLFocused, !budgetStore.serverURL.isEmpty else { return }
+            await budgetStore.discoverLoginMethods()
         }
     }
 }
@@ -638,6 +649,7 @@ private struct SyncSettingsSection: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
     @State private var refreshRequestError = BackgroundRefreshStatus().lastScheduleError
+    @State private var walletDelivery = WalletDelivery.shared()?.status()
     @State private var showingResetSyncConfirm = false
 
     var body: some View {
@@ -708,6 +720,24 @@ private struct SyncSettingsSection: View {
                     .textSelection(.enabled)
             }
 
+            // When FinanceKit last woke the Wallet delivery extension (iOS
+            // 26+), which asks iOS for the refresh above. Hidden until it has.
+            if let lastWalletDelivery = walletDelivery?.lastDelivery {
+                HStack {
+                    Text("Last Wallet Update")
+                    Spacer()
+                    Text(lastWalletDelivery, style: .relative)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let walletRequestError = walletDelivery?.lastRequestError {
+                Text("Wallet refresh request failed: \(walletRequestError)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
             Button("Sync Now") {
                 Task { await budgetStore.sync() }
             }
@@ -747,6 +777,7 @@ private struct SyncSettingsSection: View {
         let status = BackgroundRefreshStatus()
         lastBackgroundRefresh = status.lastRun
         refreshRequestError = status.lastScheduleError
+        walletDelivery = WalletDelivery.shared()?.status()
     }
 }
 

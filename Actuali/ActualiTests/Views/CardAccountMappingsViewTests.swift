@@ -256,6 +256,22 @@ struct CardAccountMappingsViewTests {
         #expect(missing?.keywords == ["3333"])
     }
 
+    /// GH #684: the More menu badge counted keywords, so 6 cards with 3 keywords each showed 18.
+    @Test func mappedAccountCountMatchesListedRowsNotKeywords() {
+        var mappings: [String: String] = [:]
+        for card in 1...6 {
+            for tag in 1...3 {
+                mappings["card\(card)-tag\(tag)"] = "acct_\(card)"
+            }
+        }
+        mappings["orphan"] = "acct_missing"
+
+        let rows = CardAccountMappingsView.groupByAccount(cardMappings: mappings, accounts: [])
+        #expect(CardAccountMappingsView.mappedAccountCount(cardMappings: mappings) == 7)
+        #expect(CardAccountMappingsView.mappedAccountCount(cardMappings: mappings) == rows.count)
+        #expect(CardAccountMappingsView.mappedAccountCount(cardMappings: [:]) == 0)
+    }
+
     @Test func filtersOtherBudgetsButKeepsLegacyImports() {
         let imports = [
             makeImport(cardHint: "1111"),

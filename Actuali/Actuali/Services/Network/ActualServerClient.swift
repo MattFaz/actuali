@@ -280,12 +280,23 @@ enum ServerVersion {
     /// sync errors, so suppress writes unless we know the server is new
     /// enough. Reads of already-synced rows are always safe.
     static func supportsPayeeLocations(_ version: String?) -> Bool {
+        isAtLeast(version, major: 26, minor: 4)
+    }
+
+    /// account_groups and accounts.account_group_id shipped in Actual 26.9.0
+    /// (loot-core migration 1787013118115). Same invalid-schema risk as
+    /// payee_locations on an older server.
+    static func supportsAccountGroups(_ version: String?) -> Bool {
+        isAtLeast(version, major: 26, minor: 9)
+    }
+
+    private static func isAtLeast(_ version: String?, major wantMajor: Int, minor wantMinor: Int) -> Bool {
         guard let version else { return false }
         let parts = version.split(separator: ".").map { Int($0) }
         guard parts.count >= 2, let major = parts[0], let minor = parts[1] else {
             return false
         }
-        return major > 26 || (major == 26 && minor >= 4)
+        return major > wantMajor || (major == wantMajor && minor >= wantMinor)
     }
 }
 

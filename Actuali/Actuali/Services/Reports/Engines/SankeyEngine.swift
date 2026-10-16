@@ -310,11 +310,16 @@ enum SankeyEngine {
         let filtered = transactions.filter {
             ConditionsFilter.matches(transaction: $0, conditions: conditions, op: conditionsOp, context: context)
         }
+        var transactionsByCategory: [String: [Transaction]] = [:]
+        for tx in filtered {
+            guard let categoryId = tx.categoryId else { continue }
+            transactionsByCategory[categoryId, default: []].append(tx)
+        }
 
         var entries: [SankeyCategoryEntry] = []
         for group in categoryGroups {
             for cat in group.categories {
-                let txs = filtered.filter { $0.categoryId == cat.id }
+                let txs = transactionsByCategory[cat.id] ?? []
                 var bucketOrder: [String] = []
                 var buckets: [String: (accountId: String, payeeId: String?, payeeName: String?, sum: Int)] = [:]
                 for tx in txs {
@@ -438,6 +443,12 @@ enum SankeyEngine {
         months: Set<Int>
     ) -> [SankeyCategoryEntry] {
         let filteredGroups = filterCategoryGroups(categoryGroups, conditions: conditions, conditionsOp: conditionsOp)
+        let incomeCategoryIds = Set(filteredGroups.filter(\.isIncome).flatMap { $0.categories.map(\.id) })
+        var incomeByCat: [String: Int] = [:]
+        for tx in transactions {
+            guard let categoryId = tx.categoryId, incomeCategoryIds.contains(categoryId) else { continue }
+            incomeByCat[categoryId, default: 0] += tx.amount
+        }
 
         var budgetedByCat: [String: Int] = [:]
         for entry in budget.entries where months.contains(entry.month) {
@@ -448,7 +459,7 @@ enum SankeyEngine {
         for group in filteredGroups {
             for cat in group.categories {
                 let raw = group.isIncome
-                    ? transactions.filter { $0.categoryId == cat.id }.reduce(0) { $0 + $1.amount }
+                    ? incomeByCat[cat.id] ?? 0
                     : budgetedByCat[cat.id] ?? 0
                 guard raw != 0 else { continue }
                 entries.append(SankeyCategoryEntry(

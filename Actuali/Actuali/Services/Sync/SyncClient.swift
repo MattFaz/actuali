@@ -393,8 +393,8 @@ actor SyncClient {
             }
 
             finalTransaction = result.transaction
-            if preserveCategory, let categoryId = transaction.categoryId {
-                finalTransaction.categoryId = categoryId
+            if preserveCategory {
+                finalTransaction.categoryId = transaction.categoryId
             }
             if let name = result.pendingPayeeName {
                 finalTransaction.payeeId = try await resolvePayee(
@@ -961,7 +961,7 @@ actor SyncClient {
                     ("imported_description", update.importedPayee),
                     ("notes", update.notes),
                     ("cleared", update.cleared ? 1 : 0),
-                ]
+                ] + (update.amount.map { [("amount", $0)] } ?? [])
             )
         }
 
@@ -1001,7 +1001,7 @@ actor SyncClient {
                     ("imported_description", update.importedPayee),
                     ("notes", update.notes),
                     ("cleared", update.cleared ? 1 : 0),
-                ]
+                ] + (update.amount.map { [("amount", $0)] } ?? [])
             )
         }
         let result = try database.materializeBankSync(
@@ -1051,6 +1051,91 @@ actor SyncClient {
         await automaticSync()
 
         return group
+    }
+
+    func createAccountGroup(id: String, name: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let group = try database.insertAccountGroup(id: id, name: name)
+        let messages = try await messageGenerator.messagesForInsert(group)
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
+    func updateAccountGroup(id: String, name: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        try database.renameAccountGroup(id: id, name: name)
+        let messages = try await messageGenerator.messages(dataset: "account_groups", row: id, fields: [("name", name)])
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
+    func deleteAccountGroup(id: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let accountIds = try database.deleteAccountGroup(id: id)
+        let group = AccountGroup(id: id, name: "", sortOrder: 0, tombstone: true)
+        var messages = try await [messageGenerator.messageForDelete(group)]
+        for accountId in accountIds {
+            messages += try await messageGenerator.messages(dataset: "accounts", row: accountId, fields: [("account_group_id", nil)])
+        }
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
+    func setAccountGroup(accountId: String, groupId: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        try database.setAccountGroup(accountId: accountId, groupId: groupId)
+        let messages = try await messageGenerator.messages(dataset: "accounts", row: accountId, fields: [("account_group_id", groupId)])
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
+    func moveAccount(accountId: String, toGroupId: String?, beforeAccountId: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let result = try database.moveAccount(
+            accountId: accountId,
+            toGroupId: toGroupId,
+            beforeAccountId: beforeAccountId
+        )
+        var fields: [(column: String, value: (any Sendable)?)] = [
+            ("sort_order", result.sortOrder),
+        ]
+        // Upstream moveAccount only sends account_group_id when the caller
+        // passes one, so a plain reorder stays valid on pre-26.9 servers.
+        if result.groupChanged {
+            fields.append(("account_group_id", result.groupId))
+        }
+        var messages = try await messageGenerator.messages(
+            dataset: "accounts", row: result.accountId, fields: fields
+        )
+        for sibling in result.movedSiblings {
+            messages += try await messageGenerator.messages(
+                dataset: "accounts",
+                row: sibling.id,
+                fields: [("sort_order", sibling.sortOrder)]
+            )
+        }
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
     }
 
     /// Create a category in a group (optimistic local-first), together with
@@ -1339,8 +1424,18 @@ actor SyncClient {
     /// Persist the currency code to the budget's `preferences` table (Actual's
     /// `defaultCurrencyCode`), so the choice survives a relaunch and syncs to
     /// other clients (GH #59).
+    ///
+    /// Upstream compatibility: Actual's web/desktop Settings view
+    /// (`packages/desktop-client/src/components/settings/index.tsx`) treats
+    /// currency support as an experimental feature and resets `defaultCurrencyCode`
+    /// to empty if `flags.currency` is not enabled. Persisting `flags.currency = "true"`
+    /// alongside a non-empty currency code prevents upstream from wiping the
+    /// preference on the user's next visit to Settings (GH #668).
     func updateCurrencyCode(_ code: String) async throws {
         try await setPreference(key: "defaultCurrencyCode", value: code)
+        if !code.isEmpty {
+            try await setPreference(key: "flags.currency", value: "true")
+        }
     }
 
     /// Persists or clears a credit card account configuration in the budget's `preferences` table
@@ -1927,16 +2022,19 @@ actor SyncClient {
             importedPayee: nil
         )
         transaction.schedule = schedule.id
+        // Apply the linked rule's actions directly (loot-core parity).
+        // RulesEngine.apply skips schedule rules when transaction.schedule is
+        // already set, so actions fire once here and won't double-apply during
+        // createTransaction's general rules pass.
+        let actionResult = RulesEngine.apply(
+            actions: ScheduleConditions.actions(from: schedule.actionsJSON),
+            to: transaction,
+            ruleId: schedule.id
+        )
+        guard !actionResult.isDeleted else { return }
+        transaction = actionResult.transaction
+        transaction.schedule = schedule.id
         if try database.transferAccountId(forPayeeId: transaction.payeeId) != nil {
-            let actionResult = RulesEngine.apply(
-                actions: ScheduleConditions.actions(from: schedule.actionsJSON),
-                to: transaction,
-                ruleId: schedule.id
-            )
-            guard !actionResult.isDeleted else { return }
-            transaction = actionResult.transaction
-            transaction.schedule = schedule.id
-
             if let transfer = try scheduledTransfer(for: transaction, in: database) {
                 try await createTransfer(source: transfer.source, target: transfer.target)
             } else {

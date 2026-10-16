@@ -7,8 +7,26 @@ struct Account: Identifiable, Hashable {
     var offBudget: Bool
     var closed: Bool
     var sortOrder: Int
+    var groupId: String?
 
     var balance: Int // Stored in cents
+}
+
+struct AccountGroup: Identifiable, Hashable {
+    let id: String
+    var name: String
+    var sortOrder: Double
+    var tombstone: Bool = false
+}
+
+extension AccountGroup: CRDTSyncable {
+    static var datasetName: String {
+        "account_groups"
+    }
+
+    var syncableFields: [String: Any?] {
+        ["name": name, "sort_order": sortOrder, "tombstone": tombstone ? 1 : 0]
+    }
 }
 
 /// Cleared / uncleared / reconciled totals for one account (GH #134).

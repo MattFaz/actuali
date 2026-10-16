@@ -202,6 +202,23 @@ struct TransactionLoggerSyncOutcomeTests {
         #expect(unpinned.transaction.categoryId == "cat-treats")
     }
 
+    /// With the payee-history pick off, an unpinned log stays uncategorized
+    /// instead of copying the payee's last category.
+    @Test func payeeHistoryOffLeavesAnUnpinnedLogUncategorized() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+        let key = "suggestCategoryFromPayeeHistory"
+        let original = UserDefaults.standard.object(forKey: key)
+        defer { restoreUserDefault(key, to: original) }
+
+        _ = try await log(to: store, categoryId: "cat-coffee")
+        store.suggestCategoryFromPayeeHistory = false
+        let unpinned = try await log(to: store)
+
+        #expect(unpinned.transaction.categoryId == nil)
+    }
+
     /// A category deleted since the Shortcut was built must not be written as
     /// a dangling id; the payee auto-pick takes over instead.
     @Test func unknownCategoryFallsBackToTheAutoPick() async throws {
