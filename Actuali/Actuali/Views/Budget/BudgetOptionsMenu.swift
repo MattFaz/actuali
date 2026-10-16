@@ -38,6 +38,11 @@ struct BudgetOptionsMenu: View {
     var monthNote: EntityNote = .unsupported
     var onEditMonthNote: (() -> Void)?
 
+    private var hasAnyActions: Bool {
+        let hasBudgetActions = onCopyPreviousMonthBudget != nil && onSetBudgetsToZero != nil
+        return hasBudgetActions || onCleanup != nil || onTemplateAction != nil
+    }
+
     var body: some View {
         Menu {
             Menu("Style") {
@@ -82,42 +87,44 @@ struct BudgetOptionsMenu: View {
                 }
             }
 
-            Menu("Actions") {
-                if let onCopyPreviousMonthBudget, let onSetBudgetsToZero {
-                    Section {
-                        Button(action: onCopyPreviousMonthBudget) {
-                            Label("Copy last month's budget", systemImage: "doc.on.doc")
-                        }
-                        .accessibilityIdentifier("budget.copyPreviousMonthBudget")
-                        Button(action: onSetBudgetsToZero) {
-                            Label("Set budgets to zero", systemImage: "0.circle")
+            if hasAnyActions {
+                Menu("Actions") {
+                    if let onCopyPreviousMonthBudget, let onSetBudgetsToZero {
+                        Section {
+                            Button(action: onCopyPreviousMonthBudget) {
+                                Label("Copy last month's budget", systemImage: "doc.on.doc")
+                            }
+                            .accessibilityIdentifier("budget.copyPreviousMonthBudget")
+                            Button(action: onSetBudgetsToZero) {
+                                Label("Set budgets to zero", systemImage: "0.circle")
+                            }
                         }
                     }
-                }
-
-                if let onCleanup {
-                    Section {
-                        Button(action: onCleanup) {
-                            Label("End of Month Cleanup", systemImage: "arrow.3.trianglepath")
+    
+                    if let onCleanup {
+                        Section {
+                            Button(action: onCleanup) {
+                                Label("End of Month Cleanup", systemImage: "arrow.3.trianglepath")
+                            }
+                            .disabled(!budgetStore.goalTemplatesEnabled)
                         }
-                        .disabled(!budgetStore.goalTemplatesEnabled)
                     }
-                }
-
-                if let onTemplateAction {
-                    Section {
-                        Button { onTemplateAction(.check) } label: {
-                            Label("Check Templates", systemImage: "checkmark.seal")
+    
+                    if let onTemplateAction {
+                        Section {
+                            Button { onTemplateAction(.check) } label: {
+                                Label("Check Templates", systemImage: "checkmark.seal")
+                            }
+                            .disabled(!budgetStore.goalTemplatesEnabled)
+                            Button { onTemplateAction(.apply) } label: {
+                                Label("Apply Budget Template", systemImage: "wand.and.stars")
+                            }
+                            .disabled(!budgetStore.goalTemplatesEnabled)
+                            Button { onTemplateAction(.overwrite) } label: {
+                                Label("Overwrite with Budget Template", systemImage: "wand.and.stars.inverse")
+                            }
+                            .disabled(!budgetStore.goalTemplatesEnabled)
                         }
-                        .disabled(!budgetStore.goalTemplatesEnabled)
-                        Button { onTemplateAction(.apply) } label: {
-                            Label("Apply Budget Template", systemImage: "wand.and.stars")
-                        }
-                        .disabled(!budgetStore.goalTemplatesEnabled)
-                        Button { onTemplateAction(.overwrite) } label: {
-                            Label("Overwrite with Budget Template", systemImage: "wand.and.stars.inverse")
-                        }
-                        .disabled(!budgetStore.goalTemplatesEnabled)
                     }
                 }
             }

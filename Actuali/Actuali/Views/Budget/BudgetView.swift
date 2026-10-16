@@ -2522,21 +2522,20 @@ struct MonthPicker: View {
                     .accessibilityIdentifier("budget.monthPicker.month.\(monthKey)")
                 }
             }
-
         }
         .padding(16)
         .frame(width: 320)
     }
 
-    private static func year(fromMonth month: String) -> Int {
+    nonisolated static func year(fromMonth month: String) -> Int {
         Int(month.split(separator: "-").first ?? "") ?? Calendar.current.component(.year, from: Date())
     }
 
-    private static func monthKey(year: Int, month: Int) -> String {
+    nonisolated static func monthKey(year: Int, month: Int) -> String {
         String(format: "%04d-%02d", year, month)
     }
 
-    private static func monthSymbol(year: Int, month: Int, locale: Locale) -> String {
+    nonisolated static func monthSymbol(year: Int, month: Int, locale: Locale) -> String {
         guard let date = date(fromMonth: monthKey(year: year, month: month)) else {
             return monthKey(year: year, month: month)
         }

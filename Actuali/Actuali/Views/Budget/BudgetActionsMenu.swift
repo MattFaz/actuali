@@ -16,11 +16,8 @@ struct BudgetActionsMenu: View {
     var showHiddenCategories: Binding<Bool>
 
     var body: some View {
-        let localBudgets = BudgetFileManager.shared.listLocalBudgets()
-        let currentLocalBudget = budgetStore.currentBudgetId.flatMap { currentID in
-            localBudgets.first { $0.id == currentID }
-        }
-        let currentCloudFileID = currentLocalBudget?.cloudFileId
+        let currentLocalBudget = budgetStore.currentLocalBudget
+        let currentCloudFileID = budgetStore.currentCloudFileId()
         let currentBudgetName = currentCloudFileID.flatMap { cloudFileID in
             budgetStore.remoteBudgets.first { $0.id == cloudFileID }?.name
         } ?? currentLocalBudget?.budgetName ?? String(localized: "Current Budget")
@@ -160,10 +157,8 @@ struct BudgetActionsMenu: View {
         }
         guard budgetStore.downloadingBudgetId == nil else { return }
 
-        if budget.isEncrypted, EncryptionKeyManager.load(fileId: budget.id) == nil {
-            budgetToUnlock = budget
-        } else {
-            Task { await budgetStore.downloadBudget(budget) }
+        if let lockedBudget = budgetStore.openRemoteBudget(budget) {
+            budgetToUnlock = lockedBudget
         }
     }
 }

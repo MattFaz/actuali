@@ -1,8 +1,7 @@
 import XCTest
 
-/// Reorder mode on the Budget tab: Reorder Items in the options menu
-/// shows a drag handle on every category and group, and dragging a handle moves it within
-/// or between groups. The new order is saved when the finger lifts.
+/// Reorder mode lives in the Actuali-mark menu. It shows a drag handle on
+/// every category and group, and saves the new order when the finger lifts.
 final class CategoryReorderModeUITests: XCTestCase {
     @MainActor private func launch(style: String = "clean", hideSpent: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
@@ -20,23 +19,27 @@ final class CategoryReorderModeUITests: XCTestCase {
     }
 
     @MainActor private func enterReorderMode(_ app: XCUIApplication) {
-        let menu = app.buttons["Budget options"]
+        let menu = app.buttons["budget.actionsMenu"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         menu.tap()
-        let reorder = app.buttons["Reorder Items"]
+        let reorder = app.buttons["budgetOptions.reorder"]
         if !reorder.waitForExistence(timeout: 5) {
             // The menu occasionally misses the first tap on a cold launch.
             menu.tap()
         }
-        XCTAssertTrue(reorder.waitForExistence(timeout: 5), "the options menu offers Reorder Items")
+        XCTAssertTrue(reorder.waitForExistence(timeout: 5), "the Actuali menu offers Reorder Items")
         reorder.tap()
         XCTAssertTrue(handle(app, "Groceries").waitForExistence(timeout: 5), "reorder mode shows a handle on each category")
     }
 
     @MainActor private func leaveReorderMode(_ app: XCUIApplication) {
-        app.buttons["budget.reorderDone"].tap()
-        XCTAssertTrue(app.buttons["budget.reorderDone"].waitForNonExistence(timeout: 5), "reorder mode is off")
-        XCTAssertFalse(handle(app, "Groceries").exists)
+        let menu = app.buttons["budget.actionsMenu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        menu.tap()
+        let reorder = app.buttons["budgetOptions.reorder"]
+        XCTAssertTrue(reorder.waitForExistence(timeout: 5), "the Actuali menu offers Done Reordering")
+        reorder.tap()
+        XCTAssertTrue(handle(app, "Groceries").waitForNonExistence(timeout: 5), "reorder mode is off")
     }
 
     private func spent(_ app: XCUIApplication, _ name: String) -> XCUIElement {

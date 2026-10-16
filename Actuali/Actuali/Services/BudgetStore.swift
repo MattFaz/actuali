@@ -337,10 +337,15 @@ final class BudgetStore: ObservableObject {
         supportsOpenIDLogin && supportsPasswordLogin && !ownerExists
     }
 
+    @Published private(set) var currentLocalBudget: BudgetMetadata?
+
     @Published var currentBudgetId: String? {
         didSet {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
             if currentBudgetId != oldValue {
+                currentLocalBudget = currentBudgetId.flatMap { currentID in
+                    fileManager.listLocalBudgets().first { $0.id == currentID }
+                }
                 dismissTransactionImpactCues()
                 budgetType = .envelope
                 creditCardConfigs = [:]
@@ -1792,6 +1797,39 @@ final class BudgetStore: ObservableObject {
         let isEncrypted: Bool
     }
 
+    func currentCloudFileId() -> String? {
+        currentLocalBudget?.cloudFileId
+    }
+
+    /// Keeps the selected local budget visible while the server list is stale
+    /// or unavailable.
+    func selectedRemoteBudget() -> RemoteBudget? {
+        guard let metadata = currentLocalBudget,
+              let cloudFileId = metadata.cloudFileId
+        else { return nil }
+
+        if let budget = remoteBudgets.first(where: { $0.id == cloudFileId }) {
+            return budget
+        }
+        return RemoteBudget(
+            id: cloudFileId,
+            name: metadata.budgetName ?? "Unknown",
+            groupId: metadata.groupId,
+            isEncrypted: metadata.encryptKeyId != nil
+        )
+    }
+
+    /// Returns the budget if its encryption password is still needed;
+    /// otherwise starts the download.
+    func openRemoteBudget(_ budget: RemoteBudget) -> RemoteBudget? {
+        guard downloadingBudgetId == nil else { return nil }
+        if budget.isEncrypted, EncryptionKeyManager.load(fileId: budget.id) == nil {
+            return budget
+        }
+        Task { await downloadBudget(budget) }
+        return nil
+    }
+
     // MARK: - Initialization
 
     @MainActor static let shared = BudgetStore()
@@ -1862,6 +1900,7 @@ final class BudgetStore: ObservableObject {
     func configureAppleWalletLinksForTesting(defaults: UserDefaults, budgetId: String) {
         appleWalletLinkDefaults = defaults
         _currentBudgetId = Published(initialValue: budgetId)
+        currentLocalBudget = fileManager.listLocalBudgets().first { $0.id == budgetId }
     }
 
     /// Test-only: swap in a file manager rooted at a temp directory so
@@ -1926,6 +1965,9 @@ final class BudgetStore: ObservableObject {
         _currentBudgetId = Published(
             initialValue: defaults.string(forKey: "currentBudgetId")
         )
+        currentLocalBudget = currentBudgetId.flatMap { currentID in
+            fileManager.listLocalBudgets().first { $0.id == currentID }
+        }
         _excludedFromSpentCategoryIds = Published(
             initialValue: Self.loadExcludedFromSpentCategoryIds(for: defaults.string(forKey: "currentBudgetId"))
         )
