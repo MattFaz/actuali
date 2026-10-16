@@ -14717,6 +14717,65 @@
         }
       }
     },
+    "Actions" : {
+      "comment": "Budget actions submenu title",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktionen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actions"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acciones"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actions"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Azioni"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acties"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ações"
+          }
+        }
+      }
+    },
+    "Actuali menu" : {
+      "comment" : "Accessibility label for the Actuali-mark budget menu",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Actuali-Menü" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Actuali menu" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Menú de Actuali" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Menu Actuali" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Menu Actuali" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Actuali-menu" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Menu Actuali" } }
+      }
+    },
     "Allow Actuali to read Wallet data in Settings to sync Apple Card, Apple Cash and Savings." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -74688,6 +74747,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Status"
+          }
+        }
+      }
+    },
+    "Style" : {
+      "comment": "Budget display style submenu title",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stil"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Style"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estilo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Style"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stile"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stijl"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estilo"
           }
         }
       }
