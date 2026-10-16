@@ -100,7 +100,7 @@ struct BudgetOptionsMenu: View {
                             }
                         }
                     }
-    
+
                     if let onCleanup {
                         Section {
                             Button(action: onCleanup) {
@@ -109,7 +109,7 @@ struct BudgetOptionsMenu: View {
                             .disabled(!budgetStore.goalTemplatesEnabled)
                         }
                     }
-    
+
                     if let onTemplateAction {
                         Section {
                             Button { onTemplateAction(.check) } label: {
