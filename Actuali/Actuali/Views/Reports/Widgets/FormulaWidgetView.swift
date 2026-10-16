@@ -18,6 +18,14 @@ struct FormulaWidgetView: View {
                     .lineLimit(1)
                     .foregroundStyle(units < 0 ? Color.red : Color.green)
                     .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
+            case .plain(let value):
+                Text(value, format: .number)
+                    .font(.system(size: 34, weight: .bold))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
             case .text(let value):
                 Text(value)
                     .font(.system(size: 34, weight: .bold))
