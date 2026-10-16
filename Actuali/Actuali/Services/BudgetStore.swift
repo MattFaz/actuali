@@ -5313,31 +5313,50 @@ final class BudgetStore: ObservableObject {
         return leg
     }
 
-    /// Write away the other leg of `child`'s transfer: a line of a split is
-    /// unlinked, a whole split goes with its children (a parent deleted alone
-    /// leaves children no balance query counts), and a plain leg is tombstoned.
-    /// One home for the rule, because the callers that remove a leg from a
-    /// split each carried a copy of it.
-    private func removeTransferPartner(of child: Transaction) async throws {
-        guard let syncClient, let database, let partnerId = child.transferId,
+    /// The writes that remove the other leg of `child`'s transfer. A line of a
+    /// split is unlinked, because a split's parent amount is the sum of its live
+    /// children; a whole split goes with its children, because a parent deleted
+    /// alone leaves children no balance query counts; a plain leg is tombstoned.
+    /// Every child follows its own link too, or a nested transfer leaves a leg
+    /// pointing at a dead row — the bug this whole change is about.
+    ///
+    /// Returned rather than written: a caller that has to write atomically, like
+    /// the merge, has to put these rows in its own batch. `seen` stops a
+    /// transferId cycle.
+    private func transferPartnerRemoval(
+        of child: Transaction, seen: Set<String> = []
+    ) async throws -> [(transaction: Transaction, changedFields: Set<String>)] {
+        guard let database, let partnerId = child.transferId, !seen.contains(partnerId),
               let partner = try await database.fetchTransaction(id: partnerId, includingChildren: true)
-        else { return }
+        else { return [] }
         if partner.parentId != nil {
-            try await syncClient.updateTransaction(
-                Self.unlinkedTransferLeg(partner), changedFields: ["transferred_id"]
-            )
-            return
+            return [(Self.unlinkedTransferLeg(partner), ["transferred_id"])]
         }
+        var seen = seen
+        seen.insert(child.id)
+        seen.insert(partner.id)
+        var updates: [(transaction: Transaction, changedFields: Set<String>)] = []
         if partner.isParent {
             for grandchild in try await database.fetchChildTransactions(parentId: partner.id) {
+                try await updates.append(contentsOf: transferPartnerRemoval(of: grandchild, seen: seen))
                 var removed = grandchild
                 removed.tombstone = true
-                try await syncClient.updateTransaction(removed, changedFields: ["tombstone"])
+                updates.append((removed, ["tombstone"]))
             }
         }
         var removed = partner
         removed.tombstone = true
-        try await syncClient.updateTransaction(removed, changedFields: ["tombstone"])
+        updates.append((removed, ["tombstone"]))
+        return updates
+    }
+
+    /// `transferPartnerRemoval` written on its own, for callers with nothing
+    /// else to batch it with.
+    private func removeTransferPartner(of child: Transaction) async throws {
+        guard let syncClient else { return }
+        let updates = try await transferPartnerRemoval(of: child)
+        guard !updates.isEmpty else { return }
+        try await syncClient.updateTransactions(updates)
     }
 
     /// Ids of the off-budget accounts, for the category rules shared by the
@@ -5576,7 +5595,7 @@ final class BudgetStore: ObservableObject {
         // sum of its live children, so dropping the line would leave the parent
         // claiming an amount the rest no longer adds up to. Upstream's
         // removeTransfer unlinks that leg for the same reason.
-        var unlinked: [(original: Transaction, leg: Transaction)] = []
+        var unlinked: [Transaction] = []
         // Rows already handled in this batch. The `tombstone` guard can't do
         // this job: the link is followed by re-reading the partner row, so a
         // transferId cycle (seen in upstream data) would recurse forever.
@@ -5629,8 +5648,8 @@ final class BudgetStore: ObservableObject {
         // A partner that is a line of a split is left in its split; see
         // `unlinkedTransferLeg`.
         func unlink(_ tx: Transaction) {
-            guard !unlinked.contains(where: { $0.original.id == tx.id }) else { return }
-            unlinked.append((original: tx, leg: Self.unlinkedTransferLeg(tx)))
+            guard !unlinked.contains(where: { $0.id == tx.id }) else { return }
+            unlinked.append(tx)
         }
 
         for tx in transactions {
@@ -5640,8 +5659,8 @@ final class BudgetStore: ObservableObject {
         // A row this batch already tombstoned must not be written back live:
         // `updateTransactionRow` writes every column, and the unlinked entries
         // are appended after the tombstones.
-        for entry in unlinked where !visited.contains(entry.original.id) {
-            updates.append((entry.leg, ["transferred_id"]))
+        for partner in unlinked where !visited.contains(partner.id) {
+            updates.append((Self.unlinkedTransferLeg(partner), ["transferred_id"]))
         }
         do {
             try await syncClient.updateTransactions(updates)
@@ -5942,8 +5961,11 @@ final class BudgetStore: ObservableObject {
                 for child in dropChildren {
                     deleted.append(child)
                     // Split transfers must lose both legs, as in deleteTransactions.
-                    // `removeTransferPartner` owns that rule.
-                    try await removeTransferPartner(of: child)
+                    // The rows go into this batch rather than through
+                    // `removeTransferPartner`, so the merge stays one write:
+                    // writing the partner separately would leave it deleted if
+                    // the batch below failed.
+                    try await updates.append(contentsOf: transferPartnerRemoval(of: child))
                 }
             }
 

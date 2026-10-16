@@ -699,6 +699,76 @@ struct BudgetStoreSplitSaveTests {
         #expect(byId["p-parent"]?["tombstone"] == 0)
     }
 
+    @Test func removingSplitFollowsANestedTransferChain() async throws {
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(path) }
+        let store = try await makeTestStore(database: database)
+
+        try await database.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO accounts (id, name, offbudget) VALUES
+                    ('acct-1', 'Checking', 0),
+                    ('acct-2', 'Savings', 0),
+                    ('acct-3', 'Brokerage', 0);
+                INSERT INTO payees (id, name, transfer_acct) VALUES
+                    ('payee-1', NULL, 'acct-1'),
+                    ('payee-2', NULL, 'acct-2'),
+                    ('payee-3', NULL, 'acct-3');
+                INSERT INTO payee_mapping (id, targetId) VALUES
+                    ('payee-1', 'payee-1'),
+                    ('payee-2', 'payee-2'),
+                    ('payee-3', 'payee-3');
+                INSERT INTO transactions
+                    (id, acct, category, description, amount, date, isParent, isChild,
+                     parent_id, transferred_id, sort_order) VALUES
+                    ('parent',   'acct-1', NULL, NULL,        -1000, 20260601, 1, 0, NULL,       NULL,       10),
+                    ('c-1',      'acct-1', NULL, 'payee-2',   -600, 20260601, 0, 1, 'parent',   'p-parent',  9),
+                    ('c-2',      'acct-1', NULL, NULL,        -400, 20260601, 0, 1, 'parent',   NULL,        8),
+                    ('p-parent', 'acct-2', NULL, 'payee-1',    600, 20260601, 1, 0, NULL,       'c-1',      10),
+                    ('p-child',  'acct-2', NULL, 'payee-3',    600, 20260601, 0, 1, 'p-parent', 'leaf',      9),
+                    ('leaf',     'acct-3', NULL, 'payee-2',   -600, 20260601, 0, 1, 'leaf-parent', 'p-child', 10),
+                    ('leaf-parent', 'acct-3', NULL, NULL,     -600, 20260601, 1, 0, NULL,       NULL,       11);
+            """)
+        }
+        store.accounts = [
+            Account(id: "acct-1", name: "Checking", type: .checking,
+                    offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "acct-2", name: "Savings", type: .savings,
+                    offBudget: false, closed: false, sortOrder: 1, balance: 0),
+            Account(id: "acct-3", name: "Brokerage", type: .investment,
+                    offBudget: false, closed: false, sortOrder: 2, balance: 0),
+        ]
+        store.payees = [
+            Payee(id: "payee-1", name: "", transferAccountId: "acct-1"),
+            Payee(id: "payee-2", name: "", transferAccountId: "acct-2"),
+            Payee(id: "payee-3", name: "", transferAccountId: "acct-3"),
+        ]
+
+        let original = Transaction(
+            id: "parent", accountId: "acct-1", date: 20_260_601, amount: -1000,
+            payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: true, parentId: nil, tombstone: false, sortOrder: 10,
+            importedPayee: nil
+        )
+        var edit = form(amount: "10.00", payeeName: "Market")
+        edit.categoryId = "cat-food"
+        edit.collapseSplit = true
+        edit.date = Transaction.date(fromYYYYMMDD: 20_260_601)
+        try await store.saveTransaction(edit, editing: original)
+
+        // The partner split's own child is a transfer leg too. Stopping after one
+        // hop would leave that leg pointing at a dead row — the one-sided
+        // transfer this whole change exists to remove.
+        let all = try rows(path: path)
+        let byId = Dictionary(uniqueKeysWithValues: all.map { ($0["id"] as String, $0) })
+        #expect(byId["c-1"]?["tombstone"] == 1)
+        #expect(byId["p-parent"]?["tombstone"] == 1)
+        #expect(byId["p-child"]?["tombstone"] == 1)
+        #expect(byId["leaf"]?["tombstone"] == 0)
+        #expect(byId["leaf"]?["transferred_id"] == nil)
+    }
+
     @Test func removingSplitTakesAPartnerSplitWithItsChildren() async throws {
         let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
