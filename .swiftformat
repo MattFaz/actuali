@@ -42,7 +42,7 @@
 
 # redundantSelf strips self. from string interpolation inside actor-isolated
 # closures, where Swift still requires it — broke the build on adoption.
---disable redundantSelf
+--disable redundantSelf,docComments
 
 # These rewrite test code semantics (force unwrap/try -> #require), which is
 # a behavioral change, not formatting; the rewrite also breaks test-target
