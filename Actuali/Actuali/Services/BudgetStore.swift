@@ -1900,9 +1900,9 @@ final class BudgetStore: ObservableObject {
 
     private init() {
         let defaults = UserDefaults.standard
-        // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
-        // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
-        // overrides as strings; checking for existence first preserves non-false defaults.
+        /// Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
+        /// same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
+        /// overrides as strings; checking for existence first preserves non-false defaults.
         func persistedBool(_ key: String, default defaultValue: Bool) -> Bool {
             defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
         }
@@ -5421,8 +5421,8 @@ final class BudgetStore: ObservableObject {
         }
 
         let offBudgetIds = offBudgetAccountIds
-        // The edited leg takes the form's category, the partner keeps its own —
-        // then both are cleared unless that leg is the categorizable side.
+        /// The edited leg takes the form's category, the partner keeps its own —
+        /// then both are cleared unless that leg is the categorizable side.
         func resolvedCategory(for leg: Transaction, accountId: String,
                               otherAccountId: String) -> String? {
             guard Self.transferLegTakesCategory(
@@ -5600,12 +5600,12 @@ final class BudgetStore: ObservableObject {
         // this job: the link is followed by re-reading the partner row, so a
         // transferId cycle (seen in upstream data) would recurse forever.
         var visited = Set<String>()
-        // Tombstone `tx` and the other leg of its transfer. A transfer is one
-        // logical transaction, so deleting either leg deletes both: upstream's
-        // onDelete → removeTransfer does the same, and a leg left behind is a
-        // one-sided transfer in an account the user never touched (GH #724).
-        // Tombstoned rows and repeats are skipped, so selecting both legs writes
-        // each row once.
+        /// Tombstone `tx` and the other leg of its transfer. A transfer is one
+        /// logical transaction, so deleting either leg deletes both: upstream's
+        /// onDelete → removeTransfer does the same, and a leg left behind is a
+        /// one-sided transfer in an account the user never touched (GH #724).
+        /// Tombstoned rows and repeats are skipped, so selecting both legs writes
+        /// each row once.
         func delete(_ tx: Transaction) async {
             guard !tx.tombstone, visited.insert(tx.id).inserted else { return }
             // Deleting a split deletes its children too — orphaned children
@@ -5645,8 +5645,8 @@ final class BudgetStore: ObservableObject {
                 }
             }
         }
-        // A partner that is a line of a split is left in its split; see
-        // `unlinkedTransferLeg`.
+        /// A partner that is a line of a split is left in its split; see
+        /// `unlinkedTransferLeg`.
         func unlink(_ tx: Transaction) {
             guard !unlinked.contains(where: { $0.id == tx.id }) else { return }
             unlinked.append(tx)

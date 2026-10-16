@@ -110,9 +110,9 @@ enum ConditionsFilter {
 
         guard let value = decodeNumber(c.value) else { return true }
 
-        // Directional filters gate on sign and compare the magnitude:
-        // outflow negates the (negative) amount so the user-entered positive
-        // value lines up.
+        /// Directional filters gate on sign and compare the magnitude:
+        /// outflow negates the (negative) amount so the user-entered positive
+        /// value lines up.
         func apply(_ cmp: (Double, Double) -> Bool) -> Bool {
             if options.outflow == true {
                 return tx.amount < 0 && cmp(Double(-tx.amount), value)

@@ -342,10 +342,10 @@ struct BudgetStoreDuplicationTests {
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, syncClient) = try await makeStore(database: database)
 
-        // Degenerate data a bad upstream file can carry: the transferId links
-        // form a cycle instead of a pair. Following them must still terminate —
-        // each hop re-reads the row, so the tombstone set in memory doesn't
-        // stop the walk.
+        /// Degenerate data a bad upstream file can carry: the transferId links
+        /// form a cycle instead of a pair. Following them must still terminate —
+        /// each hop re-reads the row, so the tombstone set in memory doesn't
+        /// stop the walk.
         func leg(_ id: String, partner: String) -> Transaction {
             Transaction(
                 id: id, accountId: "acct-1", date: 20_260_810, amount: -1000,

@@ -76,7 +76,7 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
     /// timestamp. Returns nil if the prefix isn't well formed.
     static func minutesSinceEpoch(of string: String) -> Int64? {
         var iterator = string.utf8.makeIterator()
-        // Fixed-width fields, each followed by one separator ("-", "-", "T", ":").
+        /// Fixed-width fields, each followed by one separator ("-", "-", "T", ":").
         func field(digits: Int, separator: Bool) -> Int? {
             var value = 0
             for _ in 0..<digits {
