@@ -630,6 +630,135 @@ struct BudgetStoreSplitSaveTests {
         #expect(all[0]["isParent"] == 0)
     }
 
+    @Test func editingASplitTransferLineUnlinksAPartnerSplit() async throws {
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(path) }
+        let store = try await makeTestStore(database: database)
+
+        try await database.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO accounts (id, name, offbudget) VALUES
+                    ('acct-1', 'Checking', 0),
+                    ('acct-savings', 'Savings', 0);
+                INSERT INTO payees (id, name, transfer_acct) VALUES
+                    ('payee-checking', NULL, 'acct-1'),
+                    ('payee-savings', NULL, 'acct-savings');
+                INSERT INTO payee_mapping (id, targetId) VALUES
+                    ('payee-checking', 'payee-checking'),
+                    ('payee-savings', 'payee-savings');
+                INSERT INTO transactions
+                    (id, acct, category, description, amount, date, isParent, isChild,
+                     parent_id, transferred_id, sort_order) VALUES
+                    ('parent',   'acct-1', NULL,      NULL,             -1000, 20260601, 1, 0, NULL,         NULL,          10),
+                    ('c-1',      'acct-1', NULL,      'payee-savings',   -600, 20260601, 0, 1, 'parent',     'p-child',      9),
+                    ('c-2',      'acct-1', 'cat-fun', NULL,              -400, 20260601, 0, 1, 'parent',     NULL,           8),
+                    ('p-parent', 'acct-savings', NULL, NULL,            1000, 20260601, 1, 0, NULL,         NULL,          10),
+                    ('p-child',  'acct-savings', NULL, 'payee-checking',   600, 20260601, 0, 1, 'p-parent',   'c-1',          9);
+            """)
+        }
+        store.accounts = [
+            Account(id: "acct-1", name: "Checking", type: .checking,
+                    offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "acct-savings", name: "Savings", type: .savings,
+                    offBudget: false, closed: false, sortOrder: 1, balance: 0),
+        ]
+        store.payees = [
+            Payee(id: "payee-checking", name: "", transferAccountId: "acct-1"),
+            Payee(id: "payee-savings", name: "", transferAccountId: "acct-savings"),
+        ]
+
+        let original = Transaction(
+            id: "parent", accountId: "acct-1", date: 20_260_601, amount: -1000,
+            payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: true, parentId: nil, tombstone: false, sortOrder: 10,
+            importedPayee: nil
+        )
+        // The form no longer points line c-1 at the other account.
+        var edit = form(amount: "10.00", payeeName: "Market")
+        edit.date = Transaction.date(fromYYYYMMDD: 20_260_601)
+        edit.splits = [
+            .init(childId: "c-1", amount: "6.00"),
+            .init(childId: "c-2", amount: "4.00"),
+        ]
+        try await store.saveTransaction(edit, editing: original)
+
+        let all = try rows(path: path)
+        let byId = Dictionary(uniqueKeysWithValues: all.map { ($0["id"] as String, $0) })
+
+        // The line left the transfer, so its partner is detached. That partner is
+        // one line of a split in the other account, and deleting it would leave
+        // that split's parent claiming an amount its remaining lines no longer
+        // add up to — so it stays, with its amount and its place in the split.
+        let partner = try #require(byId["p-child"])
+        #expect(partner["tombstone"] == 0)
+        #expect(partner["transferred_id"] == nil)
+        #expect(partner["amount"] == 600)
+        #expect(partner["acct"] == "acct-savings")
+        #expect(partner["parent_id"] == "p-parent")
+        #expect(byId["p-parent"]?["tombstone"] == 0)
+    }
+
+    @Test func removingSplitTakesAPartnerSplitWithItsChildren() async throws {
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(path) }
+        let store = try await makeTestStore(database: database)
+
+        try await database.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO accounts (id, name, offbudget) VALUES
+                    ('acct-1', 'Checking', 0),
+                    ('acct-savings', 'Savings', 0);
+                INSERT INTO payees (id, name, transfer_acct) VALUES
+                    ('payee-checking', NULL, 'acct-1'),
+                    ('payee-savings', NULL, 'acct-savings');
+                INSERT INTO payee_mapping (id, targetId) VALUES
+                    ('payee-checking', 'payee-checking'),
+                    ('payee-savings', 'payee-savings');
+                INSERT INTO transactions
+                    (id, acct, category, description, amount, date, isParent, isChild,
+                     parent_id, transferred_id, sort_order) VALUES
+                    ('parent',      'acct-1', NULL,       NULL,             -1000, 20260601, 1, 0, NULL,         NULL,             10),
+                    ('c-1',         'acct-1', NULL,       'payee-savings',   -600, 20260601, 0, 1, 'parent',     'p-parent',        9),
+                    ('c-2',         'acct-1', 'cat-fun',  NULL,              -400, 20260601, 0, 1, 'parent',     NULL,              8),
+                    ('p-parent',    'acct-savings', NULL, 'payee-checking',   600, 20260601, 1, 0, NULL,         'c-1',            10),
+                    ('p-child',     'acct-savings', NULL, NULL,              600, 20260601, 0, 1, 'p-parent',   NULL,              9);
+            """)
+        }
+        store.accounts = [
+            Account(id: "acct-1", name: "Checking", type: .checking,
+                    offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "acct-savings", name: "Savings", type: .savings,
+                    offBudget: false, closed: false, sortOrder: 1, balance: 0),
+        ]
+        store.payees = [
+            Payee(id: "payee-checking", name: "", transferAccountId: "acct-1"),
+            Payee(id: "payee-savings", name: "", transferAccountId: "acct-savings"),
+        ]
+
+        let original = Transaction(
+            id: "parent", accountId: "acct-1", date: 20_260_601, amount: -1000,
+            payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: true, parentId: nil, tombstone: false, sortOrder: 10,
+            importedPayee: nil
+        )
+        var edit = form(amount: "10.00", payeeName: "Market")
+        edit.categoryId = "cat-food"
+        edit.collapseSplit = true
+        edit.date = Transaction.date(fromYYYYMMDD: 20_260_601)
+        try await store.saveTransaction(edit, editing: original)
+
+        // The partner is a whole split in the other account, so it goes with its
+        // children: a parent tombstoned alone leaves children no balance query
+        // counts, and those children would still feed reports.
+        let all = try rows(path: path)
+        let byId = Dictionary(uniqueKeysWithValues: all.map { ($0["id"] as String, $0) })
+        #expect(byId["c-1"]?["tombstone"] == 1)
+        #expect(byId["p-parent"]?["tombstone"] == 1)
+        #expect(byId["p-child"]?["tombstone"] == 1)
+    }
+
     @Test func removingSplitFromAParentCollapsesItToSingleTransaction() async throws {
         let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }

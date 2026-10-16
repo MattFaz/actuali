@@ -128,10 +128,13 @@ struct BudgetStoreAppleWalletSyncTests {
         let hold = try #require(try row(path: url, sql: "SELECT * FROM transactions WHERE id = ?", arguments: [rowId]))
         #expect(hold["tombstone"] == 1)
 
+        // The partner is real money the person may have cleared or reconciled:
+        // it stays, with its own state, detached from the row that just died.
         let partner = try #require(try row(path: url, sql: "SELECT * FROM transactions WHERE id = 'partner-leg'"))
         #expect(partner["tombstone"] == 0)
         #expect(partner["reconciled"] == 1)
         #expect(partner["cleared"] == 1)
+        #expect(partner["transferred_id"] == nil)
     }
 
     /// One defaults suite per budget file, so Wallet links never leak between
