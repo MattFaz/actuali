@@ -321,45 +321,10 @@ private struct BudgetSelectionSettingsSection: View {
     @State private var showingBudgetPicker = false
     @State private var newBudgetName = ""
 
-    /// The open budget's server fileId — currentBudgetId is the internal id,
-    /// so map through the local metadata.
-    private func currentCloudFileId(in locals: [BudgetMetadata]) -> String? {
-        guard let budgetId = budgetStore.currentBudgetId else { return nil }
-        return locals.first { $0.id == budgetId }?.cloudFileId
-    }
-
-    /// The open budget when the server list doesn't include it (still loading,
-    /// or the file was deleted from another client). It keeps a row so the
-    /// selection stays visible and the local copy stays removable.
-    private func unlistedCurrentBudget(in locals: [BudgetMetadata]) -> BudgetStore.RemoteBudget? {
-        guard let budgetId = budgetStore.currentBudgetId,
-              let metadata = locals.first(where: { $0.id == budgetId }),
-              let fileId = metadata.cloudFileId,
-              !budgetStore.remoteBudgets.contains(where: { $0.id == fileId })
-        else { return nil }
-        return BudgetStore.RemoteBudget(
-            id: fileId,
-            name: metadata.budgetName ?? "Unknown",
-            groupId: metadata.groupId,
-            isEncrypted: metadata.encryptKeyId != nil
-        )
-    }
-
-    private func selectedBudget(in locals: [BudgetMetadata]) -> BudgetStore.RemoteBudget? {
-        guard let cloudFileId = currentCloudFileId(in: locals) else { return nil }
-        if let budget = budgetStore.remoteBudgets.first(where: { $0.id == cloudFileId }) {
-            return budget
-        }
-        return unlistedCurrentBudget(in: locals)
-    }
-
     var body: some View {
-        // One directory read per render; every row check below shares it.
-        let localBudgets = BudgetFileManager.shared.listLocalBudgets()
-
         Section {
-            if let selectedBudget = selectedBudget(in: localBudgets) {
-                selectedBudgetRow(selectedBudget, locals: localBudgets)
+            if let selectedBudget = budgetStore.selectedRemoteBudget() {
+                selectedBudgetRow(selectedBudget)
             } else {
                 budgetPickerForNoSelection()
             }
@@ -443,11 +408,8 @@ private struct BudgetSelectionSettingsSection: View {
         }
     }
 
-    private func selectedBudgetRow(
-        _ budget: BudgetStore.RemoteBudget,
-        locals: [BudgetMetadata]
-    ) -> some View {
-        let hasLocalCopy = locals.contains { $0.cloudFileId == budget.id }
+    private func selectedBudgetRow(_ budget: BudgetStore.RemoteBudget) -> some View {
+        let hasLocalCopy = budgetStore.currentLocalBudget?.cloudFileId == budget.id
 
         return Button {
             showingBudgetPicker = true
@@ -565,10 +527,8 @@ private struct BudgetSelectionSettingsSection: View {
     }
 
     private func openBudget(_ budget: BudgetStore.RemoteBudget) {
-        if budget.isEncrypted, EncryptionKeyManager.load(fileId: budget.id) == nil {
-            budgetToUnlock = budget
-        } else {
-            Task { await budgetStore.downloadBudget(budget) }
+        if let lockedBudget = budgetStore.openRemoteBudget(budget) {
+            budgetToUnlock = lockedBudget
         }
     }
 
