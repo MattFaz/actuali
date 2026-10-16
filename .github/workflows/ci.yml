@@ -1,8 +1,13 @@
 # Builds the app and runs unit tests on every PR that touches app code. Branch
 # protection requires the "Unit Tests (iOS 26)" and "Unit Tests (iOS 18)"
-# checks; ci-noop.yml provides the same check names for PRs that don't touch
-# app code. UI tests are too slow to gate a PR (~50 min) — they run nightly in
-# ui-tests.yml.
+# checks, so this workflow triggers on *every* pull request and the `changed`
+# job decides whether the macOS work is worth starting. A PR touching only the
+# website or docs gets both names reported in seconds, from jobs that skip.
+# That detector replaced ci-noop.yml, a twin workflow that existed only to
+# report those names — and which double-reported them whenever a PR changed
+# both a workflow file and a doc, because its paths-ignore only suppresses a PR
+# whose every changed file matches.
+# UI tests are too slow to gate a PR (~50 min) — they run nightly in ui-tests.yml.
 #
 # Which leg runs when. Both legs run the whole suite and they run in parallel,
 # so the PR wall-clock is whichever is slower — measured over four recent runs,
@@ -29,14 +34,6 @@ name: CI
 on:
   pull_request:
     branches: [main]
-    # The whole workflows directory rather than this file and its noop twin:
-    # naming files individually means ci-noop.yml's paths-ignore has to be kept
-    # in lockstep, and any file missed from both fires *both* workflows, which
-    # reports each required check twice — a 5-second ubuntu noop can then
-    # satisfy a check the real macOS job is still running.
-    paths:
-      - "Actuali/**"
-      - ".github/workflows/**"
   schedule:
     # 13:17 UTC, an hour before ui-tests.yml's 14:00, so the nightly floor check
     # is done before the UI suite starts competing for runners.
@@ -52,18 +49,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Whether the pull request touched anything the macOS jobs care about. Needs a
+  # full checkout for the merge-base diff, which is why it is not a paths filter
+  # on the workflow itself: a filter would leave the required check names
+  # unreported on a docs-only PR, and a required check that never reports blocks
+  # the merge forever. A skipped job, by contrast, reports Success.
+  changed:
+    name: Detect app changes
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.diff.outputs.app }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        # Non-PR events always run the suite: the nightly and a manual dispatch
+        # are asking for it. On a pull_request the checkout is the merge commit,
+        # so origin/<base>...HEAD is exactly this PR's changes.
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "origin/${{ github.base_ref }}...HEAD" -- Actuali .github/workflows; then
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          fi
+
   # Fails the PR if Swift code isn't formatted per .swiftformat. Kept as its
   # own job (not folded into the test jobs) so branch protection can require
-  # "SwiftFormat" by name. ci-noop.yml reports the same check for PRs that
-  # don't touch app code.
+  # "SwiftFormat" by name.
   # ponytail: brew installs the latest swiftformat, so a new release that
   # changes output can redden CI until everyone upgrades — pin to a release
   # artifact if that actually happens.
   swiftformat:
     name: SwiftFormat
-    # main is already formatted, since this is required on every PR that touches
-    # app code, so the nightly run would burn a macOS runner for no signal.
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: changed
+    # The nightly is for the floor, and main is already formatted because this
+    # is required on every PR that touches app code.
+    if: github.event_name != 'schedule' && needs.changed.outputs.app == 'true'
     runs-on: macos-26
     timeout-minutes: 10
     steps:
@@ -73,8 +97,9 @@ jobs:
 
   test-ios26:
     name: Unit Tests (iOS 26)
+    needs: changed
     # Not on the nightly schedule: that run is for the floor.
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: github.event_name != 'schedule' && needs.changed.outputs.app == 'true'
     runs-on: macos-26
     timeout-minutes: 60
     steps:
