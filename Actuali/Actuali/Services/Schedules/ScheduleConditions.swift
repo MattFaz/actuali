@@ -11,6 +11,11 @@ struct ScheduleFormFields: Equatable {
     var date: ScheduleDateCondition?
     var postsTransaction: Bool = false
     var customUpcomingLength: String?
+    /// Optional exact date matching for schedules converted from future transactions.
+    var dateOp: String?
+    /// Values preserved as rule actions when a future transaction is converted.
+    var categoryId: String?
+    var notes: String?
 
     /// Trimmed, with blank treated as "no name" — loot-core
     /// `normalizeScheduleName`, which stores null rather than an empty string
@@ -128,7 +133,7 @@ enum ScheduleConditions {
         return [
             update(indices.payee, op: "is", field: "payee", value: fields.payeeId),
             update(indices.account, op: "is", field: "account", value: fields.accountId),
-            update(indices.date, op: "isapprox", field: "date", value: dateValue(date)),
+            update(indices.date, op: fields.dateOp ?? "isapprox", field: "date", value: dateValue(date)),
             // Never merged: the operator is part of what the form edits.
             ["op": fields.amountOp.rawValue, "field": "amount", "value": amountValue(amount)],
         ].compactMap(\.self)

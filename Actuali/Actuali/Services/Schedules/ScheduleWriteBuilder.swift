@@ -40,7 +40,13 @@ enum ScheduleWriteBuilder {
             throw ScheduleWriteError.unsupportedRecurrence
         }
 
-        let actions: [[String: Any]] = [["op": "link-schedule", "value": scheduleId]]
+        var actions: [[String: Any]] = [["op": "link-schedule", "value": scheduleId]]
+        if let categoryId = fields.categoryId {
+            actions.append(["op": "set", "field": "category", "value": categoryId])
+        }
+        if let notes = fields.notes, !notes.isEmpty {
+            actions.append(["op": "set", "field": "notes", "value": notes])
+        }
 
         return try ScheduleWritePlan(
             scheduleId: scheduleId,
@@ -240,3 +246,64 @@ enum ScheduleWriteBuilder {
         return nil
     }
 }
+
+/// Converts an ordinary future transaction into a one-off auto-posting schedule.
+/// Split transactions are intentionally excluded until the poster can recreate
+/// split children; silently flattening one would change its category allocation.
+enum FutureTransactionSchedule {
+    static func isFutureDate(_ date: Date, relativeTo today: Date = Date()) -> Bool {
+        Transaction.yyyymmdd(from: date) > Transaction.yyyymmdd(from: today)
+    }
+
+    static func fields(
+        from form: BudgetStore.TransactionForm,
+        payeeId: String?,
+        name: String,
+        offBudgetAccountIds: Set<String>
+    ) throws -> ScheduleFormFields? {
+        guard form.splits.isEmpty else { return nil }
+        guard let dollars = Double(form.amount),
+              let unsignedCents = Transaction.cents(fromDollars: dollars) else {
+            throw BudgetStoreError.invalidAmount
+        }
+
+        let amountCents: Int
+        switch form.type {
+        case .expense, .transfer:
+            // A transfer schedule is always anchored on its debit/source leg.
+            amountCents = -unsignedCents
+        case .income:
+            amountCents = unsignedCents
+        }
+
+        guard let date = DayDate(yyyymmdd: Transaction.yyyymmdd(from: form.date)) else {
+            throw ScheduleWriteError.dateRequired
+        }
+
+        let categoryId: String?
+        switch form.type {
+        case .expense, .income:
+            categoryId = offBudgetAccountIds.contains(form.accountId) ? nil : form.categoryId
+        case .transfer:
+            categoryId = BudgetStore.transferLegTakesCategory(
+                leg: form.accountId,
+                partner: form.transferToAccountId,
+                offBudgetAccountIds: offBudgetAccountIds
+            ) ? form.categoryId : nil
+        }
+
+        return ScheduleFormFields(
+            name: name,
+            payeeId: payeeId,
+            accountId: form.accountId,
+            amount: .fixed(amountCents),
+            amountOp: .isExactly,
+            date: .fixed(date),
+            postsTransaction: true,
+            dateOp: "is",
+            categoryId: categoryId,
+            notes: form.notes.isEmpty ? nil : form.notes
+        )
+    }
+}
+

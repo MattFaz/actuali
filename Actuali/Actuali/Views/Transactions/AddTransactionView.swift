@@ -43,6 +43,7 @@ struct AddTransactionView: View {
     @State private var cleared: Bool
 
     @State private var isLoading = false
+    @State private var isScheduling = false
     @State private var errorMessage: String?
     @State private var userPickedCategory = false
     @State private var automaticCategoryPreview: BudgetStore.AutomaticCategoryPreview?
@@ -743,11 +744,30 @@ struct AddTransactionView: View {
                         }
                     }
                     .disabled(saveDisabled)
+                    // Keep the separator between the main action and Schedule
+                    // aligned to the full row width, rather than the centered label.
+                    .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+                    .alignmentGuide(.listRowSeparatorTrailing) { $0[.trailing] }
                     // Hardware-keyboard commit, for the iPad case where the
                     // form is filled without ever leaving the keys. Return on
                     // its own belongs to the focused field; ⌘Return is the
                     // whole form. Inert while the save is disabled.
                     .keyboardShortcut(.return, modifiers: .command)
+
+                    if canScheduleTransaction {
+                        Button(action: { Task { await scheduleTransaction() } }) {
+                            HStack {
+                                Spacer()
+                                Text("Schedule")
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                        }
+                        .disabled(saveDisabled)
+                        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+                        .alignmentGuide(.listRowSeparatorTrailing) { $0[.trailing] }
+                        .accessibilityIdentifier("addTransaction.schedule")
+                    }
                 }
 
                 // Cancel sits under the save button rather than in the
@@ -770,6 +790,7 @@ struct AddTransactionView: View {
                     .keyboardShortcut(.cancelAction)
                 }
             }
+            .disabled(isScheduling)
             .readableWidth()
             // The form's default ~35pt top inset is dead space on the
             // header-less tab root; 8pt keeps the first section off the status
@@ -1019,6 +1040,17 @@ struct AddTransactionView: View {
             : String(localized: AddTransactionLocalization.addTransaction, locale: locale)
     }
 
+    /// Scheduling is only offered for new, future, non-split transactions. A split
+    /// must not be flattened into a single scheduled posting.
+    private var canScheduleTransaction: Bool {
+        !isEditing
+            && saveOverride == nil
+            && reviewRequirements.isEmpty
+            && !showsSplitEntry
+            && splitLines.isEmpty
+            && FutureTransactionSchedule.isFutureDate(date)
+    }
+
     private var saveDisabled: Bool {
         if isLoading || amount.isEmpty {
             return true
@@ -1067,6 +1099,62 @@ struct AddTransactionView: View {
                 // The tab-hosted flow has nothing to dismiss: reset for the
                 // next entry and route to the saved transaction's account
                 // list so every add flow lands on the relevant list.
+                resetForm()
+                NotificationRouter.shared.pendingAccountNavigation = selectedAccountId
+            }
+        } catch {
+            errorMessage = PendingImportApprover.localizedErrorMessage(
+                for: error, locale: locale
+            )
+        }
+    }
+
+    private func scheduleTransaction() async {
+        guard canScheduleTransaction else { return }
+        isScheduling = true
+        isLoading = true
+        errorMessage = nil
+        defer {
+            isLoading = false
+            isScheduling = false
+        }
+
+        await applyAutomaticCategory(for: automaticCategoryInput)
+        // Recheck eligibility after async category resolution before snapshotting the form.
+        guard canScheduleTransaction else { return }
+        let form = currentForm()
+
+        do {
+            let payeeId: String?
+            if form.type == .transfer {
+                guard let destinationId = form.transferToAccountId,
+                      let transferPayee = budgetStore.payees.first(where: {
+                          $0.transferAccountId == destinationId && !$0.tombstone
+                      }) else {
+                    throw BudgetStoreError.transferPayeeMissing
+                }
+                payeeId = transferPayee.id
+            } else {
+                payeeId = try await budgetStore.resolvePayeeId(
+                    name: form.payeeName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    editing: nil
+                )
+            }
+
+            let dateText = form.date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted))
+            let timestamp = Int64(Date().timeIntervalSince1970 * 1_000)
+            let scheduleName = "Auto-created future transaction (\(dateText)) - \(timestamp)"
+            guard let fields = try FutureTransactionSchedule.fields(
+                from: form,
+                payeeId: payeeId,
+                name: scheduleName,
+                offBudgetAccountIds: budgetStore.offBudgetAccountIds
+            ) else { return }
+            try await budgetStore.createSchedule(fields: fields)
+
+            if canDismiss {
+                dismiss()
+            } else {
                 resetForm()
                 NotificationRouter.shared.pendingAccountNavigation = selectedAccountId
             }
