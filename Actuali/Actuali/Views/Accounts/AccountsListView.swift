@@ -1157,7 +1157,7 @@ private struct AccountGroupListHeader: View {
                     .font(.body.weight(.bold))
                     .foregroundStyle(isExpanded ? .secondary : .primary)
                 Spacer()
-                AccountGroupTotal(totalText: totalText, total: total, isExpanded: isExpanded)
+                AccountGroupTotal(totalText: totalText, total: total)
                     // Match account balances, which reserve room for the
                     // NavigationLink disclosure chevron at the trailing edge.
                     .padding(.trailing, 24)
@@ -1234,8 +1234,6 @@ private func groupRowBackground(position: AccountGroupRowPosition?) -> AnyView? 
 private struct AccountGroupTotal: View {
     let totalText: String
     let total: Int
-    let isExpanded: Bool
-    @State private var isVisible = true
 
     var body: some View {
         Text(totalText)
@@ -1245,15 +1243,6 @@ private struct AccountGroupTotal: View {
             .lineLimit(1)
             .minimumScaleFactor(0.8)
             .fixedSize(horizontal: true, vertical: false)
-            .opacity(isVisible ? 1 : 0)
-            .offset(x: isVisible ? 0 : 12)
-            .frame(width: isVisible ? nil : 0, alignment: .trailing)
-            .clipped()
-            .accessibilityHidden(!isVisible)
-            .onAppear { isVisible = !isExpanded }
-            .onChange(of: isExpanded) { _, expanded in
-                withAnimation(AppAnimation.disclosure) { isVisible = !expanded }
-            }
     }
 }
 
