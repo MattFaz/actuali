@@ -507,8 +507,8 @@ enum DemoDataSeeder {
         // the Reports (net worth, cash flow, spending vs. average) have real trends.
         let historyMonths = 6
 
-        /// YYYYMMDD for `day` of the month `monthsAgo` before the current month.
-        /// `day` is clamped to a safe 1...28 so it never rolls into the next month.
+        // YYYYMMDD for `day` of the month `monthsAgo` before the current month.
+        // `day` is clamped to a safe 1...28 so it never rolls into the next month.
         func ymd(monthsAgo: Int, day: Int) -> Int {
             let safeDay = min(max(day, 1), 28)
             let base = cal.date(byAdding: .month, value: -monthsAgo, to: now) ?? now
@@ -685,7 +685,7 @@ enum DemoDataSeeder {
             return String(decoding: data, as: UTF8.self)
         }
 
-        /// Next occurrence of a monthly-on-`day` schedule, strictly after today.
+        // Next occurrence of a monthly-on-`day` schedule, strictly after today.
         func nextMonthly(_ day: Int) -> Int {
             if today < day {
                 return yyyymm * 100 + day
