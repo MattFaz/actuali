@@ -82,7 +82,7 @@ final class AccountGroupsGateUITests: XCTestCase {
         XCTAssertTrue(groupHeader.waitForExistence(timeout: 10))
 
         let groupID = String(groupHeader.identifier.dropFirst("account.subgroup.".count))
-        let total = app.descendants(matching: .any)["account.subgroup.total.\\(groupID)"]
+        let total = app.descendants(matching: .any)["account.subgroup.total.\(groupID)"]
 
         if groupHeader.label.localizedCaseInsensitiveContains("expanded") {
             groupHeader.tap()
