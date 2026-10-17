@@ -210,6 +210,7 @@ struct AccountsListView: View {
                     isExpanded: isSearchingAccounts || !collapsedAccountGroups.contains(group.id),
                     isBackgroundClear: accountGroupBackgroundIsClear(group.id),
                     allowsCollapse: !isSearchingAccounts,
+                    totalTrailingPadding: linked ? 24 : 0,
                     action: { toggleAccountGroup(group.id) }
                 )
                 .moveDisabled(true)
@@ -1169,6 +1170,9 @@ private struct AccountGroupListHeader: View {
     let isExpanded: Bool
     let isBackgroundClear: Bool
     let allowsCollapse: Bool
+    /// Sidebar rows have no NavigationLink chevron, so they pass zero to keep
+    /// group totals aligned with the account balances below.
+    var totalTrailingPadding: CGFloat = 24
     let action: () -> Void
 
     var body: some View {
@@ -1184,9 +1188,8 @@ private struct AccountGroupListHeader: View {
                     .foregroundStyle(isExpanded ? .secondary : .primary)
                 Spacer()
                 AccountGroupTotal(totalText: totalText, total: total)
-                    // Match account balances, which reserve room for the
-                    // NavigationLink disclosure chevron at the trailing edge.
-                    .padding(.trailing, 24)
+                    .accessibilityIdentifier("account.subgroup.total.\(group.id)")
+                    .padding(.trailing, totalTrailingPadding)
             }
             .contentShape(Rectangle())
             .overlay(alignment: .leading) {
