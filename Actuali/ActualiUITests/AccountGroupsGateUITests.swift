@@ -46,6 +46,56 @@ final class AccountGroupsGateUITests: XCTestCase {
     }
 
     @MainActor
+    func testAccountGroupTotalRemainsVisibleWhenExpanded() {
+        let app = launch(groupWrites: true)
+        let account = app.staticTexts["Chase Checking"].firstMatch
+        XCTAssertTrue(account.waitForExistence(timeout: 10))
+
+        account.press(forDuration: 1.2)
+        let setGroupButton = app.buttons["Set Account Group"]
+        XCTAssertTrue(setGroupButton.waitForExistence(timeout: 5))
+        setGroupButton.tap()
+
+        let addNewButton = app.buttons["Add New"]
+        XCTAssertTrue(addNewButton.waitForExistence(timeout: 5))
+        addNewButton.tap()
+
+        let nameField = app.alerts.textFields.firstMatch
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+        nameField.tap()
+        nameField.typeText("Balance Regression Group")
+        app.alerts.buttons["Add"].tap()
+
+        let groupName = "Balance Regression Group"
+        let groupHeaderPredicate = NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+            "account.subgroup.",
+            groupName
+        )
+        let groupHeader = app.buttons.matching(groupHeaderPredicate).firstMatch
+        for _ in 0..<5 {
+            if groupHeader.isHittable {
+                break
+            }
+            app.swipeUp()
+        }
+        XCTAssertTrue(groupHeader.waitForExistence(timeout: 10))
+        XCTAssertTrue(groupHeader.isHittable)
+
+        let groupID = String(groupHeader.identifier.dropFirst("account.subgroup.".count))
+        let total = app.descendants(matching: .any)["account.subgroup.total.\(groupID)"]
+
+        if groupHeader.label.localizedCaseInsensitiveContains("expanded") {
+            groupHeader.tap()
+        }
+        XCTAssertTrue(total.waitForExistence(timeout: 5), "a collapsed group keeps its total visible")
+
+        groupHeader.tap()
+        XCTAssertTrue(account.waitForExistence(timeout: 10), "expanding the group restores its account")
+        XCTAssertTrue(total.exists, "an expanded group also keeps its total visible")
+    }
+
+    @MainActor
     func testGroupControlsHiddenWhenServerLacksSupport() {
         assertGroupControls(groupWrites: false)
     }

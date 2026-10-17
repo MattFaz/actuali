@@ -745,7 +745,7 @@ enum SankeyEngine {
     static func sortGraph(_ graph: inout SankeyGraph, categorySort: SankeySortMode, categoryGroups: [CategoryGroup]) {
         let snapshot = graph
 
-        /// Stable value-descending sort (JS Array.sort is stable).
+        // Stable value-descending sort (JS Array.sort is stable).
         func valueSortedKeys() -> [String] {
             snapshot.keys.enumerated().sorted { a, b in
                 let va = getNodeValue(snapshot, a.element)
