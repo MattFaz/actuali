@@ -74,12 +74,13 @@ final class AccountGroupsGateUITests: XCTestCase {
         )
         let groupHeader = app.buttons.matching(groupHeaderPredicate).firstMatch
         for _ in 0..<5 {
-            if groupHeader.exists {
+            if groupHeader.isHittable {
                 break
             }
             app.swipeUp()
         }
         XCTAssertTrue(groupHeader.waitForExistence(timeout: 10))
+        XCTAssertTrue(groupHeader.isHittable)
 
         let groupID = String(groupHeader.identifier.dropFirst("account.subgroup.".count))
         let total = app.descendants(matching: .any)["account.subgroup.total.\(groupID)"]
