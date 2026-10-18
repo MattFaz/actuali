@@ -77,4 +77,27 @@ final class AddTransactionPostSaveUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Chase Checking"].waitForExistence(timeout: 10),
                       "did not land on the account's transaction list after saving")
     }
+
+    /// GH #722: All Accounts already lists the saved transaction, so a save
+    /// started from there returns to it instead of the account's list.
+    @MainActor
+    func testTabHostedAddFlowReturnsToAllAccountsAfterSave() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "0"]
+        app.launch()
+
+        let allAccountsRow = app.buttons.matching(identifier: "accounts.topBox").firstMatch
+        XCTAssertTrue(allAccountsRow.waitForExistence(timeout: 10), "All Accounts row not found")
+        allAccountsRow.tap()
+        XCTAssertTrue(app.navigationBars["All Accounts"].waitForExistence(timeout: 5),
+                      "All Accounts list did not open")
+
+        app.tabBars.buttons["Add"].tap()
+        enterAmountAndSave(in: app)
+
+        XCTAssertTrue(app.navigationBars["All Accounts"].waitForExistence(timeout: 10),
+                      "did not return to All Accounts after saving")
+        XCTAssertFalse(app.navigationBars["Chase Checking"].exists,
+                       "navigated to the account's list instead of All Accounts")
+    }
 }

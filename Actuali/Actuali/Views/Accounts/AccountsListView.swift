@@ -1,8 +1,12 @@
 import SwiftUI
 
-/// Value-based route for the All Accounts transaction list, so the
-/// notification tap can programmatically reset the stack onto it.
-struct AllAccountsRoute: Hashable {}
+/// Value-based routes for the phone stack. Typed rather than a
+/// `NavigationPath` so a notification tap can reset the stack onto All
+/// Accounts, and a save can tell when All Accounts is already showing.
+private enum AccountsRoute: Hashable {
+    case allAccounts
+    case account(Account)
+}
 
 /// Which detail the iPad's split layout is showing. Accounts are held by id,
 /// not by value: the `Account` struct changes on every sync (balances move),
@@ -54,7 +58,7 @@ struct AccountsListView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
     @Environment(\.scenePhase) private var scenePhase
-    @State private var path = NavigationPath()
+    @State private var path: [AccountsRoute] = []
     @State private var showingAddAccount = false
     @State private var showingAccountGroups = false
     @AppStorage("accountsCollapsedAccountGroupIDs") private var collapsedAccountGroupIDs = ""
@@ -228,7 +232,7 @@ struct AccountsListView: View {
     @ViewBuilder
     private func accountCell(_ account: Account, linked: Bool) -> some View {
         if linked {
-            NavigationLink(value: account) { AccountRow(account: account) }
+            NavigationLink(value: AccountsRoute.account(account)) { AccountRow(account: account) }
         } else {
             AccountRow(account: account)
                 .tag(AccountSelection.account(account.id))
@@ -375,7 +379,7 @@ struct AccountsListView: View {
                     List {
                         if !isSearchingAccounts {
                             Section {
-                                NavigationLink(value: AllAccountsRoute()) {
+                                NavigationLink(value: AccountsRoute.allAccounts) {
                                     allAccountsRow
                                 }
                             }
@@ -424,7 +428,7 @@ struct AccountsListView: View {
                             Section {
                                 if isClosedExpanded || isSearchingAccounts {
                                     ForEach(filteredClosedAccounts) { account in
-                                        NavigationLink(value: account) {
+                                        NavigationLink(value: AccountsRoute.account(account)) {
                                             AccountRow(account: account)
                                         }
                                     }
@@ -447,11 +451,11 @@ struct AccountsListView: View {
                     .readableWidth()
                 }
             }
-            .navigationDestination(for: Account.self) { account in
-                AccountTransactionsScreen(account: account)
-            }
-            .navigationDestination(for: AllAccountsRoute.self) { _ in
-                AccountTransactionsScreen()
+            .navigationDestination(for: AccountsRoute.self) { route in
+                switch route {
+                case .allAccounts: AccountTransactionsScreen()
+                case .account(let account): AccountTransactionsScreen(account: account)
+                }
             }
         }
     }
@@ -835,6 +839,7 @@ struct AccountsListView: View {
             .onAppear {
                 consumePendingAllAccountsNavigation()
                 consumePendingAccountNavigation()
+                consumePendingSavedTransactionNavigation()
             }
             .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
                 if pending {
@@ -844,6 +849,11 @@ struct AccountsListView: View {
             .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
                 if accountId != nil {
                     consumePendingAccountNavigation()
+                }
+            }
+            .onChange(of: notificationRouter.pendingSavedTransactionAccount) { _, accountId in
+                if accountId != nil {
+                    consumePendingSavedTransactionNavigation()
                 }
             }
             // Keyed to dataVersion so the summary's month totals follow every
@@ -903,24 +913,40 @@ struct AccountsListView: View {
         if usesSplitLayout {
             selection = .allAccounts
         } else {
-            path = NavigationPath([AllAccountsRoute()])
+            path = [.allAccounts]
         }
         notificationRouter.pendingAllAccountsNavigation = false
     }
 
-    /// A save in the tab-hosted add flow lands here: jump the stack straight
-    /// to the saved transaction's account (replacing anything the user had
-    /// pushed) and clear the signal. onChange covers the usual case; onAppear
-    /// covers a save before this tab was ever created, when the signal is
-    /// already pending as the view first appears.
+    /// A credit card reminder tap lands here: jump the stack straight to the
+    /// card's account (replacing anything the user had pushed) and clear the
+    /// signal. onChange covers the usual case; onAppear covers a tap before
+    /// this tab was ever created, when the signal is already pending as the
+    /// view first appears.
     private func consumePendingAccountNavigation() {
         guard let accountId = notificationRouter.pendingAccountNavigation else { return }
         notificationRouter.pendingAccountNavigation = nil
+        showAccount(accountId)
+    }
+
+    /// A save in the tab-hosted add flow lands here, the same way, except
+    /// that All Accounts stays showing: it already lists the saved
+    /// transaction (GH #722).
+    private func consumePendingSavedTransactionNavigation() {
+        guard let accountId = notificationRouter.pendingSavedTransactionAccount else { return }
+        notificationRouter.pendingSavedTransactionAccount = nil
+        let showsAllAccounts = usesSplitLayout ? selection == .allAccounts : path.last == .allAccounts
+        if !showsAllAccounts {
+            showAccount(accountId)
+        }
+    }
+
+    private func showAccount(_ accountId: String) {
         guard let account = budgetStore.accounts.first(where: { $0.id == accountId }) else { return }
         if usesSplitLayout {
             selection = .account(account.id)
         } else {
-            path = NavigationPath([account])
+            path = [.account(account)]
         }
     }
 }

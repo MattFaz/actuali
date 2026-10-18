@@ -32,12 +32,17 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
     @Published var pendingPrefill: TransactionPrefill?
     @Published var pendingAllAccountsNavigation = false
 
-    /// Account whose transaction list should open after the tab-hosted add
-    /// flow saves (see `AddTransactionView.saveTransaction`). Not set by
-    /// notifications, but this router is the app's cross-tab navigation
-    /// channel: `MainTabView` reacts by selecting the Accounts tab and
+    /// Account whose transaction list should open after a credit card
+    /// reminder tap. `MainTabView` reacts by selecting the Accounts tab and
     /// `AccountsListView` consumes the id by pushing the account.
     @Published var pendingAccountNavigation: String?
+
+    /// Account of the transaction the tab-hosted add flow just saved (see
+    /// `AddTransactionView.saveTransaction`). Not set by notifications, but
+    /// this router is the app's cross-tab navigation channel. Consumed like
+    /// `pendingAccountNavigation`, except that All Accounts stays showing
+    /// because it already lists the transaction (GH #722).
+    @Published var pendingSavedTransactionAccount: String?
 
     /// Tab tag to select after the tab-hosted add flow cancels (the user's
     /// Start Page, GH #281). Also not set by notifications; consumed by
