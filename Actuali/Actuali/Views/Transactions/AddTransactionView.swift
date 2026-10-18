@@ -1068,7 +1068,7 @@ struct AddTransactionView: View {
                 // next entry and route to the saved transaction's account
                 // list so every add flow lands on the relevant list.
                 resetForm()
-                NotificationRouter.shared.pendingAccountNavigation = selectedAccountId
+                NotificationRouter.shared.pendingSavedTransactionAccount = selectedAccountId
             }
         } catch {
             errorMessage = PendingImportApprover.localizedErrorMessage(
