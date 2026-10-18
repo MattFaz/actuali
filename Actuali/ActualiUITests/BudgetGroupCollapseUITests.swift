@@ -6,17 +6,24 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     @MainActor
     func testGroupRowCollapsesAndExpandsCategories() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
+        app.launchArguments = ["-loadDemoData", "-initialTab", "1", "-budgetDisplayStyle", "clean"]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()
 
-        let groceries = app.buttons["Details for Groceries"].firstMatch
-        XCTAssertTrue(groceries.waitForExistence(timeout: 10),
-                      "demo data should show the Essentials categories")
+        let groceries = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Details for Groceries")
+        ).firstMatch
+        let anyEssentialsHeader = groupHeader("Essentials, ", in: app)
+        XCTAssertTrue(anyEssentialsHeader.waitForExistence(timeout: 10))
+        if anyEssentialsHeader.label.contains("collapsed") {
+            anyEssentialsHeader.tap()
+        }
 
         let expandedHeader = groupHeader("Essentials, expanded", in: app)
         XCTAssertTrue(expandedHeader.waitForExistence(timeout: 10))
+        XCTAssertTrue(groceries.waitForExistence(timeout: 10),
+                      "expanding Essentials should restore its category rows")
         expandedHeader.tap()
 
         // Collapsing hides the group's category rows but keeps the totals row.
@@ -31,47 +38,67 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
-    func testToolbarMenuCollapsesAndExpandsAllGroups() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
-        app.launch()
+    func testCleanActualiMenuCollapsesAndExpandsAllGroups() {
+        assertActualiMenuCollapsesAndExpandsAllGroups(displayStyle: "clean")
+    }
 
+    @MainActor
+    func testCompactActualiMenuCollapsesAndExpandsAllGroups() {
+        assertActualiMenuCollapsesAndExpandsAllGroups(displayStyle: "compact")
+    }
+
+    @MainActor
+    private func assertActualiMenuCollapsesAndExpandsAllGroups(displayStyle: String) {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "1", "-budgetDisplayStyle", displayStyle]
+        app.launch()
         app.tabBars.buttons["Budget"].tap()
 
-        let groceries = app.buttons["Details for Groceries"].firstMatch
+        let groceries = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Details for Groceries")
+        ).firstMatch
+        let anyEssentialsHeader = groupHeader("Essentials, ", in: app)
+        XCTAssertTrue(anyEssentialsHeader.waitForExistence(timeout: 10))
+        if anyEssentialsHeader.label.contains("collapsed") {
+            anyEssentialsHeader.tap()
+        }
+        let expandedEssentials = groupHeader("Essentials, expanded", in: app)
+        XCTAssertTrue(expandedEssentials.waitForExistence(timeout: 10))
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
-                      "demo data should show the Essentials categories")
+                      "expanding Essentials should restore its category rows")
 
-        let menuButton = app.buttons["Budget options"]
-        XCTAssertTrue(menuButton.waitForExistence(timeout: 10),
-                      "the budget toolbar should offer the options menu")
-        menuButton.tap()
+        let logoMenu = app.buttons["Actuali menu"]
+        XCTAssertTrue(logoMenu.waitForExistence(timeout: 10))
+        logoMenu.tap()
 
-        let collapseAll = app.buttons["Collapse All Groups"]
-        XCTAssertTrue(collapseAll.waitForExistence(timeout: 10))
+        // Labels, not identifiers: iOS 27 drops identifiers on menu items.
+        let collapseAll = app.buttons["Collapse Groups"]
+        XCTAssertTrue(collapseAll.waitForExistence(timeout: 5),
+                      "the Actuali menu should offer Collapse Groups")
         collapseAll.tap()
 
-        // Every group collapses, not just the first one.
         XCTAssertTrue(groupHeader("Essentials, collapsed", in: app).waitForExistence(timeout: 10))
         XCTAssertTrue(groupHeader("Lifestyle, collapsed", in: app).waitForExistence(timeout: 10),
-                      "collapse all should also collapse the other groups")
-        XCTAssertFalse(groceries.exists,
-                       "collapse all should hide the category rows")
+                      "Collapse Groups should collapse every displayed group")
+        XCTAssertFalse(groceries.exists, "Collapse Groups should hide category rows")
 
-        menuButton.tap()
-
-        let expandAll = app.buttons["Expand All Groups"]
-        XCTAssertTrue(expandAll.waitForExistence(timeout: 10))
+        logoMenu.tap()
+        let expandAll = app.buttons["Expand Groups"]
+        XCTAssertTrue(expandAll.waitForExistence(timeout: 5),
+                      "the Actuali menu should offer Expand Groups")
         expandAll.tap()
 
         XCTAssertTrue(groupHeader("Essentials, expanded", in: app).waitForExistence(timeout: 10))
-        // Transport sits right below Essentials, so it stays on screen; the
-        // lower groups scroll out of the lazy list's accessibility tree once
-        // everything is expanded, so they can't be asserted here.
         XCTAssertTrue(groupHeader("Transport, expanded", in: app).waitForExistence(timeout: 10),
-                      "expand all should also expand the other groups")
+                      "Expand Groups should expand every displayed group")
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
-                      "expand all should restore the category rows")
+                      "Expand Groups should restore category rows")
+
+        expandedEssentials.press(forDuration: 1)
+        XCTAssertFalse(app.buttons["Collapse Groups"].exists,
+                       "group-header long-press menus should not offer the global collapse action")
+        XCTAssertFalse(app.buttons["Expand Groups"].exists,
+                       "group-header long-press menus should not offer the global expand action")
     }
 
     @MainActor
@@ -107,8 +134,9 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         setGroupHidden(true, app: app, group: essentials)
         XCTAssertTrue(essentials.waitForNonExistence(timeout: 5))
 
-        let optionsMenu = app.buttons["Budget options"]
-        optionsMenu.tap()
+        let logoMenu = app.buttons["Actuali menu"]
+        XCTAssertTrue(logoMenu.waitForExistence(timeout: 5))
+        logoMenu.tap()
         let showHidden = app.buttons.matching(
             NSPredicate(
                 format: "label IN %@",
@@ -121,7 +149,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
 
         setGroupHidden(false, app: app, group: essentials)
 
-        optionsMenu.tap()
+        logoMenu.tap()
         XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
         showHidden.tap()
         XCTAssertTrue(essentials.waitForExistence(timeout: 5),
@@ -149,7 +177,8 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         let budgetSettings = app.buttons["Budget View"]
         XCTAssertTrue(budgetSettings.waitForExistence(timeout: 10))
         budgetSettings.tap()
-        let templates = app.switches["Budget Goal Templates"]
+        XCTAssertTrue(app.navigationBars["Budget View"].waitForExistence(timeout: 5))
+        let templates = app.descendants(matching: .any)["budgetViewSettings.goalTemplates"]
         for _ in 0..<5 where !templates.isHittable {
             app.swipeUp()
         }

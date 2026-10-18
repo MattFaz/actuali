@@ -41,13 +41,13 @@ final class BudgetSummaryPinUITests: XCTestCase {
 
         app.tabBars.buttons["Budget"].tap()
 
-        let nextMonth = app.buttons["Next month"]
-        XCTAssertTrue(nextMonth.waitForExistence(timeout: 10),
-                      "the month stepper lives in the pinned header")
+        let monthStepper = app.buttons["budget.monthStepper"]
+        XCTAssertTrue(monthStepper.waitForExistence(timeout: 10),
+                      "the month picker lives in the pinned header")
 
         app.swipeUp()
-        XCTAssertTrue(nextMonth.isHittable,
-                      "the pinned header keeps the stepper tappable while scrolled")
+        XCTAssertTrue(monthStepper.isHittable,
+                      "the pinned header keeps the month picker tappable while scrolled")
     }
 
     @MainActor
@@ -78,28 +78,23 @@ final class BudgetSummaryPinUITests: XCTestCase {
     }
 
     @MainActor private func assertMonthStepperIsCentered(_ app: XCUIApplication) {
-        let header = app.descendants(matching: .any)["budget.monthStepper"]
+        let header = app.buttons["budget.monthStepper"]
         XCTAssertTrue(header.waitForExistence(timeout: 10))
-        let previous = app.buttons["budget.previousMonth"]
-        let next = app.buttons["budget.nextMonth"]
-        XCTAssertTrue(previous.isHittable)
-        XCTAssertTrue(next.isHittable)
-        let midpoint = (previous.frame.minX + next.frame.maxX) / 2
-        XCTAssertEqual(midpoint, app.windows.firstMatch.frame.midX, accuracy: 2)
+        XCTAssertTrue(header.isHittable)
+        XCTAssertEqual(header.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 2)
         let navBar = app.navigationBars.firstMatch
         XCTAssertGreaterThanOrEqual(header.frame.minY, navBar.frame.minY - 1)
         XCTAssertLessThanOrEqual(header.frame.maxY, navBar.frame.maxY + 1)
         XCTAssertFalse(navBar.staticTexts["Budget"].exists)
         let actions = app.buttons["budget.actionsMenu"]
         let options = app.buttons["budget.optionsMenu"]
-        XCTAssertLessThanOrEqual(actions.frame.maxX, previous.frame.minX)
-        XCTAssertGreaterThanOrEqual(options.frame.minX, next.frame.maxX)
+        XCTAssertLessThanOrEqual(actions.frame.maxX, header.frame.minX)
+        XCTAssertGreaterThanOrEqual(options.frame.minX, header.frame.maxX)
 
         let restingFrame = header.frame
         app.swipeUp()
-        XCTAssertEqual(header.frame, restingFrame, "the month header must stay pinned while scrolling")
-        XCTAssertTrue(previous.isHittable)
-        XCTAssertTrue(next.isHittable)
+        XCTAssertEqual(header.frame, restingFrame, "the month picker must stay pinned while scrolling")
+        XCTAssertTrue(header.isHittable)
     }
 
     @MainActor

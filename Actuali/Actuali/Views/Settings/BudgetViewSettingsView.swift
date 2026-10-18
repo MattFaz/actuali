@@ -98,6 +98,7 @@ struct BudgetViewSettingsView: View {
                         Task { await budgetStore.setGoalTemplatesEnabled(enabled) }
                     }
                 ))
+                .accessibilityIdentifier("budgetViewSettings.goalTemplates")
                 .disabled(budgetStore.currentBudgetId == nil)
                 Toggle(String(localized: "Automations Editor"), isOn: Binding(
                     get: { budgetStore.goalTemplatesUIEnabled },
