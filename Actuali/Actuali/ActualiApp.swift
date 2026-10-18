@@ -91,6 +91,7 @@ struct ActualiApp: App {
                             )
                             try? JSONEncoder().encode(stamped)
                                 .write(to: BudgetFileManager.shared.metadataPath(for: local.id))
+                            budgetStore.refreshCurrentLocalBudget()
                         }
                         budgetStore.remoteBudgets = [
                             BudgetStore.RemoteBudget(

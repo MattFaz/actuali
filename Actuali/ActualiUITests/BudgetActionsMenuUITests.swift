@@ -70,16 +70,17 @@ final class BudgetActionsMenuUITests: XCTestCase {
                       "the Actuali menu should show the current budget selector")
         budgetPicker.tap()
 
-        let currentBudget = app.buttons["budgetActions.budget.debug-current-budget"]
-        let otherBudget = app.buttons["budgetActions.budget.debug-other-budget"]
-        let encryptedBudget = app.buttons["budgetActions.budget.debug-encrypted-budget"]
+        // Labels, not identifiers: iOS 27 drops identifiers on menu items.
+        let currentBudget = app.buttons["Demo Budget"]
+        let otherBudget = app.buttons["Other Budget"]
+        let encryptedBudget = app.buttons["Encrypted Budget"]
         XCTAssertTrue(currentBudget.waitForExistence(timeout: 5))
-        XCTAssertTrue(currentBudget.isSelected,
-                      "the current budget should be marked as selected")
+        // isSelected would be the direct check, but iOS 27 drops traits on
+        // menu items; the open budget is the one row that can't be picked.
+        XCTAssertFalse(currentBudget.isEnabled,
+                       "the current budget should not be selectable again")
         XCTAssertTrue(otherBudget.waitForExistence(timeout: 5),
                       "the selector should offer other server budgets")
-        XCTAssertFalse(otherBudget.isSelected,
-                       "other budgets should not be marked as selected")
         XCTAssertTrue(encryptedBudget.waitForExistence(timeout: 5),
                       "encrypted budgets should also be selectable")
         XCTAssertTrue(otherBudget.isEnabled)

@@ -71,7 +71,8 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(logoMenu.waitForExistence(timeout: 10))
         logoMenu.tap()
 
-        let collapseAll = app.buttons["budgetActions.collapseGroups"]
+        // Labels, not identifiers: iOS 27 drops identifiers on menu items.
+        let collapseAll = app.buttons["Collapse Groups"]
         XCTAssertTrue(collapseAll.waitForExistence(timeout: 5),
                       "the Actuali menu should offer Collapse Groups")
         collapseAll.tap()
@@ -82,7 +83,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertFalse(groceries.exists, "Collapse Groups should hide category rows")
 
         logoMenu.tap()
-        let expandAll = app.buttons["budgetActions.expandGroups"]
+        let expandAll = app.buttons["Expand Groups"]
         XCTAssertTrue(expandAll.waitForExistence(timeout: 5),
                       "the Actuali menu should offer Expand Groups")
         expandAll.tap()

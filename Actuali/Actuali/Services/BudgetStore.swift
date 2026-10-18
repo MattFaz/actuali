@@ -342,10 +342,10 @@ final class BudgetStore: ObservableObject {
     @Published var currentBudgetId: String? {
         didSet {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
+            // Outside the change check: re-downloading the open budget keeps
+            // its id but rewrites its metadata.
+            refreshCurrentLocalBudget()
             if currentBudgetId != oldValue {
-                currentLocalBudget = currentBudgetId.flatMap { currentID in
-                    fileManager.listLocalBudgets().first { $0.id == currentID }
-                }
                 dismissTransactionImpactCues()
                 budgetType = .envelope
                 creditCardConfigs = [:]
@@ -1793,6 +1793,14 @@ final class BudgetStore: ObservableObject {
         let isEncrypted: Bool
     }
 
+    /// Re-reads the open budget's metadata. Call after writing metadata.json
+    /// without changing `currentBudgetId`.
+    func refreshCurrentLocalBudget() {
+        currentLocalBudget = currentBudgetId.flatMap { currentID in
+            fileManager.listLocalBudgets().first { $0.id == currentID }
+        }
+    }
+
     func currentCloudFileId() -> String? {
         currentLocalBudget?.cloudFileId
     }
@@ -1896,7 +1904,7 @@ final class BudgetStore: ObservableObject {
     func configureAppleWalletLinksForTesting(defaults: UserDefaults, budgetId: String) {
         appleWalletLinkDefaults = defaults
         _currentBudgetId = Published(initialValue: budgetId)
-        currentLocalBudget = fileManager.listLocalBudgets().first { $0.id == budgetId }
+        refreshCurrentLocalBudget()
     }
 
     /// Test-only: swap in a file manager rooted at a temp directory so

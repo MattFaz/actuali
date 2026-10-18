@@ -3,7 +3,6 @@ import SwiftUI
 /// The Budget tab's Actuali-mark menu for budget selection and budget item actions.
 struct BudgetActionsMenu: View {
     @EnvironmentObject private var budgetStore: BudgetStore
-    @Environment(\.locale) private var locale
     @State private var budgetToUnlock: BudgetStore.RemoteBudget?
 
     var onNewCategory: () -> Void
@@ -32,12 +31,12 @@ struct BudgetActionsMenu: View {
 
             Section {
                 Button(action: onExpandAllGroups) {
-                    Label(ReportStrings.text("Expand Groups", locale: locale, bundle: .main), systemImage: "chevron.down")
+                    Label("Expand Groups", systemImage: "chevron.down")
                 }
                 .accessibilityIdentifier("budgetActions.expandGroups")
 
                 Button(action: onCollapseAllGroups) {
-                    Label(ReportStrings.text("Collapse Groups", locale: locale, bundle: .main), systemImage: "chevron.right")
+                    Label("Collapse Groups", systemImage: "chevron.right")
                 }
                 .accessibilityIdentifier("budgetActions.collapseGroups")
             }
@@ -119,7 +118,9 @@ struct BudgetActionsMenu: View {
                     let isCurrent = currentCloudFileID.map { budget.id == $0 } ?? false
 
                     Button {
-                        selectBudget(budget, currentCloudFileID: currentCloudFileID)
+                        if let lockedBudget = budgetStore.openRemoteBudget(budget) {
+                            budgetToUnlock = lockedBudget
+                        }
                     } label: {
                         if isCurrent {
                             Label(budget.name, systemImage: "checkmark")
@@ -146,20 +147,6 @@ struct BudgetActionsMenu: View {
             }
         }
         .accessibilityIdentifier("budgetActions.budgetPicker")
-    }
-
-    private func selectBudget(
-        _ budget: BudgetStore.RemoteBudget,
-        currentCloudFileID: String?
-    ) {
-        if let currentCloudFileID, budget.id == currentCloudFileID {
-            return
-        }
-        guard budgetStore.downloadingBudgetId == nil else { return }
-
-        if let lockedBudget = budgetStore.openRemoteBudget(budget) {
-            budgetToUnlock = lockedBudget
-        }
     }
 }
 

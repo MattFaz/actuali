@@ -34,6 +34,12 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         app.buttons["Budget View"].tap()
     }
 
+    /// Taps outside an open menu. Needed only after reading items without
+    /// tapping one, since tapping an item already closes the menu.
+    @MainActor private func dismissMenu(_ app: XCUIApplication) {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+    }
+
     @MainActor private func openStyleMenu(_ app: XCUIApplication) {
         app.buttons["Budget options"].tap()
         app.buttons["Style"].tap()
@@ -118,6 +124,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(totals.isSelected, "launch argument seeds Group Totals on")
         XCTAssertFalse(app.buttons["Progress Indicators"].exists)
 
+        dismissMenu(app)
         openStyleMenu(app)
         app.buttons["Clean"].tap()
         openBudgetViewMenu(app)
@@ -164,6 +171,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         openBudgetViewMenu(app)
         XCTAssertTrue(overview.waitForExistence(timeout: 5))
         XCTAssertTrue(overview.isSelected, "Show Overview defaults on for Compact")
+        dismissMenu(app)
         openStyleMenu(app)
         app.buttons["Clean"].tap()
 

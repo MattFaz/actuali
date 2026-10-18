@@ -413,6 +413,17 @@ struct BudgetView: View {
             monthStepper
         }
         ToolbarItem(placement: .topBarLeading) {
+            // Reorder mode replaces the table, so it keeps a visible way out
+            // beside the menu item that turned it on.
+            if isReordering {
+                Button("Done") {
+                    toggleReordering()
+                }
+                .fontWeight(.semibold)
+                .accessibilityIdentifier("budget.reorderDone")
+            }
+        }
+        ToolbarItem(placement: .topBarLeading) {
             if budgetStore.currentBudgetMonth != nil {
                 BudgetActionsMenu(
                     onNewCategory: { newBudgetItem = .category },

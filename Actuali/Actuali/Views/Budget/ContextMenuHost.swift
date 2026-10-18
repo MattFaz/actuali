@@ -41,7 +41,6 @@ struct ContextMenuHostAction {
                 handler: { onSetHidden(!isHidden) }
             ))
         }
-        // Expand/Collapse Groups are global actions in the Actuali menu.
         return items
     }
 }

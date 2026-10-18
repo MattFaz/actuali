@@ -19,10 +19,11 @@ final class CategoryReorderModeUITests: XCTestCase {
     }
 
     @MainActor private func enterReorderMode(_ app: XCUIApplication) {
-        let menu = app.buttons["budget.actionsMenu"]
+        let menu = app.buttons["Actuali menu"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         menu.tap()
-        let reorder = app.buttons["budgetOptions.reorder"]
+        // Labels, not identifiers: iOS 27 drops identifiers on menu items.
+        let reorder = app.buttons["Reorder Items"]
         if !reorder.waitForExistence(timeout: 5) {
             // The menu occasionally misses the first tap on a cold launch.
             menu.tap()
@@ -33,13 +34,9 @@ final class CategoryReorderModeUITests: XCTestCase {
     }
 
     @MainActor private func leaveReorderMode(_ app: XCUIApplication) {
-        let menu = app.buttons["budget.actionsMenu"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 5))
-        menu.tap()
-        let reorder = app.buttons["budgetOptions.reorder"]
-        XCTAssertTrue(reorder.waitForExistence(timeout: 5), "the Actuali menu offers Done Reordering")
-        reorder.tap()
-        XCTAssertTrue(handle(app, "Groceries").waitForNonExistence(timeout: 5), "reorder mode is off")
+        app.buttons["budget.reorderDone"].tap()
+        XCTAssertTrue(app.buttons["budget.reorderDone"].waitForNonExistence(timeout: 5), "reorder mode is off")
+        XCTAssertFalse(handle(app, "Groceries").exists)
     }
 
     private func spent(_ app: XCUIApplication, _ name: String) -> XCUIElement {
