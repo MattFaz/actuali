@@ -5537,10 +5537,29 @@ final class BudgetStore: ObservableObject {
                     continue
                 }
             }
+            // A transfer takes its other leg with it, as upstream's
+            // transfer.ts removeTransfer does. fetchTransaction skips split
+            // children, so a child leg is left alone and its split stays whole.
+            // shortcut: upstream also unlinks that child (transferred_id and
+            // payee to null); add it with a child-inclusive fetch if needed.
+            if !tx.isParent, let partnerId = tx.transferId, let database {
+                do {
+                    if var partner = try await database.fetchTransaction(id: partnerId) {
+                        partner.tombstone = true
+                        deleted.append(partner)
+                    }
+                } catch {
+                    self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
+                    continue
+                }
+            }
             var copy = tx
             copy.tombstone = true
             deleted.append(copy)
         }
+        // Selecting both legs of a transfer reaches each row twice.
+        var seen = Set<String>()
+        deleted = deleted.filter { seen.insert($0.id).inserted }
         do {
             try await syncClient.updateTransactions(deleted, changedFields: ["tombstone"])
         } catch {
