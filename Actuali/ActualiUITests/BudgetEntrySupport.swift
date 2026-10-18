@@ -1,9 +1,9 @@
 import XCTest
 
+@MainActor
 extension XCTestCase {
     /// Opens the category's edit-budget sheet and types a new amount.
     /// The amount field interprets bare digits as cents ("100" → 1.00).
-    @MainActor
     func setBudget(_ app: XCUIApplication, category: String, centsKeystrokes: String) {
         let editButton = app.buttons["Edit budgeted amount for \(category)"]
         var scrollsLeft = 8
@@ -47,7 +47,6 @@ extension XCTestCase {
 
     /// Keypad taps cost over a second each, so delete only what's there — an
     /// empty field reports its "0.00" placeholder as the value.
-    @MainActor
     private func clearAmount(_ app: XCUIApplication, field: XCUIElement) {
         let deleteKey = app.keys["Delete"]
         var deletesLeft = 12
@@ -59,12 +58,10 @@ extension XCTestCase {
 
     /// Digits only, so "1.00" and "1,000.00" compare cleanly against the
     /// keystrokes that produced them whatever the locale's separators are.
-    @MainActor
     private func digits(of field: XCUIElement) -> String {
         ((field.value as? String) ?? "").filter(\.isNumber)
     }
 
-    @MainActor
     private func waitForDigits(_ expected: String, in field: XCUIElement,
                                timeout: TimeInterval = 3) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)

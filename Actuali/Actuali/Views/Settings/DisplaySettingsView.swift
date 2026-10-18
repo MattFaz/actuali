@@ -203,8 +203,7 @@ struct DisplaySettingsView: View {
         // as fact: a budget switch cancels this task mid-read and resumes
         // after currentBudgetId has already flipped, so clearing the default
         // here would wipe the *incoming* budget's preference.
-        guard let pages = try? await database.fetchDashboardPages() else { return }
-        guard Self.shouldPublish(
+        guard let pages = try? await database.fetchDashboardPages(), Self.shouldPublish(
             request: request,
             currentRequest: currentLoadRequest,
             taskIsCancelled: Task.isCancelled

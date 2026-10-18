@@ -1182,10 +1182,7 @@ actor ActualServerClient {
         let body = SimpleFINTransactionsRequest(accountId: accountIds, startDate: startDates)
         guard let response: SimpleFINTransactionsResponse = try await postBankSync(
             path: "/simplefin/transactions", body: body
-        ) else {
-            throw ActualServerError.invalidResponse
-        }
-        guard let data = response.data else { throw ActualServerError.invalidResponse }
+        ), let data = response.data else { throw ActualServerError.invalidResponse }
         return data
     }
 

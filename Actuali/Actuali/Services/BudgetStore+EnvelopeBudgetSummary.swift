@@ -11,8 +11,7 @@ struct EnvelopeBudgetSummary: Equatable, Sendable {
 extension BudgetStore {
     /// Reads the summary values produced by the canonical budget walk.
     func fetchEnvelopeBudgetSummary(_ month: String) async -> EnvelopeBudgetSummary? {
-        guard Self.isValidBudgetMonth(month) else { return nil }
-        guard let database = databaseForLogger,
+        guard Self.isValidBudgetMonth(month), let database = databaseForLogger,
               let data = try? await database.fetchEnvelopeBudgetSummary(month: month) else {
             return nil
         }

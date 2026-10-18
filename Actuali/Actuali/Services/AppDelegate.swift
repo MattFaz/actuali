@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     static func caretScrollTarget(for textView: UITextView) -> (UIScrollView, CGRect)? {
         guard let end = textView.selectedTextRange?.end,
               let scrollView = sequence(first: textView.superview, next: { $0?.superview })
-              .lazy.compactMap({ $0 as? UIScrollView }).first
+                  .lazy.compactMap({ $0 as? UIScrollView }).first
         else { return nil }
         // A field at its line limit scrolls inside itself, and may not have
         // caught up with the caret yet, so never aim the form past the field.

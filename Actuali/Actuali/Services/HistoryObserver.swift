@@ -95,9 +95,7 @@ final class HistoryObserver {
         // read if huge budgets make it slow.
         guard let snapshot = try? await store.fetchAllLiveTransactions(
             remoteChangesAfter: hasBaseline ? previousMessageID : nil
-        ) else { return }
-        guard generation == baselineGeneration else { return }
-        guard budgetID == store.currentBudgetId else { return }
+        ), generation == baselineGeneration, budgetID == store.currentBudgetId else { return }
         previousMessageID = snapshot.messageID
 
         let current = Dictionary(uniqueKeysWithValues: snapshot.transactions.map { ($0.id, $0) })

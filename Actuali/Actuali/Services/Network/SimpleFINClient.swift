@@ -105,7 +105,7 @@ struct SimpleFINAccessKey: Sendable, Equatable {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let data = Data(base64Encoded: trimmed, options: [.ignoreUnknownCharacters]),
               let decoded = String(data: data, encoding: .utf8)?
-              .trimmingCharacters(in: .whitespacesAndNewlines),
+                  .trimmingCharacters(in: .whitespacesAndNewlines),
               let url = URL(string: decoded),
               url.scheme?.lowercased() == "https",
               url.host != nil else {

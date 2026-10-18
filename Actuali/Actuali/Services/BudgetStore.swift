@@ -516,8 +516,7 @@ final class BudgetStore: ObservableObject {
     /// preference. Refreshing the local budget after the write switches reads
     /// between `zero_budgets` and `reflect_budgets` immediately.
     func setBudgetType(_ type: BudgetType) async {
-        guard let budgetId = currentBudgetId, let database, let syncClient else { return }
-        guard type != budgetType else { return }
+        guard let budgetId = currentBudgetId, let database, let syncClient, type != budgetType else { return }
 
         let previous = budgetType
         budgetType = type
@@ -1162,8 +1161,7 @@ final class BudgetStore: ObservableObject {
     /// Publishes `updated` first, then persists it. A failed write rolls the
     /// published value back and surfaces the error.
     private func persistCardAccountMappings(_ updated: [String: String]) async {
-        guard currentBudgetId != nil else { return }
-        guard updated != cardAccountMappings else { return }
+        guard currentBudgetId != nil, updated != cardAccountMappings else { return }
         let previous = cardAccountMappings
         cardAccountMappings = updated
         guard let syncClient else {
@@ -1713,10 +1711,8 @@ final class BudgetStore: ObservableObject {
 
     func categoryBudgetForIntent(categoryId: String) async -> CategoryBudget? {
         let currentMonth = currentMonthString()
-        if let currentBudgetMonth, currentBudgetMonth.month == currentMonth {
-            if let found = currentBudgetMonth.categoryBudgets.first(where: { $0.categoryId == categoryId }) {
-                return found
-            }
+        if let currentBudgetMonth, currentBudgetMonth.month == currentMonth, let found = currentBudgetMonth.categoryBudgets.first(where: { $0.categoryId == categoryId }) {
+            return found
         }
         do {
             let db: BudgetDatabase
@@ -4408,8 +4404,7 @@ final class BudgetStore: ObservableObject {
         } ?? [:]
         if !storedWalletLinks.isEmpty {
             do {
-                guard isCurrentRequest() else { return nil }
-                guard let capturedBudgetId else { return nil }
+                guard isCurrentRequest(), let capturedBudgetId else { return nil }
                 let result = try migrateLegacyAppleWalletLinksIfNeeded(
                     database: database,
                     budgetId: capturedBudgetId,
@@ -4547,8 +4542,7 @@ final class BudgetStore: ObservableObject {
             .map(\.id)
         let authorized = walletIds.isEmpty ? false : await appleWalletStore.availability() == .authorized
         updateWalletBackgroundDelivery(enabled: authorized)
-        guard authorized else { return [] }
-        guard let result = try? await syncBankAccounts(accountIds: walletIds),
+        guard authorized, let result = try? await syncBankAccounts(accountIds: walletIds),
               !result.importedTransactions.isEmpty else { return [] }
 
         return result.importedTransactions
@@ -5651,20 +5645,18 @@ final class BudgetStore: ObservableObject {
         // Handle transfers: duplicate both legs. A missing partner falls
         // through to the standard branch (the copy can't keep the transfer
         // link); a read error must surface, not silently degrade the copy.
-        if let transferId = transaction.transferId, !transferId.isEmpty, let database {
-            if let partner = try await database.fetchTransaction(id: transferId) {
-                let newSourceId = UUID().uuidString
-                let newTargetId = UUID().uuidString
+        if let transferId = transaction.transferId, !transferId.isEmpty, let database, let partner = try await database.fetchTransaction(id: transferId) {
+            let newSourceId = UUID().uuidString
+            let newTargetId = UUID().uuidString
 
-                var newSource = makeDuplicateTransaction(from: transaction, id: newSourceId, sortOrder: sortOrder)
-                newSource.transferId = newTargetId
+            var newSource = makeDuplicateTransaction(from: transaction, id: newSourceId, sortOrder: sortOrder)
+            newSource.transferId = newTargetId
 
-                var newTarget = makeDuplicateTransaction(from: partner, id: newTargetId, sortOrder: sortOrder)
-                newTarget.transferId = newSourceId
+            var newTarget = makeDuplicateTransaction(from: partner, id: newTargetId, sortOrder: sortOrder)
+            newTarget.transferId = newSourceId
 
-                try await syncClient.createTransfer(source: newSource, target: newTarget)
-                return
-            }
+            try await syncClient.createTransfer(source: newSource, target: newTarget)
+            return
         }
 
         // Handle split parent
@@ -8568,10 +8560,7 @@ final class BudgetStore: ObservableObject {
                         // runs on. A length bound doesn't make that impossible,
                         // but it rules out the pasted-blob case; the web app has
                         // the same exposure.
-                        guard text.count <= 500 else {
-                            throw BudgetStoreError.ruleInvalidPattern(pattern: text)
-                        }
-                        guard (try? NSRegularExpression(pattern: text.lowercased())) != nil else {
+                        guard text.count <= 500, (try? NSRegularExpression(pattern: text.lowercased())) != nil else {
                             throw BudgetStoreError.ruleInvalidPattern(pattern: text)
                         }
                     }

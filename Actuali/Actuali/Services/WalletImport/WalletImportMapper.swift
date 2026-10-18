@@ -27,8 +27,7 @@ enum WalletImportMapper {
     /// - Returns: `nil` for rejected transactions (the money never moved) and
     ///   for amounts that don't fit integer cents.
     static func candidate(from transaction: AppleWalletTransaction) -> WalletImportCandidate? {
-        guard transaction.status != .rejected else { return nil }
-        guard let unsignedCents = cents(from: transaction.amount) else { return nil }
+        guard transaction.status != .rejected, let unsignedCents = cents(from: transaction.amount) else { return nil }
 
         // Wallet merchant strings carry the same processor noise as the
         // Shortcuts flow ("SQ *", store numbers) — normalize the same way.
