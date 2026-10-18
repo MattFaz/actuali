@@ -638,7 +638,7 @@ enum MonteCarloEngine {
             : potTaxRates.reduce(0, Swift.max)
         let minNetFactor = 1 - maxTaxRate
 
-        /// Progressive tax on an annual taxable income, in today's money
+        // Progressive tax on an annual taxable income, in today's money
         func bandTax(_ taxableIncome: Double) -> Double {
             var tax = 0.0
             for bandIndex in 0..<taxBands.count {
@@ -651,9 +651,9 @@ enum MonteCarloEngine {
             return tax
         }
 
-        /// Tax due on the takes currently in potTakes. Band thresholds are in
-        /// today's money, so taxable income is deflated by the replay's
-        /// inflation path before banding
+        // Tax due on the takes currently in potTakes. Band thresholds are in
+        // today's money, so taxable income is deflated by the replay's
+        // inflation path before banding
         func taxForTakes(_ cumulativeInflationNow: Double) -> Double {
             if !hasTax {
                 return 0
@@ -674,8 +674,8 @@ enum MonteCarloEngine {
 
         var potBalances = [Double](repeating: 0, count: potCount)
 
-        /// Split a gross withdrawal across pots per the configured strategy,
-        /// writing each pot's take into potTakes (upstream computeTakes)
+        // Split a gross withdrawal across pots per the configured strategy,
+        // writing each pot's take into potTakes (upstream computeTakes)
         func computeTakes(_ grossTotal: Double, _ year: Int, _ accessibleTotal: Double, _ lastAccessibleIndex: Int) {
             for potIndex in 0..<potCount {
                 potTakes[potIndex] = 0

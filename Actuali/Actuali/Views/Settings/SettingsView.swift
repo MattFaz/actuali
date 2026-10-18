@@ -16,6 +16,21 @@ struct SettingsLinkItem {
     let url: URL
 }
 
+/// Label for external `Link` rows: icon keeps the accent tint, text stays
+/// primary so it matches the `NavigationLink` rows.
+private struct LinkRowLabel: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Label {
+            Text(title).foregroundStyle(Color.primary)
+        } icon: {
+            Image(systemName: systemImage).foregroundStyle(Color.accentColor)
+        }
+    }
+}
+
 struct SettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
@@ -32,6 +47,7 @@ struct SettingsView: View {
         var items = [
             SettingsItem(title: String(localized: "Bank Sync (SimpleFIN & Wallet)"), systemImage: "building.columns", destination: { AnyView(BankSyncSetupView()) }),
             SettingsItem(title: String(localized: "Bills & Calendar"), systemImage: "calendar", destination: { AnyView(BillsCalendarView()) }),
+            SettingsItem(title: String(localized: "History"), systemImage: "clock.arrow.circlepath", destination: { AnyView(HistoryView()) }),
             SettingsItem(title: String(localized: "Scheduled Transactions"), systemImage: "calendar.badge.clock", destination: { AnyView(SchedulesListView()) }),
             SettingsItem(title: String(localized: "Tags"), systemImage: "number", destination: { AnyView(TagsListView()) }),
         ]
@@ -112,17 +128,11 @@ struct SettingsView: View {
                             Label(item.title, systemImage: item.systemImage)
                         }
                     }
-
-                    NavigationLink {
-                        HistoryView()
-                    } label: {
-                        Label("History", systemImage: "clock.arrow.circlepath")
-                    }
                 }
                 Section {
                     ForEach(Self.shortcutItems, id: \.title) { item in
                         Link(destination: item.url) {
-                            Label(item.title, systemImage: item.systemImage)
+                            LinkRowLabel(title: item.title, systemImage: item.systemImage)
                         }
                     }
                 } header: {
@@ -133,7 +143,7 @@ struct SettingsView: View {
                 Section(String(localized: "Information")) {
                     ForEach(Self.informationLinkItems, id: \.title) { item in
                         Link(destination: item.url) {
-                            Label(item.title, systemImage: item.systemImage)
+                            LinkRowLabel(title: item.title, systemImage: item.systemImage)
                         }
                         .accessibilityIdentifier("settings.privacyPolicy")
                     }
