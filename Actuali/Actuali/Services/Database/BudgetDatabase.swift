@@ -2376,8 +2376,7 @@ final class BudgetDatabase: Sendable {
             let groupsById = Dictionary(uniqueKeysWithValues: walk.groups.map { ($0.id, $0) })
 
             let allCategoryBudgets = categories.compactMap { cat -> CategoryBudget? in
-                guard cat.isIncome != 1 else { return nil }
-                guard let group = groupsById[cat.catGroup ?? ""] else { return nil }
+                guard cat.isIncome != 1, let group = groupsById[cat.catGroup ?? ""] else { return nil }
                 let budgeted = targetBudgets[cat.id]?.amount ?? 0
                 let spent = targetSpent[cat.id] ?? 0
                 let available = runningLeftover[cat.id] ?? (budgeted + spent)
@@ -2407,8 +2406,7 @@ final class BudgetDatabase: Sendable {
             // UI's Income group. "Received" is the month's net activity on
             // the category (income transactions are positive amounts).
             let allIncomeCategories = categories.compactMap { cat -> IncomeCategory? in
-                guard cat.isIncome == 1 else { return nil }
-                guard let group = groupsById[cat.catGroup ?? ""] else { return nil }
+                guard cat.isIncome == 1, let group = groupsById[cat.catGroup ?? ""] else { return nil }
 
                 return IncomeCategory(
                     month: month,
@@ -2810,8 +2808,7 @@ final class BudgetDatabase: Sendable {
             }
 
             let row = try Row.fetchOne(db, sql: "SELECT clock FROM messages_clock WHERE id = 1")
-            guard let clockJson: String = row?["clock"] else { return nil }
-            guard let data = clockJson.data(using: .utf8) else { return nil }
+            guard let clockJson: String = row?["clock"], let data = clockJson.data(using: .utf8) else { return nil }
 
             // Try to decode as our ClockRecord format first
             if let record = try? JSONDecoder().decode(ClockRecord.self, from: data) {

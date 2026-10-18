@@ -87,8 +87,7 @@ struct Transaction: Identifiable, Hashable, Codable {
     /// when the other side is off-budget — money leaving the budget still
     /// needs one (GH #123, #104).
     func needsCategory(offBudgetAccountIds: Set<String>) -> Bool {
-        guard categoryId == nil, !isParent else { return false }
-        guard !offBudgetAccountIds.contains(accountId) else { return false }
+        guard categoryId == nil, !isParent, !offBudgetAccountIds.contains(accountId) else { return false }
         if let transferAcct {
             return offBudgetAccountIds.contains(transferAcct)
         }

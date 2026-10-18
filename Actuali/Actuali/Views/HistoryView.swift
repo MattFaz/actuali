@@ -167,8 +167,7 @@ struct HistoryView: View {
         let primaryRootID = primary.parentId ?? primary.id
         for changedSnapshot in action.after {
             let changedRootID = changedSnapshot.parentId ?? changedSnapshot.id
-            guard changedRootID == primaryRootID else { continue }
-            guard let before = action.before.first(where: { $0.id == changedSnapshot.id }) else {
+            guard changedRootID == primaryRootID, let before = action.before.first(where: { $0.id == changedSnapshot.id }) else {
                 continue
             }
 

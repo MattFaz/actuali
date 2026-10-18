@@ -132,8 +132,7 @@ enum BankSyncReconciler {
         // Pass 2: same payee. Runs across every candidate before pass 3 so a
         // confident match always wins the row a vaguer one would have taken.
         for index in pending.indices {
-            guard pending[index].match == nil, let payeeId = pending[index].candidate.payeeId else { continue }
-            guard let match = nearestMatch(
+            guard pending[index].match == nil, let payeeId = pending[index].candidate.payeeId, let match = nearestMatch(
                 in: pending[index].window,
                 excluding: matchedIds,
                 payeeId: payeeId
@@ -145,8 +144,7 @@ enum BankSyncReconciler {
         // Pass 3: whatever is left in the window — same account, same amount,
         // within a week.
         for index in pending.indices {
-            guard pending[index].match == nil else { continue }
-            guard let match = nearestMatch(
+            guard pending[index].match == nil, let match = nearestMatch(
                 in: pending[index].window,
                 excluding: matchedIds
             ) else { continue }

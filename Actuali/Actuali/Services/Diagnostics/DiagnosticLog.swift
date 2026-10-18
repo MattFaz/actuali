@@ -222,8 +222,7 @@ actor DiagnosticLog {
     }
 
     func recordServerRoute(_ route: String, sessionID: SessionID? = nil) {
-        guard sessionID == nil || sessionID == self.sessionID else { return }
-        guard route == "primary" || route == "fallback" else { return }
+        guard sessionID == nil || sessionID == self.sessionID, route == "primary" || route == "fallback" else { return }
         serverRoute = route
         append("ROUTE " + route)
     }

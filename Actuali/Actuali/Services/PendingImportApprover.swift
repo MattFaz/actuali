@@ -170,10 +170,7 @@ final class PendingImportApprover {
             throw ApproveError.invalidAmount
         }
 
-        guard let currentBudgetId = store.currentBudgetId else {
-            throw ApproveError.budgetIdentityRequired
-        }
-        guard let originBudgetId = item.originBudgetId else {
+        guard let currentBudgetId = store.currentBudgetId, let originBudgetId = item.originBudgetId else {
             throw ApproveError.budgetIdentityRequired
         }
         guard originBudgetId == currentBudgetId else {

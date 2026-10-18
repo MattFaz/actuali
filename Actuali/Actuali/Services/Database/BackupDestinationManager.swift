@@ -132,8 +132,7 @@ actor BackupDestinationManager {
 
     /// Prunes a mirrored archive when retention removes it from local backups.
     func removeMirroredArchive(budgetId: String, filename: String) async {
-        guard let folderURL = resolveDestinationURL() else { return }
-        guard folderURL.startAccessingSecurityScopedResource() else { return }
+        guard let folderURL = resolveDestinationURL(), folderURL.startAccessingSecurityScopedResource() else { return }
         defer { folderURL.stopAccessingSecurityScopedResource() }
 
         let targetURL = folderURL.appendingPathComponent("Actuali/\(budgetId)/\(filename)")
@@ -178,18 +177,16 @@ actor BackupDestinationManager {
             return nil
         }
 
-        if isStale {
-            if url.startAccessingSecurityScopedResource() {
-                defer { url.stopAccessingSecurityScopedResource() }
-                if let refreshed = try? url.bookmarkData(
-                    options: [],
-                    includingResourceValuesForKeys: nil,
-                    relativeTo: nil
-                ) {
-                    userDefaults.set(refreshed, forKey: Self.bookmarkKey)
-                    userDefaults.set(url.lastPathComponent, forKey: Self.nameKey)
-                    logger.info("Refreshed stale security-scoped bookmark")
-                }
+        if isStale, url.startAccessingSecurityScopedResource() {
+            defer { url.stopAccessingSecurityScopedResource() }
+            if let refreshed = try? url.bookmarkData(
+                options: [],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            ) {
+                userDefaults.set(refreshed, forKey: Self.bookmarkKey)
+                userDefaults.set(url.lastPathComponent, forKey: Self.nameKey)
+                logger.info("Refreshed stale security-scoped bookmark")
             }
         }
 

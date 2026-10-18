@@ -104,13 +104,9 @@ enum CategoryFundingAutomation {
                   defaults: defaults
               ), configuration.isEnabled,
               let selectedAccountId = configuration.accountId,
-              let database = budgetStore.databaseForLogger else {
-            return
-        }
-
-        guard let selectedAccount = budgetStore.accounts.first(where: {
-            $0.id == selectedAccountId
-        }), !selectedAccount.closed, !selectedAccount.offBudget else {
+              let database = budgetStore.databaseForLogger, let selectedAccount = budgetStore.accounts.first(where: {
+                  $0.id == selectedAccountId
+              }), !selectedAccount.closed, !selectedAccount.offBudget else {
             return
         }
 
@@ -128,15 +124,11 @@ enum CategoryFundingAutomation {
 
         guard let targetCategory = budgetStore.categoryGroups
             .flatMap(\.categories)
-            .first(where: { $0.id == transaction.categoryId }) else {
-            return
-        }
-
-        guard shouldProcess(
-            transaction,
-            selectedAccountId: selectedAccountId,
-            isIncomeCategory: targetCategory.isIncome
-        ) else { return }
+            .first(where: { $0.id == transaction.categoryId }), shouldProcess(
+                transaction,
+                selectedAccountId: selectedAccountId,
+                isIncomeCategory: targetCategory.isIncome
+            ) else { return }
 
         let month = String(
             format: "%04d-%02d",
