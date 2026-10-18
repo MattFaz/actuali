@@ -31,17 +31,23 @@ jobs:
   # own job (not folded into the test jobs) so branch protection can require
   # "SwiftFormat" by name. ci-noop.yml reports the same check for PRs that
   # don't touch app code.
-  # ponytail: brew installs the latest swiftformat, so a new release that
-  # changes output can redden CI until everyone upgrades — pin to a release
-  # artifact if that actually happens.
+  # Pinned release artifact: brew's rolling latest once added default-on rules
+  # (0.64.0 did) and reddened every open PR. Upgrading is now deliberate:
+  # bump the version here, `brew upgrade swiftformat && swiftformat Actuali`
+  # locally (brew pin swiftformat holds local to the same release), and land
+  # the mechanical reformat in the same PR.
   swiftformat:
     name: SwiftFormat
     runs-on: macos-26
     timeout-minutes: 10
+    env:
+      SWIFTFORMAT_VERSION: 0.64.0
     steps:
       - uses: actions/checkout@v7
-      - run: brew install swiftformat
-      - run: swiftformat --lint --strict Actuali
+      - run: |
+          curl -sL -o swiftformat.zip "https://github.com/nicklockwood/SwiftFormat/releases/download/${SWIFTFORMAT_VERSION}/swiftformat.zip"
+          unzip -o swiftformat.zip
+      - run: ./swiftformat --lint --strict Actuali
 
   test-ios26:
     name: Unit Tests (iOS 26)

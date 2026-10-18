@@ -110,9 +110,9 @@ enum ConditionsFilter {
 
         guard let value = decodeNumber(c.value) else { return true }
 
-        /// Directional filters gate on sign and compare the magnitude:
-        /// outflow negates the (negative) amount so the user-entered positive
-        /// value lines up.
+        // Directional filters gate on sign and compare the magnitude:
+        // outflow negates the (negative) amount so the user-entered positive
+        // value lines up.
         func apply(_ cmp: (Double, Double) -> Bool) -> Bool {
             if options.outflow == true {
                 return tx.amount < 0 && cmp(Double(-tx.amount), value)
@@ -182,8 +182,7 @@ enum ConditionsFilter {
             // SQL `!=` lets NULL rows through (`x != v OR x IS NULL`).
             return txId != condValue
         case "oneOf":
-            guard let list = decodeStringArray(c.value), !list.isEmpty else { return false }
-            guard let txId, !txId.isEmpty else { return false }
+            guard let list = decodeStringArray(c.value), !list.isEmpty, let txId, !txId.isEmpty else { return false }
             return list.contains(txId)
         case "notOneOf":
             guard let list = decodeStringArray(c.value), !list.isEmpty else { return false }
@@ -237,8 +236,7 @@ enum ConditionsFilter {
             return matchText(txValue, op: c.op, value: decodeString(c.value))
         case "hasTags", "hasAnyTag":
             let tags = TagFilter.extractTags(decodeString(c.value) ?? "")
-            guard !tags.isEmpty else { return false }
-            guard let notes = txValue else { return false }
+            guard !tags.isEmpty, let notes = txValue else { return false }
             let hit = { (tag: String) in
                 TagFilter.notesContainTag(notes, tag: tag, caseSensitive: true)
             }

@@ -115,6 +115,19 @@ struct BudgetViewTests {
         #expect(MonthPicker.shortTitle(for: "2026-09", locale: Locale(identifier: "de_DE")) == "Sept. 2026")
     }
 
+    @Test func monthPickerGridHelpersUseStableMonthKeysAndLocale() {
+        let currentYear = Calendar.current.component(.year, from: Date())
+        #expect(MonthPicker.monthKey(year: 2026, month: 1) == "2026-01")
+        #expect(MonthPicker.year(fromMonth: "2026-01") == 2026)
+        #expect(MonthPicker.year(fromMonth: "nonsense") == currentYear)
+        let september = MonthPicker.monthSymbol(
+            year: 2026,
+            month: 9,
+            locale: Locale(identifier: "en_US")
+        )
+        #expect(september == "Sep")
+    }
+
     @Test(arguments: [
         "2026-00", "2026-13", "2026-9", "26-09",
         "2026--09", "2026-09-", "2026-+9"

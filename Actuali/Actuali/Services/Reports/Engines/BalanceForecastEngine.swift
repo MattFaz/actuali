@@ -210,8 +210,7 @@ enum BalanceForecastEngine {
             let amount = schedule.amount?.postAmount ?? 0
             let posted = postedDatesBySchedule[schedule.id] ?? []
             for date in occurrenceDates(for: schedule, endDate: forecastEnd) {
-                guard date >= firstForecast, date <= forecastEnd else { continue }
-                guard !posted.contains(date.yyyymmdd) else { continue }
+                guard date >= firstForecast, date <= forecastEnd, !posted.contains(date.yyyymmdd) else { continue }
                 addOccurrenceLeg(
                     accountId: schedule.accountId, amount: amount,
                     payeeId: schedule.payeeId, categoryId: schedule.categoryId, date: date

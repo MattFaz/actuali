@@ -3694,6 +3694,53 @@
         }
       }
     },
+    "Previous year" : {
+      "comment": "Accessibility label for the previous-year button in the month picker",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vorheriges Jahr"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous year"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Año anterior"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Année précédente"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anno precedente"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vorig jaar"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ano anterior"
+          }
+        }
+      }
+    },
     "Principal" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -14764,6 +14811,65 @@
         }
       }
     },
+    "Actions" : {
+      "comment": "Budget actions submenu title",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktionen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actions"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acciones"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actions"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Azioni"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acties"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ações"
+          }
+        }
+      }
+    },
+    "Actuali menu" : {
+      "comment" : "Accessibility label for the Actuali-mark budget menu",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Actuali-Menü" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Actuali menu" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Menú de Actuali" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Menu Actuali" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Menu Actuali" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Actuali-menu" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Menu Actuali" } }
+      }
+    },
     "Allow Actuali to read Wallet data in Settings to sync Apple Card, Apple Cash and Savings." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -25754,6 +25860,53 @@
         }
       }
     },
+    "Choose a month" : {
+      "comment": "Accessibility hint for opening the month picker",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monat auswählen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a month"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elegir un mes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisir un mois"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli un mese"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kies een maand"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha um mês"
+          }
+        }
+      }
+    },
     "Clean" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -27630,6 +27783,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conectar Apple Wallet"
+          }
+        }
+      }
+    },
+    "Connect to server to switch budgets" : {
+      "comment": "Message shown when budget switching requires a server connection",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stelle eine Verbindung zum Server her, um das Budget zu wechseln"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect to server to switch budgets"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conéctate al servidor para cambiar de presupuesto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connectez-vous au serveur pour changer de budget"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connettiti al server per cambiare budget"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maak verbinding met de server om van budget te wisselen"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conecte-se ao servidor para trocar de orçamento"
           }
         }
       }
@@ -30930,6 +31130,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Saldo atual: %@"
+          }
+        }
+      }
+    },
+    "Current Budget" : {
+      "comment": "Budget selector title in the Budget toolbar menu",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktuelles Budget"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Budget"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Presupuesto actual"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Budget actuel"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Budget corrente"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Huidig budget"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orçamento atual"
           }
         }
       }
@@ -52608,6 +52855,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Próximo mês"
+          }
+        }
+      }
+    },
+    "Next year" : {
+      "comment": "Accessibility label for the next-year button in the month picker",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nächstes Jahr"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next year"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Año siguiente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Année suivante"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anno successivo"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volgend jaar"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Próximo ano"
           }
         }
       }
@@ -74967,6 +75261,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Status"
+          }
+        }
+      }
+    },
+    "Style" : {
+      "comment": "Budget display style submenu title",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stil"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Style"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estilo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Style"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stile"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stijl"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estilo"
           }
         }
       }

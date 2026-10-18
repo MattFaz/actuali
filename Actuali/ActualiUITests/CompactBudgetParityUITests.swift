@@ -19,8 +19,7 @@ final class CompactBudgetParityUITests: XCTestCase {
         ensureGroupExpanded("Essentials", revealing: details, in: app)
         XCTAssertTrue(details.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["budgetFilter-all"].exists)
-        XCTAssertTrue(app.buttons["Previous month"].exists)
-        XCTAssertTrue(app.buttons["Next month"].exists)
+        XCTAssertTrue(app.buttons["budget.monthStepper"].exists)
 
         details.press(forDuration: 1)
         let allTransactions = app.buttons["All Transactions"]
@@ -30,10 +29,10 @@ final class CompactBudgetParityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["All Time"].exists)
         app.navigationBars.buttons["Budget"].tap()
 
-        let optionsMenu = app.buttons["Budget options"]
-        XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10),
-                      "Compact keeps the shared category creation menu")
-        optionsMenu.tap()
+        let actualiMenu = app.buttons["budget.actionsMenu"]
+        XCTAssertTrue(actualiMenu.waitForExistence(timeout: 10),
+                      "category creation lives in the Actuali menu")
+        actualiMenu.tap()
         XCTAssertTrue(app.buttons["New Category"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["New Category Group"].exists)
         app.buttons["New Category Group"].tap()

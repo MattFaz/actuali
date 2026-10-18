@@ -371,8 +371,7 @@ final class HistoryStore: ObservableObject {
     }
 
     private func save(_ budgetID: String) {
-        guard loadedBudgetID == budgetID else { return }
-        guard let data = try? JSONEncoder().encode(actions) else { return }
+        guard loadedBudgetID == budgetID, let data = try? JSONEncoder().encode(actions) else { return }
         defaults.set(data, forKey: key(budgetID))
     }
 

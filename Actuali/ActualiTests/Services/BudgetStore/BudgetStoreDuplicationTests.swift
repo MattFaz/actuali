@@ -274,7 +274,7 @@ struct BudgetStoreDuplicationTests {
     }
 
     @Test
-    func deleteSingleTransferDoesNotDeletePartner() async throws {
+    func deleteSingleTransferDeletesPartner() async throws {
         let (database, tempURL) = try await makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
@@ -288,12 +288,11 @@ struct BudgetStoreDuplicationTests {
         #expect(initialTxs.count == 2)
         guard let firstLeg = initialTxs.first else { return }
 
-        // Deleting a single leg via deleteTransaction must not delete the partner leg
+        // Deleting one leg deletes its partner too, as upstream does (GH #724).
         await store.deleteTransaction(firstLeg)
 
         let activeTxs = try await database.fetchTransactions(limit: 1000)
-        #expect(activeTxs.count == 1)
-        #expect(activeTxs.first?.id != firstLeg.id)
+        #expect(activeTxs.isEmpty)
     }
 
     @Test

@@ -186,8 +186,7 @@ enum ScheduleConditions {
                   action["field"] as? String == "amount"
             else { continue }
             let options = action["options"] as? [String: Any]
-            guard options?["template"] == nil, options?["formula"] == nil else { continue }
-            guard (action["value"] as? NSNumber)?.intValue != amount else { continue }
+            guard options?["template"] == nil, options?["formula"] == nil, (action["value"] as? NSNumber)?.intValue != amount else { continue }
             updated[index]["value"] = amount
             changed = true
         }

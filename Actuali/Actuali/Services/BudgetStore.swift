@@ -337,9 +337,14 @@ final class BudgetStore: ObservableObject {
         supportsOpenIDLogin && supportsPasswordLogin && !ownerExists
     }
 
+    @Published private(set) var currentLocalBudget: BudgetMetadata?
+
     @Published var currentBudgetId: String? {
         didSet {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
+            // Outside the change check: re-downloading the open budget keeps
+            // its id but rewrites its metadata.
+            refreshCurrentLocalBudget()
             if currentBudgetId != oldValue {
                 dismissTransactionImpactCues()
                 budgetType = .envelope
@@ -516,8 +521,7 @@ final class BudgetStore: ObservableObject {
     /// preference. Refreshing the local budget after the write switches reads
     /// between `zero_budgets` and `reflect_budgets` immediately.
     func setBudgetType(_ type: BudgetType) async {
-        guard let budgetId = currentBudgetId, let database, let syncClient else { return }
-        guard type != budgetType else { return }
+        guard let budgetId = currentBudgetId, let database, let syncClient, type != budgetType else { return }
 
         let previous = budgetType
         budgetType = type
@@ -1162,8 +1166,7 @@ final class BudgetStore: ObservableObject {
     /// Publishes `updated` first, then persists it. A failed write rolls the
     /// published value back and surfaces the error.
     private func persistCardAccountMappings(_ updated: [String: String]) async {
-        guard currentBudgetId != nil else { return }
-        guard updated != cardAccountMappings else { return }
+        guard currentBudgetId != nil, updated != cardAccountMappings else { return }
         let previous = cardAccountMappings
         cardAccountMappings = updated
         guard let syncClient else {
@@ -1713,10 +1716,8 @@ final class BudgetStore: ObservableObject {
 
     func categoryBudgetForIntent(categoryId: String) async -> CategoryBudget? {
         let currentMonth = currentMonthString()
-        if let currentBudgetMonth, currentBudgetMonth.month == currentMonth {
-            if let found = currentBudgetMonth.categoryBudgets.first(where: { $0.categoryId == categoryId }) {
-                return found
-            }
+        if let currentBudgetMonth, currentBudgetMonth.month == currentMonth, let found = currentBudgetMonth.categoryBudgets.first(where: { $0.categoryId == categoryId }) {
+            return found
         }
         do {
             let db: BudgetDatabase
@@ -1792,6 +1793,47 @@ final class BudgetStore: ObservableObject {
         let isEncrypted: Bool
     }
 
+    /// Re-reads the open budget's metadata. Call after writing metadata.json
+    /// without changing `currentBudgetId`.
+    func refreshCurrentLocalBudget() {
+        currentLocalBudget = currentBudgetId.flatMap { currentID in
+            fileManager.listLocalBudgets().first { $0.id == currentID }
+        }
+    }
+
+    func currentCloudFileId() -> String? {
+        currentLocalBudget?.cloudFileId
+    }
+
+    /// Keeps the selected local budget visible while the server list is stale
+    /// or unavailable.
+    func selectedRemoteBudget() -> RemoteBudget? {
+        guard let metadata = currentLocalBudget,
+              let cloudFileId = metadata.cloudFileId
+        else { return nil }
+
+        if let budget = remoteBudgets.first(where: { $0.id == cloudFileId }) {
+            return budget
+        }
+        return RemoteBudget(
+            id: cloudFileId,
+            name: metadata.budgetName ?? "Unknown",
+            groupId: metadata.groupId,
+            isEncrypted: metadata.encryptKeyId != nil
+        )
+    }
+
+    /// Returns the budget if its encryption password is still needed;
+    /// otherwise starts the download.
+    func openRemoteBudget(_ budget: RemoteBudget) -> RemoteBudget? {
+        guard downloadingBudgetId == nil else { return nil }
+        if budget.isEncrypted, EncryptionKeyManager.load(fileId: budget.id) == nil {
+            return budget
+        }
+        Task { await downloadBudget(budget) }
+        return nil
+    }
+
     // MARK: - Initialization
 
     @MainActor static let shared = BudgetStore()
@@ -1862,6 +1904,7 @@ final class BudgetStore: ObservableObject {
     func configureAppleWalletLinksForTesting(defaults: UserDefaults, budgetId: String) {
         appleWalletLinkDefaults = defaults
         _currentBudgetId = Published(initialValue: budgetId)
+        refreshCurrentLocalBudget()
     }
 
     /// Test-only: swap in a file manager rooted at a temp directory so
@@ -1900,9 +1943,9 @@ final class BudgetStore: ObservableObject {
 
     private init() {
         let defaults = UserDefaults.standard
-        /// Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
-        /// same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
-        /// overrides as strings; checking for existence first preserves non-false defaults.
+        // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
+        // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
+        // overrides as strings; checking for existence first preserves non-false defaults.
         func persistedBool(_ key: String, default defaultValue: Bool) -> Bool {
             defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
         }
@@ -1926,6 +1969,9 @@ final class BudgetStore: ObservableObject {
         _currentBudgetId = Published(
             initialValue: defaults.string(forKey: "currentBudgetId")
         )
+        currentLocalBudget = currentBudgetId.flatMap { currentID in
+            fileManager.listLocalBudgets().first { $0.id == currentID }
+        }
         _excludedFromSpentCategoryIds = Published(
             initialValue: Self.loadExcludedFromSpentCategoryIds(for: defaults.string(forKey: "currentBudgetId"))
         )
@@ -4408,8 +4454,7 @@ final class BudgetStore: ObservableObject {
         } ?? [:]
         if !storedWalletLinks.isEmpty {
             do {
-                guard isCurrentRequest() else { return nil }
-                guard let capturedBudgetId else { return nil }
+                guard isCurrentRequest(), let capturedBudgetId else { return nil }
                 let result = try migrateLegacyAppleWalletLinksIfNeeded(
                     database: database,
                     budgetId: capturedBudgetId,
@@ -4547,8 +4592,7 @@ final class BudgetStore: ObservableObject {
             .map(\.id)
         let authorized = walletIds.isEmpty ? false : await appleWalletStore.availability() == .authorized
         updateWalletBackgroundDelivery(enabled: authorized)
-        guard authorized else { return [] }
-        guard let result = try? await syncBankAccounts(accountIds: walletIds),
+        guard authorized, let result = try? await syncBankAccounts(accountIds: walletIds),
               !result.importedTransactions.isEmpty else { return [] }
 
         return result.importedTransactions
@@ -5351,8 +5395,8 @@ final class BudgetStore: ObservableObject {
         }
 
         let offBudgetIds = offBudgetAccountIds
-        /// The edited leg takes the form's category, the partner keeps its own —
-        /// then both are cleared unless that leg is the categorizable side.
+        // The edited leg takes the form's category, the partner keeps its own —
+        // then both are cleared unless that leg is the categorizable side.
         func resolvedCategory(for leg: Transaction, accountId: String,
                               otherAccountId: String) -> String? {
             guard Self.transferLegTakesCategory(
@@ -5515,6 +5559,7 @@ final class BudgetStore: ObservableObject {
             return
         }
         var deleted: [Transaction] = []
+        var unlinked: [Transaction] = []
         for tx in transactions {
             // Deleting a split deletes its children too — orphaned children
             // would be invisible in the list but still feed reports.
@@ -5537,12 +5582,37 @@ final class BudgetStore: ObservableObject {
                     continue
                 }
             }
+            // A transfer takes its other leg with it, as upstream's
+            // transfer.ts removeTransfer does. A split-child leg is unlinked
+            // instead: deleting it would break its split, and leaving the link
+            // would make the split's next save fail with transferPartnerMissing.
+            if !tx.isParent, let partnerId = tx.transferId, let database {
+                do {
+                    if var partner = try await database.fetchTransaction(id: partnerId) {
+                        partner.tombstone = true
+                        deleted.append(partner)
+                    } else if var child = try await database.fetchSplitChild(id: partnerId) {
+                        child.transferId = nil
+                        child.payeeId = nil
+                        child.payeeName = nil
+                        unlinked.append(child)
+                    }
+                } catch {
+                    self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
+                    continue
+                }
+            }
             var copy = tx
             copy.tombstone = true
             deleted.append(copy)
         }
+        // Selecting both legs of a transfer reaches each row twice. Deletes
+        // come first, so a child that is also deleted is not just unlinked.
+        var seen = Set<String>()
+        let updates = deleted.filter { seen.insert($0.id).inserted }.map { ($0, Set(["tombstone"])) }
+            + unlinked.filter { seen.insert($0.id).inserted }.map { ($0, Set(["transferred_id", "description"])) }
         do {
-            try await syncClient.updateTransactions(deleted, changedFields: ["tombstone"])
+            try await syncClient.updateTransactions(updates)
         } catch {
             self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
         }
@@ -5625,20 +5695,18 @@ final class BudgetStore: ObservableObject {
         // Handle transfers: duplicate both legs. A missing partner falls
         // through to the standard branch (the copy can't keep the transfer
         // link); a read error must surface, not silently degrade the copy.
-        if let transferId = transaction.transferId, !transferId.isEmpty, let database {
-            if let partner = try await database.fetchTransaction(id: transferId) {
-                let newSourceId = UUID().uuidString
-                let newTargetId = UUID().uuidString
+        if let transferId = transaction.transferId, !transferId.isEmpty, let database, let partner = try await database.fetchTransaction(id: transferId) {
+            let newSourceId = UUID().uuidString
+            let newTargetId = UUID().uuidString
 
-                var newSource = makeDuplicateTransaction(from: transaction, id: newSourceId, sortOrder: sortOrder)
-                newSource.transferId = newTargetId
+            var newSource = makeDuplicateTransaction(from: transaction, id: newSourceId, sortOrder: sortOrder)
+            newSource.transferId = newTargetId
 
-                var newTarget = makeDuplicateTransaction(from: partner, id: newTargetId, sortOrder: sortOrder)
-                newTarget.transferId = newSourceId
+            var newTarget = makeDuplicateTransaction(from: partner, id: newTargetId, sortOrder: sortOrder)
+            newTarget.transferId = newSourceId
 
-                try await syncClient.createTransfer(source: newSource, target: newTarget)
-                return
-            }
+            try await syncClient.createTransfer(source: newSource, target: newTarget)
+            return
         }
 
         // Handle split parent
@@ -8542,10 +8610,7 @@ final class BudgetStore: ObservableObject {
                         // runs on. A length bound doesn't make that impossible,
                         // but it rules out the pasted-blob case; the web app has
                         // the same exposure.
-                        guard text.count <= 500 else {
-                            throw BudgetStoreError.ruleInvalidPattern(pattern: text)
-                        }
-                        guard (try? NSRegularExpression(pattern: text.lowercased())) != nil else {
+                        guard text.count <= 500, (try? NSRegularExpression(pattern: text.lowercased())) != nil else {
                             throw BudgetStoreError.ruleInvalidPattern(pattern: text)
                         }
                     }

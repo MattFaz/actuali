@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// A managed transaction tag from Actual Budget's `tags` table.
 /// Tags in Actual are embedded in transaction notes as `#name`.
@@ -71,8 +72,6 @@ struct TagSummary: Identifiable, Equatable, Sendable {
         tag.id
     }
 }
-
-import SwiftUI
 
 extension Tag {
     /// Curated palette matching Actual Budget's tag color picker swatches.

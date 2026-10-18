@@ -7,6 +7,14 @@ body:
     attributes:
       value: |
         Thanks for suggesting an improvement! Please describe your idea below.
+  - type: input
+    id: version
+    attributes:
+      label: App Version / Build
+      description: "Find this in the app: **More → Information (at the bottom) → Version**"
+      placeholder: "e.g. v1.0.6 Build 72"
+    validations:
+      required: true
   - type: textarea
     id: problem
     attributes:

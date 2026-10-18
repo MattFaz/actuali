@@ -56,9 +56,14 @@ struct MainTabView: View {
                 selectedTab = 0
             }
         }
-        // A save in the tab-hosted add flow routes to the account's
-        // transaction list, which lives on the Accounts tab.
+        // A credit card reminder tap or a save in the tab-hosted add flow
+        // routes to a transaction list, which lives on the Accounts tab.
         .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
+            if accountId != nil {
+                selectedTab = 0
+            }
+        }
+        .onChange(of: notificationRouter.pendingSavedTransactionAccount) { _, accountId in
             if accountId != nil {
                 selectedTab = 0
             }

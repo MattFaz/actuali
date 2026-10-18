@@ -194,9 +194,7 @@ actor SchedulePoster {
             // and never advance; completion (or the advance the port can't
             // compute) is left to the web app (loot-core parity — its advance
             // throws on such shapes and the service swallows it after posting).
-            guard case .recurring(let config) = schedule.dateCondition else { break }
-
-            guard let next = ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: current.adding(days: 1)),
+            guard case .recurring(let config) = schedule.dateCondition, let next = ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: current.adding(days: 1)),
                   next > current
             else { break } // ended, or weekend-solve pinned the date: treat as not-advanced and stop
 

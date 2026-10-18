@@ -51,12 +51,11 @@ enum NewTransactionNotifier {
                        offBudgetAccountIds: Set<String> = [],
                        settings: TransactionNotificationSettings = TransactionNotificationSettings(),
                        center: any NotificationPosting = UNUserNotificationCenter.current()) async {
-        guard settings.isEnabled else { return }
-        guard let request = makeRequest(for: transactions, currencyCode: currencyCode,
-                                        narrowSymbol: narrowSymbol,
-                                        numberFormat: numberFormat,
-                                        accountNames: accountNames,
-                                        offBudgetAccountIds: offBudgetAccountIds) else { return }
+        guard settings.isEnabled, let request = makeRequest(for: transactions, currencyCode: currencyCode,
+                                                            narrowSymbol: narrowSymbol,
+                                                            numberFormat: numberFormat,
+                                                            accountNames: accountNames,
+                                                            offBudgetAccountIds: offBudgetAccountIds) else { return }
 
         let granted: Bool
         do {

@@ -402,9 +402,8 @@ struct AddTransactionView: View {
         Task { @MainActor in
             guard let categoryId = try? await budgetStore.payeeHistoryCategoryId(
                 forPayeeId: payeeId
-            ) else { return }
-            guard !userPickedCategory,
-                  matchingPayee(for: payeeName)?.id == payeeId else { return }
+            ), !userPickedCategory,
+            matchingPayee(for: payeeName)?.id == payeeId else { return }
             selectedCategoryId = categoryId
         }
     }
@@ -966,8 +965,7 @@ struct AddTransactionView: View {
         isTransfer: Bool,
         hasTransferPartner: Bool
     ) -> Bool {
-        guard !isEditingTransfer, !isConvertingToTransfer else { return false }
-        guard !isEditingSplitParent || splitLoaded else { return false }
+        guard !isEditingTransfer, !isConvertingToTransfer, !isEditingSplitParent || splitLoaded else { return false }
         return !isTransfer || hasTransferPartner
     }
 
@@ -1068,7 +1066,7 @@ struct AddTransactionView: View {
                 // next entry and route to the saved transaction's account
                 // list so every add flow lands on the relevant list.
                 resetForm()
-                NotificationRouter.shared.pendingAccountNavigation = selectedAccountId
+                NotificationRouter.shared.pendingSavedTransactionAccount = selectedAccountId
             }
         } catch {
             errorMessage = PendingImportApprover.localizedErrorMessage(
