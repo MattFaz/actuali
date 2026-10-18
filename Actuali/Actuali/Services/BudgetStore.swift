@@ -5515,6 +5515,7 @@ final class BudgetStore: ObservableObject {
             return
         }
         var deleted: [Transaction] = []
+        var unlinked: [Transaction] = []
         for tx in transactions {
             // Deleting a split deletes its children too — orphaned children
             // would be invisible in the list but still feed reports.
@@ -5538,15 +5539,19 @@ final class BudgetStore: ObservableObject {
                 }
             }
             // A transfer takes its other leg with it, as upstream's
-            // transfer.ts removeTransfer does. fetchTransaction skips split
-            // children, so a child leg is left alone and its split stays whole.
-            // shortcut: upstream also unlinks that child (transferred_id and
-            // payee to null); add it with a child-inclusive fetch if needed.
+            // transfer.ts removeTransfer does. A split-child leg is unlinked
+            // instead: deleting it would break its split, and leaving the link
+            // would make the split's next save fail with transferPartnerMissing.
             if !tx.isParent, let partnerId = tx.transferId, let database {
                 do {
                     if var partner = try await database.fetchTransaction(id: partnerId) {
                         partner.tombstone = true
                         deleted.append(partner)
+                    } else if var child = try await database.fetchSplitChild(id: partnerId) {
+                        child.transferId = nil
+                        child.payeeId = nil
+                        child.payeeName = nil
+                        unlinked.append(child)
                     }
                 } catch {
                     self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
@@ -5557,11 +5562,13 @@ final class BudgetStore: ObservableObject {
             copy.tombstone = true
             deleted.append(copy)
         }
-        // Selecting both legs of a transfer reaches each row twice.
+        // Selecting both legs of a transfer reaches each row twice. Deletes
+        // come first, so a child that is also deleted is not just unlinked.
         var seen = Set<String>()
-        deleted = deleted.filter { seen.insert($0.id).inserted }
+        let updates = deleted.filter { seen.insert($0.id).inserted }.map { ($0, Set(["tombstone"])) }
+            + unlinked.filter { seen.insert($0.id).inserted }.map { ($0, Set(["transferred_id", "description"])) }
         do {
-            try await syncClient.updateTransactions(deleted, changedFields: ["tombstone"])
+            try await syncClient.updateTransactions(updates)
         } catch {
             self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
         }

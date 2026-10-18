@@ -1109,6 +1109,14 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Single live split child by id — `fetchTransaction` skips children.
+    func fetchSplitChild(id: String) async throws -> Transaction? {
+        try await dbQueue.read { db in
+            try Row.fetchOne(db, sql: Self.childTransactionSelect + " AND t.isChild = 1 AND t.id = ?", arguments: [id])
+                .map(Self.mapTransaction)
+        }
+    }
+
     struct LiveTransactionSnapshot: Sendable {
         let transactions: [Transaction]
         let splitChildren: [Transaction]

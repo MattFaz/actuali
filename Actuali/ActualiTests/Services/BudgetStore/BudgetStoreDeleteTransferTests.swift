@@ -5,7 +5,7 @@ import Testing
 
 /// Deleting one leg of a transfer removes its partner too (GH #724), as
 /// upstream's `transfer.ts` `removeTransfer` does — except a partner that is a
-/// split child, which stays so its split remains whole.
+/// split child, which is unlinked instead so its split stays whole and saveable.
 @MainActor
 struct BudgetStoreDeleteTransferTests {
     private func tombstones(path: URL) throws -> [String: Int] {
@@ -68,7 +68,7 @@ struct BudgetStoreDeleteTransferTests {
         #expect(tombstoneMessages == 2)
     }
 
-    @Test func deletingALegWhosePartnerIsASplitChildKeepsTheSplit() async throws {
+    @Test func deletingALegWhosePartnerIsASplitChildUnlinksTheChild() async throws {
         let (database, path) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(path) }
         let store = try await makeTestStore(database: database)
@@ -84,5 +84,14 @@ struct BudgetStoreDeleteTransferTests {
         await store.deleteTransaction(leg("leg-in", account: "acct-savings", amount: 2500, transferId: "child"))
 
         #expect(try tombstones(path: path) == ["leg-in": 1, "child": 0, "parent": 0])
+        // A dangling link would make the split's next save throw
+        // transferPartnerMissing.
+        let child = try await database.dbQueueForTesting.read { db in
+            try Row.fetchOne(db, sql: "SELECT transferred_id, description FROM transactions WHERE id = 'child'")
+                .map { (transferId: $0["transferred_id"] as String?, payeeId: $0["description"] as String?) }
+        }
+        #expect(child?.transferId == nil)
+        #expect(child?.payeeId == nil)
+        #expect(store.error == nil)
     }
 }
