@@ -187,12 +187,13 @@ struct CustomReportEngineTests {
             transactions: sampleTxs, reportContext: reportContext,
             filterContext: .empty, today: today
         )
-        guard case .table(let rows) = data.kind else {
+        guard case .table(let rows, let total) = data.kind else {
             Issue.record("expected table, got \(data.kind)"); return
         }
         // budget sort = context order: Food, Rent, Fun (hidden dropped, empty dropped)
         #expect(rows.map(\.name) == ["Food", "Rent", "Fun"])
         #expect(rows.map(\.totalUnits) == [-100.0, -200.0, -50.0])
+        #expect(total == -350.0)
     }
 
     @Test func offBudgetMoneyLandsInSyntheticRowsConsistently() {
@@ -266,11 +267,12 @@ struct CustomReportEngineTests {
             transactions: sampleTxs, reportContext: reportContext,
             filterContext: .empty, today: today, locale: englishLocale
         )
-        guard case .table(let rows) = data.kind else {
+        guard case .table(let rows, let total) = data.kind else {
             Issue.record("expected table, got \(data.kind)"); return
         }
         #expect(rows.map(\.name) == ["Jun '26", "Jul '26"])
         #expect(rows.map(\.totalUnits) == [-300.0, -50.0])
+        #expect(total == -350.0)
     }
 
     // MARK: - groupBy Payee / Account
@@ -345,6 +347,32 @@ struct CustomReportEngineTests {
         #expect(deposit.map(\.label) == ["Food"])
         #expect(deposit.map(\.valueUnits) == [50.0])
         #expect(perMonth.values == [[0.0, 150.0]])
+    }
+
+    @Test func netTableTotalClipsPerIntervalNotPerRow() {
+        // Upstream intervalData: the Totals row clips each interval's net
+        // across all rows. Jun: Food -100 + Fun +300 = +200; Jul: Food -50.
+        // Rows clip on their own, so they don't sum to the total.
+        let txs = [
+            tx("1", date: 20_260_601, amount: -10000, category: "c-food"),
+            tx("2", date: 20_260_615, amount: 30000, category: "c-fun"),
+            tx("3", date: 20_260_701, amount: -5000, category: "c-food"),
+        ]
+        func run(_ balance: String) -> CustomReportData.Kind {
+            CustomReportEngine.compute(
+                config: config(mode: "total", groupBy: "Category", balance: balance,
+                               interval: "Monthly", graph: "TableGraph", sortBy: "budget"),
+                transactions: txs, reportContext: reportContext, filterContext: .empty, today: today
+            ).kind
+        }
+        guard case .table(let payment, let paymentTotal) = run("Net Payment"),
+              case .table(let deposit, let depositTotal) = run("Net Deposit") else {
+            Issue.record("expected tables"); return
+        }
+        #expect(payment.map(\.totalUnits) == [150.0])
+        #expect(paymentTotal == 50.0)
+        #expect(deposit.map(\.totalUnits) == [300.0])
+        #expect(depositTotal == 200.0)
     }
 
     @Test func netPaymentPerIntervalBars() {
