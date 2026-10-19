@@ -1188,7 +1188,6 @@ private struct AccountGroupListHeader: View {
                     .foregroundStyle(isExpanded ? .secondary : .primary)
                 Spacer()
                 AccountGroupTotal(totalText: totalText, total: total)
-                    .accessibilityIdentifier("account.subgroup.total.\(group.id)")
                     .padding(.trailing, totalTrailingPadding)
             }
             .contentShape(Rectangle())
