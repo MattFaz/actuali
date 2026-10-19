@@ -91,6 +91,134 @@ struct ScheduleWriteBuilderTests {
         #expect(value(write(plan, "schedules_next_date"), "base_next_date") as? Int == 20_260_815)
     }
 
+    @Test func createConvertedTransactionUsesExactDateAndPreservesDetails() throws {
+        var converted = fields
+        converted.amountOp = .isExactly
+        converted.dateOp = "is"
+        converted.categoryId = "cat-1"
+        converted.notes = "Future purchase"
+
+        let plan = try ScheduleWriteBuilder.createPlan(
+            fields: converted, scheduleId: "s1", ruleId: "r1", nextDateRowId: "nd1",
+            now: Self.now, today: Self.today
+        )
+        let conditionsJSON = try #require(value(write(plan, "rules"), "conditions") as? String)
+        let conditions = try #require(
+            try JSONSerialization.jsonObject(with: Data(conditionsJSON.utf8)) as? [[String: Any]]
+        )
+        #expect(conditions.contains {
+            $0["field"] as? String == "date" && $0["op"] as? String == "is"
+        })
+        #expect(conditions.contains {
+            $0["field"] as? String == "amount" && $0["op"] as? String == "is"
+        })
+
+        let actionsJSON = try #require(value(write(plan, "rules"), "actions") as? String)
+        let actions = try #require(
+            try JSONSerialization.jsonObject(with: Data(actionsJSON.utf8)) as? [[String: Any]]
+        )
+        #expect(actions.contains {
+            $0["op"] as? String == "set"
+                && $0["field"] as? String == "category"
+                && $0["value"] as? String == "cat-1"
+        })
+        #expect(actions.contains {
+            $0["op"] as? String == "set"
+                && $0["field"] as? String == "notes"
+                && $0["value"] as? String == "Future purchase"
+        })
+        #expect(value(write(plan, "schedules"), "posts_transaction") as? Int == 1)
+    }
+
+    @Test func futureTransactionSchedulePreservesSignedAmountAndDate() throws {
+        let calendar = Calendar.current
+        let date = try #require(calendar.date(byAdding: .day, value: 7, to: Date()))
+        let form = BudgetStore.TransactionForm(
+            accountId: "acct-1",
+            type: .expense,
+            amount: "12.50",
+            payeeName: "Rent",
+            transferToAccountId: nil,
+            categoryId: "cat-1",
+            notes: "Future purchase",
+            date: date,
+            cleared: false
+        )
+
+        let fields = try FutureTransactionSchedule.fields(
+            from: form, payeeId: "payee-1", offBudgetAccountIds: []
+        )
+        #expect(fields.accountId == "acct-1")
+        #expect(fields.payeeId == "payee-1")
+        #expect(fields.amount == .fixed(-1_250))
+        #expect(fields.amountOp == .isExactly)
+        #expect(fields.date == .fixed(DayDate(yyyymmdd: Transaction.yyyymmdd(from: date))!))
+        #expect(fields.dateOp == "is")
+        #expect(fields.postsTransaction)
+        #expect(fields.categoryId == "cat-1")
+        #expect(fields.notes == "Future purchase")
+
+        let offBudgetFields = try FutureTransactionSchedule.fields(
+            from: form,
+            payeeId: "payee-1",
+
+            offBudgetAccountIds: ["acct-1"]
+        )
+        #expect(offBudgetFields.categoryId == nil)
+
+        var income = form
+        income.type = .income
+        let incomeFields = try FutureTransactionSchedule.fields(
+            from: income, payeeId: "payee-1", offBudgetAccountIds: []
+        )
+        #expect(incomeFields.amount == .fixed(1_250))
+
+        var transfer = form
+        transfer.type = .transfer
+        transfer.transferToAccountId = "acct-2"
+        let onBudgetTransfer = try FutureTransactionSchedule.fields(
+            from: transfer, payeeId: "payee-1", offBudgetAccountIds: []
+        )
+        #expect(onBudgetTransfer.amount == .fixed(-1_250))
+        #expect(onBudgetTransfer.categoryId == nil)
+
+        let offBudgetTransfer = try FutureTransactionSchedule.fields(
+            from: transfer,
+            payeeId: "payee-1",
+
+            offBudgetAccountIds: ["acct-2"]
+        )
+        #expect(offBudgetTransfer.categoryId == "cat-1")
+
+        var split = form
+        split.splits = [.init(amount: "12.50")]
+        #expect(throws: BudgetStoreError.splitNeedsTwoLines) {
+            try FutureTransactionSchedule.fields(
+                from: split, payeeId: "payee-1", offBudgetAccountIds: []
+            )
+        }
+
+        split.splits = [.init(amount: "6.25"), .init(amount: "6.25")]
+        #expect(throws: ScheduleWriteError.splitNotSupported) {
+            try FutureTransactionSchedule.fields(
+                from: split, payeeId: "payee-1", offBudgetAccountIds: []
+            )
+        }
+    }
+
+    @Test func futureDateUsesCalendarDays() throws {
+        let calendar = Calendar.current
+        let today = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 13, hour: 12
+        )))
+        let yesterday = try #require(calendar.date(byAdding: .day, value: -1, to: today))
+        let tomorrow = try #require(calendar.date(byAdding: .day, value: 1, to: today))
+
+        #expect(!FutureTransactionSchedule.isFutureDate(yesterday, relativeTo: today))
+        #expect(!FutureTransactionSchedule.isFutureDate(today, relativeTo: today))
+        #expect(FutureTransactionSchedule.isFutureDate(tomorrow, relativeTo: today))
+    }
+
     // MARK: - update
 
     private func existingSchedule(

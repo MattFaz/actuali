@@ -43,7 +43,9 @@ struct AddTransactionView: View {
     @State private var cleared: Bool
 
     @State private var isLoading = false
+    @State private var isScheduling = false
     @State private var errorMessage: String?
+    @State private var scheduleConfirmation: String?
     @State private var userPickedCategory = false
     @State private var automaticCategoryPreview: BudgetStore.AutomaticCategoryPreview?
     @State private var nearbyPayees: [NearbyPayee] = []
@@ -705,10 +707,15 @@ struct AddTransactionView: View {
                     NoteLinkRows(text: notes)
                 }
 
-                if let error = errorMessage {
+                if errorMessage != nil || scheduleConfirmation != nil {
                     Section {
-                        Text(error)
-                            .foregroundStyle(.red)
+                        if let error = errorMessage {
+                            Text(error)
+                                .foregroundStyle(.red)
+                        } else if let scheduleConfirmation {
+                            Label(scheduleConfirmation, systemImage: "checkmark.circle")
+                                .foregroundStyle(.green)
+                        }
                     }
                 }
 
@@ -742,11 +749,30 @@ struct AddTransactionView: View {
                         }
                     }
                     .disabled(saveDisabled)
+                    // Keep the separator between the main action and Schedule
+                    // aligned to the full row width, rather than the centered label.
+                    .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+                    .alignmentGuide(.listRowSeparatorTrailing) { $0[.trailing] }
                     // Hardware-keyboard commit, for the iPad case where the
                     // form is filled without ever leaving the keys. Return on
                     // its own belongs to the focused field; ⌘Return is the
                     // whole form. Inert while the save is disabled.
                     .keyboardShortcut(.return, modifiers: .command)
+
+                    if canScheduleTransaction {
+                        Button(action: { Task { await scheduleTransaction() } }) {
+                            HStack {
+                                Spacer()
+                                Text("Schedule")
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                        }
+                        .disabled(saveDisabled)
+                        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+                        .alignmentGuide(.listRowSeparatorTrailing) { $0[.trailing] }
+                        .accessibilityIdentifier("addTransaction.schedule")
+                    }
                 }
 
                 // Cancel sits under the save button rather than in the
@@ -769,6 +795,7 @@ struct AddTransactionView: View {
                     .keyboardShortcut(.cancelAction)
                 }
             }
+            .disabled(isScheduling)
             .readableWidth()
             // The form's default ~35pt top inset is dead space on the
             // header-less tab root; 8pt keeps the first section off the status
@@ -811,6 +838,11 @@ struct AddTransactionView: View {
                     try await Task.sleep(for: .milliseconds(300))
                 } catch { return }
                 await applyAutomaticCategory(for: input)
+            }
+            .onChange(of: amount) { _, newValue in
+                if !newValue.isEmpty {
+                    scheduleConfirmation = nil
+                }
             }
         }
     }
@@ -1017,6 +1049,33 @@ struct AddTransactionView: View {
             : String(localized: AddTransactionLocalization.addTransaction, locale: locale)
     }
 
+    /// Pure eligibility gate, shared with unit tests so each exclusion stays covered.
+    nonisolated static func canSchedule(
+        isEditing: Bool,
+        hasSaveOverride: Bool,
+        reviewRequirements: [PendingImportReviewRequirement],
+        hasSplits: Bool,
+        date: Date,
+        today: Date = Date()
+    ) -> Bool {
+        !isEditing
+            && !hasSaveOverride
+            && reviewRequirements.isEmpty
+            && !hasSplits
+            && FutureTransactionSchedule.isFutureDate(date, relativeTo: today)
+    }
+
+    /// Scheduling is only offered for new, future, non-split transactions.
+    private var canScheduleTransaction: Bool {
+        Self.canSchedule(
+            isEditing: isEditing,
+            hasSaveOverride: saveOverride != nil,
+            reviewRequirements: reviewRequirements,
+            hasSplits: showsSplitEntry || !splitLines.isEmpty,
+            date: date
+        )
+    }
+
     private var saveDisabled: Bool {
         if isLoading || amount.isEmpty {
             return true
@@ -1075,6 +1134,66 @@ struct AddTransactionView: View {
         }
     }
 
+    private func scheduleTransaction() async {
+        guard canScheduleTransaction, !isLoading, !isScheduling else { return }
+        isScheduling = true
+        isLoading = true
+        errorMessage = nil
+        defer {
+            isLoading = false
+            isScheduling = false
+        }
+
+        await applyAutomaticCategory(for: automaticCategoryInput)
+        // Recheck eligibility after async category resolution before snapshotting the form.
+        guard canScheduleTransaction else { return }
+        let form = currentForm()
+
+        do {
+            let payeeId: String?
+            if form.type == .transfer {
+                guard let destinationId = form.transferToAccountId,
+                      let transferPayee = budgetStore.payees.first(where: {
+                          $0.transferAccountId == destinationId && !$0.tombstone
+                      }) else {
+                    throw BudgetStoreError.transferPayeeMissing
+                }
+                payeeId = transferPayee.id
+            } else {
+                payeeId = try await budgetStore.resolvePayeeId(
+                    name: form.payeeName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    editing: nil
+                )
+            }
+
+            let dateText = form.date.formatted(
+                Date.FormatStyle(date: .abbreviated, time: .omitted, locale: locale)
+            )
+            let fields = try FutureTransactionSchedule.fields(
+                from: form,
+                payeeId: payeeId,
+                offBudgetAccountIds: budgetStore.offBudgetAccountIds
+            )
+            try await budgetStore.createSchedule(fields: fields)
+
+            // Keep the confirmation visible in both tab-hosted and presented flows.
+            resetForm()
+            scheduleConfirmation = String(
+                localized: "Schedule created for \(dateText)",
+                locale: locale
+            )
+        } catch {
+            if let scheduleError = error as? ScheduleWriteError,
+               scheduleError == .splitNotSupported {
+                errorMessage = String(localized: "Split transactions cannot be scheduled.", locale: locale)
+            } else {
+                errorMessage = PendingImportApprover.localizedErrorMessage(
+                    for: error, locale: locale
+                )
+            }
+        }
+    }
+
     private func currentForm() -> BudgetStore.TransactionForm {
         BudgetStore.TransactionForm(
             accountId: formAccounts.accountId,
@@ -1105,6 +1224,7 @@ struct AddTransactionView: View {
         date = Date()
         cleared = false
         errorMessage = nil
+        scheduleConfirmation = nil
         splitLines = []
         unsplitRequested = false
         // A fresh form suggests categories from payee history again — a

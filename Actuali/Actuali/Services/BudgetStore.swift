@@ -6265,7 +6265,7 @@ final class BudgetStore: ObservableObject {
         case split(amountCents: Int, lines: [SplitPlanLine])
     }
 
-    static func plan(for form: TransactionForm) throws -> TransactionFormPlan {
+    nonisolated static func plan(for form: TransactionForm) throws -> TransactionFormPlan {
         guard let dollars = Double(form.amount),
               let unsignedCents = Transaction.cents(fromDollars: dollars) else {
             throw BudgetStoreError.invalidAmount
@@ -6288,7 +6288,7 @@ final class BudgetStore: ObservableObject {
     /// lines must add up exactly to the total. An `isOpposite` line runs
     /// against the transaction's direction — a refund inside a spend
     /// (GH #216).
-    private static func planStandardOrSplit(
+    nonisolated private static func planStandardOrSplit(
         _ form: TransactionForm,
         amountCents: Int,
         sign: Int
