@@ -65,6 +65,7 @@ enum FormulaEngine {
         guard let query = meta?.queries?[name] else { return [] }
 
         var pool = transactions.filter { !$0.tombstone }
+        // Upstream only date-filters when the timeFrame has a mode.
         if let timeFrame = query.timeFrame, timeFrame.mode != nil {
             let (start, end) = TimeFrame.resolve(timeFrame, asOf: today)
             let startYMD = ymdInt(from: start), endYMD = ymdInt(from: end)
@@ -140,21 +141,16 @@ enum FormulaEngine {
             return try finite(numeric(lhs) - numeric(rhs), plain: isPlainNumber(lhs) || isPlainNumber(rhs))
         case .mul(let left, let right):
             let lhs = try evaluate(left, matching: matching), rhs = try evaluate(right, matching: matching)
-            return try finite(numeric(lhs) * numeric(rhs), plain: isPlainNumber(lhs) || isPlainNumber(rhs))
+            // A count only stays plain against another count: an amount per count is still an amount.
+            return try finite(numeric(lhs) * numeric(rhs), plain: isPlainNumber(lhs) && isPlainNumber(rhs))
         case .div(let left, let right):
             let lhs = try evaluate(left, matching: matching), rhs = try evaluate(right, matching: matching)
             let divisor = try numeric(rhs)
             guard divisor != 0 else { throw EvalError.divisionByZero }
-            return try finite(numeric(lhs) / divisor, plain: isPlainNumber(lhs) || isPlainNumber(rhs))
+            return try finite(numeric(lhs) / divisor, plain: isPlainNumber(lhs) && isPlainNumber(rhs))
         case .pow(let base, let exponent):
-            let baseValue = try evaluate(base, matching: matching)
-            let exponentValue = try evaluate(exponent, matching: matching)
-            let baseNumber = try numeric(baseValue)
-            let exponentNumber = try numeric(exponentValue)
-            return try finite(
-                pow(baseNumber, exponentNumber),
-                plain: isPlainNumber(baseValue) || isPlainNumber(exponentValue)
-            )
+            let lhs = try evaluate(base, matching: matching), rhs = try evaluate(exponent, matching: matching)
+            return try finite(pow(numeric(lhs), numeric(rhs)), plain: isPlainNumber(lhs) || isPlainNumber(rhs))
         case .neg(let expression):
             let value = try evaluate(expression, matching: matching)
             return try finite(-numeric(value), plain: isPlainNumber(value))
@@ -218,24 +214,11 @@ enum FormulaEngine {
             let value = try evaluate(args[0], matching: matching)
             let truth = try isTruthy(value)
             return .boolean(!truth)
-        case "and":
+        case "and", "or":
             guard !args.isEmpty else { throw EvalError.invalidArguments }
-            for arg in args {
-                let value = try evaluate(arg, matching: matching)
-                if try !isTruthy(value) {
-                    return .boolean(false)
-                }
-            }
-            return .boolean(true)
-        case "or":
-            guard !args.isEmpty else { throw EvalError.invalidArguments }
-            for arg in args {
-                let value = try evaluate(arg, matching: matching)
-                if try isTruthy(value) {
-                    return .boolean(true)
-                }
-            }
-            return .boolean(false)
+            // HyperFormula evaluates every argument first, so an error anywhere wins.
+            let truths = try args.map { try isTruthy(evaluate($0, matching: matching)) }
+            return .boolean(name == "and" ? !truths.contains(false) : truths.contains(true))
         case "abs":
             guard args.count == 1 else { throw EvalError.invalidArguments }
             let value = try evaluate(args[0], matching: matching)

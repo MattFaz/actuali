@@ -67,6 +67,26 @@ struct FormulaEngineTests {
         #expect(result == .plain(2))
     }
 
+    @Test func amountsDividedOrMultipliedByCountsStayCurrency() {
+        let transactions = [
+            tx("expense1", date: 20_260_705, amount: -25000),
+            tx("expense2", date: 20_260_706, amount: -5000),
+        ]
+        let cases: [(String, FormulaEngine.Result)] = [
+            (#"=QUERY("expenses")/QUERY_COUNT("expenses")"#, .value(-150)),
+            (#"=QUERY_COUNT("expenses")*QUERY("expenses")"#, .value(-600)),
+            (#"=QUERY_COUNT("expenses")/QUERY_COUNT("expenses")"#, .plain(1)),
+            (#"=QUERY_COUNT("expenses")+1"#, .plain(3)),
+        ]
+        for (formula, expected) in cases {
+            let result = FormulaEngine.compute(
+                meta: meta(formula: formula, queries: savedThisMonthQueries),
+                transactions: transactions, today: today, context: .empty
+            )
+            #expect(result == expected, "\(formula)")
+        }
+    }
+
     @Test func unknownQueryCountIsZero() {
         let result = FormulaEngine.compute(
             meta: meta(formula: #"=QUERY_COUNT("missing")"#),
@@ -238,6 +258,9 @@ struct FormulaEngineTests {
             ("=IFERROR(SQRT(-1),7)", .value(7)),
             (#"=IFERROR("ok","fallback")"#, .text("ok")),
             ("=IFERROR(1,1/0)", .value(1)),
+            // AND/OR evaluate every argument before deciding, as HyperFormula does.
+            ("=IFERROR(AND(FALSE(),1/0),5)", .value(5)),
+            ("=IFERROR(OR(TRUE(),1/0),5)", .value(5)),
         ]
         for (formula, expected) in cases {
             let result = FormulaEngine.compute(
@@ -294,7 +317,7 @@ struct FormulaEngineTests {
     }
 
     @Test func functionsOutsideSupportedFormulaSubsetAreUnsupported() {
-        let formulas = ["=MEDIAN(1,2,3)", "=IFERROR(MEDIAN(1,2,3),0)"]
+        let formulas = ["=MEDIAN(1,2,3)", "=IFERROR(MEDIAN(1,2,3),0)", "=AND(FALSE(),MEDIAN(1))", "=OR(TRUE(),MEDIAN(1))"]
         for formula in formulas {
             let result = FormulaEngine.compute(
                 meta: meta(formula: formula), transactions: [], today: today, context: .empty
