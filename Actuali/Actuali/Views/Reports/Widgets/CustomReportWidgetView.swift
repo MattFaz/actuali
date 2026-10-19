@@ -289,7 +289,7 @@ struct CustomReportWidgetView: View {
                 donut(slices: slices, groups: groups)
             }
 
-        case .table(let rows):
+        case .table(let rows, let totalUnits):
             if rows.isEmpty {
                 emptyText
             } else {
@@ -303,6 +303,14 @@ struct CustomReportWidgetView: View {
                                 .monospacedDigit()
                         }
                     }
+                    Divider()
+                    HStack {
+                        Text(ReportStrings.text("Total", locale: locale))
+                        Spacer()
+                        Text(budgetStore.displayBalance(cents(totalUnits), locale: locale))
+                            .monospacedDigit()
+                    }
+                    .font(.subheadline.weight(.semibold))
                 }
             }
 

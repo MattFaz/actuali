@@ -25,7 +25,7 @@ struct CustomReportData: Equatable {
         case lines(Stacked, trends: [Trend]) // trends empty unless showTrendLines
         case area([Bar]) // one point per interval
         case donut(slices: [Slice], groups: [Bar]) // groups empty → single ring
-        case table([TableRow])
+        case table([TableRow], totalUnits: Double)
         case unsupported(String)
     }
 
@@ -251,7 +251,8 @@ enum CustomReportEngine {
             }
             switch config.graphType {
             case "TableGraph":
-                data.kind = .table(zip(labels, values).map { .init(name: $0, totalUnits: $1) })
+                data.kind = .table(zip(labels, values).map { .init(name: $0, totalUnits: $1) },
+                                   totalUnits: values.reduce(0, +))
             case "AreaGraph":
                 data.kind = .area(zip(labels, values).map { .init(label: $0, valueUnits: $1) })
             case "DonutGraph":
@@ -312,6 +313,12 @@ enum CustomReportEngine {
             return Row(key: row.key, name: row.name, cell: cell,
                        perBucket: perBucket.map(value), total: value(cell))
         }
+        // Upstream intervalData: the per-interval metric over every row,
+        // before showEmpty drops any. Its sum is the table's Totals row, which
+        // for Net Payment / Net Deposit is not the sum of the clipped rows.
+        let overall = (0..<buckets.count).map { i in
+            value(orderedRows.reduce(Cell()) { $0 + (cells[$1.key]?[i] ?? Cell()) })
+        }
         // Upstream filterEmptyRows: Net/Budgeted keep any row with activity;
         // the rest keep rows whose metric is non-zero. For Net Payment /
         // Net Deposit that is the row's whole-range net, so a row that is
@@ -322,9 +329,6 @@ enum CustomReportEngine {
         // Upstream trimIntervals.ts: span from the first to the last interval
         // where any surviving row, or the overall total, is non-zero.
         if config.trimIntervals {
-            let overall = (0..<buckets.count).map { i in
-                value(cells.values.reduce(Cell()) { $0 + ($1[i] ?? Cell()) })
-            }
             let range = trimmedRange(rows.map(\.perBucket) + [overall])
             labels = Array(labels[range])
             for i in rows.indices {
@@ -335,7 +339,8 @@ enum CustomReportEngine {
 
         switch config.graphType {
         case "TableGraph":
-            data.kind = .table(rows.map { .init(name: $0.name, totalUnits: $0.total) })
+            data.kind = .table(rows.map { .init(name: $0.name, totalUnits: $0.total) },
+                               totalUnits: overall.reduce(0, +))
         case "StackedBarGraph":
             data.kind = .stacked(series(rows, labels: labels))
         case "LineGraph":
