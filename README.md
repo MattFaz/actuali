@@ -10,7 +10,7 @@ Budget, log transactions, and check balances from your iPhone or iPad — offlin
 
 [![App Store](https://img.shields.io/badge/App_Store-Download-0D96F6?logo=appstore&logoColor=white)](https://apps.apple.com/app/actuali/id6764063765)
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join_the_beta-0D96F6?logo=apple&logoColor=white)](https://testflight.apple.com/join/NsYntuXB)
-[![Discord](https://img.shields.io/badge/Discord-Join_the_chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/3wGTKwnPz)
+[![Discord](https://img.shields.io/badge/Discord-Join_the_chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/PDcJDPYpDG)
 [![Website](https://img.shields.io/badge/Website-actuali.mfazz.com-7C3AED)](https://actuali.mfazz.com)
 [![License](https://img.shields.io/badge/License-MIT-neutral)](LICENSE)
 
@@ -93,7 +93,7 @@ This is an unofficial community project. It is not affiliated with or endorsed b
 
 - **App Store** — [download Actuali](https://apps.apple.com/app/actuali/id6764063765)
 - **TestFlight** — [join the beta](https://testflight.apple.com/join/NsYntuXB) for early access to new builds
-- **Discord** — [join the community](https://discord.gg/UeAYv9Zu4) for help, feature ideas, and release chatter
+- **Discord** — [join the community](https://discord.gg/PDcJDPYpDG) for help, feature ideas, and release chatter
 - **Changelog** — [what's new](https://actuali.mfazz.com/changelog)
 
 ## Building from source
@@ -134,7 +134,7 @@ Actuali is a companion client, not a fork or replacement. It requires an Actual 
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and feature requests are welcome as [GitHub issues](https://github.com/MattFaz/actuali/issues), or come talk it through on [Discord](https://discord.gg/UeAYv9Zu4).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and feature requests are welcome as [GitHub issues](https://github.com/MattFaz/actuali/issues), or come talk it through on [Discord](https://discord.gg/PDcJDPYpDG).
 
 ## Credits
 
