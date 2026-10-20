@@ -273,12 +273,11 @@ enum FutureTransactionSchedule {
             throw ScheduleWriteError.dateRequired
         }
 
-        let categoryId: String?
-        switch form.type {
+        let categoryId: String? = switch form.type {
         case .expense, .income:
-            categoryId = offBudgetAccountIds.contains(form.accountId) ? nil : form.categoryId
+            offBudgetAccountIds.contains(form.accountId) ? nil : form.categoryId
         case .transfer:
-            categoryId = BudgetStore.transferLegTakesCategory(
+            BudgetStore.transferLegTakesCategory(
                 leg: form.accountId,
                 partner: form.transferToAccountId,
                 offBudgetAccountIds: offBudgetAccountIds

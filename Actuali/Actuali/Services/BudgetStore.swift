@@ -5334,7 +5334,7 @@ final class BudgetStore: ObservableObject {
         return (from, to)
     }
 
-    private func transferPayee(forAccountId accountId: String) -> Payee? {
+    func transferPayee(forAccountId accountId: String) -> Payee? {
         payees.first { $0.transferAccountId == accountId && !$0.tombstone }
     }
 
@@ -6288,7 +6288,7 @@ final class BudgetStore: ObservableObject {
     /// lines must add up exactly to the total. An `isOpposite` line runs
     /// against the transaction's direction — a refund inside a spend
     /// (GH #216).
-    nonisolated private static func planStandardOrSplit(
+    private nonisolated static func planStandardOrSplit(
         _ form: TransactionForm,
         amountCents: Int,
         sign: Int

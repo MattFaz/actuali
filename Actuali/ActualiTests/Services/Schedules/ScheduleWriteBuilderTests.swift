@@ -150,7 +150,7 @@ struct ScheduleWriteBuilderTests {
         )
         #expect(fields.accountId == "acct-1")
         #expect(fields.payeeId == "payee-1")
-        #expect(fields.amount == .fixed(-1_250))
+        #expect(fields.amount == .fixed(-1250))
         #expect(fields.amountOp == .isExactly)
         #expect(fields.date == .fixed(DayDate(yyyymmdd: Transaction.yyyymmdd(from: date))!))
         #expect(fields.dateOp == "is")
@@ -161,7 +161,6 @@ struct ScheduleWriteBuilderTests {
         let offBudgetFields = try FutureTransactionSchedule.fields(
             from: form,
             payeeId: "payee-1",
-
             offBudgetAccountIds: ["acct-1"]
         )
         #expect(offBudgetFields.categoryId == nil)
@@ -171,7 +170,7 @@ struct ScheduleWriteBuilderTests {
         let incomeFields = try FutureTransactionSchedule.fields(
             from: income, payeeId: "payee-1", offBudgetAccountIds: []
         )
-        #expect(incomeFields.amount == .fixed(1_250))
+        #expect(incomeFields.amount == .fixed(1250))
 
         var transfer = form
         transfer.type = .transfer
@@ -179,13 +178,12 @@ struct ScheduleWriteBuilderTests {
         let onBudgetTransfer = try FutureTransactionSchedule.fields(
             from: transfer, payeeId: "payee-1", offBudgetAccountIds: []
         )
-        #expect(onBudgetTransfer.amount == .fixed(-1_250))
+        #expect(onBudgetTransfer.amount == .fixed(-1250))
         #expect(onBudgetTransfer.categoryId == nil)
 
         let offBudgetTransfer = try FutureTransactionSchedule.fields(
             from: transfer,
             payeeId: "payee-1",
-
             offBudgetAccountIds: ["acct-2"]
         )
         #expect(offBudgetTransfer.categoryId == "cat-1")

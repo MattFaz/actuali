@@ -43,7 +43,6 @@ struct AddTransactionView: View {
     @State private var cleared: Bool
 
     @State private var isLoading = false
-    @State private var isScheduling = false
     @State private var errorMessage: String?
     @State private var scheduleConfirmation: String?
     @State private var userPickedCategory = false
@@ -795,7 +794,6 @@ struct AddTransactionView: View {
                     .keyboardShortcut(.cancelAction)
                 }
             }
-            .disabled(isScheduling)
             .readableWidth()
             // The form's default ~35pt top inset is dead space on the
             // header-less tab root; 8pt keeps the first section off the status
@@ -1135,14 +1133,10 @@ struct AddTransactionView: View {
     }
 
     private func scheduleTransaction() async {
-        guard canScheduleTransaction, !isLoading, !isScheduling else { return }
-        isScheduling = true
+        guard canScheduleTransaction, !isLoading else { return }
         isLoading = true
         errorMessage = nil
-        defer {
-            isLoading = false
-            isScheduling = false
-        }
+        defer { isLoading = false }
 
         await applyAutomaticCategory(for: automaticCategoryInput)
         // Recheck eligibility after async category resolution before snapshotting the form.
@@ -1153,9 +1147,7 @@ struct AddTransactionView: View {
             let payeeId: String?
             if form.type == .transfer {
                 guard let destinationId = form.transferToAccountId,
-                      let transferPayee = budgetStore.payees.first(where: {
-                          $0.transferAccountId == destinationId && !$0.tombstone
-                      }) else {
+                      let transferPayee = budgetStore.transferPayee(forAccountId: destinationId) else {
                     throw BudgetStoreError.transferPayeeMissing
                 }
                 payeeId = transferPayee.id
@@ -1183,14 +1175,9 @@ struct AddTransactionView: View {
                 locale: locale
             )
         } catch {
-            if let scheduleError = error as? ScheduleWriteError,
-               scheduleError == .splitNotSupported {
-                errorMessage = String(localized: "Split transactions cannot be scheduled.", locale: locale)
-            } else {
-                errorMessage = PendingImportApprover.localizedErrorMessage(
-                    for: error, locale: locale
-                )
-            }
+            errorMessage = PendingImportApprover.localizedErrorMessage(
+                for: error, locale: locale
+            )
         }
     }
 
