@@ -176,12 +176,8 @@ final class CategoryReorderModeUITests: XCTestCase {
         sleep(2)
         // Resolve the on-screen copy, as the dedupe did: the same handle can
         // appear twice and the first copy may be the off-screen one.
-        func onScreenHandle(_ id: String) -> XCUIElement? {
-            let matches = app.descendants(matching: .any).matching(identifier: id)
-                .allElementsBoundByIndex.filter { !$0.frame.isEmpty }
-            return matches.first(where: \.isHittable) ?? matches.first
-        }
-        guard let moved = onScreenHandle(lastId), let other = onScreenHandle(aboveId) else {
+        guard let moved = onScreenCopy(app.descendants(matching: .any).matching(identifier: lastId)),
+              let other = onScreenCopy(app.descendants(matching: .any).matching(identifier: aboveId)) else {
             XCTFail("both group handles stay on screen after the drag")
             return
         }

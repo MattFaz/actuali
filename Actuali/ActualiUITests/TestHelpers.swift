@@ -74,6 +74,14 @@ extension XCTestCase {
         }
     }
 
+    /// The drawn copy of a duplicated element. A zero-frame copy must never
+    /// reach `isHittable`: that raises "Activation point invalid".
+    @MainActor
+    func onScreenCopy(_ query: XCUIElementQuery) -> XCUIElement? {
+        let drawn = query.allElementsBoundByIndex.filter { !$0.frame.isEmpty }
+        return drawn.first(where: \.isHittable) ?? drawn.first
+    }
+
     /// Replace a text field's contents. iOS 27 drops keyboard focus during a
     /// long delete run, and iOS 18 does not select on a double tap, so select
     /// and replace first, then fall back to clearing and retyping.

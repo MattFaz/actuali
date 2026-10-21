@@ -398,16 +398,21 @@ struct DemoDataSeederTests {
     /// lives in UserDefaults keyed by budget id and survives the directory
     /// rewrite, so without the explicit reset the next demo launch (and every
     /// UI test after one that browses another month) opens on a stale month.
-    @Test func loadDemoDataForgetsTheLastViewedMonth() async {
+    @Test func loadDemoDataForgetsTheLastViewedMonth() async throws {
         let store = BudgetStore.previewInstance()
         store.currentBudgetId = DemoDataSeeder.budgetId
         store.lastViewedBudgetMonth = "2025-01"
+        // An isolated pending-import file: the shared one is asserted on by
+        // BudgetStoreDemoDataTests, which runs in a separate parallel suite.
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer {
-            try? DemoDataSeeder.removeSamplePendingImport()
+            try? FileManager.default.removeItem(at: tempDir)
             store.lastViewedBudgetMonth = nil
         }
+        let pendingImports = PendingImportStore(fileURL: tempDir.appendingPathComponent("pending.json"))
 
-        await store.loadDemoData()
+        await store.loadDemoData(pendingImports: pendingImports)
 
         #expect(store.lastViewedBudgetMonth == nil)
     }
