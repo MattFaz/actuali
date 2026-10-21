@@ -161,7 +161,7 @@ final class CategoryReorderModeUITests: XCTestCase {
         // however far the drag moved it.
         var seen = Set<String>()
         let visible = (0..<handles.count).map(handles.element(boundBy:))
-            .filter { $0.isHittable && seen.insert($0.identifier).inserted }
+            .filter { !$0.frame.isEmpty && $0.isHittable && seen.insert($0.identifier).inserted }
             .sorted { $0.frame.minY < $1.frame.minY }
         XCTAssertGreaterThanOrEqual(visible.count, 2, "two group handles are visible at the bottom")
         guard visible.count >= 2, let last = visible.last else { return }

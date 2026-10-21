@@ -101,7 +101,18 @@ extension XCTestCase {
         }
         field.typeText(text.isEmpty ? XCUIKeyboardKey.delete.rawValue : text)
         if !holds() {
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 30))
+            func cleared() -> Bool {
+                let value = (field.value as? String) ?? ""
+                return value.isEmpty || value == field.placeholderValue
+            }
+            field.tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 40))
+            // A caret in the middle leaves the suffix behind. Move it past the
+            // text and clear again before retyping.
+            if !cleared() {
+                field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+                field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 40))
+            }
             if !text.isEmpty {
                 field.typeText(text)
             }

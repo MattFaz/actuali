@@ -42,9 +42,10 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
         // SpringBoard also exposes off-screen icons with zero-sized frames.
         for _ in 0..<4 {
             visibleIcon = onScreenCopy(springboard.icons.matching(identifier: "Actuali"))
-            if visibleIcon != nil {
+            if visibleIcon?.isHittable == true {
                 break
             }
+            visibleIcon = nil
             springboard.swipeLeft()
         }
         guard let icon = visibleIcon else {

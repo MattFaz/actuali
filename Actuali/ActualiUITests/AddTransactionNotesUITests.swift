@@ -117,6 +117,8 @@ final class AddTransactionNotesUITests: XCTestCase {
         let coffee = app.buttons["tagSuggestion-coffee"]
         XCTAssertTrue(coffee.waitForExistence(timeout: 5),
                       "# shows the tag chips above the field; field reads: \(notes.value as? String ?? "")")
+        XCTAssertLessThan(coffee.frame.maxY, notes.frame.minY,
+                          "the chips must sit above the notes field, clear of the keyboard accessory")
         coffee.tap()
         XCTAssertEqual(notes.value as? String, "#coffee ")
     }
