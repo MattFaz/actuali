@@ -51,10 +51,10 @@ struct MainTabView: View {
                 tabs
             }
         }
-        // The Tab API drops an accessibility value on the tab item (iOS 26 and
-        // 27), so UI tests can't read the overspent badge from the tab bar.
-        // Mirror it for the badge test only: an always-on element stays in the
-        // accessibility tree, so VoiceOver would announce the count twice.
+        // The Tab API drops accessibility values, labels and identifiers on
+        // the tab item (checked on iOS 26 and 27), so the count cannot ride on
+        // the tab. Mirror it for the badge test only: an always-on element
+        // would stay in the accessibility tree and be announced twice.
         .overlay(alignment: .topLeading) {
             #if DEBUG
             if CommandLine.arguments.contains("-mirrorTabBadge") {
@@ -104,10 +104,6 @@ struct MainTabView: View {
                 Label("Budget", systemImage: "wallet.bifold")
             }
             .badge(overspentCount)
-            // On the tab, not its label: under the Tab API the tab's own
-            // modifiers are what reach the tab bar item. VoiceOver hears it
-            // even though XCUITest does not (see the mock element in body).
-            .accessibilityValue(Text(overspentBadgeValue))
 
             Tab(value: 0) {
                 AccountsListView()

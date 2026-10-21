@@ -37,6 +37,9 @@ final class AddTransactionNotesUITests: XCTestCase {
         notes.typeText("#no-matching-tag")
         assertNoBlankRow(between: notes, and: save, "unmatched tags leave a blank row before Save")
 
+        // A second typeText without a fresh tap loses keyboard focus on
+        // iOS 27; tap past the text so the caret lands at the end.
+        notes.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
         notes.typeText(" https://example.com/receipt")
         XCTAssertTrue(app.descendants(matching: .any)["noteLinkRow"].firstMatch.waitForExistence(timeout: 5),
                       "notes with a URL should still show a tappable link row")

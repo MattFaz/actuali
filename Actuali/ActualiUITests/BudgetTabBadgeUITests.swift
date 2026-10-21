@@ -65,9 +65,9 @@ final class BudgetTabBadgeUITests: XCTestCase {
         (control.exists ? control : toggle).tap()
     }
 
-    /// The numeric badge pill is not itself in the accessibility tree, and the
-    /// Tab API drops an accessibility value on the tab item, so the app mirrors
-    /// the badge in a hidden DEBUG-only element (MainTabView).
+    /// The Tab API exposes nothing but the plain title (values, labels and
+    /// identifiers are all dropped), so MainTabView mirrors the count for
+    /// this test behind the -mirrorTabBadge launch argument.
     @MainActor
     private func badgeValue(in app: XCUIApplication) -> String {
         let mirror = app.descendants(matching: .any)["budget.overspentBadgeValue"].firstMatch
