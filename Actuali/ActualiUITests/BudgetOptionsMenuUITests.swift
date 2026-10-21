@@ -45,6 +45,54 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         app.buttons["Style"].tap()
     }
 
+    /// Selects the simulator's current month rather than relying on the
+    /// demo budget's persisted last-viewed month from a previous UI test.
+    @MainActor private func selectCurrentMonth(in app: XCUIApplication) {
+        let monthPicker = app.buttons["budget.monthStepper"]
+        guard monthPicker.waitForExistence(timeout: 10) else {
+            XCTFail("Budget month picker not found")
+            return
+        }
+        monthPicker.tap()
+
+        let calendar = Calendar.current
+        let currentDate = Date()
+        let targetYear = calendar.component(.year, from: currentDate)
+        let targetMonth = calendar.component(.month, from: currentDate)
+        let targetMonthKey = String(format: "%04d-%02d", targetYear, targetMonth)
+        let year = app.staticTexts["budget.monthPicker.year"]
+        let previousYear = app.buttons["budget.monthPicker.previousYear"]
+        let nextYear = app.buttons["budget.monthPicker.nextYear"]
+        guard year.waitForExistence(timeout: 5) else {
+            XCTFail("Month picker year not found")
+            return
+        }
+
+        for _ in 0..<20 {
+            guard let displayedYear = Int(year.label) else {
+                XCTFail("Month picker year was not numeric")
+                return
+            }
+            if displayedYear == targetYear {
+                break
+            }
+            if displayedYear < targetYear {
+                nextYear.tap()
+            } else {
+                previousYear.tap()
+            }
+        }
+        XCTAssertEqual(Int(year.label), targetYear, "Month picker should navigate to the current year")
+
+        let currentMonth = app.buttons["budget.monthPicker.month.\(targetMonthKey)"]
+        guard currentMonth.waitForExistence(timeout: 5) else {
+            XCTFail("Current month \(targetMonthKey) not found in month picker")
+            return
+        }
+        currentMonth.tap()
+        XCTAssertTrue(monthPicker.waitForExistence(timeout: 5))
+    }
+
     @MainActor
     func testEllipsisOffersThreeSubmenusAndNoteAction() {
         let app = XCUIApplication()
@@ -134,6 +182,50 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(totals.exists)
         XCTAssertFalse(totals.isEnabled)
         XCTAssertFalse(app.buttons["Progress Indicators"].exists)
+    }
+
+    @MainActor
+    func testGroupTotalsToggleChangesCompactGroupHeader() {
+        let app = XCUIApplication()
+        launchBudgetTab(app)
+
+        openStyleMenu(app)
+        XCTAssertTrue(app.buttons["Compact"].waitForExistence(timeout: 5))
+        app.buttons["Compact"].tap()
+
+        let headerWithTotals = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Essentials, expanded, budgeted '")
+        ).firstMatch
+        XCTAssertTrue(
+            headerWithTotals.waitForExistence(timeout: 10),
+            "Compact group headers should include totals when Group Totals is enabled"
+        )
+
+        openBudgetViewMenu(app)
+        let totals = app.buttons["Group Totals"]
+        XCTAssertTrue(totals.waitForExistence(timeout: 5))
+        XCTAssertTrue(totals.isSelected, "Group Totals starts enabled")
+        totals.tap()
+
+        let headerWithoutTotals = app.buttons["Essentials, expanded"]
+        XCTAssertTrue(
+            headerWithoutTotals.waitForExistence(timeout: 10),
+            "Turning Group Totals off should leave the group header visible"
+        )
+        XCTAssertTrue(
+            headerWithTotals.waitForNonExistence(timeout: 5),
+            "Turning Group Totals off should remove the totals from the group header"
+        )
+
+        openBudgetViewMenu(app)
+        let restoreTotals = app.buttons["Group Totals"]
+        XCTAssertTrue(restoreTotals.waitForExistence(timeout: 5))
+        XCTAssertFalse(restoreTotals.isSelected, "Group Totals should now be disabled")
+        restoreTotals.tap()
+        XCTAssertTrue(
+            headerWithTotals.waitForExistence(timeout: 5),
+            "Turning Group Totals back on should restore the totals"
+        )
     }
 
     @MainActor
@@ -257,27 +349,72 @@ final class BudgetOptionsMenuUITests: XCTestCase {
     func testHideSpentCategoriesTogglesFromBudgetViewSubmenu() {
         let app = XCUIApplication()
         launchBudgetTab(app)
+        selectCurrentMonth(in: app)
 
-        XCTAssertTrue(app.buttons["Details for Groceries"].firstMatch
-            .waitForExistence(timeout: 10),
-            "demo data should show the Essentials categories")
+        // Rent's current-month budget and fixed rent transaction are both
+        // $1,850, so the category has exactly zero available and should be
+        // hidden by Hide Spent Categories.
+        let rentCategory = app.buttons["Details for Rent"].firstMatch
+        XCTAssertTrue(
+            rentCategory.waitForExistence(timeout: 10),
+            "The demo's fully spent Rent category should start visible"
+        )
 
         openBudgetViewMenu(app)
         let hideSpent = menuOption(app, "Hide Spent", accessibilityLabel: "Hide Spent Categories")
         XCTAssertTrue(hideSpent.waitForExistence(timeout: 5))
-        XCTAssertFalse(hideSpent.isSelected, "the filter starts off")
+        XCTAssertFalse(hideSpent.isSelected, "Hide Spent Categories starts off")
         hideSpent.tap()
+
+        XCTAssertTrue(
+            rentCategory.waitForNonExistence(timeout: 5),
+            "Enabling Hide Spent Categories should hide the fully spent Rent category"
+        )
 
         openBudgetViewMenu(app)
         let enabled = menuOption(app, "Hide Spent", accessibilityLabel: "Hide Spent Categories")
         XCTAssertTrue(enabled.waitForExistence(timeout: 5))
-        XCTAssertTrue(enabled.isSelected, "tapping the menu item turns the filter on")
-
+        XCTAssertTrue(enabled.isSelected, "Hide Spent Categories should now be enabled")
         enabled.tap()
+
+        XCTAssertTrue(
+            rentCategory.waitForExistence(timeout: 5),
+            "Disabling Hide Spent Categories should restore the fully spent Rent category"
+        )
+    }
+
+    @MainActor
+    func testBudgetedAmountsToggleControlsBudgetRows() {
+        let app = XCUIApplication()
+        launchBudgetTab(app)
+
+        let budgetedCaption = app.buttons["Edit budgeted amount for Groceries"].firstMatch
+        XCTAssertTrue(
+            budgetedCaption.waitForExistence(timeout: 10),
+            "The demo budget should start with visible Budgeted captions"
+        )
+
         openBudgetViewMenu(app)
-        XCTAssertFalse(menuOption(
-            app, "Hide Spent", accessibilityLabel: "Hide Spent Categories"
-        ).isSelected, "tapping again turns the filter back off")
+        let budgeted = menuOption(app, "Show Budgeted", accessibilityLabel: "Budgeted Amounts")
+        XCTAssertTrue(budgeted.waitForExistence(timeout: 5))
+        budgeted.tap()
+        XCTAssertTrue(
+            budgetedCaption.waitForNonExistence(timeout: 5),
+            "Turning Budgeted Amounts off should remove the caption from category rows"
+        )
+        XCTAssertTrue(
+            app.buttons["Details for Groceries"].firstMatch.exists,
+            "Hiding budgeted amounts must not hide the category itself"
+        )
+
+        openBudgetViewMenu(app)
+        let restoreBudgeted = menuOption(app, "Show Budgeted", accessibilityLabel: "Budgeted Amounts")
+        XCTAssertTrue(restoreBudgeted.waitForExistence(timeout: 5))
+        restoreBudgeted.tap()
+        XCTAssertTrue(
+            budgetedCaption.waitForExistence(timeout: 5),
+            "Turning Budgeted Amounts back on should restore the caption"
+        )
     }
 
     @MainActor

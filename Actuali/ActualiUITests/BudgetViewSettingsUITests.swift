@@ -1,50 +1,59 @@
 import XCTest
 
-/// The Settings > Budget View controls are a second public surface for the
-/// Budget tab's presentation preferences. These checks exercise that surface
-/// end to end instead of relying on the Budget options menu's coverage.
+/// Settings > Budget View owns the presentation options that remain outside
+/// the Budget tab's contextual display menu. The first test also guards
+/// against reintroducing duplicate controls here.
 final class BudgetViewSettingsUITests: XCTestCase {
     @MainActor
     private func launchSettings(
         budgetDisplayStyle: String = "clean",
-        showGroupTotals: Bool = true,
-        showBudgetCheckInStrip: Bool = true,
-        hideZeroBudgetCategories: Bool = false,
         showCategoryStatusDots: Bool = true,
         showBudgetProgressBars: Bool = true,
-        showInverseBudgetProgressBars: Bool = false,
-        showBudgetedAmounts: Bool = true
+        showInverseBudgetProgressBars: Bool = false
     ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-initialTab", "4",
             "-budgetDisplayStyle", budgetDisplayStyle,
-            "-showGroupTotals", showGroupTotals ? "YES" : "NO",
-            "-showBudgetCheckInStrip", showBudgetCheckInStrip ? "YES" : "NO",
-            "-hideZeroBudgetCategories", hideZeroBudgetCategories ? "YES" : "NO",
+            "-hideZeroBudgetCategories", "NO",
+            "-showBudgetedAmounts", "YES",
             "-showCategoryStatusDots", showCategoryStatusDots ? "YES" : "NO",
             "-showBudgetProgressBars", showBudgetProgressBars ? "YES" : "NO",
             "-showInverseBudgetProgressBars", showInverseBudgetProgressBars ? "YES" : "NO",
-            "-showBudgetedAmounts", showBudgetedAmounts ? "YES" : "NO",
         ]
         app.launch()
         return app
     }
 
     @MainActor
-    private func selectViewStyle(_ style: String, in app: XCUIApplication) {
-        let picker = app.buttons.matching(
+    func testDuplicateBudgetDisplayControlsAreAbsentFromSettings() {
+        let app = launchSettings()
+        openBudgetViewSettings(in: app)
+
+        XCTAssertTrue(
+            app.switches["Category Status Dots"].waitForExistence(timeout: 5),
+            "Unique presentation settings should remain available"
+        )
+        XCTAssertTrue(app.switches["Budget Progress Bars"].exists)
+
+        let viewStyle = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH 'View Style'")
         ).firstMatch
-        XCTAssertTrue(picker.waitForExistence(timeout: 5), "View Style picker not found")
-        picker.tap()
+        XCTAssertFalse(viewStyle.exists, "View Style is available from the Budget tab menu")
 
-        let option = app.buttons[style]
-        XCTAssertTrue(option.waitForExistence(timeout: 5), "\(style) option not found")
-        XCTAssertFalse(app.buttons["Detailed"].exists)
-        tapControl(option) { option.waitForNonExistence(timeout: 5) }
-        XCTAssertTrue(app.navigationBars["Budget View"].waitForExistence(timeout: 5))
+        for title in [
+            "Group Totals",
+            "Show Spent",
+            "Budgeted Amounts",
+            "Status Filters",
+            "Hide Spent Categories",
+        ] {
+            XCTAssertFalse(
+                app.switches[title].exists,
+                "\(title) should be available from the Budget tab menu, not Settings"
+            )
+        }
     }
 
     @MainActor
@@ -61,107 +70,6 @@ final class BudgetViewSettingsUITests: XCTestCase {
     }
 
     @MainActor
-    func testViewStyleControlsGroupTotalsAvailabilityAndPresentation() {
-        let app = launchSettings()
-        openBudgetViewSettings(in: app)
-
-        let groupTotals = app.switches["Group Totals"]
-        XCTAssertTrue(groupTotals.waitForExistence(timeout: 5), "Group Totals toggle not found")
-        XCTAssertFalse(groupTotals.isEnabled, "Clean view should disable Group Totals")
-
-        selectViewStyle("Compact", in: app)
-        XCTAssertTrue(groupTotals.isEnabled, "Compact view should enable Group Totals")
-
-        app.tabBars.buttons["Budget"].tap()
-        let headerWithTotals = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Essentials, expanded, budgeted '")
-        ).firstMatch
-        XCTAssertTrue(
-            headerWithTotals.waitForExistence(timeout: 10),
-            "Compact view should show totals in the group header"
-        )
-
-        openBudgetViewSettings(in: app)
-        let groupTotalsAfterReturn = app.switches["Group Totals"]
-        XCTAssertTrue(
-            groupTotalsAfterReturn.waitForExistence(timeout: 5),
-            "Group Totals toggle not found after returning to Settings"
-        )
-        tapSwitch(groupTotalsAfterReturn)
-        app.tabBars.buttons["Budget"].tap()
-
-        let headerWithoutTotals = app.buttons["Essentials, expanded"]
-        XCTAssertTrue(
-            headerWithoutTotals.waitForExistence(timeout: 10),
-            "Turning Group Totals off should keep the group header visible"
-        )
-        let headerWithTotalsAfterToggle = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Essentials, expanded, budgeted '")
-        ).firstMatch
-        XCTAssertFalse(
-            headerWithTotalsAfterToggle.waitForExistence(timeout: 2),
-            "Turning Group Totals off should remove the totals"
-        )
-    }
-
-    @MainActor
-    func testStatusFiltersToggleControlsTheBudgetCheckInStrip() {
-        let app = launchSettings(showBudgetCheckInStrip: true)
-        openBudgetViewSettings(in: app)
-
-        let toggle = app.switches["Status Filters"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Status Filters toggle not found")
-        tapSwitch(toggle)
-
-        app.tabBars.buttons["Budget"].tap()
-        let allFilter = app.buttons["budgetFilter-all"]
-        XCTAssertTrue(
-            allFilter.waitForNonExistence(timeout: 5),
-            "Turning Status Filters off in Settings should hide the check-in strip"
-        )
-
-        openBudgetViewSettings(in: app)
-        tapSwitch(app.switches["Status Filters"])
-        app.tabBars.buttons["Budget"].tap()
-        XCTAssertTrue(
-            allFilter.waitForExistence(timeout: 5),
-            "Turning Status Filters back on should restore the check-in strip"
-        )
-    }
-
-    @MainActor
-    func testHideSpentCategoriesToggleControlsBudgetRows() {
-        let app = launchSettings(hideZeroBudgetCategories: false)
-        openBudgetViewSettings(in: app)
-
-        let toggle = app.switches["Hide Spent Categories"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Hide Spent Categories toggle not found")
-
-        app.tabBars.buttons["Budget"].tap()
-        let spentCategory = app.buttons["Details for Rent"].firstMatch
-        XCTAssertTrue(
-            spentCategory.waitForExistence(timeout: 10),
-            "The demo's fully spent Rent category should start visible"
-        )
-
-        openBudgetViewSettings(in: app)
-        tapSwitch(app.switches["Hide Spent Categories"])
-        app.tabBars.buttons["Budget"].tap()
-        XCTAssertTrue(
-            app.buttons["Details for Rent"].firstMatch.waitForNonExistence(timeout: 5),
-            "Turning Hide Spent Categories on should remove fully spent rows"
-        )
-
-        openBudgetViewSettings(in: app)
-        tapSwitch(app.switches["Hide Spent Categories"])
-        app.tabBars.buttons["Budget"].tap()
-        XCTAssertTrue(
-            app.buttons["Details for Rent"].firstMatch.waitForExistence(timeout: 5),
-            "Turning Hide Spent Categories off should restore fully spent rows"
-        )
-    }
-
-    @MainActor
     func testBudgetProgressBarsToggleControlsBudgetRows() {
         let app = launchSettings(showBudgetProgressBars: true)
         openBudgetViewSettings(in: app)
@@ -170,6 +78,23 @@ final class BudgetViewSettingsUITests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Budget Progress Bars toggle not found")
 
         app.tabBars.buttons["Budget"].tap()
+
+        // Progress bars are omitted for categories with no budgeted amount or
+        // spending. Give Groceries a budget so this test checks the preference,
+        // not the demo month's incidental amounts.
+        let editGroceries = app.buttons["Edit budgeted amount for Groceries"].firstMatch
+        XCTAssertTrue(
+            editGroceries.waitForExistence(timeout: 10),
+            "The demo budget should expose the Groceries budgeted amount"
+        )
+        editGroceries.tap()
+        let amount = app.textFields.firstMatch
+        XCTAssertTrue(amount.waitForExistence(timeout: 5), "Budgeted amount editor did not open")
+        amount.tap()
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + "100")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(amount.waitForNonExistence(timeout: 5), "Budgeted amount editor did not close")
+
         let progressBar = firstBudgetProgressBar(in: app)
         XCTAssertTrue(
             progressBar.waitForExistence(timeout: 10),
@@ -190,42 +115,6 @@ final class BudgetViewSettingsUITests: XCTestCase {
         XCTAssertTrue(
             firstBudgetProgressBar(in: app).waitForExistence(timeout: 5),
             "Turning Budget Progress Bars back on should restore them"
-        )
-    }
-
-    @MainActor
-    func testBudgetedAmountsToggleControlsBudgetRows() {
-        let app = launchSettings(showBudgetedAmounts: true)
-        openBudgetViewSettings(in: app)
-
-        let toggle = app.switches["Budgeted Amounts"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Budgeted Amounts toggle not found")
-
-        app.tabBars.buttons["Budget"].tap()
-        let budgetedCaption = app.buttons["Edit budgeted amount for Rent"].firstMatch
-        XCTAssertTrue(
-            budgetedCaption.waitForExistence(timeout: 10),
-            "The demo budget should start with visible Budgeted captions"
-        )
-
-        openBudgetViewSettings(in: app)
-        tapSwitch(app.switches["Budgeted Amounts"])
-        app.tabBars.buttons["Budget"].tap()
-        XCTAssertTrue(
-            budgetedCaption.waitForNonExistence(timeout: 5),
-            "Turning Budgeted Amounts off should remove the caption from category rows"
-        )
-        XCTAssertTrue(
-            app.buttons["Details for Rent"].firstMatch.exists,
-            "Hiding budgeted amounts must not hide the category itself"
-        )
-
-        openBudgetViewSettings(in: app)
-        tapSwitch(app.switches["Budgeted Amounts"])
-        app.tabBars.buttons["Budget"].tap()
-        XCTAssertTrue(
-            budgetedCaption.waitForExistence(timeout: 5),
-            "Turning Budgeted Amounts back on should restore the caption"
         )
     }
 
