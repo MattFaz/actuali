@@ -414,6 +414,9 @@ struct DemoDataSeederTests {
 
         await store.loadDemoData(pendingImports: pendingImports)
 
+        // Without the budget loaded the month getter returns nil for any
+        // value, so assert the id before the month.
+        #expect(store.currentBudgetId == DemoDataSeeder.budgetId)
         #expect(store.lastViewedBudgetMonth == nil)
     }
 

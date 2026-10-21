@@ -84,6 +84,10 @@ struct MainTabView: View {
                 Label("Budget", systemImage: "wallet.bifold")
             }
             .badge(overspentCount)
+            // On the tab, not its label: under the Tab API the tab's own
+            // modifiers are what reach the tab bar item. XCUITest cannot read
+            // it, but VoiceOver has no other source for the count.
+            .accessibilityValue(Text(Self.overspentBadgeValue(count: overspentCount)))
 
             Tab(value: 0) {
                 AccountsListView()
