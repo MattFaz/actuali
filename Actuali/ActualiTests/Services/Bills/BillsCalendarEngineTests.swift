@@ -13,6 +13,10 @@ struct BillsCalendarEngineTests {
         #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 10, firstDayOfWeekIdx: 0) == 4) // Thursday
         #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 10, firstDayOfWeekIdx: 1) == 3)
 
+        // Out-of-range indices fall back to Sunday, matching the Reports calendar.
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 9, firstDayOfWeekIdx: 7) == 2)
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 9, firstDayOfWeekIdx: -1) == 2)
+
         let days = BillsCalendarEngine.daysInMonth(year: 2026, month: 9)
         #expect(days.count == 30)
         #expect(days.first?.yyyymmdd == 20_260_901)

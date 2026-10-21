@@ -70,7 +70,8 @@ struct BillsCalendarView: View {
         }
     }
 
-    /// 0 = Sunday ... 6 = Saturday, matching the Reports calendar.
+    /// Device week start as 0 = Sunday ... 6 = Saturday, the index convention the
+    /// Reports calendar helper takes. Follows the system date picker (Bank Sync).
     private var firstDayOfWeekIdx: Int {
         calendar.firstWeekday - 1
     }
