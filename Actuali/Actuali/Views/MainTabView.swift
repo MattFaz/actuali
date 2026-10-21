@@ -51,6 +51,17 @@ struct MainTabView: View {
                 tabs
             }
         }
+        // The Tab API drops an accessibility value on the tab item (iOS 26 and
+        // 27), so UI tests can't read the overspent badge from the tab bar.
+        // Mirror it in a hidden DEBUG-only element that they can query.
+        .overlay(alignment: .topLeading) {
+            #if DEBUG
+            Text(overspentBadgeValue)
+                .accessibilityIdentifier("budget.overspentBadgeValue")
+                .opacity(0)
+                .allowsHitTesting(false)
+            #endif
+        }
         .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
             if pending {
                 selectedTab = 0
@@ -91,9 +102,8 @@ struct MainTabView: View {
             }
             .badge(overspentCount)
             // On the tab, not its label: under the Tab API the tab's own
-            // modifiers are what reach the tab bar item. (Neither placement
-            // surfaces the value to XCUITest on iOS 26 — BudgetTabBadgeUITests
-            // fails on main for that reason, unrelated to this.)
+            // modifiers are what reach the tab bar item. VoiceOver hears it
+            // even though XCUITest does not (see the mock element in body).
             .accessibilityValue(Text(overspentBadgeValue))
 
             Tab(value: 0) {

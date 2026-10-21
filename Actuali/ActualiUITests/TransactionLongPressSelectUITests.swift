@@ -44,6 +44,13 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         XCTAssertTrue(allAccounts.waitForExistence(timeout: 10))
         allAccounts.tap()
 
+        // A previous test can leave the Uncategorized filter selected, which
+        // hides every demo row from this suite.
+        let allFilter = app.buttons["transactionFilter-all"]
+        if allFilter.waitForExistence(timeout: 5), !allFilter.isSelected {
+            allFilter.tap()
+        }
+
         let selectionModeButton = app.buttons["transactions.selectionMode"]
         XCTAssertTrue(selectionModeButton.waitForExistence(timeout: 10))
         selectionModeButton.tap()
@@ -91,7 +98,15 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap()
         field.typeText("batchtag")
-        app.buttons["transactionTagPicker.add"].tap()
+        if (field.value as? String) != "batchtag" {
+            field.tap()
+            field.typeText("batchtag")
+        }
+        let add = app.buttons["transactionTagPicker.add"]
+        XCTAssertTrue(add.isEnabled, "typing a new tag enables Add")
+        add.tap()
+        XCTAssertTrue(app.navigationBars["Add Tag"].waitForNonExistence(timeout: 5),
+                      "adding the tag dismisses the picker")
 
         let tagged = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'batchtag'"))
         XCTAssertTrue(tagged.firstMatch.waitForExistence(timeout: 10), "the new tag shows on the selected transactions")

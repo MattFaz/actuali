@@ -675,6 +675,10 @@ struct AddTransactionView: View {
                 }
 
                 Section {
+                    // Above the field, not below: the keyboard's Done accessory
+                    // floats over whatever sits directly under the focused
+                    // field and swallows taps aimed at the chips.
+                    TagSuggestionBar(text: $notes, availableTags: budgetStore.tags)
                     // One line while the note is short — an empty three-line
                     // box only pushes the save button off screen —
                     // growing as the text needs it, up to six.
@@ -699,7 +703,6 @@ struct AddTransactionView: View {
                             .accessibilityIdentifier("addTransaction.notesClear")
                         }
                     }
-                    TagSuggestionBar(text: $notes, availableTags: budgetStore.tags)
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
                     // full view of a transaction's note.
@@ -1392,10 +1395,10 @@ private struct SplitLineRow: View {
                 )
                 .environmentObject(budgetStore)
             }
+            TagSuggestionBar(text: $line.notes, availableTags: budgetStore.tags)
             TextField(String(localized: AddTransactionLocalization.optionalNotes, locale: locale), text: $line.notes)
                 .font(.subheadline)
                 .accessibilityIdentifier("addTransaction.splitLine.notes")
-            TagSuggestionBar(text: $line.notes, availableTags: budgetStore.tags)
             NoteLinkRows(text: line.notes)
                 .font(.subheadline)
         }

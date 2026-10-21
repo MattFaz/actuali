@@ -284,13 +284,13 @@ struct BudgetView: View {
                     }
                 }
             )) {
+                // No accessibility identifiers on alert buttons: iOS drops
+                // them inside native alerts, and setting one wraps the button
+                // in a second AX node that makes label queries ambiguous.
                 TextField("Category Name", text: $renameText)
-                    .accessibilityIdentifier("categoryRename.name")
                 Button("Cancel", role: .cancel) {}
-                    .accessibilityIdentifier("categoryRename.cancel")
                 Button("Save") { commitRename() }
                     .disabled(Self.renameName(renameText) == nil)
-                    .accessibilityIdentifier("categoryRename.save")
             }
         }
         .initialSyncBanner()

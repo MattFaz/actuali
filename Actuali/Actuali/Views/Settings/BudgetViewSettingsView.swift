@@ -40,6 +40,17 @@ struct BudgetViewSettingsView: View {
                 DisclosureGroup(
                     isExpanded: $isCategoryStatusColorPickerExpanded
                 ) {
+                    // Inside the group, not in the label: a Button in a
+                    // DisclosureGroup label merges with the row, so tapping
+                    // the row opens the alert instead of expanding it.
+                    Button {
+                        showingCategoryStatusColorInfo = true
+                    } label: {
+                        Label("Color picker information", systemImage: "info.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("categoryStatusColorPickerInfo")
+
                     ForEach(CategoryProgressState.allCases, id: \.self) { state in
                         HStack {
                             ColorPicker(
@@ -67,18 +78,7 @@ struct BudgetViewSettingsView: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 8) {
-                        Button {
-                            showingCategoryStatusColorInfo = true
-                        } label: {
-                            Image(systemName: "info.circle")
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(String(localized: "Color picker information"))
-                        .accessibilityIdentifier("categoryStatusColorPickerInfo")
-
-                        Text(String(localized: "Color picker"))
-                    }
+                    Text(String(localized: "Color picker"))
                 }
             } header: {
                 Text(String(localized: "Presentation"))

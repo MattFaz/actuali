@@ -3162,12 +3162,14 @@ final class BudgetStore: ObservableObject {
                 seedUnsupportedBankSync: seedUnsupportedBankSync
             )
             currentBudgetId = DemoDataSeeder.budgetId
-            // Reseeding rebuilds the budget directory, but history persists in
-            // UserDefaults keyed by budget id and survives it. Clear it so a
-            // reseeded demo opens pristine (this also keeps UI tests
-            // deterministic: they share the simulator's defaults across
-            // launches, and earlier tests record demo-budget history).
+            // Reseeding rebuilds the budget directory, but history and the
+            // last viewed month persist in UserDefaults keyed by budget id and
+            // survive it. Clear both so a reseeded demo opens pristine (this
+            // also keeps UI tests deterministic: they share the simulator's
+            // defaults across launches, and earlier tests record demo-budget
+            // history and browse other months).
             HistoryStore.shared.clearPersistedActions(budgetID: DemoDataSeeder.budgetId)
+            lastViewedBudgetMonth = nil
             UserDefaults.standard.removeObject(
                 forKey: Self.excludedFromSpentDefaultsKey(for: DemoDataSeeder.budgetId)
             )

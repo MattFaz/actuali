@@ -27,6 +27,10 @@ final class TransactionImpactCueUITests: XCTestCase {
             XCTAssertTrue(groceries.waitForExistence(timeout: 10))
             groceries.tap()
         }
+        // Duplicate lives in the bulk bar's More menu (#648).
+        let more = app.buttons["transactionBulkBar.more"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        more.tap()
         let duplicate = app.buttons[includeGroceries ? "Duplicate 2 selected transactions" : "Duplicate 1 selected transaction"]
         XCTAssertTrue(duplicate.waitForExistence(timeout: 5))
         duplicate.tap()

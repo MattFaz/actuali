@@ -120,12 +120,26 @@ final class AddTransactionNotesUITests: XCTestCase {
         let text = "lunch with the whole team at the usual place downtown paid on the shared card and "
             + "split later with everyone who came along including the two new starters"
         for character in text {
-            let key = character == " " ? "space" : String(character)
-            // The keyboard starts shifted, so the first letter is a capital key.
-            (app.keys[key].exists ? app.keys[key] : app.keys[key.uppercased()]).tap()
+            tapKey(character == " " ? "space" : String(character), in: app)
         }
         assertAboveKeyboard(notes, in: app, "Notes is hidden after it grows")
         XCTAssertLessThan(notes.frame.minY, focusedTop, "the form did not scroll Notes up as it grew")
+    }
+
+    /// Tap an on-screen key. The AX tree can also hold an off-screen copy of
+    /// a key, which `.tap()` then refuses with an AX scroll error.
+    @MainActor
+    private func tapKey(_ key: String, in app: XCUIApplication) {
+        // The keyboard starts shifted, so the first letter is a capital key.
+        for candidate in [key, key.uppercased()] {
+            let onScreen = app.keys.matching(identifier: candidate)
+                .allElementsBoundByIndex.first(where: \.isHittable)
+            if let onScreen {
+                onScreen.tap()
+                return
+            }
+        }
+        XCTFail("key \(key) is not reachable")
     }
 
     @MainActor

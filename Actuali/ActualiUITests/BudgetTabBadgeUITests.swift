@@ -23,13 +23,13 @@ final class BudgetTabBadgeUITests: XCTestCase {
         XCTAssertTrue(budgetTab.waitForExistence(timeout: 10), "Budget tab not found")
 
         // Demo data is within budget everywhere: no badge at launch.
-        XCTAssertFalse(badgeValue(of: budgetTab).contains("overspent"),
+        XCTAssertFalse(badgeValue(in: app).contains("overspent"),
                        "badge value present with no overspent categories: \(budgetTab.debugDescription)")
         attachScreenshot(app, name: "1-no-badge-at-launch")
 
         // Rent has a $1,850 payment even on day 1; Coffee has no spending then.
         setBudget(app, category: "Rent", centsKeystrokes: "100")
-        XCTAssertTrue(waitForBadgeValue(of: budgetTab, containing: "1 overspent category"),
+        XCTAssertTrue(waitForBadgeValue(in: app, containing: "1 overspent category"),
                       "badge did not report 1 overspent category. Tab: \(budgetTab.debugDescription)")
         attachScreenshot(app, name: "2-badge-after-overspend")
 
@@ -42,17 +42,17 @@ final class BudgetTabBadgeUITests: XCTestCase {
         let toggle = app.switches["Overspent Badge"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Overspent Badge toggle not found")
         tapSwitch(toggle)
-        XCTAssertTrue(waitForBadgeValue(of: budgetTab, containing: ""),
+        XCTAssertTrue(waitForBadgeValue(in: app, containing: ""),
                       "badge still shown with the setting off: \(budgetTab.debugDescription)")
         attachScreenshot(app, name: "3-badge-hidden-by-setting")
         tapSwitch(toggle)
-        XCTAssertTrue(waitForBadgeValue(of: budgetTab, containing: "1 overspent category"),
+        XCTAssertTrue(waitForBadgeValue(in: app, containing: "1 overspent category"),
                       "badge did not return after re-enabling: \(budgetTab.debugDescription)")
 
         // Restore a healthy budget: badge must disappear again.
         budgetTab.tap()
         setBudget(app, category: "Rent", centsKeystrokes: "185000")
-        XCTAssertTrue(waitForBadgeValue(of: budgetTab, containing: ""),
+        XCTAssertTrue(waitForBadgeValue(in: app, containing: ""),
                       "badge still reported after restoring budget: \(budgetTab.debugDescription)")
         attachScreenshot(app, name: "4-badge-cleared")
     }
@@ -65,19 +65,21 @@ final class BudgetTabBadgeUITests: XCTestCase {
         (control.exists ? control : toggle).tap()
     }
 
-    /// The numeric badge pill is not itself in the accessibility tree; the
-    /// app mirrors it as the tab button's accessibility value.
+    /// The numeric badge pill is not itself in the accessibility tree, and the
+    /// Tab API drops an accessibility value on the tab item, so the app mirrors
+    /// the badge in a hidden DEBUG-only element (MainTabView).
     @MainActor
-    private func badgeValue(of tab: XCUIElement) -> String {
-        (tab.value as? String) ?? ""
+    private func badgeValue(in app: XCUIApplication) -> String {
+        let mirror = app.descendants(matching: .any)["budget.overspentBadgeValue"].firstMatch
+        return mirror.exists ? mirror.label : ""
     }
 
     @MainActor
-    private func waitForBadgeValue(of tab: XCUIElement, containing expected: String,
+    private func waitForBadgeValue(in app: XCUIApplication, containing expected: String,
                                    timeout: TimeInterval = 10) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            let value = badgeValue(of: tab)
+            let value = badgeValue(in: app)
             if expected.isEmpty ? value.isEmpty : value.contains(expected) {
                 return true
             }

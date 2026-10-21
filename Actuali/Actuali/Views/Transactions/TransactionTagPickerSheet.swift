@@ -31,17 +31,12 @@ struct TransactionTagPickerSheet: View {
         NavigationStack {
             List {
                 Section {
-                    HStack {
-                        TextField(ReportStrings.text("Tag Name", locale: locale), text: $text)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .submitLabel(.done)
-                            .onSubmit(addTyped)
-                            .accessibilityIdentifier("transactionTagPicker.field")
-                        Button(ReportStrings.text("Add", locale: locale), action: addTyped)
-                            .disabled(typedName.isEmpty || typedNameIsInvalid)
-                            .accessibilityIdentifier("transactionTagPicker.add")
-                    }
+                    TextField(ReportStrings.text("Tag Name", locale: locale), text: $text)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .onSubmit(addTyped)
+                        .accessibilityIdentifier("transactionTagPicker.field")
                 } footer: {
                     if typedNameIsInvalid {
                         Text("Tag names cannot contain spaces or the # symbol.")
@@ -67,6 +62,14 @@ struct TransactionTagPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(ReportStrings.text("Cancel", locale: locale)) { dismiss() }
+                }
+                // In the navigation bar, not the row: the keyboard's accessory
+                // sits over the bottom of the sheet and can swallow taps on a
+                // row button while the field is focused.
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(ReportStrings.text("Add", locale: locale), action: addTyped)
+                        .disabled(typedName.isEmpty || typedNameIsInvalid)
+                        .accessibilityIdentifier("transactionTagPicker.add")
                 }
             }
         }

@@ -41,8 +41,10 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
         var visibleIcon: XCUIElement?
         // SpringBoard also exposes off-screen icons with zero-sized frames.
         for _ in 0..<4 {
+            // Check the frame first: isHittable on a zero-frame icon raises
+            // "Activation point invalid" and aborts the test.
             visibleIcon = springboard.icons.matching(identifier: "Actuali")
-                .allElementsBoundByIndex.first { $0.isHittable }
+                .allElementsBoundByIndex.first { !$0.frame.isEmpty && $0.isHittable }
             if visibleIcon != nil {
                 break
             }

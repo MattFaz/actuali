@@ -156,18 +156,31 @@ final class CategoryReorderModeUITests: XCTestCase {
         }
         let handles = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH %@", "reorder.groupHandle."))
+        // The AX tree can list the same handle twice on iOS 27; without this
+        // dedupe `above` and `last` resolve to one element and compare equal
+        // however far the drag moved it.
+        var seen = Set<String>()
         let visible = (0..<handles.count).map(handles.element(boundBy:))
-            .filter(\.isHittable)
+            .filter { $0.isHittable && seen.insert($0.identifier).inserted }
             .sorted { $0.frame.minY < $1.frame.minY }
         XCTAssertGreaterThanOrEqual(visible.count, 2, "two group handles are visible at the bottom")
         guard visible.count >= 2, let last = visible.last else { return }
         let above = visible[visible.count - 2]
         let lastId = last.identifier
+        // Capture both identifiers before the drag: the elements are
+        // index-based queries, so after a reorder `above` can resolve to a
+        // different row and compare the moved row with itself.
+        let aboveId = above.identifier
+        XCTAssertNotEqual(lastId, aboveId, "the two handles must be different groups")
         drag(last, to: above)
         sleep(2)
         let moved = app.descendants(matching: .any)[lastId]
-        let other = app.descendants(matching: .any)[above.identifier]
+        let other = app.descendants(matching: .any)[aboveId]
         XCTAssertTrue(moved.exists && other.exists)
-        XCTAssertLessThan(moved.frame.minY, other.frame.minY, "the bottom group should now sit above its neighbour")
+        XCTAssertLessThan(
+            moved.frame.minY, other.frame.minY,
+            "the bottom group (\(lastId), y \(moved.frame.minY)) should now sit above "
+                + "(\(aboveId), y \(other.frame.minY))"
+        )
     }
 }
