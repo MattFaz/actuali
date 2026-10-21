@@ -6,6 +6,7 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
+            "-resetStatusFilterState",
             "-transactionDisplayMode", "flat",
         ]
         app.launch()
@@ -36,6 +37,7 @@ final class TransactionLongPressSelectUITests: XCTestCase {
     private func openAllAccountsSelecting(_ app: XCUIApplication) -> [XCUIElement] {
         app.launchArguments = [
             "-loadDemoData",
+            "-resetStatusFilterState",
             "-transactionDisplayMode", "flat",
         ]
         app.launch()
@@ -89,9 +91,12 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         app.buttons["transactionBulkBar.tag"].tap()
         let field = app.textFields["transactionTagPicker.field"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        field.tap()
-        field.typeText("batchtag")
-        app.buttons["transactionTagPicker.add"].tap()
+        replaceText("batchtag", in: field)
+        let add = app.buttons["transactionTagPicker.add"]
+        XCTAssertTrue(add.isEnabled, "typing a new tag enables Add")
+        add.tap()
+        XCTAssertTrue(app.navigationBars["Add Tag"].waitForNonExistence(timeout: 5),
+                      "adding the tag dismisses the picker")
 
         let tagged = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'batchtag'"))
         XCTAssertTrue(tagged.firstMatch.waitForExistence(timeout: 10), "the new tag shows on the selected transactions")

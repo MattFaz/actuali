@@ -74,6 +74,54 @@ extension XCTestCase {
         }
     }
 
+    /// The drawn copy of a duplicated element. A zero-frame copy must never
+    /// reach `isHittable`: that raises "Activation point invalid". When no
+    /// copy is hittable (a row mid-drag or under a pinned header), the first
+    /// drawn copy is the only stable frame to compare.
+    @MainActor
+    func onScreenCopy(_ query: XCUIElementQuery) -> XCUIElement? {
+        let drawn = query.allElementsBoundByIndex.filter { !$0.frame.isEmpty }
+        return drawn.first(where: \.isHittable) ?? drawn.first
+    }
+
+    /// Replace a text field's contents. iOS 27 drops keyboard focus during a
+    /// long delete run, and iOS 18 does not select on a double tap, so select
+    /// and replace first, then fall back to clearing and retyping.
+    @MainActor
+    func replaceText(_ text: String, in field: XCUIElement) {
+        func holds() -> Bool {
+            let value = (field.value as? String) ?? ""
+            return text.isEmpty
+                ? (value.isEmpty || value == field.placeholderValue)
+                : value == text
+        }
+        field.tap()
+        let current = (field.value as? String) ?? ""
+        let startsEmpty = current.isEmpty || current == field.placeholderValue
+        if !startsEmpty {
+            field.tap(withNumberOfTaps: 2, numberOfTouches: 1)
+        }
+        field.typeText(text.isEmpty ? XCUIKeyboardKey.delete.rawValue : text)
+        if !holds() {
+            func cleared() -> Bool {
+                let value = (field.value as? String) ?? ""
+                return value.isEmpty || value == field.placeholderValue
+            }
+            field.tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 40))
+            // A caret in the middle leaves the suffix behind. Move it past the
+            // text and clear again before retyping.
+            if !cleared() {
+                field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+                field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 40))
+            }
+            if !text.isEmpty {
+                field.typeText(text)
+            }
+        }
+        XCTAssertTrue(holds(), "the field did not receive the new text")
+    }
+
     /// The budget month button's label `offset` months from now, e.g.
     /// "September 2026" — the same "MMMM yyyy" text the app renders.
     func monthTitle(offset: Int) -> String {

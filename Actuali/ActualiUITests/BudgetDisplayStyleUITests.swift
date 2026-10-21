@@ -76,6 +76,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10),
                       "the budget toolbar should offer the options menu")
         optionsMenu.tap()
+        app.buttons["Style"].tap()
         app.buttons["Compact"].tap()
         XCTAssertTrue(
             app.descendants(matching: .any)["compactBudgetOverview"]
@@ -84,6 +85,10 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         )
 
         optionsMenu.tap()
+        app.buttons["Style"].tap()
+        // Wait for the submenu before asserting an option is absent, so the
+        // check cannot pass on an empty snapshot.
+        XCTAssertTrue(app.buttons["Clean"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Detailed"].exists)
         app.buttons["Clean"].tap()
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 5),
@@ -167,7 +172,12 @@ final class BudgetDisplayStyleUITests: XCTestCase {
 
         let optionsMenu = app.buttons["Budget options"]
         optionsMenu.tap()
-        let spentToggle = app.buttons["Show Spent Column"]
+        app.buttons["Budget View"].tap()
+        // The menu item's accessibility label varies by OS: "Show Spent" in
+        // the rendered menu, "Show Spent Column" from the toggle's modifier.
+        let spentToggle = app.buttons.matching(
+            NSPredicate(format: "label IN %@", ["Show Spent", "Show Spent Column"])
+        ).firstMatch
         XCTAssertTrue(spentToggle.waitForExistence(timeout: 5))
         spentToggle.tap()
 
@@ -221,7 +231,10 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             salaryBudget.exists,
             "tracking Income's read-only budget needs its own currency-aware VoiceOver context"
         )
-        XCTAssertTrue(salaryBudget.label.contains("$"))
+        // "$" in a US locale, "USD" elsewhere; both are currency-aware.
+        let salaryAmount = salaryBudget.label
+        XCTAssertTrue(salaryAmount.contains("$") || salaryAmount.contains("USD"),
+                      "the amount should be announced with its currency: \(salaryAmount)")
         XCTAssertFalse(
             salaryBudget.elementType == .button,
             "tracking Income budget remains read-only in Compact"
@@ -383,7 +396,8 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     func testCheckInStripFiltersUnassignedCategoriesInPlace() {
         let app = XCUIApplication()
         app.launchArguments = [
-            "-loadDemoData", "-showBudgetCheckInStrip", "YES", "-initialTab", "1",
+            "-loadDemoData", "-budgetDisplayStyle", "clean",
+            "-showBudgetCheckInStrip", "YES", "-initialTab", "1",
         ]
         app.launch()
 
@@ -446,7 +460,8 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     func testCleanIncomeContextMenuOffersHide() {
         let app = XCUIApplication()
         app.launchArguments = [
-            "-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1",
+            "-loadDemoData", "-budgetDisplayStyle", "clean",
+            "-collapsedBudgetGroups", "", "-initialTab", "1",
         ]
         app.launch()
 

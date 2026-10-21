@@ -41,11 +41,11 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
         var visibleIcon: XCUIElement?
         // SpringBoard also exposes off-screen icons with zero-sized frames.
         for _ in 0..<4 {
-            visibleIcon = springboard.icons.matching(identifier: "Actuali")
-                .allElementsBoundByIndex.first { $0.isHittable }
-            if visibleIcon != nil {
+            visibleIcon = onScreenCopy(springboard.icons.matching(identifier: "Actuali"))
+            if visibleIcon?.isHittable == true {
                 break
             }
+            visibleIcon = nil
             springboard.swipeLeft()
         }
         guard let icon = visibleIcon else {
@@ -68,12 +68,29 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
     @MainActor
     private func setStartPage(_ page: String, in app: XCUIApplication) throws -> String {
         if app.keyboards.firstMatch.exists {
-            app.buttons["Done"].tap()
+            app.buttons["Done"].firstMatch.tap()
+            if !app.keyboards.firstMatch.waitForNonExistence(timeout: 3) {
+                app.buttons["Done"].firstMatch.tap()
+            }
+            // The tab bar sits behind the keyboard; tapping More before it
+            // finishes dismissing lands on the keyboard instead.
+            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                          "the keyboard stayed up over the tab bar")
         }
-        app.tabBars.buttons["More"].tap()
+        let more = app.tabBars.buttons["More"]
+        more.tap()
+        if !more.wait(for: \.isSelected, toEqual: true, timeout: 3) {
+            more.tap()
+        }
+        XCTAssertTrue(more.wait(for: \.isSelected, toEqual: true, timeout: 5),
+                      "the More tab did not open")
         if !app.navigationBars["Display"].exists {
             let display = app.buttons["Display"]
-            XCTAssertTrue(display.waitForExistence(timeout: 5))
+            for _ in 0..<6 where !display.exists {
+                app.swipeUp()
+            }
+            XCTAssertTrue(display.waitForExistence(timeout: 5),
+                          "Display row missing after opening More: \(app.debugDescription)")
             display.tap()
         }
         let picker = app.buttons.matching(

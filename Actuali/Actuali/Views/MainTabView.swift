@@ -22,12 +22,6 @@ struct MainTabView: View {
         budgetStore.overspentBadgeCount
     }
 
-    /// The numeric tab badge isn't surfaced to accessibility on its own, so
-    /// mirror it as a spoken value on the tab label.
-    private var overspentBadgeValue: String {
-        Self.overspentBadgeValue(count: overspentCount)
-    }
-
     nonisolated static func overspentBadgeValue(
         count: Int,
         locale: Locale = .current,
@@ -91,10 +85,9 @@ struct MainTabView: View {
             }
             .badge(overspentCount)
             // On the tab, not its label: under the Tab API the tab's own
-            // modifiers are what reach the tab bar item. (Neither placement
-            // surfaces the value to XCUITest on iOS 26 — BudgetTabBadgeUITests
-            // fails on main for that reason, unrelated to this.)
-            .accessibilityValue(Text(overspentBadgeValue))
+            // modifiers are what reach the tab bar item. XCUITest cannot read
+            // it, but VoiceOver has no other source for the count.
+            .accessibilityValue(Text(Self.overspentBadgeValue(count: overspentCount)))
 
             Tab(value: 0) {
                 AccountsListView()

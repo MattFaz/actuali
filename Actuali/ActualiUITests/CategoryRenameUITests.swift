@@ -80,11 +80,6 @@ final class CategoryRenameUITests: XCTestCase {
 
     @MainActor
     private func replaceName(_ name: String, in app: XCUIApplication) {
-        let field = app.alerts.textFields.firstMatch
-        field.tap()
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Groceries".count))
-        if !name.isEmpty {
-            field.typeText(name)
-        }
+        replaceText(name, in: app.alerts.textFields.firstMatch)
     }
 }

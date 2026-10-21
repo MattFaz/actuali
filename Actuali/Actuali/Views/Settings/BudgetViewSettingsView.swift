@@ -66,19 +66,21 @@ struct BudgetViewSettingsView: View {
                             .accessibilityIdentifier("categoryStatusColorReset.\(state.rawValue)")
                         }
                     }
-                } label: {
-                    HStack(spacing: 8) {
-                        Button {
-                            showingCategoryStatusColorInfo = true
-                        } label: {
-                            Image(systemName: "info.circle")
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(String(localized: "Color picker information"))
-                        .accessibilityIdentifier("categoryStatusColorPickerInfo")
 
-                        Text(String(localized: "Color picker"))
+                    // Inside the group, not in the label: a Button in a
+                    // DisclosureGroup label merges with the row, so tapping
+                    // the row opens the alert instead of expanding it. Last,
+                    // so the scroll that reveals the pickers keeps it on
+                    // screen.
+                    Button {
+                        showingCategoryStatusColorInfo = true
+                    } label: {
+                        Label("Color picker information", systemImage: "info.circle")
                     }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("categoryStatusColorPickerInfo")
+                } label: {
+                    Text(String(localized: "Color picker"))
                 }
             } header: {
                 Text(String(localized: "Presentation"))

@@ -21,11 +21,13 @@ final class AddTransactionNotesUITests: XCTestCase {
         assertNoBlankRow(between: notes, and: save, "empty notes leave a blank row before Save")
 
         notes.tap()
-        notes.typeText("Lunch ")
+        // One typing call: a second typeText without a fresh tap loses
+        // keyboard focus on iOS 27.
+        notes.typeText("Lunch #")
         assertNoBlankRow(between: notes, and: save, "plain notes leave a blank row before Save")
-        notes.typeText("#")
         let coffee = app.buttons["tagSuggestion-coffee"]
-        XCTAssertTrue(coffee.waitForExistence(timeout: 5), "# should show existing tags")
+        XCTAssertTrue(coffee.waitForExistence(timeout: 5),
+                      "# should show existing tags; field reads: \(notes.value as? String ?? "")")
         coffee.tap()
         XCTAssertTrue(coffee.waitForNonExistence(timeout: 5), "completing a tag should hide suggestions")
         XCTAssertEqual(notes.value as? String, "Lunch #coffee ")
@@ -35,6 +37,9 @@ final class AddTransactionNotesUITests: XCTestCase {
         notes.typeText("#no-matching-tag")
         assertNoBlankRow(between: notes, and: save, "unmatched tags leave a blank row before Save")
 
+        // A second typeText without a fresh tap loses keyboard focus on
+        // iOS 27; tap past the text so the caret lands at the end.
+        notes.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
         notes.typeText(" https://example.com/receipt")
         XCTAssertTrue(app.descendants(matching: .any)["noteLinkRow"].firstMatch.waitForExistence(timeout: 5),
                       "notes with a URL should still show a tappable link row")
@@ -93,6 +98,34 @@ final class AddTransactionNotesUITests: XCTestCase {
                       "split notes with a URL should still show a tappable link")
     }
 
+    /// The split line's tag chips sit above its notes field, clear of the
+    /// keyboard accessory that covers the row below it.
+    @MainActor
+    func testSplitLineTagSuggestionsAppearAboveTheField() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+
+        app.buttons["Split into multiple categories"].tap()
+        let notes = app.textFields["addTransaction.splitLine.notes"].firstMatch
+        XCTAssertTrue(notes.waitForExistence(timeout: 5))
+
+        notes.tap()
+        notes.typeText("#")
+        let coffee = app.buttons["tagSuggestion-coffee"]
+        XCTAssertTrue(coffee.waitForExistence(timeout: 5),
+                      "# shows the tag chips above the field; field reads: \(notes.value as? String ?? "")")
+        XCTAssertLessThan(coffee.frame.maxY, notes.frame.minY,
+                          "the chips must sit above the notes field, clear of the keyboard accessory")
+        coffee.tap()
+        XCTAssertEqual(notes.value as? String, "#coffee ")
+    }
+
     /// GH #674: as the focused Notes field grows past the keyboard, the
     /// form has to scroll it back into view without a manual scroll.
     @MainActor
@@ -120,12 +153,25 @@ final class AddTransactionNotesUITests: XCTestCase {
         let text = "lunch with the whole team at the usual place downtown paid on the shared card and "
             + "split later with everyone who came along including the two new starters"
         for character in text {
-            let key = character == " " ? "space" : String(character)
-            // The keyboard starts shifted, so the first letter is a capital key.
-            (app.keys[key].exists ? app.keys[key] : app.keys[key.uppercased()]).tap()
+            tapKey(character == " " ? "space" : String(character), in: app)
         }
         assertAboveKeyboard(notes, in: app, "Notes is hidden after it grows")
         XCTAssertLessThan(notes.frame.minY, focusedTop, "the form did not scroll Notes up as it grew")
+    }
+
+    /// Tap an on-screen key. The AX tree can also hold an off-screen copy of
+    /// a key, which `.tap()` then refuses with an AX scroll error.
+    @MainActor
+    private func tapKey(_ key: String, in app: XCUIApplication) {
+        // The keyboard starts shifted, so the first letter is a capital key.
+        for candidate in [key, key.uppercased()] {
+            if let onScreen = onScreenCopy(app.keys.matching(identifier: candidate)),
+               onScreen.isHittable {
+                onScreen.tap()
+                return
+            }
+        }
+        XCTFail("key \(key) is not reachable")
     }
 
     @MainActor

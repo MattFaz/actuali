@@ -265,8 +265,8 @@ final class BudgetViewSettingsUITests: XCTestCase {
             "All five category status reset controls should be present"
         )
 
-        // The disclosure row inherits the info button's identifier, so match
-        // the inner button by its unique label instead.
+        // The info row sits after the pickers, so the scroll above leaves it
+        // on screen.
         let infoButton = app.buttons["Color picker information"]
         XCTAssertTrue(infoButton.waitForExistence(timeout: 5), "Color picker info button not found")
         infoButton.tap()
