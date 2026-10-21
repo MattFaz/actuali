@@ -88,6 +88,12 @@ final class AddTransactionNotesUITests: XCTestCase {
         XCTAssertLessThan(bottomPadding, 16, "empty link previews add space below split notes")
 
         notes.tap()
+        notes.typeText("#")
+        let coffee = app.buttons["tagSuggestion-coffee"]
+        XCTAssertTrue(coffee.waitForExistence(timeout: 5), "# shows the tag chips above the field")
+        coffee.tap()
+        XCTAssertEqual(notes.value as? String, "#coffee ")
+
         notes.typeText("https://example.com/receipt")
         XCTAssertTrue(app.descendants(matching: .any)["noteLinkRow"].firstMatch.waitForExistence(timeout: 5),
                       "split notes with a URL should still show a tappable link")

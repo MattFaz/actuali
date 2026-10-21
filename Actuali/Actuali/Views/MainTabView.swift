@@ -53,13 +53,16 @@ struct MainTabView: View {
         }
         // The Tab API drops an accessibility value on the tab item (iOS 26 and
         // 27), so UI tests can't read the overspent badge from the tab bar.
-        // Mirror it in a hidden DEBUG-only element that they can query.
+        // Mirror it for the badge test only: an always-on element stays in the
+        // accessibility tree, so VoiceOver would announce the count twice.
         .overlay(alignment: .topLeading) {
             #if DEBUG
-            Text(overspentBadgeValue)
-                .accessibilityIdentifier("budget.overspentBadgeValue")
-                .opacity(0)
-                .allowsHitTesting(false)
+            if CommandLine.arguments.contains("-mirrorTabBadge") {
+                Text(overspentBadgeValue)
+                    .accessibilityIdentifier("budget.overspentBadgeValue")
+                    .opacity(0)
+                    .allowsHitTesting(false)
+            }
             #endif
         }
         .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in

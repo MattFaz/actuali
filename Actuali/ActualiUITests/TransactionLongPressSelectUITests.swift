@@ -6,6 +6,7 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
+            "-resetStatusFilterState",
             "-transactionDisplayMode", "flat",
         ]
         app.launch()
@@ -36,6 +37,7 @@ final class TransactionLongPressSelectUITests: XCTestCase {
     private func openAllAccountsSelecting(_ app: XCUIApplication) -> [XCUIElement] {
         app.launchArguments = [
             "-loadDemoData",
+            "-resetStatusFilterState",
             "-transactionDisplayMode", "flat",
         ]
         app.launch()
@@ -43,13 +45,6 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         let allAccounts = app.staticTexts["All Accounts"].firstMatch
         XCTAssertTrue(allAccounts.waitForExistence(timeout: 10))
         allAccounts.tap()
-
-        // A previous test can leave the Uncategorized filter selected, which
-        // hides every demo row from this suite.
-        let allFilter = app.buttons["transactionFilter-all"]
-        if allFilter.waitForExistence(timeout: 5), !allFilter.isSelected {
-            allFilter.tap()
-        }
 
         let selectionModeButton = app.buttons["transactions.selectionMode"]
         XCTAssertTrue(selectionModeButton.waitForExistence(timeout: 10))

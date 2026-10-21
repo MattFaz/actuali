@@ -15,7 +15,7 @@ final class BudgetTabBadgeUITests: XCTestCase {
         // exact label; Compact appends the budgeted amount to it.
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", "clean", "-hideZeroBudgetCategories", "NO", "-initialTab", "1",
-            "-showOverspentBadge", "YES",
+            "-showOverspentBadge", "YES", "-mirrorTabBadge",
         ]
         app.launch()
 
