@@ -394,6 +394,24 @@ struct DemoDataSeederTests {
         #expect(store.count == 1)
     }
 
+    /// Reseeding the demo forgets the month the user last browsed. The value
+    /// lives in UserDefaults keyed by budget id and survives the directory
+    /// rewrite, so without the explicit reset the next demo launch (and every
+    /// UI test after one that browses another month) opens on a stale month.
+    @Test func loadDemoDataForgetsTheLastViewedMonth() async {
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = DemoDataSeeder.budgetId
+        store.lastViewedBudgetMonth = "2025-01"
+        defer {
+            try? DemoDataSeeder.removeSamplePendingImport()
+            store.lastViewedBudgetMonth = nil
+        }
+
+        await store.loadDemoData()
+
+        #expect(store.lastViewedBudgetMonth == nil)
+    }
+
     @Test func removeSamplePendingImportKeepsOtherDemoImports() throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)

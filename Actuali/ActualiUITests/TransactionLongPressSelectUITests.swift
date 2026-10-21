@@ -99,9 +99,12 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         field.tap()
         field.typeText("batchtag")
         if (field.value as? String) != "batchtag" {
+            // A partial synthesis must be cleared, not appended to.
             field.tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 30))
             field.typeText("batchtag")
         }
+        XCTAssertEqual(field.value as? String, "batchtag", "the tag field did not receive the name")
         let add = app.buttons["transactionTagPicker.add"]
         XCTAssertTrue(add.isEnabled, "typing a new tag enables Add")
         add.tap()

@@ -40,17 +40,6 @@ struct BudgetViewSettingsView: View {
                 DisclosureGroup(
                     isExpanded: $isCategoryStatusColorPickerExpanded
                 ) {
-                    // Inside the group, not in the label: a Button in a
-                    // DisclosureGroup label merges with the row, so tapping
-                    // the row opens the alert instead of expanding it.
-                    Button {
-                        showingCategoryStatusColorInfo = true
-                    } label: {
-                        Label("Color picker information", systemImage: "info.circle")
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityIdentifier("categoryStatusColorPickerInfo")
-
                     ForEach(CategoryProgressState.allCases, id: \.self) { state in
                         HStack {
                             ColorPicker(
@@ -77,6 +66,19 @@ struct BudgetViewSettingsView: View {
                             .accessibilityIdentifier("categoryStatusColorReset.\(state.rawValue)")
                         }
                     }
+
+                    // Inside the group, not in the label: a Button in a
+                    // DisclosureGroup label merges with the row, so tapping
+                    // the row opens the alert instead of expanding it. Last,
+                    // so the scroll that reveals the pickers keeps it on
+                    // screen.
+                    Button {
+                        showingCategoryStatusColorInfo = true
+                    } label: {
+                        Label("Color picker information", systemImage: "info.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("categoryStatusColorPickerInfo")
                 } label: {
                     Text(String(localized: "Color picker"))
                 }

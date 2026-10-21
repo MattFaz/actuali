@@ -174,8 +174,9 @@ final class CategoryReorderModeUITests: XCTestCase {
         XCTAssertNotEqual(lastId, aboveId, "the two handles must be different groups")
         drag(last, to: above)
         sleep(2)
-        let moved = app.descendants(matching: .any)[lastId]
-        let other = app.descendants(matching: .any)[aboveId]
+        // firstMatch: the same handle can appear twice under one identifier.
+        let moved = app.descendants(matching: .any).matching(identifier: lastId).firstMatch
+        let other = app.descendants(matching: .any).matching(identifier: aboveId).firstMatch
         XCTAssertTrue(moved.exists && other.exists)
         XCTAssertLessThan(
             moved.frame.minY, other.frame.minY,
