@@ -86,6 +86,9 @@ final class BudgetDisplayStyleUITests: XCTestCase {
 
         optionsMenu.tap()
         app.buttons["Style"].tap()
+        // Wait for the submenu before asserting an option is absent, so the
+        // check cannot pass on an empty snapshot.
+        XCTAssertTrue(app.buttons["Clean"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Detailed"].exists)
         app.buttons["Clean"].tap()
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 5),

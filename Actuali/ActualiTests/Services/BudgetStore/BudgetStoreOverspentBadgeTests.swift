@@ -48,6 +48,19 @@ struct BudgetStoreOverspentBadgeTests {
         #expect(store.overspentBadgeCount == 0)
     }
 
+    /// The spoken value and the badge read the same count. This keeps the
+    /// wiring covered after BudgetTabBadgeUITests was removed: XCUITest cannot
+    /// read the tab badge.
+    @Test func badgeValueMatchesTheStoreCount() {
+        let store = BudgetStore.previewInstance()
+        store.showOverspentBadge = true
+        store.currentBudgetMonth = makeMonth(availables: [-100, -250])
+
+        #expect(store.overspentBadgeCount == 2)
+        #expect(MainTabView.overspentBadgeValue(count: store.overspentBadgeCount)
+            == MainTabView.overspentBadgeValue(count: 2))
+    }
+
     @Test func settingDefaultsToOn() {
         UserDefaults.standard.removeObject(forKey: "showOverspentBadge")
         let store = BudgetStore.previewInstance()
