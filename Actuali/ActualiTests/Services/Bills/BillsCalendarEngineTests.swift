@@ -5,9 +5,12 @@ import Testing
 struct BillsCalendarEngineTests {
     @Test func leadingEmptyDaysAndMonthDayCount() {
         // September 1, 2026 is Tuesday.
-        // On a Monday-first grid: Monday is 0 offset, Tuesday is 1 offset.
+        // On a Sunday-first grid: Sunday is 0 offset, Tuesday is 2 offsets.
         let empty = BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 9)
-        #expect(empty == 1)
+        #expect(empty == 2)
+
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 2) == 0) // Sunday
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 10) == 4) // Thursday
 
         let days = BillsCalendarEngine.daysInMonth(year: 2026, month: 9)
         #expect(days.count == 30)

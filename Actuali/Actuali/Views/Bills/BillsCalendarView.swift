@@ -71,7 +71,7 @@ struct BillsCalendarView: View {
     private var weekdaySymbols: [String] {
         let symbols = DateFormatter().veryShortStandaloneWeekdaySymbols
             ?? ["S", "M", "T", "W", "T", "F", "S"]
-        return (1..<8).map { symbols[$0 % 7] } // Monday first
+        return (0..<7).map { symbols[$0] } // Sunday first
     }
 
     private func run(_ operation: @escaping () async throws -> Void) {
