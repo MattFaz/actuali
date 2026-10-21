@@ -3,6 +3,8 @@ import SwiftUI
 /// A dedicated calendar dashboard for scheduled transactions and credit card bill cycles.
 struct BillsCalendarView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
+    @Environment(\.calendar) private var calendar
 
     @State private var selectedYear: Int = DayDate.today().year
     @State private var selectedMonth: Int = DayDate.today().month
@@ -68,10 +70,16 @@ struct BillsCalendarView: View {
         }
     }
 
+    /// 0 = Sunday ... 6 = Saturday, matching the Reports calendar.
+    private var firstDayOfWeekIdx: Int {
+        calendar.firstWeekday - 1
+    }
+
     private var weekdaySymbols: [String] {
-        let symbols = DateFormatter().veryShortStandaloneWeekdaySymbols
-            ?? ["S", "M", "T", "W", "T", "F", "S"]
-        return (0..<7).map { symbols[$0] } // Sunday first
+        CalendarWidgetFormatting.weekdaySymbols(
+            locale: locale,
+            firstDayOfWeekIdx: firstDayOfWeekIdx
+        )
     }
 
     private func run(_ operation: @escaping () async throws -> Void) {
@@ -255,7 +263,11 @@ struct BillsCalendarView: View {
                 }
             }
 
-            let leadingOffset = BillsCalendarEngine.leadingEmptyDays(year: selectedYear, month: selectedMonth)
+            let leadingOffset = BillsCalendarEngine.leadingEmptyDays(
+                year: selectedYear,
+                month: selectedMonth,
+                firstDayOfWeekIdx: firstDayOfWeekIdx
+            )
             let days = BillsCalendarEngine.daysInMonth(year: selectedYear, month: selectedMonth)
             let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
 

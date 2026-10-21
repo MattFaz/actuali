@@ -4,18 +4,31 @@ import Testing
 
 struct BillsCalendarEngineTests {
     @Test func leadingEmptyDaysAndMonthDayCount() {
-        // September 1, 2026 is Tuesday.
-        // On a Sunday-first grid: Sunday is 0 offset, Tuesday is 2 offsets.
-        let empty = BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 9)
-        #expect(empty == 2)
+        // September 1, 2026 is Tuesday: offset 2 for Sunday, 1 for Monday.
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 9, firstDayOfWeekIdx: 0) == 2)
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 9, firstDayOfWeekIdx: 1) == 1)
 
-        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 2) == 0) // Sunday
-        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 10) == 4) // Thursday
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 2, firstDayOfWeekIdx: 0) == 0) // Sunday
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 2, firstDayOfWeekIdx: 1) == 6)
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 10, firstDayOfWeekIdx: 0) == 4) // Thursday
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 10, firstDayOfWeekIdx: 1) == 3)
 
         let days = BillsCalendarEngine.daysInMonth(year: 2026, month: 9)
         #expect(days.count == 30)
         #expect(days.first?.yyyymmdd == 20_260_901)
         #expect(days.last?.yyyymmdd == 20_260_930)
+    }
+
+    @Test func gridOffsetAndWeekdaySymbolsUseTheSameWeekStart() {
+        let locale = Locale(identifier: "en_US")
+
+        let sundayStart = 0
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 9, firstDayOfWeekIdx: sundayStart) == 2)
+        #expect(CalendarWidgetFormatting.weekdaySymbols(locale: locale, firstDayOfWeekIdx: sundayStart) == ["S", "M", "T", "W", "T", "F", "S"])
+
+        let mondayStart = 1
+        #expect(BillsCalendarEngine.leadingEmptyDays(year: 2026, month: 9, firstDayOfWeekIdx: mondayStart) == 1)
+        #expect(CalendarWidgetFormatting.weekdaySymbols(locale: locale, firstDayOfWeekIdx: mondayStart) == ["M", "T", "W", "T", "F", "S", "S"])
     }
 
     @Test func relativeDueTextFormatting() {
