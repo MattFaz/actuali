@@ -79,21 +79,8 @@ final class BudgetViewSettingsUITests: XCTestCase {
 
         app.tabBars.buttons["Budget"].tap()
 
-        // Progress bars are omitted for categories with no budgeted amount or
-        // spending. Give Groceries a budget so this test checks the preference,
-        // not the demo month's incidental amounts.
-        let editGroceries = app.buttons["Edit budgeted amount for Groceries"].firstMatch
-        XCTAssertTrue(
-            editGroceries.waitForExistence(timeout: 10),
-            "The demo budget should expose the Groceries budgeted amount"
-        )
-        editGroceries.tap()
-        let amount = app.textFields.firstMatch
-        XCTAssertTrue(amount.waitForExistence(timeout: 5), "Budgeted amount editor did not open")
-        amount.tap()
-        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + "100")
-        app.buttons["Save"].tap()
-        XCTAssertTrue(amount.waitForNonExistence(timeout: 5), "Budgeted amount editor did not close")
+        // Demo reseeding resets the viewed month, so the seeded current-month
+        // Groceries budget and spending should already produce a progress bar.
 
         let progressBar = firstBudgetProgressBar(in: app)
         XCTAssertTrue(

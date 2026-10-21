@@ -45,54 +45,6 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         app.buttons["Style"].tap()
     }
 
-    /// Selects the simulator's current month rather than relying on the
-    /// demo budget's persisted last-viewed month from a previous UI test.
-    @MainActor private func selectCurrentMonth(in app: XCUIApplication) {
-        let monthPicker = app.buttons["budget.monthStepper"]
-        guard monthPicker.waitForExistence(timeout: 10) else {
-            XCTFail("Budget month picker not found")
-            return
-        }
-        monthPicker.tap()
-
-        let calendar = Calendar.current
-        let currentDate = Date()
-        let targetYear = calendar.component(.year, from: currentDate)
-        let targetMonth = calendar.component(.month, from: currentDate)
-        let targetMonthKey = String(format: "%04d-%02d", targetYear, targetMonth)
-        let year = app.staticTexts["budget.monthPicker.year"]
-        let previousYear = app.buttons["budget.monthPicker.previousYear"]
-        let nextYear = app.buttons["budget.monthPicker.nextYear"]
-        guard year.waitForExistence(timeout: 5) else {
-            XCTFail("Month picker year not found")
-            return
-        }
-
-        for _ in 0..<20 {
-            guard let displayedYear = Int(year.label) else {
-                XCTFail("Month picker year was not numeric")
-                return
-            }
-            if displayedYear == targetYear {
-                break
-            }
-            if displayedYear < targetYear {
-                nextYear.tap()
-            } else {
-                previousYear.tap()
-            }
-        }
-        XCTAssertEqual(Int(year.label), targetYear, "Month picker should navigate to the current year")
-
-        let currentMonth = app.buttons["budget.monthPicker.month.\(targetMonthKey)"]
-        guard currentMonth.waitForExistence(timeout: 5) else {
-            XCTFail("Current month \(targetMonthKey) not found in month picker")
-            return
-        }
-        currentMonth.tap()
-        XCTAssertTrue(monthPicker.waitForExistence(timeout: 5))
-    }
-
     @MainActor
     func testEllipsisOffersThreeSubmenusAndNoteAction() {
         let app = XCUIApplication()
@@ -349,9 +301,9 @@ final class BudgetOptionsMenuUITests: XCTestCase {
     func testHideSpentCategoriesTogglesFromBudgetViewSubmenu() {
         let app = XCUIApplication()
         launchBudgetTab(app)
-        selectCurrentMonth(in: app)
 
-        // Rent's current-month budget and fixed rent transaction are both
+        // Demo reseeding resets the viewed month to the current month. Rent's
+        // current-month budget and fixed rent transaction are both
         // $1,850, so the category has exactly zero available and should be
         // hidden by Hide Spent Categories.
         let rentCategory = app.buttons["Details for Rent"].firstMatch
@@ -453,7 +405,10 @@ final class BudgetOptionsMenuUITests: XCTestCase {
 
         XCTAssertTrue(app.buttons["budget.monthStepper"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["budget.monthStepper"].label, januaryTitle)
-        XCTAssertFalse(year.exists, "selecting a month should dismiss the picker")
+        XCTAssertTrue(
+            year.waitForNonExistence(timeout: 5),
+            "selecting a month should dismiss the picker"
+        )
 
         let optionsMenu = app.buttons["Budget options"]
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 5))
