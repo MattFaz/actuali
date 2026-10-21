@@ -80,29 +80,6 @@ final class CategoryRenameUITests: XCTestCase {
 
     @MainActor
     private func replaceName(_ name: String, in app: XCUIApplication) {
-        let field = app.alerts.textFields.firstMatch
-        field.tap()
-        // iOS 27 drops keyboard focus partway through a long delete run, so
-        // select the current name and replace it in one typing call. iOS 18
-        // does not select on a double-tap; the caret then sits at the end of
-        // the appended text, so clearing and retyping recovers.
-        field.tap(withNumberOfTaps: 2, numberOfTouches: 1)
-        field.typeText(name.isEmpty ? XCUIKeyboardKey.delete.rawValue : name)
-        if !fieldHolds(name, in: field) {
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 30))
-            if !name.isEmpty {
-                field.typeText(name)
-            }
-        }
-        XCTAssertTrue(fieldHolds(name, in: field),
-                      "the alert field did not receive the new name")
-    }
-
-    private func fieldHolds(_ name: String, in field: XCUIElement) -> Bool {
-        let value = (field.value as? String) ?? ""
-        if name.isEmpty {
-            return value.isEmpty || value == field.placeholderValue
-        }
-        return value == name
+        replaceText(name, in: app.alerts.textFields.firstMatch)
     }
 }

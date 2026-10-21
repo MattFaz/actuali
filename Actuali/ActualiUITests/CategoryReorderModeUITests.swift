@@ -174,10 +174,17 @@ final class CategoryReorderModeUITests: XCTestCase {
         XCTAssertNotEqual(lastId, aboveId, "the two handles must be different groups")
         drag(last, to: above)
         sleep(2)
-        // firstMatch: the same handle can appear twice under one identifier.
-        let moved = app.descendants(matching: .any).matching(identifier: lastId).firstMatch
-        let other = app.descendants(matching: .any).matching(identifier: aboveId).firstMatch
-        XCTAssertTrue(moved.exists && other.exists)
+        // Resolve the on-screen copy, as the dedupe did: the same handle can
+        // appear twice and the first copy may be the off-screen one.
+        func onScreenHandle(_ id: String) -> XCUIElement? {
+            let matches = app.descendants(matching: .any).matching(identifier: id)
+                .allElementsBoundByIndex.filter { !$0.frame.isEmpty }
+            return matches.first(where: \.isHittable) ?? matches.first
+        }
+        guard let moved = onScreenHandle(lastId), let other = onScreenHandle(aboveId) else {
+            XCTFail("both group handles stay on screen after the drag")
+            return
+        }
         XCTAssertLessThan(
             moved.frame.minY, other.frame.minY,
             "the bottom group (\(lastId), y \(moved.frame.minY)) should now sit above "

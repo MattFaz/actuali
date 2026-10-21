@@ -84,7 +84,8 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
         if !more.wait(for: \.isSelected, toEqual: true, timeout: 3) {
             more.tap()
         }
-        XCTAssertTrue(more.isSelected, "the More tab did not open")
+        XCTAssertTrue(more.wait(for: \.isSelected, toEqual: true, timeout: 5),
+                      "the More tab did not open")
         if !app.navigationBars["Display"].exists {
             let display = app.buttons["Display"]
             for _ in 0..<6 where !display.exists {
