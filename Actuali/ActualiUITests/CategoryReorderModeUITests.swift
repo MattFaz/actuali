@@ -176,6 +176,9 @@ final class CategoryReorderModeUITests: XCTestCase {
         sleep(2)
         // Resolve the on-screen copy, as the dedupe did: the same handle can
         // appear twice and the first copy may be the off-screen one.
+        // Identifiers were captured before the drag, and on-screenCopy prefers
+        // a hittable copy; after the drop neither row may be hittable, so it
+        // falls back to the drawn copy with a real frame.
         guard let moved = onScreenCopy(app.descendants(matching: .any).matching(identifier: lastId)),
               let other = onScreenCopy(app.descendants(matching: .any).matching(identifier: aboveId)) else {
             XCTFail("both group handles stay on screen after the drag")

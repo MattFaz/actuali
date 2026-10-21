@@ -75,7 +75,9 @@ extension XCTestCase {
     }
 
     /// The drawn copy of a duplicated element. A zero-frame copy must never
-    /// reach `isHittable`: that raises "Activation point invalid".
+    /// reach `isHittable`: that raises "Activation point invalid". When no
+    /// copy is hittable (a row mid-drag or under a pinned header), the first
+    /// drawn copy is the only stable frame to compare.
     @MainActor
     func onScreenCopy(_ query: XCUIElementQuery) -> XCUIElement? {
         let drawn = query.allElementsBoundByIndex.filter { !$0.frame.isEmpty }

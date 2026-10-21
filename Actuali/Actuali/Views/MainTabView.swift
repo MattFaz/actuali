@@ -22,12 +22,6 @@ struct MainTabView: View {
         budgetStore.overspentBadgeCount
     }
 
-    /// The numeric tab badge isn't surfaced to accessibility on its own, so
-    /// mirror it as a spoken value on the tab label.
-    private var overspentBadgeValue: String {
-        Self.overspentBadgeValue(count: overspentCount)
-    }
-
     nonisolated static func overspentBadgeValue(
         count: Int,
         locale: Locale = .current,
@@ -50,20 +44,6 @@ struct MainTabView: View {
             } else {
                 tabs
             }
-        }
-        // The Tab API drops accessibility values, labels and identifiers on
-        // the tab item (checked on iOS 26 and 27), so the count cannot ride on
-        // the tab. Mirror it for the badge test only: an always-on element
-        // would stay in the accessibility tree and be announced twice.
-        .overlay(alignment: .topLeading) {
-            #if DEBUG
-            if CommandLine.arguments.contains("-mirrorTabBadge") {
-                Text(overspentBadgeValue)
-                    .accessibilityIdentifier("budget.overspentBadgeValue")
-                    .opacity(0)
-                    .allowsHitTesting(false)
-            }
-            #endif
         }
         .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
             if pending {
