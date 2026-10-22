@@ -5002,6 +5002,18 @@ final class BudgetStore: ObservableObject {
         // start day — one request covers every account, so it reaches back as
         // far as the hungriest of them.
         var candidates = download.candidates
+        // The web UI's "Investment Account" checkbox writes this synced
+        // preference: the balance syncs, the bank's transactions don't.
+        // Upstream reads it in `processBankSyncDownload` and passes
+        // `reconcileTransactions` an empty list. Doing the same here leaves a
+        // first import with only its opening balance, and leaves an account
+        // that already has history untouched (GH #734).
+        let importTransactions = try await (database.fetchPreference(
+            id: "sync-import-transactions-\(target.id)"
+        ) ?? "true") == "true"
+        if !importTransactions {
+            candidates = []
+        }
         // Upstream `normalizeBankSyncTransactions` reads this synced
         // per-account preference (default true) and drops anything the bank
         // hasn't booked; it imports on the sync after it posts.
