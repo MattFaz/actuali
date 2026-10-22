@@ -41,11 +41,13 @@ struct BillsMonthSummary: Equatable, Sendable {
 
 /// Pure functions for generating calendar grid cells, occurrences, and summary statistics.
 enum BillsCalendarEngine: Sendable {
-    /// Number of blank leading cells in a Monday-first monthly calendar grid.
+    /// Number of blank leading cells for the configured week start (0 = Sunday ... 6 = Saturday).
     /// In `DayDate`, 1 = Sunday, 2 = Monday ... 7 = Saturday.
-    static func leadingEmptyDays(year: Int, month: Int) -> Int {
-        let firstDay = DayDate(year: year, month: month, day: 1)
-        return (firstDay.weekday + 5) % 7
+    static func leadingEmptyDays(year: Int, month: Int, firstDayOfWeekIdx: Int) -> Int {
+        let weekday = DayDate(year: year, month: month, day: 1).weekday - 1
+        // Match the Reports calendar: invalid indices fall back to Sunday.
+        let weekStart = (0...6).contains(firstDayOfWeekIdx) ? firstDayOfWeekIdx : 0
+        return (weekday - weekStart + 7) % 7
     }
 
     /// Days in the specified month (1...28/29/30/31).
