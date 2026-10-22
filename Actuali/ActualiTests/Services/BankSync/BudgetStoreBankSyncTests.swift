@@ -214,6 +214,19 @@ struct BudgetStoreBankSyncTests {
         }
     }
 
+    /// Upstream's synced per-account preference behind the web UI's
+    /// "Investment Account" checkbox. Absent means true.
+    private func disableTransactionImports(at url: URL) throws {
+        let queue = try DatabaseQueue(path: url.path)
+        let accountId = Self.accountId
+        try queue.write { db in
+            try db.execute(
+                sql: "INSERT INTO preferences (id, value) VALUES (?, 'false')",
+                arguments: ["sync-import-transactions-\(accountId)"]
+            )
+        }
+    }
+
     /// One defaults suite per budget file, so Wallet links never leak between
     /// tests and `cleanup` removes them along with the file.
     private static func defaultsSuite(for url: URL) -> String {
@@ -467,6 +480,59 @@ struct BudgetStoreBankSyncTests {
         let opening = try rows(path: url, where: "starting_balance_flag = 1")
         #expect(opening.count == 1)
         #expect(opening[0]["amount"] == 14545)
+    }
+
+    /// The web UI's "Investment Account" checkbox writes this synced
+    /// preference. Upstream reads it in `processBankSyncDownload` and imports
+    /// no transactions when it is off — the balance alone syncs. An account
+    /// that already has history must come out of a sync untouched, even
+    /// though the download would fuzzy-match one of its rows (GH #734).
+    @Test func investmentAccountImportsNoTransactions() async throws {
+        let (database, url) = try await makeDatabase(seedTransactions: true)
+        defer { cleanup(url) }
+        try disableTransactionImports(at: url)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45",
+         "payee": "Blue Bottle", "description": "BLUE BOTTLE COFFEE"},
+        {"id": "sf-2", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Corner Store"}
+        """))
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.accountsSynced == 1)
+        #expect(result.added == 0)
+        #expect(result.updated == 0)
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").isEmpty)
+        // The manual row the download would have matched keeps everything.
+        let manual = try #require(try rows(path: url, where: "id = 'tx-manual'").first)
+        #expect(manual["imported_description"] == nil)
+        #expect(manual["notes"] == nil)
+        #expect(manual["cleared"] == 0)
+    }
+
+    /// A first sync still seeds the starting balance — the setting's remaining
+    /// job — mirroring upstream's initial sync, which inserts it regardless of
+    /// the transaction-import preference.
+    @Test func investmentAccountFirstSyncSeedsOnlyItsBalance() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try disableTransactionImports(at: url)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
+        {"id": "sf-2", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Corner Store"}
+        """))
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.added == 1)
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").isEmpty)
+        let opening = try rows(path: url, where: "starting_balance_flag = 1")
+        #expect(opening.count == 1)
+        // The reported balance, with nothing to subtract from it.
+        #expect(opening[0]["amount"] == 10000)
+        // Dated from the download, not from the budget's start day: an old
+        // opening would book this balance as income in a past month.
+        #expect(opening[0]["date"] == Self.expectedDay(5))
     }
 
     @Test func bankSyncHookDoesNotLeakFromAnEarlyReturn() async throws {
