@@ -8,9 +8,7 @@ final class SettingsNavigationUITests: XCTestCase {
         case "Connection & Data":
             content = app.textFields["Server URL"]
         case "Budget View":
-            content = app.buttons.matching(
-                NSPredicate(format: "label BEGINSWITH 'View Style'")
-            ).firstMatch
+            content = app.switches["Category Status Dots"]
         case "Transactions & Automation":
             content = app.switches["Conventional Amount Entry"]
         case "Display":

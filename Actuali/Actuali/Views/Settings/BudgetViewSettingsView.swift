@@ -8,25 +8,9 @@ struct BudgetViewSettingsView: View {
 
     var body: some View {
         Form {
-            // The Budget options menu keeps these as contextual shortcuts;
-            // Settings exposes the same store-backed preferences so they can
-            // also be managed outside the Budget tab.
-            // #GH-332 is an issue for adding customizablity to this to prevent redundancy
+            // Settings keeps the presentation options that are not available as
+            // contextual shortcuts from the Budget tab.
             Section {
-                Picker(String(localized: "View Style"), selection: $budgetStore.budgetDisplayStyle) {
-                    Text(String(localized: "Clean")).tag(BudgetDisplayStyle.clean)
-                    Text(String(localized: "Compact")).tag(BudgetDisplayStyle.compact)
-                }
-
-                Toggle(String(localized: "Group Totals"), isOn: $budgetStore.showGroupTotals)
-                    .disabled(budgetStore.budgetDisplayStyle == .clean)
-                Toggle(String(localized: "Show Spent"), isOn: $budgetStore.showCompactSpentColumn)
-                    .disabled(budgetStore.budgetDisplayStyle == .clean)
-                    .accessibilityIdentifier("budgetViewSettings.showSpent")
-
-                Toggle(String(localized: "Budgeted Amounts"), isOn: $budgetStore.showBudgetedAmounts)
-                Toggle(String(localized: "Status Filters"), isOn: $budgetStore.showBudgetCheckInStrip)
-                Toggle(String(localized: "Hide Spent Categories"), isOn: $budgetStore.hideZeroBudgetCategories)
                 Toggle(String(localized: "Category Status Dots"), isOn: $budgetStore.showCategoryStatusDots)
                 Toggle(String(localized: "Budget Progress Bars"), isOn: $budgetStore.showBudgetProgressBars)
                 Toggle(String(localized: "Inverse Progress Bars"), isOn: $budgetStore.showInverseBudgetProgressBars)
@@ -84,10 +68,6 @@ struct BudgetViewSettingsView: View {
                 }
             } header: {
                 Text(String(localized: "Presentation"))
-            } footer: {
-                if budgetStore.budgetDisplayStyle == .clean {
-                    Text(String(localized: "Group Totals and Show Spent are available in Compact view."))
-                }
             }
 
             // Mirrors the web's Settings → Experimental features toggle: the
