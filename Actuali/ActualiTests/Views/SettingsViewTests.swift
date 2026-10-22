@@ -8,10 +8,10 @@ struct SettingsViewTests {
             "Budget View", "Display", "Privacy", "Transactions & Automation",
         ])
         #expect(SettingsView.manageItems(includeRules: false).map(\.title) == [
-            "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "History", "Scheduled Transactions", "Tags",
+            "Bank Sync", "Bills & Calendar", "History", "Scheduled Transactions", "Tags",
         ])
         #expect(SettingsView.manageItems(includeRules: true).map(\.title) == [
-            "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "History", "Rules", "Scheduled Transactions", "Tags",
+            "Bank Sync", "Bills & Calendar", "History", "Rules", "Scheduled Transactions", "Tags",
         ])
         #expect(SettingsView.informationItems.map(\.title) == ["Support & Diagnostic"])
     }
