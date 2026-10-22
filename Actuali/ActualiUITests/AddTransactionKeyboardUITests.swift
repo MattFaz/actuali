@@ -27,6 +27,12 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5),
                       "no Done button above the decimal pad for the amount field")
+        // GH #746: the bar's keys must leave the iOS 26 Done pill on screen
+        // even on a 375pt phone (iPhone 13 mini, SE).
+        XCTAssertLessThanOrEqual(
+            done.frame.maxX, app.windows.firstMatch.frame.maxX,
+            "Done runs past the screen edge: done=\(done.frame)"
+        )
         done.tap()
 
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
