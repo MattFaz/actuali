@@ -5029,7 +5029,13 @@ final class BudgetStore: ObservableObject {
         guard !candidates.isEmpty || !download.rejectedIds.isEmpty || existingOldestDay == nil else {
             return (0, 0, [], 0)
         }
-        let earliest = candidates.map(\.date).min() ?? startingDay
+        // The download's own oldest day still dates the opening when none of
+        // it is imported: `startingDay` can reach back to the budget's first
+        // day, and an opening dated there books its balance as income in a
+        // past month.
+        let earliest = candidates.map(\.date).min()
+            ?? download.candidates.map(\.date).min()
+            ?? startingDay
         let latest = candidates.map(\.date).max() ?? startingDay
 
         // Resolve payees by name without creating any: the payee pass compares

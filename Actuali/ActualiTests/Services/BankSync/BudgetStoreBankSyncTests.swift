@@ -530,6 +530,9 @@ struct BudgetStoreBankSyncTests {
         #expect(opening.count == 1)
         // The reported balance, with nothing to subtract from it.
         #expect(opening[0]["amount"] == 10000)
+        // Dated from the download, not from the budget's start day: an old
+        // opening would book this balance as income in a past month.
+        #expect(opening[0]["date"] == Self.expectedDay(5))
     }
 
     @Test func bankSyncHookDoesNotLeakFromAnEarlyReturn() async throws {
