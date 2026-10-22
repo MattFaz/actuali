@@ -6,23 +6,50 @@ private let simpleFINBridgeURL = URL(string: "https://bridge.simplefin.org/")!
 /// import. The date lives here rather than inside either provider screen so
 /// it stays reachable whether or not a provider is connected or available.
 struct BankSyncSetupView: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+
+    @State private var errorMessage: String?
+    @State private var importStartDate = Date()
+    /// Nil until the stored day is loaded, which is what keeps the picker's
+    /// initial assignment from being written back (or from kicking a sync).
+    @State private var savedImportStartDay: Int?
+    @State private var isBackfilling = false
+
     var body: some View {
         List {
             Section {
-                NavigationLink {
-                    AppleWalletSyncView()
-                } label: {
-                    Label("Apple Wallet", systemImage: "wallet.pass")
+                if Self.showsWalletRow(for: budgetStore.appleWalletAvailability) {
+                    NavigationLink {
+                        AppleWalletSyncView()
+                    } label: {
+                        Label("Apple Wallet", systemImage: "wallet.pass")
+                    }
+                    .accessibilityIdentifier("bankSync.provider.appleWallet")
                 }
                 NavigationLink {
                     SimpleFINSyncView()
                 } label: {
                     Label("SimpleFIN", systemImage: "building.columns")
                 }
+                .accessibilityIdentifier("bankSync.provider.simpleFIN")
             }
+            importStartSection
         }
         .navigationTitle("Bank Sync")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            // Starts out .unsupported, so ask before deciding whether Wallet
+            // can be offered here at all.
+            await budgetStore.refreshAppleWalletAvailability()
+            let day = await budgetStore.resolvedBankSyncImportStartDay()
+            importStartDate = Transaction.date(fromYYYYMMDD: day)
+            savedImportStartDay = day
+        }
+        .alert("Bank Sync", isPresented: errorAlertBinding) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     // MARK: - Wallet row state
@@ -42,21 +69,15 @@ struct BankSyncSetupView: View {
         }
     }
 
-}
+    /// Wallet data is iPhone-only and currently US-only, so the provider row
+    /// only exists where FinanceKit can actually serve it.
+    nonisolated static func showsWalletRow(for availability: AppleWalletAvailability) -> Bool {
+        availability != .unsupported
+    }
 
-/// The import start date calendar, shown inside each provider screen. The
-/// date is one shared setting, so both copies read and write the same day.
-private struct ImportStartSection: View {
-    @EnvironmentObject private var budgetStore: BudgetStore
+    // MARK: - Import start
 
-    @State private var errorMessage: String?
-    @State private var importStartDate = Date()
-    /// Nil until the stored day is loaded, which is what keeps the picker's
-    /// initial assignment from being written back (or from kicking a sync).
-    @State private var savedImportStartDay: Int?
-    @State private var isBackfilling = false
-
-    var body: some View {
+    private var importStartSection: some View {
         Section {
             DatePicker(
                 "Import transactions since",
@@ -71,16 +92,6 @@ private struct ImportStartSection: View {
                 guard let saved = savedImportStartDay, day != saved else { return }
                 savedImportStartDay = day
                 Task { await applyImportStart(day) }
-            }
-            .task {
-                let day = await budgetStore.resolvedBankSyncImportStartDay()
-                importStartDate = Transaction.date(fromYYYYMMDD: day)
-                savedImportStartDay = day
-            }
-            .alert("Bank Sync", isPresented: errorAlertBinding) {
-                Button("OK", role: .cancel) { errorMessage = nil }
-            } message: {
-                Text(errorMessage ?? "")
             }
 
             if isBackfilling {
@@ -142,7 +153,6 @@ struct AppleWalletSyncView: View {
     var body: some View {
         List {
             walletSection
-            ImportStartSection()
         }
         .navigationTitle("Apple Wallet")
         .navigationBarTitleDisplayMode(.inline)
@@ -291,7 +301,6 @@ struct SimpleFINSyncView: View {
             } else {
                 setupSection
             }
-            ImportStartSection()
         }
         .navigationTitle("SimpleFIN")
         .navigationBarTitleDisplayMode(.inline)
