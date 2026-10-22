@@ -45,7 +45,7 @@ struct SettingsView: View {
 
     static func manageItems(includeRules: Bool) -> [SettingsItem] {
         var items = [
-            SettingsItem(title: String(localized: "Bank Sync (SimpleFIN & Wallet)"), systemImage: "building.columns", destination: { AnyView(BankSyncSetupView()) }),
+            SettingsItem(title: String(localized: "Bank Sync"), systemImage: "building.columns", destination: { AnyView(BankSyncSetupView()) }),
             SettingsItem(title: String(localized: "Bills & Calendar"), systemImage: "calendar", destination: { AnyView(BillsCalendarView()) }),
             SettingsItem(title: String(localized: "History"), systemImage: "clock.arrow.circlepath", destination: { AnyView(HistoryView()) }),
             SettingsItem(title: String(localized: "Scheduled Transactions"), systemImage: "calendar.badge.clock", destination: { AnyView(SchedulesListView()) }),

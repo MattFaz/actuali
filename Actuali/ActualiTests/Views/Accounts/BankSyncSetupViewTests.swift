@@ -13,4 +13,15 @@ struct BankSyncSetupViewTests {
         #expect(BankSyncSetupView.walletRow(for: .notDetermined) == .connect)
         #expect(BankSyncSetupView.walletRow(for: .unsupported) == .connect)
     }
+
+    /// Wallet data is iPhone-only and currently US-only. Offering the provider
+    /// on a device where FinanceKit has nothing would open a connect button
+    /// that cannot work — and that calls `FinanceStore` directly, which traps
+    /// in an unsigned simulator build.
+    @Test func walletProviderHiddenWhereWalletIsUnavailable() {
+        #expect(!BankSyncSetupView.showsWalletRow(for: .unsupported))
+        #expect(BankSyncSetupView.showsWalletRow(for: .notDetermined))
+        #expect(BankSyncSetupView.showsWalletRow(for: .denied))
+        #expect(BankSyncSetupView.showsWalletRow(for: .authorized))
+    }
 }
