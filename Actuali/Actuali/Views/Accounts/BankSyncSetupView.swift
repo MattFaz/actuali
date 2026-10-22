@@ -2,88 +2,30 @@ import SwiftUI
 
 private let simpleFINBridgeURL = URL(string: "https://bridge.simplefin.org/")!
 
-/// Set up bank feeds and wire their accounts to budget accounts.
-///
-/// Two providers. Apple Wallet (FinanceKit) shows on devices that have Wallet
-/// data at all: connect once and its accounts are ready to link. SimpleFIN has
-/// two states — with a connection available (the server's own, or one claimed
-/// on this device) it lists the accounts the bridge serves; with neither, it's
-/// a paste field for a setup token. Which SimpleFIN connection is in play is
-/// worth saying out loud: only the server's is shared with the web app.
+/// Bank Sync hub: pick a provider, and set how far back linked accounts
+/// import. The date lives here rather than inside either provider screen so
+/// it stays reachable whether or not a provider is connected or available.
 struct BankSyncSetupView: View {
-    @EnvironmentObject private var budgetStore: BudgetStore
-    @Environment(\.scenePhase) private var scenePhase
-
-    @State private var setupToken = ""
-    @State private var isConnecting = false
-    @State private var isLoadingAccounts = false
-    @State private var remoteAccounts: [SimpleFINAccount] = []
-    @State private var walletAccounts: [AppleWalletAccount] = []
-    @State private var isConnectingWallet = false
-    @State private var isLoadingWalletAccounts = false
-    @State private var errorMessage: String?
-    @State private var linkTarget: BankSyncRemoteAccount?
-    @State private var showingDisconnectConfirmation = false
-    @State private var importStartDate = Date()
-    /// Nil until the stored day is loaded, which is what keeps the picker's
-    /// initial assignment from being written back (or from kicking a sync).
-    @State private var savedImportStartDay: Int?
-    @State private var isBackfilling = false
-
     var body: some View {
         List {
-            if budgetStore.appleWalletAvailability != .unsupported {
-                walletSection
+            Section {
+                NavigationLink {
+                    AppleWalletSyncView()
+                } label: {
+                    Label("Apple Wallet", systemImage: "wallet.pass")
+                }
+                NavigationLink {
+                    SimpleFINSyncView()
+                } label: {
+                    Label("SimpleFIN", systemImage: "building.columns")
+                }
             }
-            if budgetStore.canSyncBanks {
-                connectedSections
-            } else {
-                setupSection
-            }
-            importStartSection
         }
         .navigationTitle("Bank Sync")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            let day = await budgetStore.resolvedBankSyncImportStartDay()
-            importStartDate = Transaction.date(fromYYYYMMDD: day)
-            savedImportStartDay = day
-            await refreshWallet()
-            // Which half of the SimpleFIN screen applies depends on whether
-            // the server does SimpleFIN itself, so ask before deciding.
-            await budgetStore.refreshBankSyncSource()
-            if budgetStore.canSyncBanks, remoteAccounts.isEmpty {
-                await loadRemoteAccounts()
-            }
-        }
-        // Wallet access is granted in Settings, outside the app, and .task
-        // doesn't re-run on return — without this the denied row stays stale.
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            Task { await refreshWallet() }
-        }
-        .sheet(item: $linkTarget) { remote in
-            BankAccountLinkView(remote: remote)
-                .environmentObject(budgetStore)
-        }
-        .alert("Bank Sync", isPresented: errorAlertBinding) {
-            Button("OK", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
-        }
-        .confirmationDialog(
-            "Disconnect SimpleFIN?",
-            isPresented: $showingDisconnectConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Disconnect", role: .destructive) { disconnect() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Your accounts stay linked and keep the transactions they've already imported. To sync from this device again you'll need a new setup token.")
-        }
     }
 
-    // MARK: - Apple Wallet
+    // MARK: - Wallet row state
 
     enum WalletRow: Equatable {
         case accounts, connect, openSettings
@@ -100,9 +42,131 @@ struct BankSyncSetupView: View {
         }
     }
 
+}
+
+/// The import start date calendar, shown inside each provider screen. The
+/// date is one shared setting, so both copies read and write the same day.
+private struct ImportStartSection: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+
+    @State private var errorMessage: String?
+    @State private var importStartDate = Date()
+    /// Nil until the stored day is loaded, which is what keeps the picker's
+    /// initial assignment from being written back (or from kicking a sync).
+    @State private var savedImportStartDay: Int?
+    @State private var isBackfilling = false
+
+    var body: some View {
+        Section {
+            DatePicker(
+                "Import transactions since",
+                selection: $importStartDate,
+                in: ...Date(),
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+            .disabled(savedImportStartDay == nil || isBackfilling)
+            .onChange(of: importStartDate) { _, newDate in
+                let day = Transaction.yyyymmdd(from: newDate)
+                guard let saved = savedImportStartDay, day != saved else { return }
+                savedImportStartDay = day
+                Task { await applyImportStart(day) }
+            }
+            .task {
+                let day = await budgetStore.resolvedBankSyncImportStartDay()
+                importStartDate = Transaction.date(fromYYYYMMDD: day)
+                savedImportStartDay = day
+            }
+            .alert("Bank Sync", isPresented: errorAlertBinding) {
+                Button("OK", role: .cancel) { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "")
+            }
+
+            if isBackfilling {
+                HStack {
+                    ProgressView()
+                    Text("Importing older transactions…")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Import Start Date")
+        } footer: {
+            Text("Linked accounts import transactions from this day on. It starts out as the day this budget began. For Apple Wallet accounts, pick an earlier day to pull in older history. Transactions already imported always stay.")
+        }
+    }
+
+    /// Store the day, then reach it. The window is derived from the day, so a
+    /// run that fails here costs nothing — the next sync reaches just as far.
+    /// This is only what makes the import visible while the screen is open.
+    private func applyImportStart(_ day: Int) async {
+        budgetStore.setBankSyncImportStartDay(day)
+        isBackfilling = true
+        defer { isBackfilling = false }
+        do {
+            // The throwing entry point, not `runBankSync`: its summary alert
+            // lives on the accounts tab, which this screen may not be inside.
+            let result = try await budgetStore.syncBankAccounts()
+            if !result.problems.isEmpty {
+                errorMessage = result.problems.joined(separator: "\n\n")
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private var errorAlertBinding: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: {
+            if !$0 {
+                errorMessage = nil
+            }
+        })
+    }
+}
+
+// MARK: - Apple Wallet
+
+/// Apple Wallet (FinanceKit): connect once, then its accounts are ready to
+/// link.
+struct AppleWalletSyncView: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.scenePhase) private var scenePhase
+
+    @State private var walletAccounts: [AppleWalletAccount] = []
+    @State private var isConnectingWallet = false
+    @State private var isLoadingWalletAccounts = false
+    @State private var errorMessage: String?
+    @State private var linkTarget: BankSyncRemoteAccount?
+
+    var body: some View {
+        List {
+            walletSection
+            ImportStartSection()
+        }
+        .navigationTitle("Apple Wallet")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await refreshWallet() }
+        // Wallet access is granted in Settings, outside the app, and .task
+        // doesn't re-run on return — without this the denied row stays stale.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await refreshWallet() }
+        }
+        .sheet(item: $linkTarget) { remote in
+            BankAccountLinkView(remote: remote)
+                .environmentObject(budgetStore)
+        }
+        .alert("Bank Sync", isPresented: errorAlertBinding) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
     private var walletSection: some View {
         Section {
-            switch Self.walletRow(for: budgetStore.appleWalletAvailability) {
+            switch BankSyncSetupView.walletRow(for: budgetStore.appleWalletAvailability) {
             case .accounts:
                 if isLoadingWalletAccounts {
                     HStack {
@@ -118,7 +182,7 @@ struct BankSyncSetupView: View {
                         Button {
                             linkTarget = account.remoteAccount
                         } label: {
-                            remoteAccountRow(account.remoteAccount)
+                            BankRemoteAccountRow(remote: account.remoteAccount)
                         }
                         .buttonStyle(.plain)
                     }
@@ -150,7 +214,7 @@ struct BankSyncSetupView: View {
         } header: {
             Text("Apple Wallet")
         } footer: {
-            switch Self.walletRow(for: budgetStore.appleWalletAvailability) {
+            switch BankSyncSetupView.walletRow(for: budgetStore.appleWalletAvailability) {
             case .accounts:
                 Text("Tap an account to link it. Apple Card, Apple Cash and Savings transactions import automatically when you open the app or pull to refresh — read from this device's Wallet and stored in your budget file like any other transaction.")
             case .openSettings:
@@ -161,60 +225,102 @@ struct BankSyncSetupView: View {
         }
     }
 
-    // MARK: - Import start
+    private var errorAlertBinding: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: {
+            if !$0 {
+                errorMessage = nil
+            }
+        })
+    }
 
-    @ViewBuilder
-    private var importStartSection: some View {
-        // Nothing to import from means nothing to date, so the calendar only
-        // shows where one of the two providers is actually on offer.
-        if budgetStore.canSyncBanks || budgetStore.appleWalletAvailability != .unsupported {
-            Section {
-                DatePicker(
-                    "Import transactions since",
-                    selection: $importStartDate,
-                    in: ...Date(),
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.graphical)
-                .disabled(savedImportStartDay == nil || isBackfilling)
-                .onChange(of: importStartDate) { _, newDate in
-                    let day = Transaction.yyyymmdd(from: newDate)
-                    guard let saved = savedImportStartDay, day != saved else { return }
-                    savedImportStartDay = day
-                    Task { await applyImportStart(day) }
+    private func connectWallet() {
+        isConnectingWallet = true
+        Task {
+            defer { isConnectingWallet = false }
+            do {
+                // A declined consent sheet needs no alert of its own — the
+                // section flips to its denied state, which says what to do.
+                if try await budgetStore.connectAppleWallet() {
+                    await loadWalletAccounts()
                 }
-
-                if isBackfilling {
-                    HStack {
-                        ProgressView()
-                        Text("Importing older transactions…")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } header: {
-                Text("Import Start Date")
-            } footer: {
-                Text("Linked accounts import transactions from this day on. It starts out as the day this budget began. For Apple Wallet accounts, pick an earlier day to pull in older history. Transactions already imported always stay.")
+            } catch {
+                errorMessage = error.localizedDescription
             }
         }
     }
 
-    /// Store the day, then reach it. The window is derived from the day, so a
-    /// run that fails here costs nothing — the next sync reaches just as far.
-    /// This is only what makes the import visible while the screen is open.
-    private func applyImportStart(_ day: Int) async {
-        budgetStore.setBankSyncImportStartDay(day)
-        isBackfilling = true
-        defer { isBackfilling = false }
+    private func refreshWallet() async {
+        await budgetStore.refreshAppleWalletAvailability()
+        if budgetStore.appleWalletAvailability == .authorized {
+            await loadWalletAccounts()
+        }
+    }
+
+    private func loadWalletAccounts() async {
+        isLoadingWalletAccounts = true
+        defer { isLoadingWalletAccounts = false }
         do {
-            // The throwing entry point, not `runBankSync`: its summary alert
-            // lives on the accounts tab, which this screen may not be inside.
-            let result = try await budgetStore.syncBankAccounts()
-            if !result.problems.isEmpty {
-                errorMessage = result.problems.joined(separator: "\n\n")
-            }
+            walletAccounts = try await budgetStore.fetchAppleWalletAccounts()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - SimpleFIN
+
+/// SimpleFIN has two states — with a connection available (the server's own,
+/// or one claimed on this device) it lists the accounts the bridge serves;
+/// with neither, it's a paste field for a setup token. Which connection is in
+/// play is worth saying out loud: only the server's is shared with the web app.
+struct SimpleFINSyncView: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+
+    @State private var setupToken = ""
+    @State private var isConnecting = false
+    @State private var isLoadingAccounts = false
+    @State private var remoteAccounts: [SimpleFINAccount] = []
+    @State private var errorMessage: String?
+    @State private var linkTarget: BankSyncRemoteAccount?
+    @State private var showingDisconnectConfirmation = false
+
+    var body: some View {
+        List {
+            if budgetStore.canSyncBanks {
+                connectedSections
+            } else {
+                setupSection
+            }
+            ImportStartSection()
+        }
+        .navigationTitle("SimpleFIN")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            // Which half of the screen applies depends on whether the server
+            // does SimpleFIN itself, so ask before deciding.
+            await budgetStore.refreshBankSyncSource()
+            if budgetStore.canSyncBanks, remoteAccounts.isEmpty {
+                await loadRemoteAccounts()
+            }
+        }
+        .sheet(item: $linkTarget) { remote in
+            BankAccountLinkView(remote: remote)
+                .environmentObject(budgetStore)
+        }
+        .alert("Bank Sync", isPresented: errorAlertBinding) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .confirmationDialog(
+            "Disconnect SimpleFIN?",
+            isPresented: $showingDisconnectConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Disconnect", role: .destructive) { disconnect() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your accounts stay linked and keep the transactions they've already imported. To sync from this device again you'll need a new setup token.")
         }
     }
 
@@ -291,7 +397,7 @@ struct BankSyncSetupView: View {
                     Button {
                         linkTarget = remote.remoteAccount
                     } label: {
-                        remoteAccountRow(remote.remoteAccount)
+                        BankRemoteAccountRow(remote: remote.remoteAccount)
                     }
                     .buttonStyle(.plain)
                 }
@@ -318,39 +424,6 @@ struct BankSyncSetupView: View {
                 }
             }
         }
-    }
-
-    private func remoteAccountRow(_ remote: BankSyncRemoteAccount) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(remote.name)
-                Text(remote.institutionName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let linked = linkedAccountName(for: remote) {
-                    Label(linked, systemImage: "link")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                }
-            }
-            Spacer()
-            if let cents = remote.balanceCents {
-                Text(budgetStore.displayBalance(cents))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    /// The budget account a provider-side account is already wired to, if any.
-    private func linkedAccountName(for remote: BankSyncRemoteAccount) -> String? {
-        guard let link = budgetStore.bankSyncAccounts.first(where: {
-            $0.externalAccountId == remote.id && $0.syncSource == remote.source.rawValue
-        }) else { return nil }
-        return link.name
     }
 
     // MARK: - Actions
@@ -388,39 +461,6 @@ struct BankSyncSetupView: View {
         }
     }
 
-    private func connectWallet() {
-        isConnectingWallet = true
-        Task {
-            defer { isConnectingWallet = false }
-            do {
-                // A declined consent sheet needs no alert of its own — the
-                // section flips to its denied state, which says what to do.
-                if try await budgetStore.connectAppleWallet() {
-                    await loadWalletAccounts()
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func refreshWallet() async {
-        await budgetStore.refreshAppleWalletAvailability()
-        if budgetStore.appleWalletAvailability == .authorized {
-            await loadWalletAccounts()
-        }
-    }
-
-    private func loadWalletAccounts() async {
-        isLoadingWalletAccounts = true
-        defer { isLoadingWalletAccounts = false }
-        do {
-            walletAccounts = try await budgetStore.fetchAppleWalletAccounts()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
     private func disconnect() {
         do {
             try budgetStore.disconnectSimpleFIN()
@@ -428,6 +468,48 @@ struct BankSyncSetupView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+// MARK: - Shared
+
+/// One provider-side account in a provider screen's list, with the budget
+/// account it's linked to, if any.
+private struct BankRemoteAccountRow: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+
+    let remote: BankSyncRemoteAccount
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(remote.name)
+                Text(remote.institutionName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let linked = linkedAccountName {
+                    Label(linked, systemImage: "link")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            }
+            Spacer()
+            if let cents = remote.balanceCents {
+                Text(budgetStore.displayBalance(cents))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var linkedAccountName: String? {
+        guard let link = budgetStore.bankSyncAccounts.first(where: {
+            $0.externalAccountId == remote.id && $0.syncSource == remote.source.rawValue
+        }) else { return nil }
+        return link.name
     }
 }
 
