@@ -1485,6 +1485,32 @@ struct AmountInputField: UIViewRepresentable {
         }
     }
 
+    /// The bar's host view. The iOS 26 prominent Done pill needs about 400pt
+    /// beside the symbol keys, so on narrower bars the keys tighten up and the
+    /// pill stays on screen (GH #746). The accessory view is sized to the
+    /// keyboard, which follows the window in iPad split view, so read the
+    /// width here rather than the screen's.
+    final class AccessoryBarView: UIView {
+        var keyButtons: [UIButton] = []
+        private var keyInset: CGFloat?
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            let inset: CGFloat = if #available(iOS 26, *), bounds.width < 410 {
+                6
+            } else {
+                10
+            }
+            guard inset != keyInset else { return }
+            keyInset = inset
+            for button in keyButtons {
+                button.configuration?.contentInsets = NSDirectionalEdgeInsets(
+                    top: 8, leading: inset, bottom: 8, trailing: inset
+                )
+            }
+        }
+    }
+
     func makeUIView(context: Context) -> UITextField {
         let field = AutofocusTextField()
         field.wantsAutofocus = autofocus
@@ -1511,6 +1537,7 @@ struct AmountInputField: UIViewRepresentable {
         // field, or to do arithmetic in it.
         let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
         var items: [UIBarButtonItem] = []
+        var keyButtons: [UIButton] = []
         if allowsNegative || onToggleSign != nil {
             // The decimal pad has no minus key, so this button is the only
             // keyboard affordance for flipping an amount's sign.
@@ -1521,14 +1548,21 @@ struct AmountInputField: UIViewRepresentable {
             )
             context.coordinator.signButton = item.customView as? UIButton
             context.coordinator.signButton?.isEnabled = signToggleEnabled
+            if let button = item.customView as? UIButton {
+                keyButtons.append(button)
+            }
             items.append(item)
         }
         for op in Coordinator.Operator.allCases {
-            items.append(Self.keyItem(
+            let item = Self.keyItem(
                 symbol: op.symbolName,
                 label: op.accessibilityLabel,
                 target: context.coordinator, action: op.selector
-            ))
+            )
+            if let button = item.customView as? UIButton {
+                keyButtons.append(button)
+            }
+            items.append(item)
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
         // `.prominent` is iOS 26+; `.done` is the pre-26 equivalent emphasis.
@@ -1547,9 +1581,10 @@ struct AmountInputField: UIViewRepresentable {
         // toolbar with a gap we host it in a taller, transparent container and
         // pin the toolbar to the top — the leftover strip below is the space.
         let gap: CGFloat = 4
-        let container = UIView(
+        let container = AccessoryBarView(
             frame: CGRect(x: 0, y: 0, width: toolbar.frame.width, height: toolbar.frame.height + gap)
         )
+        container.keyButtons = keyButtons
         container.backgroundColor = .clear
         toolbar.frame = CGRect(x: 0, y: 0, width: container.frame.width, height: toolbar.frame.height)
         toolbar.autoresizingMask = [.flexibleWidth]
@@ -1567,17 +1602,9 @@ struct AmountInputField: UIViewRepresentable {
     /// accessory view (the key is announced by its symbol's name, "add",
     /// "remove"), so the key is a button view that carries the label.
     private static func keyItem(symbol: String, label: String, target: AnyObject?, action: Selector) -> UIBarButtonItem {
-        // iOS 26's prominent Done pill is wide enough that 10pt of key padding
-        // pushes the bar past a 375pt screen (iPhone 13 mini, SE), which
-        // collapses or clips the trailing item (GH #746).
-        let inset: CGFloat = if #available(iOS 26, *) {
-            6
-        } else {
-            10
-        }
         var configuration = UIButton.Configuration.plain()
         configuration.image = UIImage(systemName: symbol)
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: inset, bottom: 8, trailing: inset)
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10)
         let button = UIButton(configuration: configuration)
         button.addTarget(target, action: action, for: .touchUpInside)
         button.accessibilityLabel = label
