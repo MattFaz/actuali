@@ -1567,9 +1567,17 @@ struct AmountInputField: UIViewRepresentable {
     /// accessory view (the key is announced by its symbol's name, "add",
     /// "remove"), so the key is a button view that carries the label.
     private static func keyItem(symbol: String, label: String, target: AnyObject?, action: Selector) -> UIBarButtonItem {
+        // iOS 26's prominent Done pill is wide enough that 10pt of key padding
+        // pushes the bar past a 375pt screen (iPhone 13 mini, SE), which
+        // collapses or clips the trailing item (GH #746).
+        let inset: CGFloat = if #available(iOS 26, *) {
+            6
+        } else {
+            10
+        }
         var configuration = UIButton.Configuration.plain()
         configuration.image = UIImage(systemName: symbol)
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10)
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: inset, bottom: 8, trailing: inset)
         let button = UIButton(configuration: configuration)
         button.addTarget(target, action: action, for: .touchUpInside)
         button.accessibilityLabel = label

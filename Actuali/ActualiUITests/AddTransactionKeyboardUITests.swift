@@ -38,6 +38,32 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                       "tab bar not reachable after dismissing the keyboard")
     }
 
+    /// GH #746: the iOS 26 prominent Done pill made the amount bar's content
+    /// wider than a 375pt iPhone 13 mini, so the trailing button clipped or
+    /// collapsed into the bar's overflow menu. Run on a narrow phone — the
+    /// bar has to fit its items.
+    @MainActor
+    func testAmountKeyboardDoneButtonFitsOnScreen() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        let amountField = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == '0.00'")
+        ).firstMatch
+        XCTAssertTrue(amountField.waitForExistence(timeout: 20), "amount field not found")
+        amountField.tap()
+
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 10), "amount keyboard did not appear")
+
+        let screen = app.windows.firstMatch.frame
+        XCTAssertLessThanOrEqual(
+            done.frame.maxX, screen.maxX,
+            "Done runs past the screen edge: done=\(done.frame), screen=\(screen)"
+        )
+    }
+
     /// The add flow autofocuses the amount field — the first thing anyone
     /// enters — so the keyboard must come up without a tap and keypad input
     /// must land in that field.
