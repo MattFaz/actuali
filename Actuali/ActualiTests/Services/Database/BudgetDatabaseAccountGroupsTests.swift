@@ -34,6 +34,20 @@ struct BudgetDatabaseAccountGroupsTests {
         #expect(try await database.fetchAccountGroups().map(\.id) == ["first", "last", "new"])
     }
 
+    @Test func fetchUsesIdAsStableTieBreakerForEqualSortOrders() async throws {
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO account_groups (id, name, sort_order, tombstone) VALUES
+                    ('zulu', 'Zulu', 16384, 0),
+                    ('alpha', 'Alpha', 16384, 0)
+            """)
+        }
+
+        #expect(try await database.fetchAccountGroups().map(\.id) == ["alpha", "zulu"])
+    }
+
     @Test func renameUpdatesThePersistedGroup() async throws {
         let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
@@ -82,6 +96,19 @@ struct BudgetDatabaseAccountGroupsTests {
             try String.fetchAll(db, sql: "SELECT account_group_id FROM accounts WHERE account_group_id IS NOT NULL")
         }
         #expect(remaining.isEmpty)
+    }
+
+    @Test func movingAccountGroupPlacesItBeforeTarget() async throws {
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        _ = try database.insertAccountGroup(id: "first", name: "First")
+        _ = try database.insertAccountGroup(id: "middle", name: "Middle")
+        _ = try database.insertAccountGroup(id: "last", name: "Last")
+
+        let move = try database.moveAccountGroup(id: "last", before: "first")
+
+        #expect(move.id == "last")
+        #expect(try await database.fetchAccountGroups().map(\.id) == ["last", "first", "middle"])
     }
 
     @Test func movingAccountChangesItsGroupAndPlacesItBeforeTarget() async throws {
