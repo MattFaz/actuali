@@ -107,6 +107,48 @@ struct AccountsListViewTests {
         ) == nil)
     }
 
+    private func makeGroups(_ ids: [String]) -> [AccountGroup] {
+        ids.enumerated().map { index, id in
+            AccountGroup(id: id, name: id, sortOrder: Double(index))
+        }
+    }
+
+    @Test func groupMoveTargetMovesAGroupBeforeTheNextGroup() {
+        let groups = makeGroups(["first", "middle", "last"])
+        let target = AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integer: 2), to: 0
+        )
+        #expect(target?.before == "first")
+    }
+
+    @Test func groupMoveTargetAppendsWhenMovingToTheEnd() {
+        let groups = makeGroups(["first", "middle", "last"])
+        let target = AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integer: 0), to: groups.count
+        )
+        #expect(target?.before == nil)
+    }
+
+    @Test func groupMoveTargetIgnoresAnUnchangedOrder() {
+        let groups = makeGroups(["first", "middle", "last"])
+        #expect(AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integer: 1), to: 1
+        ) == nil)
+    }
+
+    @Test func groupMoveTargetRejectsMultipleRowsAndInvalidSources() {
+        let groups = makeGroups(["first", "middle", "last"])
+        #expect(AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integersIn: 0..<2), to: 2
+        ) == nil)
+        #expect(AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integer: 3), to: 0
+        ) == nil)
+        #expect(AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integer: 0), to: groups.count + 1
+        ) == nil)
+    }
+
     // MARK: - Drop slots
 
     /// Ungrouped A, B; then group Cash holding C.

@@ -82,5 +82,4 @@ final class AccountReorderUITests: XCTestCase {
         expectation(for: groupsReordered, evaluatedWith: nil)
         waitForExpectations(timeout: 5)
     }
-
 }

@@ -48,6 +48,18 @@ final class AccountGroupsGateUITests: XCTestCase {
     }
 
     @MainActor
+    func testDemoCanReorderGroupsFromAccountGroupsSheetWithoutServerSupport() {
+        let app = launch(groupWrites: false)
+        openOptionsMenu(app)
+        let manageGroups = app.buttons["Manage Account Groups"]
+        XCTAssertTrue(manageGroups.waitForExistence(timeout: 5))
+        manageGroups.tap()
+
+        XCTAssertTrue(app.buttons["accountGroups.edit"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Account groups require Actual Server 26.9.0 or later."].exists)
+    }
+
+    @MainActor
     func testGroupAssignmentControlHiddenWhenServerLacksSupport() {
         assertGroupControls(groupWrites: false)
     }
