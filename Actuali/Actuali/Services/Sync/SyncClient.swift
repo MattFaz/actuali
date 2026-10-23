@@ -1077,6 +1077,30 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    func moveAccountGroup(id: String, before targetId: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let move = try database.moveAccountGroup(id: id, before: targetId)
+        var messages: [CRDTMessage] = []
+        for sibling in move.movedSiblings {
+            messages += try await messageGenerator.messages(
+                dataset: AccountGroup.datasetName,
+                row: sibling.id,
+                fields: [("sort_order", sibling.sortOrder)]
+            )
+        }
+        messages += try await messageGenerator.messages(
+            dataset: AccountGroup.datasetName,
+            row: move.id,
+            fields: [("sort_order", move.sortOrder)]
+        )
+        for message in try database.insertMessages(messages) {
+            merkle = merkle.inserting(message.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     func deleteAccountGroup(id: String) async throws {
         guard let database else { throw SyncError.notConfigured }
         let accountIds = try database.deleteAccountGroup(id: id)

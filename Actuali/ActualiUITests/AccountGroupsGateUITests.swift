@@ -36,7 +36,9 @@ final class AccountGroupsGateUITests: XCTestCase {
         var app = launch(groupWrites: groupWrites)
         openOptionsMenu(app)
         XCTAssertTrue(app.buttons["Credit Cards"].waitForExistence(timeout: 5), "options menu did not open")
-        XCTAssertEqual(app.buttons["Manage Account Groups"].exists, groupWrites)
+        // The demo now has seeded groups, so this entry remains visible even
+        // when editing is gated off; it explains the server-version requirement.
+        XCTAssertTrue(app.buttons["Manage Account Groups"].exists)
 
         // Relaunch rather than dismiss the menu, which has no stable target.
         app.terminate()
@@ -46,12 +48,24 @@ final class AccountGroupsGateUITests: XCTestCase {
     }
 
     @MainActor
-    func testGroupControlsHiddenWhenServerLacksSupport() {
+    func testDemoCanReorderGroupsFromAccountGroupsSheetWithoutServerSupport() {
+        let app = launch(groupWrites: false)
+        openOptionsMenu(app)
+        let manageGroups = app.buttons["Manage Account Groups"]
+        XCTAssertTrue(manageGroups.waitForExistence(timeout: 5))
+        manageGroups.tap()
+
+        XCTAssertTrue(app.buttons["accountGroups.edit"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Account groups require Actual Server 26.9.0 or later."].exists)
+    }
+
+    @MainActor
+    func testGroupAssignmentControlHiddenWhenServerLacksSupport() {
         assertGroupControls(groupWrites: false)
     }
 
     @MainActor
-    func testGroupControlsShownWhenServerSupportsGroups() {
+    func testGroupAssignmentControlShownWhenServerSupportsGroups() {
         assertGroupControls(groupWrites: true)
     }
 }
