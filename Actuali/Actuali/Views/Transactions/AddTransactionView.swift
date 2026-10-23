@@ -2140,7 +2140,7 @@ struct CategoryPickerView: View {
         if trimmed.isEmpty {
             groups = budgetStore.categoryGroups.filter { !$0.hidden }
         } else {
-            groups = budgetStore.categoryGroups.compactMap { group in
+            groups = budgetStore.categoryGroups.compactMap { group -> CategoryGroup? in
                 let matches = group.categories.filter { category in
                     !category.hidden &&
                         (category.name.localizedCaseInsensitiveContains(trimmed) ||
