@@ -200,7 +200,9 @@ struct AccountsListView: View {
         fullOrder: [String]
     ) -> AccountGroupDropTarget? {
         let visibleOrder = rows.compactMap { row -> String? in
-            if case .header(let bucket) = row { return bucket.group?.id }
+            if case .header(let bucket) = row {
+                return bucket.group?.id
+            }
             return nil
         }
         guard visibleOrder.count > 1, visibleOrder.contains(groupId), fullOrder.contains(groupId) else {
@@ -784,7 +786,7 @@ struct AccountsListView: View {
                         .accessibilityIdentifier("accounts.reorderDone")
                     }
                 }
-                if !isReordering && (!hasNoAccounts || isAccountSearchActive) {
+                if !isReordering, !hasNoAccounts || isAccountSearchActive {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             isAccountSearchActive.toggle()
@@ -898,7 +900,7 @@ struct AccountsListView: View {
                     .accessibilityHint(String(localized: "Account list display options"))
                     .accessibilityIdentifier("accounts.optionsMenu")
                 }
-                if pendingImportStore.count > 0 && !isReordering {
+                if pendingImportStore.count > 0, !isReordering {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             showingPendingImports = true
