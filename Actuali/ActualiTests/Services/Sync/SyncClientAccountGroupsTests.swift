@@ -68,6 +68,25 @@ struct SyncClientAccountGroupsTests {
         #expect(detachMessageCount == 1)
     }
 
+    @Test func movingAccountGroupPersistsOrderAndEmitsSortOrderMessages() async throws {
+        let (database, path, syncClient) = try await makeDatabase()
+        defer { cleanup(path) }
+        try await syncClient.createAccountGroup(id: "cash", name: "Cash")
+        try await syncClient.createAccountGroup(id: "savings", name: "Savings")
+        try await syncClient.createAccountGroup(id: "brokerage", name: "Brokerage")
+
+        try await syncClient.moveAccountGroup(id: "brokerage", before: "cash")
+
+        #expect(try await database.fetchAccountGroups().map(\.id) == ["brokerage", "cash", "savings"])
+        let sortOrderMessages = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM messages_crdt
+                WHERE dataset = 'account_groups' AND row = 'brokerage' AND column = 'sort_order'
+            """) ?? 0
+        }
+        #expect(sortOrderMessages == 2)
+    }
+
     @Test func assigningAndClearingGroupEmitsAccountGroupMessages() async throws {
         let (database, path, syncClient) = try await makeDatabase()
         defer { cleanup(path) }

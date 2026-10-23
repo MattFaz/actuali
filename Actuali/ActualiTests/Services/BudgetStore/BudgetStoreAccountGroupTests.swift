@@ -11,6 +11,9 @@ struct BudgetStoreAccountGroupTests {
         let (database, url) = try await makeTestDatabase(
             TestSchema.accounts, TestSchema.messagesCrdt,
             """
+            CREATE TABLE account_groups (
+                id TEXT PRIMARY KEY, name TEXT, sort_order REAL, tombstone INTEGER DEFAULT 0
+            );
             INSERT INTO accounts (id, name, sort_order) VALUES
                 ('x', 'X', 16384.0), ('a', 'A', 32768.0), ('b', 'B', 49152.0);
             """
@@ -67,6 +70,30 @@ struct BudgetStoreAccountGroupTests {
         #expect(try await messagedColumns(database, row: "x") == ["sort_order"])
     }
 
+    @Test func movingAccountGroupPersistsAndSyncsItsOrder() async throws {
+        let (store, database, url) = try await makeStore(groupWrites: true)
+        defer { cleanup(url) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO account_groups (id, name, sort_order, tombstone) VALUES
+                    ('cash', 'Cash', 16384, 0),
+                    ('savings', 'Savings', 32768, 0),
+                    ('brokerage', 'Brokerage', 49152, 0)
+            """)
+        }
+
+        try await store.moveAccountGroup(id: "brokerage", before: "cash")
+
+        #expect(try await database.fetchAccountGroups().map(\.id) == ["brokerage", "cash", "savings"])
+        let sortOrderMessages = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM messages_crdt
+                WHERE dataset = 'account_groups' AND row = 'brokerage' AND column = 'sort_order'
+            """) ?? 0
+        }
+        #expect(sortOrderMessages == 1)
+    }
+
     @Test func groupWritesAreSkippedWithoutServerSupport() async throws {
         let (store, database, url) = try await makeStore(groupWrites: false)
         defer { cleanup(url) }
@@ -76,6 +103,7 @@ struct BudgetStoreAccountGroupTests {
         try await store.renameAccountGroup(cash, name: "Wallet")
         try await store.deleteAccountGroup(cash)
         try await store.setAccountGroup(store.accounts[0], groupId: "cash")
+        try await store.moveAccountGroup(id: "cash", before: nil)
         // A drag across groups is a group change too.
         try await store.dropAccount("x", at: 0, among: store.accounts, groupId: "cash")
 

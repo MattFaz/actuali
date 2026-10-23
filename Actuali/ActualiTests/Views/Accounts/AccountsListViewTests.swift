@@ -75,6 +75,38 @@ struct AccountsListViewTests {
         #expect(AccountGroupRowLayout.position(roundsTop: headerIsFirst, roundsBottom: nextGroupIsExpanded) == .middle)
     }
 
+    // MARK: - Group drop targets
+
+    private func groupHeaderRows(_ ids: [String]) -> [AccountListRow] {
+        ids.enumerated().map { index, id in
+            let group = AccountGroup(id: id, name: id, sortOrder: Double(index))
+            return .header(AccountListBucket(id: id, group: group, accounts: []))
+        }
+    }
+
+    @Test func groupDropTargetMovesAGroupBeforeTheNextVisibleGroup() {
+        let rows = groupHeaderRows(["first", "middle", "last"])
+        let target = AccountsListView.groupDropTarget(
+            in: rows, at: 0, moving: "last", fullOrder: ["first", "middle", "last"]
+        )
+        #expect(target?.before == "first")
+    }
+
+    @Test func groupDropTargetAnchorsAfterTheLastVisibleGroupBeforeAnUnshownGroup() {
+        let rows = groupHeaderRows(["first", "second"])
+        let target = AccountsListView.groupDropTarget(
+            in: rows, at: rows.count, moving: "first", fullOrder: ["first", "second", "empty"]
+        )
+        #expect(target?.before == "empty")
+    }
+
+    @Test func groupDropTargetIgnoresDroppingAHeaderBackIntoItsOwnPosition() {
+        let rows = groupHeaderRows(["first", "second"])
+        #expect(AccountsListView.groupDropTarget(
+            in: rows, at: 1, moving: "first", fullOrder: ["first", "second"]
+        ) == nil)
+    }
+
     // MARK: - Drop slots
 
     /// Ungrouped A, B; then group Cash holding C.

@@ -6,6 +6,7 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "DemoData"
 
 /// Populates a local "demo" budget with curated data suitable for App Store screenshots
 /// and for letting users (and App Review) explore the app without a server.
+/// Chequing and Savings groups exercise grouped account rendering and reordering.
 /// Overwrites any existing demo budget, and does NOT touch the server or sync.
 enum DemoDataSeeder {
     static let budgetId = "demo"
@@ -111,6 +112,7 @@ enum DemoDataSeeder {
             closed INTEGER DEFAULT 0,
             tombstone INTEGER DEFAULT 0,
             sort_order REAL,
+            account_group_id TEXT,
             account_id TEXT,
             account_sync_source TEXT,
             balance_current INTEGER,
@@ -120,6 +122,15 @@ enum DemoDataSeeder {
             official_name TEXT,
             subtype TEXT,
             bank TEXT
+        )
+        """)
+
+        try db.execute(sql: """
+        CREATE TABLE account_groups (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            sort_order REAL,
+            tombstone INTEGER DEFAULT 0
         )
         """)
 
@@ -350,10 +361,16 @@ enum DemoDataSeeder {
         let vanguardId = UUID().uuidString
         let carLoanId = UUID().uuidString
         let cdId = UUID().uuidString
+        let chequingGroupId = UUID().uuidString
+        let savingsGroupId = UUID().uuidString
 
-        try insertAccount(db, id: chaseId, name: "Chase Checking", type: "checking", sortOrder: 0)
-        try insertAccount(db, id: allyId, name: "Ally Savings", type: "savings", sortOrder: 1)
-        try insertAccount(db, id: appleCardId, name: "Apple Card", type: "credit", sortOrder: 2)
+        try insertAccountGroup(db, id: chequingGroupId, name: "Chequing", sortOrder: 0)
+        try insertAccountGroup(db, id: savingsGroupId, name: "Savings", sortOrder: 1)
+        try insertAccount(
+            db, id: chaseId, name: "Chase Checking", type: "checking", sortOrder: 0, groupId: chequingGroupId
+        )
+        try insertAccount(db, id: allyId, name: "Ally Savings", type: "savings", sortOrder: 1, groupId: savingsGroupId)
+        try insertAccount(db, id: appleCardId, name: "Apple Card", type: "credit", sortOrder: 2, groupId: chequingGroupId)
         // Off-budget so it lifts net worth without distorting budget/spending reports.
         try insertAccount(db, id: vanguardId, name: "Vanguard Brokerage", type: "investment", sortOrder: 3, offBudget: true)
         // Off-budget like Actual's docs recommend for loans, so the loan tracker
@@ -920,18 +937,31 @@ enum DemoDataSeeder {
 
     // MARK: - Insert helpers
 
+    private static func insertAccountGroup(
+        _ db: Database,
+        id: String,
+        name: String,
+        sortOrder: Double
+    ) throws {
+        try db.execute(sql: """
+        INSERT INTO account_groups (id, name, sort_order, tombstone)
+        VALUES (?, ?, ?, 0)
+        """, arguments: [id, name, sortOrder])
+    }
+
     private static func insertAccount(
         _ db: Database,
         id: String,
         name: String,
         type: String,
         sortOrder: Double,
-        offBudget: Bool = false
+        offBudget: Bool = false,
+        groupId: String? = nil
     ) throws {
         try db.execute(sql: """
-        INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
-        VALUES (?, ?, ?, ?, 0, 0, ?)
-        """, arguments: [id, name, type, offBudget ? 1 : 0, sortOrder])
+        INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order, account_group_id)
+        VALUES (?, ?, ?, ?, 0, 0, ?, ?)
+        """, arguments: [id, name, type, offBudget ? 1 : 0, sortOrder, groupId])
     }
 
     private static func insertCategoryGroup(

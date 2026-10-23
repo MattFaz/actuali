@@ -665,7 +665,7 @@ final class BudgetDatabase: Sendable {
     func fetchAccountGroups() async throws -> [AccountGroup] {
         try await dbQueue.read { db in
             try AccountGroupRecord.filter(Column("tombstone") == 0 || Column("tombstone") == nil)
-                .order(Column("sort_order").asc).fetchAll(db).map {
+                .order(Column("sort_order").asc, Column("id").asc).fetchAll(db).map {
                     AccountGroup(id: $0.id, name: $0.name ?? "Unknown", sortOrder: $0.sortOrder ?? 0)
                 }
         }
@@ -698,6 +698,50 @@ final class BudgetDatabase: Sendable {
     func setAccountGroup(accountId: String, groupId: String?) throws {
         try dbQueue.write { db in
             try db.execute(sql: "UPDATE accounts SET account_group_id = ? WHERE id = ?", arguments: [groupId, accountId])
+        }
+    }
+
+    struct AccountGroupMoveResult: Equatable {
+        let id: String
+        let sortOrder: Double
+        let movedSiblings: [SortOrder.Position]
+    }
+
+    /// Move a group in the shared account-group order. The sort_order messages
+    /// are understood by Actual's web/PWA clients as well as Actuali.
+    func moveAccountGroup(id: String, before targetId: String?) throws -> AccountGroupMoveResult {
+        try dbQueue.write { db in
+            guard let group = try Row.fetchOne(db, sql: """
+                SELECT sort_order FROM account_groups
+                WHERE id = ? AND tombstone IS NOT 1
+            """, arguments: [id]) else {
+                throw DatabaseError(message: "Account group no longer exists")
+            }
+            let currentSortOrder: Double = group["sort_order"] ?? 0
+            guard targetId != id else {
+                return AccountGroupMoveResult(id: id, sortOrder: currentSortOrder, movedSiblings: [])
+            }
+
+            let siblings = try Row.fetchAll(db, sql: """
+                SELECT id, sort_order FROM account_groups
+                WHERE id != ? AND tombstone IS NOT 1
+                ORDER BY sort_order, id
+            """, arguments: [id]).map { row in
+                SortOrder.Position(id: row["id"], sortOrder: row["sort_order"] ?? 0)
+            }
+            let placement = SortOrder.shove(siblings, before: targetId)
+
+            for moved in placement.moved {
+                try db.execute(
+                    sql: "UPDATE account_groups SET sort_order = ? WHERE id = ?",
+                    arguments: [moved.sortOrder, moved.id]
+                )
+            }
+            try db.execute(
+                sql: "UPDATE account_groups SET sort_order = ? WHERE id = ?",
+                arguments: [placement.sortOrder, id]
+            )
+            return AccountGroupMoveResult(id: id, sortOrder: placement.sortOrder, movedSiblings: placement.moved)
         }
     }
 
