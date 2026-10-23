@@ -711,15 +711,11 @@ final class BudgetDatabase: Sendable {
     /// are understood by Actual's web/PWA clients as well as Actuali.
     func moveAccountGroup(id: String, before targetId: String?) throws -> AccountGroupMoveResult {
         try dbQueue.write { db in
-            guard let group = try Row.fetchOne(db, sql: """
-                SELECT sort_order FROM account_groups
+            guard try Row.fetchOne(db, sql: """
+                SELECT 1 FROM account_groups
                 WHERE id = ? AND tombstone IS NOT 1
-            """, arguments: [id]) else {
+            """, arguments: [id]) != nil else {
                 throw DatabaseError(message: "Account group no longer exists")
-            }
-            let currentSortOrder: Double = group["sort_order"] ?? 0
-            guard targetId != id else {
-                return AccountGroupMoveResult(id: id, sortOrder: currentSortOrder, movedSiblings: [])
             }
 
             let siblings = try Row.fetchAll(db, sql: """

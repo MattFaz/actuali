@@ -234,6 +234,24 @@ struct AccountsListView: View {
         )
     }
 
+    nonisolated static func groupMoveTarget(
+        in groups: [AccountGroup],
+        from source: IndexSet,
+        to destination: Int
+    ) -> AccountGroupDropTarget? {
+        guard source.count == 1,
+              let index = source.first,
+              groups.indices.contains(index),
+              (0...groups.count).contains(destination) else { return nil }
+        var reordered = groups
+        reordered.move(fromOffsets: source, toOffset: destination)
+        guard reordered.map(\.id) != groups.map(\.id),
+              let moved = reordered.firstIndex(where: { $0.id == groups[index].id }) else { return nil }
+        return AccountGroupDropTarget(
+            before: reordered.indices.contains(moved + 1) ? reordered[moved + 1].id : nil
+        )
+    }
+
     private func moveRow(in rows: [AccountListRow]) -> (IndexSet, Int) -> Void {
         { source, destination in
             guard let from = source.first, rows.indices.contains(from) else { return }
@@ -1456,19 +1474,14 @@ private struct AccountGroupsSheet: View {
     @State private var renameTarget: AccountGroup?
 
     private func moveGroup(from source: IndexSet, to destination: Int) {
-        guard budgetStore.accountGroupWritesEnabled,
-              source.count == 1,
+        let groups = budgetStore.accountGroups
+        guard budgetStore.canReorderAccountGroups,
               let index = source.first,
-              budgetStore.accountGroups.indices.contains(index) else { return }
-        let original = budgetStore.accountGroups
-        var reordered = original
-        reordered.move(fromOffsets: source, toOffset: destination)
-        guard reordered.map(\.id) != original.map(\.id),
-              let movedIndex = reordered.firstIndex(where: { $0.id == original[index].id }) else { return }
-        let before = reordered.indices.contains(movedIndex + 1) ? reordered[movedIndex + 1].id : nil
+              groups.indices.contains(index),
+              let target = AccountsListView.groupMoveTarget(in: groups, from: source, to: destination) else { return }
         Task {
             do {
-                try await budgetStore.moveAccountGroup(id: original[index].id, before: before)
+                try await budgetStore.moveAccountGroup(id: groups[index].id, before: target.before)
             } catch {
                 budgetStore.error = error.localizedDescription
             }
@@ -1507,20 +1520,20 @@ private struct AccountGroupsSheet: View {
                         }
                         .buttonStyle(.borderless)
                         .disabled(!budgetStore.accountGroupWritesEnabled)
-                        .moveDisabled(!budgetStore.accountGroupWritesEnabled)
+                        .moveDisabled(!budgetStore.canReorderAccountGroups)
                     }
                     .onMove(perform: moveGroup)
                 } header: {
                     Text(String(localized: "Account Groups"))
                 } footer: {
-                    if !budgetStore.accountGroupWritesEnabled {
+                    if !budgetStore.canReorderAccountGroups {
                         Text(String(localized: "Account groups require Actual Server 26.9.0 or later."))
                     }
                 }
             }
             .navigationTitle(String(localized: "Account Groups"))
             .toolbar {
-                if budgetStore.accountGroupWritesEnabled {
+                if budgetStore.canReorderAccountGroups {
                     ToolbarItem(placement: .topBarLeading) {
                         EditButton()
                             .accessibilityIdentifier("accountGroups.edit")
