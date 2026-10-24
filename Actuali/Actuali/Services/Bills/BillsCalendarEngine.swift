@@ -32,11 +32,64 @@ enum BillsTabMode: String, CaseIterable, Identifiable, Sendable {
 
 /// Month cashflow summary for the bills calendar header.
 struct BillsMonthSummary: Equatable, Sendable {
-    let upcomingTotal: Int // cents
+    let upcomingBills: Int // cents (total upcoming expenses/bills)
+    let upcomingIncome: Int // cents (total upcoming deposits/income)
+    let upcomingBillsCount: Int
+    let upcomingIncomeCount: Int
     let overdueTotal: Int // cents
     let paidTotal: Int // cents
     let clearedCount: Int
     let totalCount: Int
+
+    /// Net amount required to cover upcoming bills after upcoming income.
+    /// Positive means more bills than income (net amount to cover).
+    /// Negative means income exceeds bills (net surplus).
+    var upcomingNet: Int {
+        upcomingBills - upcomingIncome
+    }
+
+    /// Total upcoming bills (alias for backward compatibility).
+    var upcomingTotal: Int {
+        upcomingBills
+    }
+
+    init(
+        upcomingBills: Int,
+        upcomingIncome: Int = 0,
+        upcomingBillsCount: Int = 0,
+        upcomingIncomeCount: Int = 0,
+        overdueTotal: Int,
+        paidTotal: Int,
+        clearedCount: Int,
+        totalCount: Int
+    ) {
+        self.upcomingBills = upcomingBills
+        self.upcomingIncome = upcomingIncome
+        self.upcomingBillsCount = upcomingBillsCount
+        self.upcomingIncomeCount = upcomingIncomeCount
+        self.overdueTotal = overdueTotal
+        self.paidTotal = paidTotal
+        self.clearedCount = clearedCount
+        self.totalCount = totalCount
+    }
+
+    /// Convenience init for legacy callers
+    init(
+        upcomingTotal: Int,
+        overdueTotal: Int,
+        paidTotal: Int,
+        clearedCount: Int,
+        totalCount: Int
+    ) {
+        self.upcomingBills = upcomingTotal
+        self.upcomingIncome = 0
+        self.upcomingBillsCount = 0
+        self.upcomingIncomeCount = 0
+        self.overdueTotal = overdueTotal
+        self.paidTotal = paidTotal
+        self.clearedCount = clearedCount
+        self.totalCount = totalCount
+    }
 }
 
 /// Pure functions for generating calendar grid cells, occurrences, and summary statistics.
@@ -312,26 +365,43 @@ enum BillsCalendarEngine: Sendable {
 
     /// Computes month cashflow totals and cleared count.
     static func summarize(items: [BillCalendarItem]) -> BillsMonthSummary {
-        var upcoming = 0
+        // ponytail: Outflows (negative) and inflows (positive) are separated so scheduled deposits
+        // reduce net requirement without inflating gross upcoming bills.
+        var upcomingBills = 0
+        var upcomingIncome = 0
+        var upcomingBillsCount = 0
+        var upcomingIncomeCount = 0
         var overdue = 0
         var paid = 0
         var cleared = 0
 
         for item in items {
-            let absAmt = abs(item.amount)
             switch item.status {
             case .paid, .completed:
-                paid += absAmt
+                if item.amount < 0 {
+                    paid += -item.amount
+                }
                 cleared += 1
             case .missed:
-                overdue += absAmt
+                if item.amount < 0 {
+                    overdue += -item.amount
+                }
             case .due, .upcoming, .scheduled:
-                upcoming += absAmt
+                if item.amount < 0 {
+                    upcomingBills += -item.amount
+                    upcomingBillsCount += 1
+                } else if item.amount > 0 {
+                    upcomingIncome += item.amount
+                    upcomingIncomeCount += 1
+                }
             }
         }
 
         return BillsMonthSummary(
-            upcomingTotal: upcoming,
+            upcomingBills: upcomingBills,
+            upcomingIncome: upcomingIncome,
+            upcomingBillsCount: upcomingBillsCount,
+            upcomingIncomeCount: upcomingIncomeCount,
             overdueTotal: overdue,
             paidTotal: paid,
             clearedCount: cleared,

@@ -17,6 +17,7 @@ struct BillsCalendarView: View {
     @State private var showingCreditCardsSetup: Bool = false
     @State private var actionError: String? = nil
     @State private var pendingDelete: ScheduleSummary? = nil
+    @State private var showingUpcomingBreakdown: Bool = false
 
     private var today: DayDate {
         DayDate.today()
@@ -303,7 +304,7 @@ struct BillsCalendarView: View {
 
     private func summaryStripSection(summary: BillsMonthSummary) -> some View {
         HStack(spacing: 12) {
-            summaryMetric(title: String(localized: "Upcoming"), amount: summary.upcomingTotal, color: .primary)
+            upcomingMetric(summary: summary)
             Divider().frame(height: 24)
             summaryMetric(title: String(localized: "Overdue"), amount: summary.overdueTotal, color: .red)
             Divider().frame(height: 24)
@@ -313,6 +314,103 @@ struct BillsCalendarView: View {
         .padding(.vertical, 10)
         .padding(.horizontal, 16)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func upcomingMetric(summary: BillsMonthSummary) -> some View {
+        let hasIncome = summary.upcomingIncome > 0
+        let displayAmount = hasIncome ? summary.upcomingNet : summary.upcomingBills
+        let formattedAmount: String = if hasIncome, summary.upcomingNet < 0 {
+            "+" + budgetStore.displayBalance(abs(summary.upcomingNet))
+        } else {
+            budgetStore.displayBalance(displayAmount)
+        }
+
+        return HStack(spacing: 6) {
+            Circle()
+                .fill(Color.primary)
+                .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(String(localized: "Upcoming"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    if hasIncome {
+                        Button {
+                            showingUpcomingBreakdown = true
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(String(localized: "Upcoming Breakdown"))
+                        .accessibilityIdentifier("billsCalendar.upcomingBreakdownButton")
+                    }
+                }
+
+                Text(formattedAmount)
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if hasIncome {
+                showingUpcomingBreakdown = true
+            }
+        }
+        .popover(isPresented: $showingUpcomingBreakdown, arrowEdge: .top) {
+            upcomingBreakdownPopover(summary: summary)
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private func upcomingBreakdownPopover(summary: BillsMonthSummary) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(String(localized: "Upcoming Breakdown"))
+                .font(.headline)
+
+            VStack(spacing: 10) {
+                HStack {
+                    Label(String(localized: "Bills Due"), systemImage: "arrow.down.circle.fill")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(budgetStore.displayBalance(summary.upcomingBills))
+                        .monospacedDigit()
+                        .fontWeight(.medium)
+                }
+
+                HStack {
+                    Label(String(localized: "Expected Income"), systemImage: "arrow.up.circle.fill")
+                        .foregroundStyle(.green)
+                    Spacer()
+                    Text("+" + budgetStore.displayBalance(summary.upcomingIncome))
+                        .monospacedDigit()
+                        .fontWeight(.medium)
+                        .foregroundStyle(.green)
+                }
+
+                Divider()
+
+                HStack {
+                    Text(summary.upcomingNet >= 0
+                        ? String(localized: "Net to Cover")
+                        : String(localized: "Net Surplus"))
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Text(budgetStore.displayBalance(abs(summary.upcomingNet)))
+                        .monospacedDigit()
+                        .fontWeight(.bold)
+                        .foregroundStyle(summary.upcomingNet >= 0 ? Color.primary : Color.green)
+                }
+            }
+            .font(.subheadline)
+        }
+        .padding(16)
+        .frame(minWidth: 260)
     }
 
     private func summaryMetric(title: String, amount: Int, color: Color) -> some View {
