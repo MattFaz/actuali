@@ -32,11 +32,17 @@ enum BillsTabMode: String, CaseIterable, Identifiable, Sendable {
 
 /// Month cashflow summary for the bills calendar header.
 struct BillsMonthSummary: Equatable, Sendable {
-    let upcomingTotal: Int // cents
+    let upcomingBills: Int // cents (upcoming outflows)
+    let upcomingIncome: Int // cents (upcoming deposits)
     let overdueTotal: Int // cents
     let paidTotal: Int // cents
     let clearedCount: Int
     let totalCount: Int
+
+    /// Positive means bills exceed income (amount to cover), negative means surplus.
+    var upcomingNet: Int {
+        upcomingBills - upcomingIncome
+    }
 }
 
 /// Pure functions for generating calendar grid cells, occurrences, and summary statistics.
@@ -312,26 +318,37 @@ enum BillsCalendarEngine: Sendable {
 
     /// Computes month cashflow totals and cleared count.
     static func summarize(items: [BillCalendarItem]) -> BillsMonthSummary {
-        var upcoming = 0
+        // ponytail: Outflows (negative) and inflows (positive) are separated so scheduled deposits
+        // reduce net requirement without inflating gross upcoming bills.
+        var upcomingBills = 0
+        var upcomingIncome = 0
         var overdue = 0
         var paid = 0
         var cleared = 0
 
         for item in items {
-            let absAmt = abs(item.amount)
             switch item.status {
             case .paid, .completed:
-                paid += absAmt
+                if item.amount < 0 {
+                    paid += -item.amount
+                }
                 cleared += 1
             case .missed:
-                overdue += absAmt
+                if item.amount < 0 {
+                    overdue += -item.amount
+                }
             case .due, .upcoming, .scheduled:
-                upcoming += absAmt
+                if item.amount < 0 {
+                    upcomingBills += -item.amount
+                } else if item.amount > 0 {
+                    upcomingIncome += item.amount
+                }
             }
         }
 
         return BillsMonthSummary(
-            upcomingTotal: upcoming,
+            upcomingBills: upcomingBills,
+            upcomingIncome: upcomingIncome,
             overdueTotal: overdue,
             paidTotal: paid,
             clearedCount: cleared,
