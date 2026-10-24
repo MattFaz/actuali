@@ -32,63 +32,16 @@ enum BillsTabMode: String, CaseIterable, Identifiable, Sendable {
 
 /// Month cashflow summary for the bills calendar header.
 struct BillsMonthSummary: Equatable, Sendable {
-    let upcomingBills: Int // cents (total upcoming expenses/bills)
-    let upcomingIncome: Int // cents (total upcoming deposits/income)
-    let upcomingBillsCount: Int
-    let upcomingIncomeCount: Int
+    let upcomingBills: Int // cents (upcoming outflows)
+    let upcomingIncome: Int // cents (upcoming deposits)
     let overdueTotal: Int // cents
     let paidTotal: Int // cents
     let clearedCount: Int
     let totalCount: Int
 
-    /// Net amount required to cover upcoming bills after upcoming income.
-    /// Positive means more bills than income (net amount to cover).
-    /// Negative means income exceeds bills (net surplus).
+    /// Positive means bills exceed income (amount to cover), negative means surplus.
     var upcomingNet: Int {
         upcomingBills - upcomingIncome
-    }
-
-    /// Total upcoming bills (alias for backward compatibility).
-    var upcomingTotal: Int {
-        upcomingBills
-    }
-
-    init(
-        upcomingBills: Int,
-        upcomingIncome: Int = 0,
-        upcomingBillsCount: Int = 0,
-        upcomingIncomeCount: Int = 0,
-        overdueTotal: Int,
-        paidTotal: Int,
-        clearedCount: Int,
-        totalCount: Int
-    ) {
-        self.upcomingBills = upcomingBills
-        self.upcomingIncome = upcomingIncome
-        self.upcomingBillsCount = upcomingBillsCount
-        self.upcomingIncomeCount = upcomingIncomeCount
-        self.overdueTotal = overdueTotal
-        self.paidTotal = paidTotal
-        self.clearedCount = clearedCount
-        self.totalCount = totalCount
-    }
-
-    /// Convenience init for legacy callers
-    init(
-        upcomingTotal: Int,
-        overdueTotal: Int,
-        paidTotal: Int,
-        clearedCount: Int,
-        totalCount: Int
-    ) {
-        self.upcomingBills = upcomingTotal
-        self.upcomingIncome = 0
-        self.upcomingBillsCount = 0
-        self.upcomingIncomeCount = 0
-        self.overdueTotal = overdueTotal
-        self.paidTotal = paidTotal
-        self.clearedCount = clearedCount
-        self.totalCount = totalCount
     }
 }
 
@@ -369,8 +322,6 @@ enum BillsCalendarEngine: Sendable {
         // reduce net requirement without inflating gross upcoming bills.
         var upcomingBills = 0
         var upcomingIncome = 0
-        var upcomingBillsCount = 0
-        var upcomingIncomeCount = 0
         var overdue = 0
         var paid = 0
         var cleared = 0
@@ -389,10 +340,8 @@ enum BillsCalendarEngine: Sendable {
             case .due, .upcoming, .scheduled:
                 if item.amount < 0 {
                     upcomingBills += -item.amount
-                    upcomingBillsCount += 1
                 } else if item.amount > 0 {
                     upcomingIncome += item.amount
-                    upcomingIncomeCount += 1
                 }
             }
         }
@@ -400,8 +349,6 @@ enum BillsCalendarEngine: Sendable {
         return BillsMonthSummary(
             upcomingBills: upcomingBills,
             upcomingIncome: upcomingIncome,
-            upcomingBillsCount: upcomingBillsCount,
-            upcomingIncomeCount: upcomingIncomeCount,
             overdueTotal: overdue,
             paidTotal: paid,
             clearedCount: cleared,

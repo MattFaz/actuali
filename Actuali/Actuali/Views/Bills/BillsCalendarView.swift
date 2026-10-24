@@ -303,39 +303,24 @@ struct BillsCalendarView: View {
     // MARK: - Summary Strip
 
     private func summaryStripSection(summary: BillsMonthSummary) -> some View {
-        HStack(spacing: 12) {
-            upcomingMetric(summary: summary)
-            Divider().frame(height: 24)
-            summaryMetric(title: String(localized: "Overdue"), amount: summary.overdueTotal, color: .red)
-            Divider().frame(height: 24)
-            summaryMetric(title: String(localized: "Paid"), amount: summary.paidTotal, color: .green)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .padding(.horizontal, 16)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    private func upcomingMetric(summary: BillsMonthSummary) -> some View {
         let hasIncome = summary.upcomingIncome > 0
-        let displayAmount = hasIncome ? summary.upcomingNet : summary.upcomingBills
-        let formattedAmount: String = if hasIncome, summary.upcomingNet < 0 {
-            "+" + budgetStore.displayBalance(abs(summary.upcomingNet))
-        } else {
-            budgetStore.displayBalance(displayAmount)
-        }
+        let upcomingTitle = hasIncome
+            ? (summary.upcomingNet >= 0
+                ? String(localized: "Net to Cover")
+                : String(localized: "Net Surplus"))
+            : String(localized: "Upcoming")
+        // displaySpentCaption keeps the mask and adds "+" only for an inflow / surplus.
+        let upcomingText = hasIncome
+            ? budgetStore.displaySpentCaption(-summary.upcomingNet)
+            : budgetStore.displayBalance(summary.upcomingBills)
 
-        return HStack(spacing: 6) {
-            Circle()
-                .fill(Color.primary)
-                .frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(String(localized: "Upcoming"))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-
-                    if hasIncome {
+        return HStack(spacing: 12) {
+            summaryMetric(
+                title: upcomingTitle,
+                text: upcomingText,
+                color: .primary,
+                accessory: hasIncome ? {
+                    AnyView(
                         Button {
                             showingUpcomingBreakdown = true
                         } label: {
@@ -346,26 +331,37 @@ struct BillsCalendarView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel(String(localized: "Upcoming Breakdown"))
                         .accessibilityIdentifier("billsCalendar.upcomingBreakdownButton")
-                    }
+                    )
+                } : nil
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if hasIncome {
+                    showingUpcomingBreakdown = true
                 }
+            }
+            .popover(isPresented: $showingUpcomingBreakdown, arrowEdge: .top) {
+                upcomingBreakdownPopover(summary: summary)
+                    .presentationCompactAdaptation(.popover)
+            }
 
-                Text(formattedAmount)
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-                    .lineLimit(1)
-            }
+            Divider().frame(height: 24)
+            summaryMetric(
+                title: String(localized: "Overdue"),
+                text: budgetStore.displayBalance(summary.overdueTotal),
+                color: .red
+            )
+            Divider().frame(height: 24)
+            summaryMetric(
+                title: String(localized: "Paid"),
+                text: budgetStore.displayBalance(summary.paidTotal),
+                color: .green
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if hasIncome {
-                showingUpcomingBreakdown = true
-            }
-        }
-        .popover(isPresented: $showingUpcomingBreakdown, arrowEdge: .top) {
-            upcomingBreakdownPopover(summary: summary)
-                .presentationCompactAdaptation(.popover)
-        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private func upcomingBreakdownPopover(summary: BillsMonthSummary) -> some View {
@@ -387,7 +383,8 @@ struct BillsCalendarView: View {
                     Label(String(localized: "Expected Income"), systemImage: "arrow.up.circle.fill")
                         .foregroundStyle(.green)
                     Spacer()
-                    Text("+" + budgetStore.displayBalance(summary.upcomingIncome))
+                    // displaySpentCaption keeps the mask and adds "+" only when unmasked.
+                    Text(budgetStore.displaySpentCaption(summary.upcomingIncome))
                         .monospacedDigit()
                         .fontWeight(.medium)
                         .foregroundStyle(.green)
@@ -401,7 +398,7 @@ struct BillsCalendarView: View {
                         : String(localized: "Net Surplus"))
                         .fontWeight(.semibold)
                     Spacer()
-                    Text(budgetStore.displayBalance(abs(summary.upcomingNet)))
+                    Text(budgetStore.displaySpentCaption(-summary.upcomingNet))
                         .monospacedDigit()
                         .fontWeight(.bold)
                         .foregroundStyle(summary.upcomingNet >= 0 ? Color.primary : Color.green)
@@ -413,16 +410,24 @@ struct BillsCalendarView: View {
         .frame(minWidth: 260)
     }
 
-    private func summaryMetric(title: String, amount: Int, color: Color) -> some View {
+    private func summaryMetric(
+        title: String,
+        text: String,
+        color: Color,
+        accessory: (() -> AnyView)? = nil
+    ) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(budgetStore.displayBalance(amount))
+                HStack(spacing: 4) {
+                    Text(title)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    accessory?()
+                }
+                Text(text)
                     .font(.subheadline.weight(.semibold))
                     .monospacedDigit()
                     .lineLimit(1)
