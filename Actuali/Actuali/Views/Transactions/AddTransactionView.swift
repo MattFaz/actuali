@@ -2136,11 +2136,10 @@ struct CategoryPickerView: View {
 
     private var filteredGroups: [CategoryGroup] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let groups: [CategoryGroup]
-        if trimmed.isEmpty {
-            groups = budgetStore.categoryGroups.filter { !$0.hidden }
+        let groups: [CategoryGroup] = if trimmed.isEmpty {
+            budgetStore.categoryGroups.filter { !$0.hidden }
         } else {
-            groups = budgetStore.categoryGroups.compactMap { group -> CategoryGroup? in
+            budgetStore.categoryGroups.compactMap { group -> CategoryGroup? in
                 let matches = group.categories.filter { category in
                     !category.hidden &&
                         (category.name.localizedCaseInsensitiveContains(trimmed) ||
