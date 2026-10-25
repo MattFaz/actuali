@@ -225,11 +225,8 @@ struct AccountsListView: View {
         // Groups without accounts in this budget section still occupy the
         // shared order; anchor after the last visible group without moving them.
         let remainingFullOrder = fullOrder.filter { $0 != groupId }
-        guard let previous = reordered.prefix(position).last,
-              let previousIndex = remainingFullOrder.firstIndex(of: previous)
-        else {
-            return AccountGroupDropTarget(before: remainingFullOrder.first)
-        }
+        guard position > 0,
+              let previousIndex = remainingFullOrder.firstIndex(of: reordered[position - 1]) else { return nil }
         let nextIndex = remainingFullOrder.index(after: previousIndex)
         return AccountGroupDropTarget(
             before: remainingFullOrder.indices.contains(nextIndex) ? remainingFullOrder[nextIndex] : nil
