@@ -9,12 +9,26 @@ import Foundation
 /// (`com.apple.developer.financekit` in Actuali.entitlements) — unlike the
 /// Tier-1 transaction picker, which works in any build.
 struct FinanceKitWalletStore: AppleWalletReading {
-    func availability() async -> AppleWalletAvailability {
+    static var isSupported: Bool {
         #if targetEnvironment(simulator)
         // FinanceStore.shared traps in unsigned simulator builds before it can throw.
-        return .unsupported
+        false
         #else
-        guard FinanceStore.isDataAvailable(.financialData) else { return .unsupported }
+        supportsFinancialData(
+            isIOSAppOnMac: ProcessInfo.processInfo.isiOSAppOnMac,
+            isDataAvailable: FinanceStore.isDataAvailable(.financialData)
+        )
+        #endif
+    }
+
+    /// Mac's compatibility frameworks omit financial-data APIs. Don't even
+    /// query FinanceKit there; weak linking only makes it safe to skip them.
+    static func supportsFinancialData(isIOSAppOnMac: Bool, isDataAvailable: @autoclosure () -> Bool) -> Bool {
+        !isIOSAppOnMac && isDataAvailable()
+    }
+
+    func availability() async -> AppleWalletAvailability {
+        guard Self.isSupported else { return .unsupported }
         // authorizationStatus throws in builds without the FinanceKit
         // entitlement; treated as not-determined so the setup screen's
         // connect button is what surfaces the real error.
@@ -23,14 +37,15 @@ struct FinanceKitWalletStore: AppleWalletReading {
         case .denied: return .denied
         default: return .notDetermined
         }
-        #endif
     }
 
     func requestAccess() async throws -> Bool {
-        try await FinanceStore.shared.requestAuthorization() == .authorized
+        guard Self.isSupported else { return false }
+        return try await FinanceStore.shared.requestAuthorization() == .authorized
     }
 
     func accounts() async throws -> [AppleWalletAccount] {
+        guard Self.isSupported else { return [] }
         let accounts = try await FinanceStore.shared.accounts(query: AccountQuery())
         var result: [AppleWalletAccount] = []
         for account in accounts {
@@ -64,7 +79,7 @@ struct FinanceKitWalletStore: AppleWalletReading {
     }
 
     func transactions(accountId: String, sinceDay: Int) async throws -> [AppleWalletTransaction] {
-        guard let accountUUID = UUID(uuidString: accountId) else { return [] }
+        guard Self.isSupported, let accountUUID = UUID(uuidString: accountId) else { return [] }
         // Only the sync window: an Apple Card can carry years of history, and
         // this read now runs on every foregrounding. The provider still drops
         // anything the local-midnight boundary lets through early.
@@ -88,10 +103,7 @@ struct FinanceKitWalletStore: AppleWalletReading {
     }
 
     func setBackgroundDelivery(enabled: Bool) -> Bool {
-        #if targetEnvironment(simulator)
-        return false
-        #else
-        guard #available(iOS 26.0, *), FinanceStore.isDataAvailable(.financialData) else { return false }
+        guard #available(iOS 26.0, *), Self.isSupported else { return false }
         if enabled {
             // Hourly is the most frequent FinanceKit offers; each delivery
             // asks iOS for the app's background refresh (WalletDelivery).
@@ -100,7 +112,6 @@ struct FinanceKitWalletStore: AppleWalletReading {
             FinanceStore.shared.disableAllBackgroundDelivery()
         }
         return true
-        #endif
     }
 
     static func latestBalance(_ balances: [AppleWalletBalance]) -> AppleWalletBalance? {
