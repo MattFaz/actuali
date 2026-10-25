@@ -449,6 +449,12 @@ final class BudgetStore: ObservableObject {
     /// `payeeLocationWritesEnabled`.
     @Published private(set) var accountGroupWritesEnabled = false
 
+    /// Demo data is local-only, so its reorder controls persist directly to SQLite
+    /// instead of going through the server-gated CRDT write path.
+    var canReorderAccountGroups: Bool {
+        accountGroupWritesEnabled || currentBudgetId == DemoDataSeeder.budgetId
+    }
+
     /// Synced credit card configurations loaded from the preferences table (accountId -> CreditCardConfig).
     @Published var creditCardConfigs: [String: CreditCardConfig] = [:]
 
@@ -3602,21 +3608,40 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
+    func moveAccountGroup(id: String, before targetId: String?) async throws {
+        guard canReorderAccountGroups else { return }
+        if currentBudgetId == DemoDataSeeder.budgetId {
+            guard let database else { return }
+            _ = try database.moveAccountGroup(id: id, before: targetId)
+        } else {
+            guard let syncClient else { return }
+            try await syncClient.moveAccountGroup(id: id, before: targetId)
+        }
+        await refreshDataOnly()
+    }
+
     /// Move an account to `index` within a displayed run of accounts that
     /// share a group (`peers`, top to bottom), the way List reports a drop.
     func dropAccount(_ accountId: String, at index: Int, among peers: [Account], groupId: String?) async throws {
-        guard let syncClient,
-              let source = accounts.first(where: { $0.id == accountId }),
+        guard let source = accounts.first(where: { $0.id == accountId }),
               let section = peers.first,
               source.offBudget == section.offBudget,
               source.closed == section.closed,
-              // A plain reorder is safe on any server; changing group is not.
-              accountGroupWritesEnabled || source.groupId == groupId else { return }
+              // Group assignment stays server-gated for synced budgets. The demo
+              // is local-only and may reorder its seeded groups without sync.
+              accountGroupWritesEnabled || currentBudgetId == DemoDataSeeder.budgetId || source.groupId == groupId
+        else { return }
 
         // The first peer at or below the drop point, skipping the dragged
         // account itself; nil appends, which is what a drop at the end means.
         let beforeAccountId = peers.dropFirst(index).first { $0.id != accountId }?.id
-        try await syncClient.moveAccount(accountId: accountId, toGroupId: groupId, beforeAccountId: beforeAccountId)
+        if currentBudgetId == DemoDataSeeder.budgetId {
+            guard let database else { return }
+            _ = try database.moveAccount(accountId: accountId, toGroupId: groupId, beforeAccountId: beforeAccountId)
+        } else {
+            guard let syncClient else { return }
+            try await syncClient.moveAccount(accountId: accountId, toGroupId: groupId, beforeAccountId: beforeAccountId)
+        }
         await refreshDataOnly()
     }
 

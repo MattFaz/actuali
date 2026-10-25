@@ -36,6 +36,10 @@ struct AccountListBucket: Identifiable {
     let accounts: [Account]
 }
 
+struct AccountGroupDropTarget: Equatable {
+    let before: String?
+}
+
 /// A month's totals carried together with the month they were fetched for.
 /// The two travel as one so the summary card can't caption August's figures
 /// with September, which is exactly what happens when the calendar rolls over
@@ -61,6 +65,7 @@ struct AccountsListView: View {
     @State private var path: [AccountsRoute] = []
     @State private var showingAddAccount = false
     @State private var showingAccountGroups = false
+    @State private var isReordering = false
     @AppStorage("accountsCollapsedAccountGroupIDs") private var collapsedAccountGroupIDs = ""
     @State private var accountGroupBackgroundOverrides: [String: Bool] = [:]
     @State private var pendingAccountGroupTransitions: Set<String> = []
@@ -161,7 +166,7 @@ struct AccountsListView: View {
     private func accountListRows(for buckets: [AccountListBucket]) -> [AccountListRow] {
         buckets.flatMap { bucket -> [AccountListRow] in
             let header: [AccountListRow] = bucket.group == nil ? [] : [.header(bucket)]
-            let isExpanded = bucket.group.map { isSearchingAccounts || !collapsedAccountGroups.contains($0.id) } ?? true
+            let isExpanded = bucket.group.map { isSearchingAccounts || isReordering || !collapsedAccountGroups.contains($0.id) } ?? true
             guard isExpanded else { return header }
             return header + bucket.accounts.enumerated().map { .account($1, offset: $0, bucket: bucket) }
         }
@@ -186,14 +191,97 @@ struct AccountsListView: View {
         }
     }
 
-    private func moveAccount(in rows: [AccountListRow]) -> (IndexSet, Int) -> Void {
+    /// ponytail: derive a group's anchor from native List move indices and the
+    /// synced group order; no second drag engine or local-only ordering state.
+    nonisolated static func groupDropTarget(
+        in rows: [AccountListRow],
+        at destination: Int,
+        moving groupId: String,
+        fullOrder: [String]
+    ) -> AccountGroupDropTarget? {
+        let visibleOrder = rows.compactMap { row -> String? in
+            if case .header(let bucket) = row {
+                return bucket.group?.id
+            }
+            return nil
+        }
+        guard visibleOrder.count > 1, visibleOrder.contains(groupId), fullOrder.contains(groupId) else {
+            return nil
+        }
+
+        let remainingVisible = visibleOrder.filter { $0 != groupId }
+        let insertionIndex = rows.prefix(destination).reduce(into: 0) { count, row in
+            if case .header(let bucket) = row, let id = bucket.group?.id, id != groupId {
+                count += 1
+            }
+        }
+        var reordered = remainingVisible
+        reordered.insert(groupId, at: min(insertionIndex, reordered.count))
+        guard reordered != visibleOrder, let position = reordered.firstIndex(of: groupId) else { return nil }
+        if reordered.indices.contains(position + 1) {
+            return AccountGroupDropTarget(before: reordered[position + 1])
+        }
+
+        // Groups without accounts in this budget section still occupy the
+        // shared order; anchor after the last visible group without moving them.
+        let remainingFullOrder = fullOrder.filter { $0 != groupId }
+        guard position > 0,
+              let previousIndex = remainingFullOrder.firstIndex(of: reordered[position - 1]) else { return nil }
+        let nextIndex = remainingFullOrder.index(after: previousIndex)
+        return AccountGroupDropTarget(
+            before: remainingFullOrder.indices.contains(nextIndex) ? remainingFullOrder[nextIndex] : nil
+        )
+    }
+
+    nonisolated static func groupMoveTarget(
+        in groups: [AccountGroup],
+        from source: IndexSet,
+        to destination: Int
+    ) -> AccountGroupDropTarget? {
+        guard source.count == 1,
+              let index = source.first,
+              groups.indices.contains(index),
+              (0...groups.count).contains(destination) else { return nil }
+        var reordered = groups
+        reordered.move(fromOffsets: source, toOffset: destination)
+        guard reordered.map(\.id) != groups.map(\.id),
+              let moved = reordered.firstIndex(where: { $0.id == groups[index].id }) else { return nil }
+        return AccountGroupDropTarget(
+            before: reordered.indices.contains(moved + 1) ? reordered[moved + 1].id : nil
+        )
+    }
+
+    private func moveRow(in rows: [AccountListRow]) -> (IndexSet, Int) -> Void {
         { source, destination in
-            guard let from = source.first, case .account(let account, _, _) = rows[from],
-                  let slot = Self.dropSlot(in: rows, at: destination) else { return }
-            Task {
-                try? await budgetStore.dropAccount(
-                    account.id, at: slot.index, among: slot.bucket.accounts, groupId: slot.bucket.group?.id
-                )
+            guard let from = source.first, rows.indices.contains(from) else { return }
+            switch rows[from] {
+            case .account(let account, _, _):
+                guard let slot = Self.dropSlot(in: rows, at: destination) else { return }
+                Task {
+                    do {
+                        try await budgetStore.dropAccount(
+                            account.id, at: slot.index, among: slot.bucket.accounts, groupId: slot.bucket.group?.id
+                        )
+                    } catch {
+                        budgetStore.error = error.localizedDescription
+                    }
+                }
+            case .header(let bucket):
+                guard budgetStore.canReorderAccountGroups,
+                      let group = bucket.group,
+                      let target = Self.groupDropTarget(
+                          in: rows,
+                          at: destination,
+                          moving: group.id,
+                          fullOrder: budgetStore.accountGroups.map(\.id)
+                      ) else { return }
+                Task {
+                    do {
+                        try await budgetStore.moveAccountGroup(id: group.id, before: target.before)
+                    } catch {
+                        budgetStore.error = error.localizedDescription
+                    }
+                }
             }
         }
     }
@@ -207,24 +295,26 @@ struct AccountsListView: View {
                     group: group,
                     total: bucket.accounts.sumBalance,
                     rowPosition: accountGroupHeaderRowPosition(for: bucket, among: buckets),
-                    isExpanded: isSearchingAccounts || !collapsedAccountGroups.contains(group.id),
+                    isExpanded: isSearchingAccounts || isReordering || !collapsedAccountGroups.contains(group.id),
                     isBackgroundClear: accountGroupBackgroundIsClear(group.id),
-                    allowsCollapse: !isSearchingAccounts,
+                    allowsCollapse: !isSearchingAccounts && !isReordering,
                     totalTrailingPadding: linked ? 24 : 0,
                     action: { toggleAccountGroup(group.id) }
                 )
-                .moveDisabled(true)
+                .moveDisabled(!isReordering || !budgetStore.canReorderAccountGroups)
             }
         case .account(let account, let offset, let bucket):
             if bucket.group != nil {
                 accountCell(account, linked: linked)
                     .listRowSeparator(offset == bucket.accounts.count - 1 ? .hidden : .visible)
                     .listRowBackground(groupedAccountRowBackground(at: offset, in: bucket, among: buckets))
+                    .moveDisabled(!isReordering)
             } else {
                 accountCell(account, linked: linked)
                     .listRowBackground(groupRowBackground(
                         position: precedingGroupRowPosition(for: account, in: bucket, among: buckets)
                     ))
+                    .moveDisabled(!isReordering)
             }
         }
     }
@@ -387,12 +477,12 @@ struct AccountsListView: View {
                         }
                         if !filteredOnBudgetAccounts.isEmpty {
                             Section {
-                                if isOnBudgetExpanded || isSearchingAccounts {
+                                if isOnBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: onBudgetBuckets)
                                     ForEach(rows) { row in
                                         accountListRow(row, among: onBudgetBuckets, linked: true)
                                     }
-                                    .onMove(perform: moveAccount(in: rows))
+                                    .onMove(perform: moveRow(in: rows))
                                 }
                             } header: {
                                 AccountSectionHeader(
@@ -400,19 +490,19 @@ struct AccountsListView: View {
                                     title: String(localized: "On Budget"),
                                     total: onBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOnBudgetExpanded,
-                                    allowsCollapse: !isSearchingAccounts
+                                    allowsCollapse: !isSearchingAccounts && !isReordering
                                 )
                             }
                             .listSectionSeparator(.hidden)
                         }
                         if !filteredOffBudgetAccounts.isEmpty {
                             Section {
-                                if isOffBudgetExpanded || isSearchingAccounts {
+                                if isOffBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: offBudgetBuckets)
                                     ForEach(rows) { row in
                                         accountListRow(row, among: offBudgetBuckets, linked: true)
                                     }
-                                    .onMove(perform: moveAccount(in: rows))
+                                    .onMove(perform: moveRow(in: rows))
                                 }
                             } header: {
                                 AccountSectionHeader(
@@ -420,7 +510,7 @@ struct AccountsListView: View {
                                     title: String(localized: "Off Budget"),
                                     total: offBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOffBudgetExpanded,
-                                    allowsCollapse: !isSearchingAccounts
+                                    allowsCollapse: !isSearchingAccounts && !isReordering
                                 )
                             }
                             .listSectionSeparator(.hidden)
@@ -445,6 +535,7 @@ struct AccountsListView: View {
                             }
                         }
                     }
+                    .environment(\.editMode, .constant(isReordering ? .active : .inactive))
                     // Capped like the transactions this pushes to, so a
                     // narrow-iPad account list doesn't stretch a row's balance
                     // an inch away from its name. Only here: the split
@@ -477,12 +568,12 @@ struct AccountsListView: View {
                         }
                         if !filteredOnBudgetAccounts.isEmpty {
                             Section {
-                                if isOnBudgetExpanded || isSearchingAccounts {
+                                if isOnBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: onBudgetBuckets)
                                     ForEach(rows) { row in
                                         accountListRow(row, among: onBudgetBuckets, linked: false)
                                     }
-                                    .onMove(perform: moveAccount(in: rows))
+                                    .onMove(perform: moveRow(in: rows))
                                 }
                             } header: {
                                 AccountSectionHeader(
@@ -490,7 +581,7 @@ struct AccountsListView: View {
                                     title: String(localized: "On Budget"),
                                     total: onBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOnBudgetExpanded,
-                                    allowsCollapse: !isSearchingAccounts,
+                                    allowsCollapse: !isSearchingAccounts && !isReordering,
                                     totalTrailingPadding: 0
                                 )
                             }
@@ -498,12 +589,12 @@ struct AccountsListView: View {
                         }
                         if !filteredOffBudgetAccounts.isEmpty {
                             Section {
-                                if isOffBudgetExpanded || isSearchingAccounts {
+                                if isOffBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: offBudgetBuckets)
                                     ForEach(rows) { row in
                                         accountListRow(row, among: offBudgetBuckets, linked: false)
                                     }
-                                    .onMove(perform: moveAccount(in: rows))
+                                    .onMove(perform: moveRow(in: rows))
                                 }
                             } header: {
                                 AccountSectionHeader(
@@ -511,7 +602,7 @@ struct AccountsListView: View {
                                     title: String(localized: "Off Budget"),
                                     total: offBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOffBudgetExpanded,
-                                    allowsCollapse: !isSearchingAccounts,
+                                    allowsCollapse: !isSearchingAccounts && !isReordering,
                                     totalTrailingPadding: 0
                                 )
                             }
@@ -537,6 +628,7 @@ struct AccountsListView: View {
                             }
                         }
                     }
+                    .environment(\.editMode, .constant(isReordering ? .active : .inactive))
                 }
             }
         } detail: {
@@ -565,6 +657,21 @@ struct AccountsListView: View {
                     )
                 }
             }
+        }
+    }
+
+    private func beginReordering() {
+        accountSearchText = ""
+        isAccountSearchFocused = false
+        isAccountSearchActive = false
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isReordering = true
+        }
+    }
+
+    private func finishReordering() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isReordering = false
         }
     }
 
@@ -667,7 +774,16 @@ struct AccountsListView: View {
                 }
             }
             .toolbar {
-                if !hasNoAccounts || isAccountSearchActive {
+                if isReordering {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(String(localized: "Done")) {
+                            finishReordering()
+                        }
+                        .fontWeight(.semibold)
+                        .accessibilityIdentifier("accounts.reorderDone")
+                    }
+                }
+                if !isReordering, !hasNoAccounts || isAccountSearchActive {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             isAccountSearchActive.toggle()
@@ -684,16 +800,34 @@ struct AccountsListView: View {
                         .accessibilityIdentifier("accounts.search")
                     }
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showingAddAccount = true
-                    } label: {
-                        Image(systemName: "plus")
+                if !isReordering {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            showingAddAccount = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel(String(localized: "accounts.add.title"))
                     }
-                    .accessibilityLabel(String(localized: "accounts.add.title"))
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
+                        if !budgetStore.accounts.isEmpty {
+                            Button {
+                                if isReordering {
+                                    finishReordering()
+                                } else {
+                                    beginReordering()
+                                }
+                            } label: {
+                                Label(
+                                    isReordering ? "Done Reordering" : "Reorder Items",
+                                    systemImage: isReordering ? "checkmark" : "arrow.up.arrow.down"
+                                )
+                            }
+                            .accessibilityIdentifier("accountsOptions.reorder")
+                            Divider()
+                        }
                         // Stays reachable while local groups exist, so the
                         // sheet can say why they can't be edited.
                         if budgetStore.accountGroupWritesEnabled || !budgetStore.accountGroups.isEmpty {
@@ -761,8 +895,9 @@ struct AccountsListView: View {
                     }
                     .accessibilityLabel(String(localized: "Accounts options"))
                     .accessibilityHint(String(localized: "Account list display options"))
+                    .accessibilityIdentifier("accounts.optionsMenu")
                 }
-                if pendingImportStore.count > 0 {
+                if pendingImportStore.count > 0, !isReordering {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             showingPendingImports = true
@@ -1337,6 +1472,21 @@ private struct AccountGroupsSheet: View {
     @State private var renameName = ""
     @State private var renameTarget: AccountGroup?
 
+    private func moveGroup(from source: IndexSet, to destination: Int) {
+        let groups = budgetStore.accountGroups
+        guard budgetStore.canReorderAccountGroups,
+              let index = source.first,
+              groups.indices.contains(index),
+              let target = AccountsListView.groupMoveTarget(in: groups, from: source, to: destination) else { return }
+        Task {
+            do {
+                try await budgetStore.moveAccountGroup(id: groups[index].id, before: target.before)
+            } catch {
+                budgetStore.error = error.localizedDescription
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -1369,17 +1519,25 @@ private struct AccountGroupsSheet: View {
                         }
                         .buttonStyle(.borderless)
                         .disabled(!budgetStore.accountGroupWritesEnabled)
+                        .moveDisabled(!budgetStore.canReorderAccountGroups)
                     }
+                    .onMove(perform: moveGroup)
                 } header: {
                     Text(String(localized: "Account Groups"))
                 } footer: {
-                    if !budgetStore.accountGroupWritesEnabled {
+                    if !budgetStore.canReorderAccountGroups {
                         Text(String(localized: "Account groups require Actual Server 26.9.0 or later."))
                     }
                 }
             }
             .navigationTitle(String(localized: "Account Groups"))
             .toolbar {
+                if budgetStore.canReorderAccountGroups {
+                    ToolbarItem(placement: .topBarLeading) {
+                        EditButton()
+                            .accessibilityIdentifier("accountGroups.edit")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "Done")) { dismiss() }
                 }

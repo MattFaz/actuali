@@ -216,6 +216,47 @@ struct DemoDataSeederTests {
         }
     }
 
+    @Test func seedsAccountGroupsForReordering() async throws {
+        let database = try open(Self.defaultSeed)
+        let groups = try await database.fetchAccountGroups()
+        let accounts = try await database.fetchAccounts()
+        let chequingId = try #require(groups.first { $0.name == "Chequing" }?.id)
+        let savingsId = try #require(groups.first { $0.name == "Savings" }?.id)
+
+        #expect(groups.map(\.name) == ["Chequing", "Savings"])
+        #expect(accounts.first { $0.name == "Chase Checking" }?.groupId == chequingId)
+        #expect(accounts.first { $0.name == "Apple Card" }?.groupId == chequingId)
+        #expect(accounts.first { $0.name == "Ally Savings" }?.groupId == savingsId)
+    }
+
+    @Test func localDemoBudgetReordersAccountsAndGroupsWithoutSync() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        let pendingImports = PendingImportStore(fileURL: tempDirectory.appendingPathComponent("pending.json"))
+        let store = BudgetStore.previewInstance()
+        defer {
+            try? FileManager.default.removeItem(at: tempDirectory)
+            store.lastViewedBudgetMonth = nil
+        }
+
+        await store.loadDemoData(pendingImports: pendingImports)
+
+        let chequing = try #require(store.accountGroups.first { $0.name == "Chequing" })
+        let savings = try #require(store.accountGroups.first { $0.name == "Savings" })
+        let chequingAccounts = store.accounts.filter { $0.groupId == chequing.id }
+        let chase = try #require(chequingAccounts.first { $0.name == "Chase Checking" })
+
+        #expect(chequingAccounts.map(\.name) == ["Chase Checking", "Apple Card"])
+
+        try await store.dropAccount(
+            chase.id, at: chequingAccounts.count, among: chequingAccounts, groupId: chequing.id
+        )
+        #expect(store.accounts.filter { $0.groupId == chequing.id }.map(\.name) == ["Apple Card", "Chase Checking"])
+
+        try await store.moveAccountGroup(id: chequing.id, before: nil)
+        #expect(store.accountGroups.map(\.id) == [savings.id, chequing.id])
+    }
+
     @Test func everyAccountHasATransferPayee() async throws {
         let database = try open(Self.defaultSeed)
         let accounts = try await database.fetchAccounts()

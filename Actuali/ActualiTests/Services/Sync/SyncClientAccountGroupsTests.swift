@@ -68,6 +68,52 @@ struct SyncClientAccountGroupsTests {
         #expect(detachMessageCount == 1)
     }
 
+    @Test func movingAccountGroupPersistsOrderAndEmitsSortOrderMessages() async throws {
+        let (database, path, syncClient) = try await makeDatabase()
+        defer { cleanup(path) }
+        try await syncClient.createAccountGroup(id: "cash", name: "Cash")
+        try await syncClient.createAccountGroup(id: "savings", name: "Savings")
+        try await syncClient.createAccountGroup(id: "brokerage", name: "Brokerage")
+
+        try await syncClient.moveAccountGroup(id: "brokerage", before: "cash")
+
+        #expect(try await database.fetchAccountGroups().map(\.id) == ["brokerage", "cash", "savings"])
+        let sortOrderMessages = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM messages_crdt
+                WHERE dataset = 'account_groups' AND row = 'brokerage' AND column = 'sort_order'
+            """) ?? 0
+        }
+        #expect(sortOrderMessages == 2)
+    }
+
+    /// A move that has to shift neighbours emits their sort_order too, or the
+    /// other clients keep the old gaps and render a different order.
+    @Test func movingAccountGroupEmitsSortOrderForEveryShovedSibling() async throws {
+        let (database, path, syncClient) = try await makeDatabase()
+        defer { cleanup(path) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO account_groups (id, name, sort_order, tombstone) VALUES
+                    ('first', 'First', 1, 0),
+                    ('middle', 'Middle', 2, 0),
+                    ('last', 'Last', 3, 0)
+            """)
+        }
+
+        try await syncClient.moveAccountGroup(id: "last", before: "first")
+
+        #expect(try await database.fetchAccountGroups().map(\.id) == ["last", "first", "middle"])
+        let sortOrderRows = try await database.dbQueueForTesting.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT row FROM messages_crdt
+                WHERE dataset = 'account_groups' AND column = 'sort_order'
+                ORDER BY row
+            """)
+        }
+        #expect(sortOrderRows == ["first", "last", "middle"])
+    }
+
     @Test func assigningAndClearingGroupEmitsAccountGroupMessages() async throws {
         let (database, path, syncClient) = try await makeDatabase()
         defer { cleanup(path) }
