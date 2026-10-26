@@ -250,6 +250,9 @@ struct BillsCalendarEngineTests {
         #expect(summary.upcomingIncome == 6000)
         // Net needed (150 € - 60 € = 90 €)
         #expect(summary.upcomingNet == 9000)
+        // Income above bills is a surplus, i.e. a negative net — the sign the
+        // summary strip and popover use to pick "+" and "Net Surplus".
+        #expect(BillsCalendarEngine.summarize(items: [deposit]).upcomingNet == -6000)
         // Missed deposit should NOT add to overdue liabilities
         #expect(summary.overdueTotal == 0)
         // Completed deposit counts toward cleared items count, but does NOT add to paid bills total

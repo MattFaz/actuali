@@ -431,6 +431,9 @@ struct BillsCalendarView: View {
                     .font(.subheadline.weight(.semibold))
                     .monospacedDigit()
                     .lineLimit(1)
+                    // A third of the strip can't fit "USD 1,872.99" or "+USD 500.00"
+                    // at full size, so shrink to fit instead of truncating the headline.
+                    .minimumScaleFactor(0.8)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

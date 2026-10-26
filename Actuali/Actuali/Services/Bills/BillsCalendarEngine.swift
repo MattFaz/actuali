@@ -318,8 +318,8 @@ enum BillsCalendarEngine: Sendable {
 
     /// Computes month cashflow totals and cleared count.
     static func summarize(items: [BillCalendarItem]) -> BillsMonthSummary {
-        // ponytail: Outflows (negative) and inflows (positive) are separated so scheduled deposits
-        // reduce net requirement without inflating gross upcoming bills.
+        // Outflows and inflows are summed separately so scheduled deposits reduce the
+        // net requirement without inflating the bills totals.
         var upcomingBills = 0
         var upcomingIncome = 0
         var overdue = 0
