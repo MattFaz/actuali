@@ -153,25 +153,38 @@ final class AddTransactionNotesUITests: XCTestCase {
         let text = "lunch with the whole team at the usual place downtown paid on the shared card and "
             + "split later with everyone who came along including the two new starters"
         for character in text {
-            tapKey(character == " " ? "space" : String(character), in: app)
+            tapKey(character == " " ? "space" : String(character), in: app, typingInto: notes)
         }
         assertAboveKeyboard(notes, in: app, "Notes is hidden after it grows")
         XCTAssertLessThan(notes.frame.minY, focusedTop, "the form did not scroll Notes up as it grew")
     }
 
-    /// Tap an on-screen key. The AX tree can also hold an off-screen copy of
-    /// a key, which `.tap()` then refuses with an AX scroll error.
+    /// Tap an on-screen key and wait for the keystroke to land in the field.
+    ///
+    /// The AX tree can also hold an off-screen copy of a key, which `.tap()`
+    /// then refuses with an AX scroll error. A tap fired while the form is
+    /// scrolling the field up past the keyboard can also be swallowed whole,
+    /// so retry while the field's text hasn't changed rather than failing on
+    /// the first miss. Typing a character twice is harmless here: the test
+    /// only cares that the notes grow.
     @MainActor
-    private func tapKey(_ key: String, in app: XCUIApplication) {
-        // The keyboard starts shifted, so the first letter is a capital key.
-        for candidate in [key, key.uppercased()] {
-            if let onScreen = onScreenCopy(app.keys.matching(identifier: candidate)),
-               onScreen.isHittable {
-                onScreen.tap()
+    private func tapKey(_ key: String, in app: XCUIApplication, typingInto field: XCUIElement) {
+        let before = field.value as? String
+        for _ in 0..<3 {
+            // The keyboard starts shifted, so the first letter is a capital key.
+            for candidate in [key, key.uppercased()] {
+                if let onScreen = onScreenCopy(app.keys.matching(identifier: candidate)),
+                   onScreen.isHittable {
+                    onScreen.tap()
+                    break
+                }
+            }
+            if (field.value as? String) != before {
                 return
             }
+            Thread.sleep(forTimeInterval: 0.2)
         }
-        XCTFail("key \(key) is not reachable")
+        XCTFail("key \(key) never reached the notes field")
     }
 
     @MainActor
