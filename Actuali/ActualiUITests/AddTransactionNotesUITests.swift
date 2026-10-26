@@ -187,11 +187,16 @@ final class AddTransactionNotesUITests: XCTestCase {
             if (field.value as? String) != before {
                 return
             }
-            // The form scrolls the field past the keyboard as it grows, and
-            // `assertAboveKeyboard` gives that animation a full second too, so
-            // a keystroke can land late.
-            Thread.sleep(forTimeInterval: 1)
-            // Read again before the key goes in twice.
+            // The form scrolls the field past the keyboard as it grows, so a
+            // keystroke can land late. Check again shortly after the tap, then
+            // give the scroll the full second `assertAboveKeyboard` does
+            // before deciding the tap was swallowed — a value read is the
+            // expensive part here, so don't pay for a fixed wait first.
+            Thread.sleep(forTimeInterval: 0.2)
+            if (field.value as? String) != before {
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.8)
             if (field.value as? String) != before {
                 return
             }

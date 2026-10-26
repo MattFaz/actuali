@@ -144,6 +144,30 @@ struct BudgetStoreGoalTemplateTests {
         #expect(store.goalTemplatesEnabled)
     }
 
+    /// A refresh that reads the `preferences` row while a toggle is still
+    /// writing must not publish the old flag over the optimistic value.
+    ///
+    /// Whichever order the two writes land in, the switch must end up on; if
+    /// the guard is dropped and this refresh reads the row first, the stale
+    /// `false` wins instead.
+    @Test func aRefreshDuringAFlagWriteKeepsTheOptimisticFlag() async throws {
+        let (database, url) = try await makeTestDatabase(
+            TestSchema.core + [TestSchema.preferences, TestSchema.tags]
+        )
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        store.widgetSnapshotStore = nil
+        #expect(!store.goalTemplatesEnabled)
+
+        // `createTag` refreshes when it finishes; the flag write is already
+        // in flight by then.
+        async let flagWrite: Void = store.setGoalTemplatesEnabled(true)
+        _ = try await store.createTag(name: "trip")
+        await flagWrite
+
+        #expect(store.goalTemplatesEnabled)
+    }
+
     /// A write that committed the row and then failed — saving the sync clock
     /// is what usually throws — leaves the switch on what the budget stored,
     /// not on the rollback. The recovery re-read owns the final value.
