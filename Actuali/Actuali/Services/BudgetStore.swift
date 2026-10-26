@@ -3219,7 +3219,8 @@ final class BudgetStore: ObservableObject {
         let cardMappingsBefore = cardAccountMappings
         let goalTemplatesFlagBefore = goalTemplatesEnabled
         let goalTemplatesUIFlagBefore = goalTemplatesUIEnabled
-        let goalTemplateWritesBefore = goalTemplateFlagWrites
+        let goalTemplateWritesBefore = flagWritesInFlight[FlagPreference.goalTemplates] ?? 0
+        let goalTemplateUIWritesBefore = flagWritesInFlight[FlagPreference.goalTemplatesUI] ?? 0
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -3322,23 +3323,16 @@ final class BudgetStore: ObservableObject {
             }
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             assignIfChanged(\.upcomingScheduledTransactionLength, fetchedUpcomingLength)
-            // A flag flipped while these reads were in flight is newer than
-            // this snapshot, and its write owns the value until it lands, so
-            // the row this refresh read can be older than the write.
-            if Self.flagSnapshotIsCurrent(
-                writesAtCapture: goalTemplateWritesBefore,
-                writesNow: goalTemplateFlagWrites,
-                published: goalTemplatesEnabled,
-                atCapture: goalTemplatesFlagBefore
-            ) {
+            // A flag whose write was in flight at any point during these
+            // reads is newer than this snapshot, and that write publishes it.
+            if goalTemplateWritesBefore == 0,
+               (flagWritesInFlight[FlagPreference.goalTemplates] ?? 0) == 0,
+               goalTemplatesEnabled == goalTemplatesFlagBefore {
                 assignIfChanged(\.goalTemplatesEnabled, fetchedGoalTemplatesFlag)
             }
-            if Self.flagSnapshotIsCurrent(
-                writesAtCapture: goalTemplateWritesBefore,
-                writesNow: goalTemplateFlagWrites,
-                published: goalTemplatesUIEnabled,
-                atCapture: goalTemplatesUIFlagBefore
-            ) {
+            if goalTemplateUIWritesBefore == 0,
+               (flagWritesInFlight[FlagPreference.goalTemplatesUI] ?? 0) == 0,
+               goalTemplatesUIEnabled == goalTemplatesUIFlagBefore {
                 assignIfChanged(\.goalTemplatesUIEnabled, fetchedGoalTemplatesUIFlag)
             }
             // Keep a currency chosen while the reads were in flight. The
@@ -8003,23 +7997,17 @@ final class BudgetStore: ObservableObject {
         case failed(String)
     }
 
-    /// Non-zero while a goal-templates flag write is in flight. The
-    /// `preferences` row stays stale until that write lands, and the write
+    /// The two Experimental toggles' synced preference ids.
+    enum FlagPreference {
+        static let goalTemplates = "flags.goalTemplatesEnabled"
+        static let goalTemplatesUI = "flags.goalTemplatesUIEnabled"
+    }
+
+    /// Non-zero while a write for that preference is in flight. The
+    /// `preferences` row stays stale until the write lands, and the write
     /// itself publishes the new value, so a refresh must not put the old one
     /// back over it.
-    private var goalTemplateFlagWrites = 0
-
-    /// Whether a refresh may publish the flag it fetched: only when no write
-    /// owned that flag at any point between the capture and the publish, and
-    /// the user did not flip it meanwhile.
-    nonisolated static func flagSnapshotIsCurrent(
-        writesAtCapture: Int,
-        writesNow: Int,
-        published: Bool,
-        atCapture: Bool
-    ) -> Bool {
-        writesAtCapture == 0 && writesNow == 0 && published == atCapture
-    }
+    private var flagWritesInFlight: [String: Int] = [:]
 
     /// Writes one of the goal-templates flags to the synced `preferences`
     /// table and publishes it, optimistically: the switch, and the value
@@ -8036,14 +8024,14 @@ final class BudgetStore: ObservableObject {
         let activeDatabase = database
         let previous = self[keyPath: keyPath]
         self[keyPath: keyPath] = enabled
-        goalTemplateFlagWrites += 1
+        flagWritesInFlight[id, default: 0] += 1
         do {
             try await syncClient.setPreference(id: id, value: enabled ? "true" : "false")
-            goalTemplateFlagWrites -= 1
+            flagWritesInFlight[id, default: 0] -= 1
         } catch {
             // Drop the guard before the re-read below, or refreshDataOnly
             // skips the very row it has to re-publish.
-            goalTemplateFlagWrites -= 1
+            flagWritesInFlight[id, default: 0] -= 1
             // A budget switched under the write is not this switch's error.
             guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
             self[keyPath: keyPath] = previous
@@ -8061,7 +8049,7 @@ final class BudgetStore: ObservableObject {
     func setGoalTemplatesEnabled(_ enabled: Bool) async {
         await setSyncedFlag(
             \.goalTemplatesEnabled,
-            id: "flags.goalTemplatesEnabled",
+            id: FlagPreference.goalTemplates,
             enabled: enabled,
             errorFormat: String(localized: "Failed to update goal templates setting: %@")
         )
@@ -8306,7 +8294,7 @@ final class BudgetStore: ObservableObject {
     func setGoalTemplatesUIEnabled(_ enabled: Bool) async {
         await setSyncedFlag(
             \.goalTemplatesUIEnabled,
-            id: "flags.goalTemplatesUIEnabled",
+            id: FlagPreference.goalTemplatesUI,
             enabled: enabled,
             errorFormat: String(localized: "Failed to update automations setting: %@")
         )
