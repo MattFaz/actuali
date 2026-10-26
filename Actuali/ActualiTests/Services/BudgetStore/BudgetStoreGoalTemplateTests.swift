@@ -1,4 +1,6 @@
+import Combine
 import Foundation
+import GRDB
 import Testing
 @testable import Actuali
 
@@ -69,5 +71,149 @@ struct BudgetStoreGoalTemplateTests {
         #expect(budgeted["cat_a"] == 1000)
         #expect(budgeted["cat_b"] == 2000)
         #expect(budgeted["cat_c"] == 0)
+    }
+
+    // MARK: - The synced feature flags
+
+    /// A store whose sync client was never configured, so every preference
+    /// write throws before it reaches a database. Clean up `url`.
+    private func makeStoreWhoseWritesFail() async throws -> (BudgetStore, URL) {
+        let (database, url) = try await makeTestDatabase(TestSchema.preferences)
+        let store = BudgetStore.previewInstance()
+        store.configureForTesting(
+            database: database,
+            syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        )
+        return (store, url)
+    }
+
+    /// The Settings switch follows the tap, not the CRDT write: the flag is
+    /// published first, and one toggle sends one notification.
+    @Test func enablingGoalTemplatesPublishesTheFlagAndWritesThePreference() async throws {
+        let (database, url) = try await makeTestDatabase(
+            TestSchema.preferences, TestSchema.messagesCrdt, TestSchema.messagesClock
+        )
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        #expect(!store.goalTemplatesEnabled)
+        var published: [Bool] = []
+        let subscription = store.$goalTemplatesEnabled.dropFirst().sink { published.append($0) }
+        defer { subscription.cancel() }
+
+        await store.setGoalTemplatesEnabled(true)
+
+        // The optimistic flip only: one toggle, one notification.
+        #expect(published == [true])
+        #expect(store.goalTemplatesEnabled)
+        let stored = try await DatabaseQueue(path: url.path).read { db in
+            try String.fetchOne(
+                db, sql: "SELECT value FROM preferences WHERE id = 'flags.goalTemplatesEnabled'"
+            )
+        }
+        #expect(stored == "true")
+    }
+
+    /// A flag the budget gained behind the store's back — a sync pull writes
+    /// the row — still reaches the switch. The refresh guard may only skip a
+    /// row that a local toggle is about to replace.
+    @Test func aRefreshPublishesAFlagChangedBehindTheStore() async throws {
+        let (database, url) = try await makeTestDatabase(
+            TestSchema.core + [TestSchema.preferences, TestSchema.tags]
+        )
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        store.widgetSnapshotStore = nil
+        #expect(!store.goalTemplatesEnabled)
+        try await DatabaseQueue(path: url.path).write { db in
+            try db.execute(
+                sql: """
+                INSERT OR REPLACE INTO preferences (id, value)
+                VALUES ('flags.goalTemplatesEnabled', 'true')
+                """
+            )
+        }
+
+        // Any write that refreshes afterwards; creating a tag is the simplest.
+        _ = try await store.createTag(name: "trip")
+
+        #expect(store.goalTemplatesEnabled)
+    }
+
+    /// A refresh that reads the `preferences` row while a toggle is still
+    /// writing must not publish the old flag over the optimistic value.
+    ///
+    /// Whichever order the two writes land in, the switch must end up on; if
+    /// the guard is dropped and this refresh reads the row first, the stale
+    /// `false` wins instead.
+    @Test func aRefreshDuringAFlagWriteKeepsTheOptimisticFlag() async throws {
+        let (database, url) = try await makeTestDatabase(
+            TestSchema.core + [TestSchema.preferences, TestSchema.tags]
+        )
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        store.widgetSnapshotStore = nil
+        #expect(!store.goalTemplatesEnabled)
+
+        // `createTag` refreshes when it finishes; the flag write is already
+        // in flight by then.
+        async let flagWrite: Void = store.setGoalTemplatesEnabled(true)
+        _ = try await store.createTag(name: "trip")
+        await flagWrite
+
+        #expect(store.goalTemplatesEnabled)
+    }
+
+    /// A write that committed the row and then failed — saving the sync clock
+    /// is what usually throws — leaves the switch on what the budget stored,
+    /// not on the rollback. The re-read owns the final value.
+    @Test func aFailedWriteThatCommittedTheRowEndsOnTheStoredFlag() async throws {
+        let (store, url) = try await makeStoreWhoseWritesFail()
+        defer { cleanup(url) }
+        try await DatabaseQueue(path: url.path).write { db in
+            try db.execute(
+                sql: """
+                INSERT OR REPLACE INTO preferences (id, value)
+                VALUES ('flags.goalTemplatesEnabled', 'true')
+                """
+            )
+        }
+
+        await store.setGoalTemplatesEnabled(true)
+
+        #expect(store.goalTemplatesEnabled)
+        #expect(store.error?.hasPrefix("Failed to update goal templates setting:") == true)
+    }
+
+    /// A failed write must not leave the switch on a flag the budget never
+    /// stored. The published values pin the order the switch sees: on from the
+    /// tap, then back off — not merely off at the end, which the old
+    /// publish-after-the-write code produced too.
+    @Test func failedGoalTemplateWriteShowsTheFlagOnThenRollsItBack() async throws {
+        let (store, url) = try await makeStoreWhoseWritesFail()
+        defer { cleanup(url) }
+        var published: [Bool] = []
+        let subscription = store.$goalTemplatesEnabled.dropFirst().sink { published.append($0) }
+        defer { subscription.cancel() }
+
+        await store.setGoalTemplatesEnabled(true)
+
+        #expect(published == [true, false])
+        #expect(!store.goalTemplatesEnabled)
+        #expect(store.error?.hasPrefix("Failed to update goal templates setting:") == true)
+    }
+
+    /// The Automations Editor switch underneath it behaves the same way.
+    @Test func failedAutomationsWriteShowsTheFlagOnThenRollsItBack() async throws {
+        let (store, url) = try await makeStoreWhoseWritesFail()
+        defer { cleanup(url) }
+        var published: [Bool] = []
+        let subscription = store.$goalTemplatesUIEnabled.dropFirst().sink { published.append($0) }
+        defer { subscription.cancel() }
+
+        await store.setGoalTemplatesUIEnabled(true)
+
+        #expect(published == [true, false])
+        #expect(!store.goalTemplatesUIEnabled)
+        #expect(store.error?.hasPrefix("Failed to update automations setting:") == true)
     }
 }

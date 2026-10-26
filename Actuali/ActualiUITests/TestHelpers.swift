@@ -60,16 +60,19 @@ extension XCTestCase {
     /// Scroll the budget table up until `element` can be tapped or pressed.
     ///
     /// Rows below the fold report `isHittable == false`, so `tap()` and
-    /// `press(forDuration:)` fail on them without a scroll first.
+    /// `press(forDuration:)` fail on them without a scroll first. A slow
+    /// swipe suits a long list that glides on after the gesture: it can't
+    /// carry the element past the top unseen.
     @MainActor
     func scrollUntilHittable(
         _ element: XCUIElement,
         in app: XCUIApplication,
-        maxSwipes: Int = 12
+        maxSwipes: Int = 12,
+        velocity: XCUIGestureVelocity = .default
     ) {
         var swipesLeft = maxSwipes
         while !element.isHittable, swipesLeft > 0 {
-            app.swipeUp()
+            app.swipeUp(velocity: velocity)
             swipesLeft -= 1
         }
     }

@@ -153,25 +153,57 @@ final class AddTransactionNotesUITests: XCTestCase {
         let text = "lunch with the whole team at the usual place downtown paid on the shared card and "
             + "split later with everyone who came along including the two new starters"
         for character in text {
-            tapKey(character == " " ? "space" : String(character), in: app)
+            tapKey(character == " " ? "space" : String(character), in: app, typingInto: notes)
         }
         assertAboveKeyboard(notes, in: app, "Notes is hidden after it grows")
         XCTAssertLessThan(notes.frame.minY, focusedTop, "the form did not scroll Notes up as it grew")
     }
 
-    /// Tap an on-screen key. The AX tree can also hold an off-screen copy of
-    /// a key, which `.tap()` then refuses with an AX scroll error.
+    /// Tap an on-screen key and wait for the keystroke to land in the field.
+    ///
+    /// The AX tree can also hold an off-screen copy of a key, which `.tap()`
+    /// then refuses with an AX scroll error. A tap fired while the form is
+    /// scrolling the field up past the keyboard can also be swallowed whole.
+    /// So can the field lose focus, which iOS 27 does to it (see the typing
+    /// comments above) — both read as an unchanged value. Re-focus the field
+    /// and retry while its text hasn't changed rather than failing on the
+    /// first miss. Typing a character twice is harmless here: the test only
+    /// cares that the notes grow.
     @MainActor
-    private func tapKey(_ key: String, in app: XCUIApplication) {
-        // The keyboard starts shifted, so the first letter is a capital key.
-        for candidate in [key, key.uppercased()] {
-            if let onScreen = onScreenCopy(app.keys.matching(identifier: candidate)),
-               onScreen.isHittable {
-                onScreen.tap()
+    private func tapKey(_ key: String, in app: XCUIApplication, typingInto field: XCUIElement) {
+        let before = field.value as? String
+        for attempt in 0..<3 {
+            // Only re-focus when the field can take the tap: a field sitting
+            // under the keyboard is what this test reports, not a tap target.
+            if attempt > 0, field.isHittable {
+                field.tap()
+            }
+            // The keyboard starts shifted, so the first letter is a capital key.
+            for candidate in [key, key.uppercased()] {
+                if let onScreen = onScreenCopy(app.keys.matching(identifier: candidate)),
+                   onScreen.isHittable {
+                    onScreen.tap()
+                    break
+                }
+            }
+            if (field.value as? String) != before {
+                return
+            }
+            // The form scrolls the field past the keyboard as it grows, so a
+            // keystroke can land late. Check again shortly after the tap, then
+            // give the scroll the full second `assertAboveKeyboard` does
+            // before deciding the tap was swallowed — a value read is the
+            // expensive part here, so don't pay for a fixed wait first.
+            Thread.sleep(forTimeInterval: 0.2)
+            if (field.value as? String) != before {
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.8)
+            if (field.value as? String) != before {
                 return
             }
         }
-        XCTFail("key \(key) is not reachable")
+        XCTFail("key \(key) never reached the notes field")
     }
 
     @MainActor

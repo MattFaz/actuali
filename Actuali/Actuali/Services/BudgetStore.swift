@@ -3217,6 +3217,10 @@ final class BudgetStore: ObservableObject {
         let loansBefore = loanConfigs
         let depositsBefore = depositConfigs
         let cardMappingsBefore = cardAccountMappings
+        let goalTemplatesFlagBefore = goalTemplatesEnabled
+        let goalTemplatesUIFlagBefore = goalTemplatesUIEnabled
+        let goalTemplateWritesBefore = flagWritesInFlight[FlagPreference.goalTemplates] ?? 0
+        let goalTemplateUIWritesBefore = flagWritesInFlight[FlagPreference.goalTemplatesUI] ?? 0
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -3319,8 +3323,18 @@ final class BudgetStore: ObservableObject {
             }
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             assignIfChanged(\.upcomingScheduledTransactionLength, fetchedUpcomingLength)
-            assignIfChanged(\.goalTemplatesEnabled, fetchedGoalTemplatesFlag)
-            assignIfChanged(\.goalTemplatesUIEnabled, fetchedGoalTemplatesUIFlag)
+            // A flag whose write was in flight at any point during these
+            // reads is newer than this snapshot, and that write publishes it.
+            if goalTemplateWritesBefore == 0,
+               (flagWritesInFlight[FlagPreference.goalTemplates] ?? 0) == 0,
+               goalTemplatesEnabled == goalTemplatesFlagBefore {
+                assignIfChanged(\.goalTemplatesEnabled, fetchedGoalTemplatesFlag)
+            }
+            if goalTemplateUIWritesBefore == 0,
+               (flagWritesInFlight[FlagPreference.goalTemplatesUI] ?? 0) == 0,
+               goalTemplatesUIEnabled == goalTemplatesUIFlagBefore {
+                assignIfChanged(\.goalTemplatesUIEnabled, fetchedGoalTemplatesUIFlag)
+            }
             // Keep a currency chosen while the reads were in flight. The
             // widget publishes once below, after the entire batch is applied.
             if let fetchedCurrencyCode, currencyCode == currencyCodeBefore {
@@ -7983,18 +7997,71 @@ final class BudgetStore: ObservableObject {
         case failed(String)
     }
 
+    /// The two Experimental toggles' synced preference ids.
+    enum FlagPreference {
+        static let goalTemplates = "flags.goalTemplatesEnabled"
+        static let goalTemplatesUI = "flags.goalTemplatesUIEnabled"
+    }
+
+    /// Non-zero while a write for that preference is in flight. The
+    /// `preferences` row stays stale until the write lands, and the write
+    /// itself publishes the new value, so a refresh must not put the old one
+    /// back over it.
+    private var flagWritesInFlight: [String: Int] = [:]
+
+    /// Writes one of the goal-templates flags to the synced `preferences`
+    /// table and publishes it, optimistically: the switch, and the value
+    /// VoiceOver reads from it, have to follow the tap rather than a CRDT
+    /// write that waits its turn on the SyncClient actor.
+    private func setSyncedFlag(
+        _ keyPath: ReferenceWritableKeyPath<BudgetStore, Bool>,
+        id: String,
+        enabled: Bool,
+        errorFormat: String
+    ) async {
+        guard let syncClient else { return }
+        let budgetId = currentBudgetId
+        let activeDatabase = database
+        let previous = self[keyPath: keyPath]
+        self[keyPath: keyPath] = enabled
+        flagWritesInFlight[id, default: 0] += 1
+        do {
+            try await syncClient.setPreference(id: id, value: enabled ? "true" : "false")
+            flagWritesInFlight[id, default: 0] -= 1
+        } catch {
+            flagWritesInFlight[id, default: 0] -= 1
+            // A newer write for this flag owns the value and its outcome.
+            guard (flagWritesInFlight[id] ?? 0) == 0 else { return }
+            // A budget switched under the write is not this switch's error.
+            guard currentBudgetId == budgetId, let activeDatabase,
+                  self.database === activeDatabase else { return }
+            // The preference and CRDT message can commit before saving the
+            // sync clock fails, so read the one row back instead of assuming
+            // the rollback took — and publish once, not twice. A missing row
+            // reads as off; only a failed read falls back to the old value.
+            var stored: Bool?
+            do {
+                stored = try await activeDatabase.fetchPreference(id: id) == "true"
+            } catch {
+                // The read failed, so keep the value this write started from.
+            }
+            // A toggle that started during that read owns the value now.
+            guard (flagWritesInFlight[id] ?? 0) == 0,
+                  currentBudgetId == budgetId, self.database === activeDatabase else { return }
+            self[keyPath: keyPath] = stored ?? previous
+            self.error = String(format: errorFormat, error.localizedDescription)
+        }
+    }
+
     /// Flip the synced feature flag (the web's Settings → Experimental
     /// features toggle), so all clients agree on whether goals are on.
     func setGoalTemplatesEnabled(_ enabled: Bool) async {
-        guard let syncClient else { return }
-        do {
-            try await syncClient.setPreference(
-                id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false"
-            )
-            goalTemplatesEnabled = enabled
-        } catch {
-            self.error = String(format: String(localized: "Failed to update goal templates setting: %@"), error.localizedDescription)
-        }
+        await setSyncedFlag(
+            \.goalTemplatesEnabled,
+            id: FlagPreference.goalTemplates,
+            enabled: enabled,
+            errorFormat: String(localized: "Failed to update goal templates setting: %@")
+        )
     }
 
     /// Check/apply/overwrite budget templates for a month — the port of
@@ -8234,15 +8301,12 @@ final class BudgetStore: ObservableObject {
     @Published private(set) var goalTemplatesUIEnabled = false
 
     func setGoalTemplatesUIEnabled(_ enabled: Bool) async {
-        guard let syncClient else { return }
-        do {
-            try await syncClient.setPreference(
-                id: "flags.goalTemplatesUIEnabled", value: enabled ? "true" : "false"
-            )
-            goalTemplatesUIEnabled = enabled
-        } catch {
-            self.error = String(format: String(localized: "Failed to update automations setting: %@"), error.localizedDescription)
-        }
+        await setSyncedFlag(
+            \.goalTemplatesUIEnabled,
+            id: FlagPreference.goalTemplatesUI,
+            enabled: enabled,
+            errorFormat: String(localized: "Failed to update automations setting: %@")
+        )
     }
 
     /// Everything the automations editor needs for one category — the port
