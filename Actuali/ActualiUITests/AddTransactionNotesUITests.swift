@@ -173,7 +173,9 @@ final class AddTransactionNotesUITests: XCTestCase {
     private func tapKey(_ key: String, in app: XCUIApplication, typingInto field: XCUIElement) {
         let before = field.value as? String
         for attempt in 0..<3 {
-            if attempt > 0 {
+            // Only re-focus when the field can take the tap: a field sitting
+            // under the keyboard is what this test reports, not a tap target.
+            if attempt > 0, field.isHittable {
                 field.tap()
             }
             // The keyboard starts shifted, so the first letter is a capital key.
