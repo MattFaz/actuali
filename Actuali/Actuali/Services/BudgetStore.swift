@@ -7996,6 +7996,9 @@ final class BudgetStore: ObservableObject {
             try await syncClient.setPreference(
                 id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false"
             )
+            // A refresh that read preferences before this write landed can
+            // have published the old flag in the meantime, so re-assert.
+            goalTemplatesEnabled = enabled
         } catch {
             goalTemplatesEnabled = previous
             self.error = String(format: String(localized: "Failed to update goal templates setting: %@"), error.localizedDescription)

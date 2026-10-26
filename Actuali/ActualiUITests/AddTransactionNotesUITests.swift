@@ -187,7 +187,9 @@ final class AddTransactionNotesUITests: XCTestCase {
             if (field.value as? String) != before {
                 return
             }
-            Thread.sleep(forTimeInterval: 0.2)
+            // The form scrolls the field past the keyboard as it grows, and
+            // `assertAboveKeyboard` gives that animation a full second too.
+            Thread.sleep(forTimeInterval: 1)
         }
         XCTFail("key \(key) never reached the notes field")
     }

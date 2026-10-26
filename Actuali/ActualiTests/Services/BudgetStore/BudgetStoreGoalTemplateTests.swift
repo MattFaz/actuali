@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import GRDB
 import Testing
@@ -96,8 +97,10 @@ struct BudgetStoreGoalTemplateTests {
     }
 
     /// A failed write must not leave the switch on a flag the budget never
-    /// stored.
-    @Test func failedGoalTemplateWriteRollsTheFlagBack() async throws {
+    /// stored. The published values pin the order the switch sees: on from the
+    /// tap, then back off — not merely off at the end, which the old
+    /// publish-after-the-write code produced too.
+    @Test func failedGoalTemplateWriteShowsTheFlagOnThenRollsItBack() async throws {
         let (database, url) = try await makeTestDatabase(TestSchema.preferences)
         defer { cleanup(url) }
         let store = BudgetStore.previewInstance()
@@ -106,9 +109,13 @@ struct BudgetStoreGoalTemplateTests {
             database: database,
             syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         )
+        var published: [Bool] = []
+        let subscription = store.$goalTemplatesEnabled.dropFirst().sink { published.append($0) }
+        defer { subscription.cancel() }
 
         await store.setGoalTemplatesEnabled(true)
 
+        #expect(published == [true, false])
         #expect(!store.goalTemplatesEnabled)
         #expect(store.error != nil)
     }
