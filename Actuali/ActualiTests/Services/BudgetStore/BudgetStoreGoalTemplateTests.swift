@@ -144,6 +144,24 @@ struct BudgetStoreGoalTemplateTests {
         #expect(store.goalTemplatesEnabled)
     }
 
+    /// The refresh guard's truth table: a fetched row may only be published
+    /// when no write owned the flag during the reads and the user did not flip
+    /// it meanwhile.
+    @Test func aRefreshPublishesAFlagNoWriteTouched() {
+        #expect(BudgetStore.flagSnapshotIsCurrent(
+            writesAtCapture: 0, writesNow: 0, published: false, atCapture: false
+        ))
+        #expect(!BudgetStore.flagSnapshotIsCurrent(
+            writesAtCapture: 1, writesNow: 0, published: false, atCapture: false
+        ))
+        #expect(!BudgetStore.flagSnapshotIsCurrent(
+            writesAtCapture: 0, writesNow: 1, published: false, atCapture: false
+        ))
+        #expect(!BudgetStore.flagSnapshotIsCurrent(
+            writesAtCapture: 0, writesNow: 0, published: true, atCapture: false
+        ))
+    }
+
     /// A write that committed the row and then failed — saving the sync clock
     /// is what usually throws — leaves the switch on what the budget stored,
     /// not on the rollback. The recovery re-read owns the final value.

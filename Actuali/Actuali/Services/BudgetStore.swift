@@ -3219,6 +3219,7 @@ final class BudgetStore: ObservableObject {
         let cardMappingsBefore = cardAccountMappings
         let goalTemplatesFlagBefore = goalTemplatesEnabled
         let goalTemplatesUIFlagBefore = goalTemplatesUIEnabled
+        let goalTemplateWritesBefore = goalTemplateFlagWrites
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -3322,11 +3323,22 @@ final class BudgetStore: ObservableObject {
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             assignIfChanged(\.upcomingScheduledTransactionLength, fetchedUpcomingLength)
             // A flag flipped while these reads were in flight is newer than
-            // this snapshot, and its write owns the value until it lands.
-            if goalTemplateFlagWrites == 0, goalTemplatesEnabled == goalTemplatesFlagBefore {
+            // this snapshot, and its write owns the value until it lands, so
+            // the row this refresh read can be older than the write.
+            if Self.flagSnapshotIsCurrent(
+                writesAtCapture: goalTemplateWritesBefore,
+                writesNow: goalTemplateFlagWrites,
+                published: goalTemplatesEnabled,
+                atCapture: goalTemplatesFlagBefore
+            ) {
                 assignIfChanged(\.goalTemplatesEnabled, fetchedGoalTemplatesFlag)
             }
-            if goalTemplateFlagWrites == 0, goalTemplatesUIEnabled == goalTemplatesUIFlagBefore {
+            if Self.flagSnapshotIsCurrent(
+                writesAtCapture: goalTemplateWritesBefore,
+                writesNow: goalTemplateFlagWrites,
+                published: goalTemplatesUIEnabled,
+                atCapture: goalTemplatesUIFlagBefore
+            ) {
                 assignIfChanged(\.goalTemplatesUIEnabled, fetchedGoalTemplatesUIFlag)
             }
             // Keep a currency chosen while the reads were in flight. The
@@ -7996,6 +8008,18 @@ final class BudgetStore: ObservableObject {
     /// itself publishes the new value, so a refresh must not put the old one
     /// back over it.
     private var goalTemplateFlagWrites = 0
+
+    /// Whether a refresh may publish the flag it fetched: only when no write
+    /// owned that flag at any point between the capture and the publish, and
+    /// the user did not flip it meanwhile.
+    nonisolated static func flagSnapshotIsCurrent(
+        writesAtCapture: Int,
+        writesNow: Int,
+        published: Bool,
+        atCapture: Bool
+    ) -> Bool {
+        writesAtCapture == 0 && writesNow == 0 && published == atCapture
+    }
 
     /// Writes one of the goal-templates flags to the synced `preferences`
     /// table and publishes it, optimistically: the switch, and the value
