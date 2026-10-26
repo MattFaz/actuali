@@ -163,14 +163,19 @@ final class AddTransactionNotesUITests: XCTestCase {
     ///
     /// The AX tree can also hold an off-screen copy of a key, which `.tap()`
     /// then refuses with an AX scroll error. A tap fired while the form is
-    /// scrolling the field up past the keyboard can also be swallowed whole,
-    /// so retry while the field's text hasn't changed rather than failing on
-    /// the first miss. Typing a character twice is harmless here: the test
-    /// only cares that the notes grow.
+    /// scrolling the field up past the keyboard can also be swallowed whole.
+    /// So can the field lose focus, which iOS 27 does to it (see the typing
+    /// comments above) — both read as an unchanged value. Re-focus the field
+    /// and retry while its text hasn't changed rather than failing on the
+    /// first miss. Typing a character twice is harmless here: the test only
+    /// cares that the notes grow.
     @MainActor
     private func tapKey(_ key: String, in app: XCUIApplication, typingInto field: XCUIElement) {
         let before = field.value as? String
-        for _ in 0..<3 {
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                field.tap()
+            }
             // The keyboard starts shifted, so the first letter is a capital key.
             for candidate in [key, key.uppercased()] {
                 if let onScreen = onScreenCopy(app.keys.matching(identifier: candidate)),
