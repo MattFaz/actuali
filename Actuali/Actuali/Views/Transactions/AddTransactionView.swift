@@ -2136,20 +2136,26 @@ struct CategoryPickerView: View {
 
     private var filteredGroups: [CategoryGroup] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return budgetStore.categoryGroups.filter { !$0.hidden }
-        }
-        return budgetStore.categoryGroups.compactMap { group in
-            let matches = group.categories.filter { category in
-                !category.hidden &&
-                    (category.name.localizedCaseInsensitiveContains(trimmed) ||
-                        group.name.localizedCaseInsensitiveContains(trimmed))
+        let groups: [CategoryGroup] = if trimmed.isEmpty {
+            budgetStore.categoryGroups.filter { !$0.hidden }
+        } else {
+            budgetStore.categoryGroups.compactMap { group -> CategoryGroup? in
+                let matches = group.categories.filter { category in
+                    !category.hidden &&
+                        (category.name.localizedCaseInsensitiveContains(trimmed) ||
+                            group.name.localizedCaseInsensitiveContains(trimmed))
+                }
+                guard !matches.isEmpty else { return nil }
+                var copy = group
+                copy.categories = matches
+                return copy
             }
-            guard !matches.isEmpty else { return nil }
-            var copy = group
-            copy.categories = matches
-            return copy
         }
+        return Self.incomeLast(groups)
+    }
+
+    nonisolated static func incomeLast(_ groups: [CategoryGroup]) -> [CategoryGroup] {
+        groups.filter { !$0.isIncome } + groups.filter(\.isIncome)
     }
 }
 
