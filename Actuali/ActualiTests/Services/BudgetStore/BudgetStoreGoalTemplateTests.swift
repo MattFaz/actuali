@@ -76,15 +76,10 @@ struct BudgetStoreGoalTemplateTests {
     // MARK: - The synced feature flags
 
     /// A store whose sync client was never configured, so every preference
-    /// write throws before it reaches a database. The schema is complete so
-    /// the recovery refresh in the failure path runs to its publish batch.
-    /// Clean up `url`.
+    /// write throws before it reaches a database. Clean up `url`.
     private func makeStoreWhoseWritesFail() async throws -> (BudgetStore, URL) {
-        let (database, url) = try await makeTestDatabase(
-            TestSchema.core + [TestSchema.preferences, TestSchema.tags]
-        )
+        let (database, url) = try await makeTestDatabase(TestSchema.preferences)
         let store = BudgetStore.previewInstance()
-        store.widgetSnapshotStore = nil
         store.configureForTesting(
             database: database,
             syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
@@ -170,7 +165,7 @@ struct BudgetStoreGoalTemplateTests {
 
     /// A write that committed the row and then failed — saving the sync clock
     /// is what usually throws — leaves the switch on what the budget stored,
-    /// not on the rollback. The recovery re-read owns the final value.
+    /// not on the rollback. The re-read owns the final value.
     @Test func aFailedWriteThatCommittedTheRowEndsOnTheStoredFlag() async throws {
         let (store, url) = try await makeStoreWhoseWritesFail()
         defer { cleanup(url) }

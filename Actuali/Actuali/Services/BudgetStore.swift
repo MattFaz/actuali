@@ -8029,17 +8029,18 @@ final class BudgetStore: ObservableObject {
             try await syncClient.setPreference(id: id, value: enabled ? "true" : "false")
             flagWritesInFlight[id, default: 0] -= 1
         } catch {
-            // Drop the guard before the re-read below, or refreshDataOnly
-            // skips the very row it has to re-publish.
             flagWritesInFlight[id, default: 0] -= 1
+            // A newer write for this flag owns the value and its outcome.
+            guard (flagWritesInFlight[id] ?? 0) == 0 else { return }
             // A budget switched under the write is not this switch's error.
-            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
-            self[keyPath: keyPath] = previous
+            guard currentBudgetId == budgetId, let activeDatabase,
+                  self.database === activeDatabase else { return }
             // The preference and CRDT message can commit before saving the
-            // sync clock fails. Re-read the database instead of assuming
-            // rollback.
-            await refreshDataOnly()
+            // sync clock fails, so read the one row back instead of assuming
+            // the rollback took — and publish once, not twice.
+            let stored = try? await activeDatabase.fetchPreference(id: id)
             guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
+            self[keyPath: keyPath] = stored.map { $0 == "true" } ?? previous
             self.error = String(format: errorFormat, error.localizedDescription)
         }
     }
