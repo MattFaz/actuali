@@ -3217,6 +3217,8 @@ final class BudgetStore: ObservableObject {
         let loansBefore = loanConfigs
         let depositsBefore = depositConfigs
         let cardMappingsBefore = cardAccountMappings
+        let goalTemplatesFlagBefore = goalTemplatesEnabled
+        let goalTemplatesUIFlagBefore = goalTemplatesUIEnabled
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -3319,8 +3321,14 @@ final class BudgetStore: ObservableObject {
             }
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             assignIfChanged(\.upcomingScheduledTransactionLength, fetchedUpcomingLength)
-            assignIfChanged(\.goalTemplatesEnabled, fetchedGoalTemplatesFlag)
-            assignIfChanged(\.goalTemplatesUIEnabled, fetchedGoalTemplatesUIFlag)
+            // A flag flipped while these reads were in flight is newer than
+            // this snapshot; its write comes back on the next refresh.
+            if goalTemplatesEnabled == goalTemplatesFlagBefore {
+                assignIfChanged(\.goalTemplatesEnabled, fetchedGoalTemplatesFlag)
+            }
+            if goalTemplatesUIEnabled == goalTemplatesUIFlagBefore {
+                assignIfChanged(\.goalTemplatesUIEnabled, fetchedGoalTemplatesUIFlag)
+            }
             // Keep a currency chosen while the reads were in flight. The
             // widget publishes once below, after the entire batch is applied.
             if let fetchedCurrencyCode, currencyCode == currencyCodeBefore {
@@ -7987,6 +7995,8 @@ final class BudgetStore: ObservableObject {
     /// features toggle), so all clients agree on whether goals are on.
     func setGoalTemplatesEnabled(_ enabled: Bool) async {
         guard let syncClient else { return }
+        let budgetId = currentBudgetId
+        let activeDatabase = database
         // Optimistic: the switch, and the value VoiceOver reads from it, have
         // to follow the tap rather than the CRDT write, which waits its turn
         // on the SyncClient actor and can lag seconds behind on a busy budget.
@@ -7996,12 +8006,19 @@ final class BudgetStore: ObservableObject {
             try await syncClient.setPreference(
                 id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false"
             )
-            // A refresh that read preferences before this write landed can
-            // have published the old flag in the meantime, so re-assert —
-            // without a second notification when it already agrees.
+            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
+            // A refresh that started after the tap can still publish the row
+            // it read before this write landed, so re-assert — without a
+            // second notification when the value already agrees.
             assignIfChanged(\.goalTemplatesEnabled, enabled)
         } catch {
+            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
             goalTemplatesEnabled = previous
+            // The preference and CRDT message can commit before saving the
+            // sync clock fails. Re-read the database instead of assuming
+            // rollback.
+            await refreshDataOnly()
+            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
             self.error = String(format: String(localized: "Failed to update goal templates setting: %@"), error.localizedDescription)
         }
     }
@@ -8244,6 +8261,8 @@ final class BudgetStore: ObservableObject {
 
     func setGoalTemplatesUIEnabled(_ enabled: Bool) async {
         guard let syncClient else { return }
+        let budgetId = currentBudgetId
+        let activeDatabase = database
         // Same reason as setGoalTemplatesEnabled: the switch, and the value
         // VoiceOver reads from it, have to follow the tap.
         let previous = goalTemplatesUIEnabled
@@ -8252,9 +8271,13 @@ final class BudgetStore: ObservableObject {
             try await syncClient.setPreference(
                 id: "flags.goalTemplatesUIEnabled", value: enabled ? "true" : "false"
             )
+            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
             assignIfChanged(\.goalTemplatesUIEnabled, enabled)
         } catch {
+            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
             goalTemplatesUIEnabled = previous
+            await refreshDataOnly()
+            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
             self.error = String(format: String(localized: "Failed to update automations setting: %@"), error.localizedDescription)
         }
     }
