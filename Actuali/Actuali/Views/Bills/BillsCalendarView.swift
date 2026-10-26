@@ -17,6 +17,7 @@ struct BillsCalendarView: View {
     @State private var showingCreditCardsSetup: Bool = false
     @State private var actionError: String? = nil
     @State private var pendingDelete: ScheduleSummary? = nil
+    @State private var showingUpcomingBreakdown: Bool = false
 
     private var today: DayDate {
         DayDate.today()
@@ -302,12 +303,60 @@ struct BillsCalendarView: View {
     // MARK: - Summary Strip
 
     private func summaryStripSection(summary: BillsMonthSummary) -> some View {
-        HStack(spacing: 12) {
-            summaryMetric(title: String(localized: "Upcoming"), amount: summary.upcomingTotal, color: .primary)
+        let hasIncome = summary.upcomingIncome > 0
+        let upcomingTitle = hasIncome
+            ? (summary.upcomingNet >= 0
+                ? String(localized: "Net to Cover")
+                : String(localized: "Net Surplus"))
+            : String(localized: "Upcoming")
+        // displaySpentCaption keeps the mask and adds "+" only for an inflow / surplus.
+        let upcomingText = hasIncome
+            ? budgetStore.displaySpentCaption(-summary.upcomingNet)
+            : budgetStore.displayBalance(summary.upcomingBills)
+
+        return HStack(spacing: 12) {
+            summaryMetric(
+                title: upcomingTitle,
+                text: upcomingText,
+                color: .primary,
+                accessory: hasIncome ? {
+                    AnyView(
+                        Button {
+                            showingUpcomingBreakdown = true
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(String(localized: "Upcoming Breakdown"))
+                        .accessibilityIdentifier("billsCalendar.upcomingBreakdownButton")
+                    )
+                } : nil
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if hasIncome {
+                    showingUpcomingBreakdown = true
+                }
+            }
+            .popover(isPresented: $showingUpcomingBreakdown, arrowEdge: .top) {
+                upcomingBreakdownPopover(summary: summary)
+                    .presentationCompactAdaptation(.popover)
+            }
+
             Divider().frame(height: 24)
-            summaryMetric(title: String(localized: "Overdue"), amount: summary.overdueTotal, color: .red)
+            summaryMetric(
+                title: String(localized: "Overdue"),
+                text: budgetStore.displayBalance(summary.overdueTotal),
+                color: .red
+            )
             Divider().frame(height: 24)
-            summaryMetric(title: String(localized: "Paid"), amount: summary.paidTotal, color: .green)
+            summaryMetric(
+                title: String(localized: "Paid"),
+                text: budgetStore.displayBalance(summary.paidTotal),
+                color: .green
+            )
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
@@ -315,19 +364,76 @@ struct BillsCalendarView: View {
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private func summaryMetric(title: String, amount: Int, color: Color) -> some View {
+    private func upcomingBreakdownPopover(summary: BillsMonthSummary) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(String(localized: "Upcoming Breakdown"))
+                .font(.headline)
+
+            VStack(spacing: 10) {
+                HStack {
+                    Label(String(localized: "Bills Due"), systemImage: "arrow.down.circle.fill")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(budgetStore.displayBalance(summary.upcomingBills))
+                        .monospacedDigit()
+                        .fontWeight(.medium)
+                }
+
+                HStack {
+                    Label(String(localized: "Expected Income"), systemImage: "arrow.up.circle.fill")
+                        .foregroundStyle(.green)
+                    Spacer()
+                    // displaySpentCaption keeps the mask and adds "+" only when unmasked.
+                    Text(budgetStore.displaySpentCaption(summary.upcomingIncome))
+                        .monospacedDigit()
+                        .fontWeight(.medium)
+                        .foregroundStyle(.green)
+                }
+
+                Divider()
+
+                HStack {
+                    Text(summary.upcomingNet >= 0
+                        ? String(localized: "Net to Cover")
+                        : String(localized: "Net Surplus"))
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Text(budgetStore.displaySpentCaption(-summary.upcomingNet))
+                        .monospacedDigit()
+                        .fontWeight(.bold)
+                        .foregroundStyle(summary.upcomingNet >= 0 ? Color.primary : Color.green)
+                }
+            }
+            .font(.subheadline)
+        }
+        .padding(16)
+        .frame(minWidth: 260)
+    }
+
+    private func summaryMetric(
+        title: String,
+        text: String,
+        color: Color,
+        accessory: (() -> AnyView)? = nil
+    ) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(budgetStore.displayBalance(amount))
+                HStack(spacing: 4) {
+                    Text(title)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    accessory?()
+                }
+                Text(text)
                     .font(.subheadline.weight(.semibold))
                     .monospacedDigit()
                     .lineLimit(1)
+                    // A third of the strip can't fit "USD 1,872.99" or "+USD 500.00"
+                    // at full size, so shrink to fit instead of truncating the headline.
+                    .minimumScaleFactor(0.8)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
