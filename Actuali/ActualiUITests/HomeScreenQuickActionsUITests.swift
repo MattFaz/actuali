@@ -38,21 +38,35 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
         }
 
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let icons = springboard.icons.matching(identifier: "Actuali")
+        let screen = springboard.frame
+        // SpringBoard exposes off-page icons with zero or off-screen frames,
+        // and asking isHittable mid-animation fails the test outright ("Activation
+        // point invalid") while the app zooms back into its icon. So wait for an
+        // on-screen frame that holds still across two polls, then press by
+        // coordinate.
+        var lastFrame: CGRect?
+        let settledOnScreen = NSPredicate { _, _ in
+            let frame = icons.allElementsBoundByIndex.map(\.frame)
+                .first { !$0.isEmpty && screen.contains($0) }
+            defer { lastFrame = frame }
+            return frame != nil && frame == lastFrame
+        }
         var visibleIcon: XCUIElement?
-        // SpringBoard also exposes off-screen icons with zero-sized frames.
         for _ in 0..<4 {
-            visibleIcon = onScreenCopy(springboard.icons.matching(identifier: "Actuali"))
-            if visibleIcon?.isHittable == true {
+            lastFrame = nil
+            let settled = XCTNSPredicateExpectation(predicate: settledOnScreen, object: nil)
+            if XCTWaiter.wait(for: [settled], timeout: 5) == .completed {
+                visibleIcon = icons.allElementsBoundByIndex.first { $0.frame == lastFrame }
                 break
             }
-            visibleIcon = nil
             springboard.swipeLeft()
         }
         guard let icon = visibleIcon else {
             XCTFail("Actuali Home Screen icon not reachable: \(springboard.debugDescription)")
             return
         }
-        icon.press(forDuration: 1.2)
+        icon.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 1.2)
         let shortcut = springboard.descendants(matching: .any).matching(
             NSPredicate(format: "label == %@", "Add Transaction")
         ).firstMatch
