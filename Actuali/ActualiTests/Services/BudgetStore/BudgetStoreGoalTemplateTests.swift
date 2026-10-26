@@ -102,7 +102,7 @@ struct BudgetStoreGoalTemplateTests {
 
         await store.setGoalTemplatesEnabled(true)
 
-        // The optimistic flip only; the write's re-assert must not repeat it.
+        // The optimistic flip only: one toggle, one notification.
         #expect(published == [true])
         #expect(store.goalTemplatesEnabled)
         let stored = try await DatabaseQueue(path: url.path).read { db in
@@ -111,6 +111,32 @@ struct BudgetStoreGoalTemplateTests {
             )
         }
         #expect(stored == "true")
+    }
+
+    /// A flag the budget gained behind the store's back — a sync pull writes
+    /// the row — still reaches the switch. The refresh guard may only skip a
+    /// row that a local toggle is about to replace.
+    @Test func aRefreshPublishesAFlagChangedBehindTheStore() async throws {
+        let (database, url) = try await makeTestDatabase(
+            TestSchema.core + [TestSchema.preferences, TestSchema.tags]
+        )
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        store.widgetSnapshotStore = nil
+        #expect(!store.goalTemplatesEnabled)
+        try await DatabaseQueue(path: url.path).write { db in
+            try db.execute(
+                sql: """
+                INSERT OR REPLACE INTO preferences (id, value)
+                VALUES ('flags.goalTemplatesEnabled', 'true')
+                """
+            )
+        }
+
+        // Any write that refreshes afterwards; creating a tag is the simplest.
+        _ = try await store.createTag(name: "trip")
+
+        #expect(store.goalTemplatesEnabled)
     }
 
     /// A failed write must not leave the switch on a flag the budget never
@@ -128,7 +154,9 @@ struct BudgetStoreGoalTemplateTests {
 
         #expect(published == [true, false])
         #expect(!store.goalTemplatesEnabled)
-        #expect(store.error != nil)
+        // The refresh after the rollback fails its own reads on this bare
+        // fixture, so the message has to prove the setter's error landed.
+        #expect(store.error?.hasPrefix("Failed to update goal templates setting:") == true)
     }
 
     /// The Automations Editor switch underneath it behaves the same way.
@@ -143,6 +171,6 @@ struct BudgetStoreGoalTemplateTests {
 
         #expect(published == [true, false])
         #expect(!store.goalTemplatesUIEnabled)
-        #expect(store.error != nil)
+        #expect(store.error?.hasPrefix("Failed to update automations setting:") == true)
     }
 }

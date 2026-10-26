@@ -3322,11 +3322,11 @@ final class BudgetStore: ObservableObject {
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             assignIfChanged(\.upcomingScheduledTransactionLength, fetchedUpcomingLength)
             // A flag flipped while these reads were in flight is newer than
-            // this snapshot; its write comes back on the next refresh.
-            if goalTemplatesEnabled == goalTemplatesFlagBefore {
+            // this snapshot, and its write owns the value until it lands.
+            if goalTemplateFlagWrites == 0, goalTemplatesEnabled == goalTemplatesFlagBefore {
                 assignIfChanged(\.goalTemplatesEnabled, fetchedGoalTemplatesFlag)
             }
-            if goalTemplatesUIEnabled == goalTemplatesUIFlagBefore {
+            if goalTemplateFlagWrites == 0, goalTemplatesUIEnabled == goalTemplatesUIFlagBefore {
                 assignIfChanged(\.goalTemplatesUIEnabled, fetchedGoalTemplatesUIFlag)
             }
             // Keep a currency chosen while the reads were in flight. The
@@ -7991,36 +7991,53 @@ final class BudgetStore: ObservableObject {
         case failed(String)
     }
 
-    /// Flip the synced feature flag (the web's Settings → Experimental
-    /// features toggle), so all clients agree on whether goals are on.
-    func setGoalTemplatesEnabled(_ enabled: Bool) async {
+    /// Non-zero while a goal-templates flag write is in flight. The
+    /// `preferences` row stays stale until that write lands, and the write
+    /// itself publishes the new value, so a refresh must not put the old one
+    /// back over it.
+    private var goalTemplateFlagWrites = 0
+
+    /// Writes one of the goal-templates flags to the synced `preferences`
+    /// table and publishes it, optimistically: the switch, and the value
+    /// VoiceOver reads from it, have to follow the tap rather than a CRDT
+    /// write that waits its turn on the SyncClient actor.
+    private func setSyncedFlag(
+        _ keyPath: ReferenceWritableKeyPath<BudgetStore, Bool>,
+        id: String,
+        enabled: Bool,
+        errorFormat: String
+    ) async {
         guard let syncClient else { return }
         let budgetId = currentBudgetId
         let activeDatabase = database
-        // Optimistic: the switch, and the value VoiceOver reads from it, have
-        // to follow the tap rather than the CRDT write, which waits its turn
-        // on the SyncClient actor and can lag seconds behind on a busy budget.
-        let previous = goalTemplatesEnabled
-        goalTemplatesEnabled = enabled
+        let previous = self[keyPath: keyPath]
+        self[keyPath: keyPath] = enabled
+        goalTemplateFlagWrites += 1
+        defer { goalTemplateFlagWrites -= 1 }
         do {
-            try await syncClient.setPreference(
-                id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false"
-            )
-            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
-            // A refresh that started after the tap can still publish the row
-            // it read before this write landed, so re-assert — without a
-            // second notification when the value already agrees.
-            assignIfChanged(\.goalTemplatesEnabled, enabled)
+            try await syncClient.setPreference(id: id, value: enabled ? "true" : "false")
         } catch {
+            // A budget switched under the write is not this switch's error.
             guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
-            goalTemplatesEnabled = previous
+            self[keyPath: keyPath] = previous
             // The preference and CRDT message can commit before saving the
             // sync clock fails. Re-read the database instead of assuming
             // rollback.
             await refreshDataOnly()
             guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
-            self.error = String(format: String(localized: "Failed to update goal templates setting: %@"), error.localizedDescription)
+            self.error = String(format: errorFormat, error.localizedDescription)
         }
+    }
+
+    /// Flip the synced feature flag (the web's Settings → Experimental
+    /// features toggle), so all clients agree on whether goals are on.
+    func setGoalTemplatesEnabled(_ enabled: Bool) async {
+        await setSyncedFlag(
+            \.goalTemplatesEnabled,
+            id: "flags.goalTemplatesEnabled",
+            enabled: enabled,
+            errorFormat: String(localized: "Failed to update goal templates setting: %@")
+        )
     }
 
     /// Check/apply/overwrite budget templates for a month — the port of
@@ -8260,26 +8277,12 @@ final class BudgetStore: ObservableObject {
     @Published private(set) var goalTemplatesUIEnabled = false
 
     func setGoalTemplatesUIEnabled(_ enabled: Bool) async {
-        guard let syncClient else { return }
-        let budgetId = currentBudgetId
-        let activeDatabase = database
-        // Same reason as setGoalTemplatesEnabled: the switch, and the value
-        // VoiceOver reads from it, have to follow the tap.
-        let previous = goalTemplatesUIEnabled
-        goalTemplatesUIEnabled = enabled
-        do {
-            try await syncClient.setPreference(
-                id: "flags.goalTemplatesUIEnabled", value: enabled ? "true" : "false"
-            )
-            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
-            assignIfChanged(\.goalTemplatesUIEnabled, enabled)
-        } catch {
-            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
-            goalTemplatesUIEnabled = previous
-            await refreshDataOnly()
-            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
-            self.error = String(format: String(localized: "Failed to update automations setting: %@"), error.localizedDescription)
-        }
+        await setSyncedFlag(
+            \.goalTemplatesUIEnabled,
+            id: "flags.goalTemplatesUIEnabled",
+            enabled: enabled,
+            errorFormat: String(localized: "Failed to update automations setting: %@")
+        )
     }
 
     /// Everything the automations editor needs for one category — the port
