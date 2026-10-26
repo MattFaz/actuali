@@ -8037,12 +8037,18 @@ final class BudgetStore: ObservableObject {
                   self.database === activeDatabase else { return }
             // The preference and CRDT message can commit before saving the
             // sync clock fails, so read the one row back instead of assuming
-            // the rollback took — and publish once, not twice.
-            let stored = try? await activeDatabase.fetchPreference(id: id)
+            // the rollback took — and publish once, not twice. A missing row
+            // reads as off; only a failed read falls back to the old value.
+            var stored: Bool?
+            do {
+                stored = try await activeDatabase.fetchPreference(id: id) == "true"
+            } catch {
+                // The read failed, so keep the value this write started from.
+            }
             // A toggle that started during that read owns the value now.
             guard (flagWritesInFlight[id] ?? 0) == 0,
                   currentBudgetId == budgetId, self.database === activeDatabase else { return }
-            self[keyPath: keyPath] = stored.map { $0 == "true" } ?? previous
+            self[keyPath: keyPath] = stored ?? previous
             self.error = String(format: errorFormat, error.localizedDescription)
         }
     }
