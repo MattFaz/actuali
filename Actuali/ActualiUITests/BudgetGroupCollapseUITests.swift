@@ -189,12 +189,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         let enabled = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", "1"), object: control
         )
-        // Goal templates is a synced preference, not a local setting, so the
-        // switch's accessibility value only flips once the CRDT write lands
-        // on the SyncClient's actor — seconds after the tap when the demo
-        // budget is still seeding. The switch's own optimistic animation
-        // hides that lag on screen.
-        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 20), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed)
         app.tabBars.buttons["Budget"].tap()
 
         let group = app.buttons.matching(

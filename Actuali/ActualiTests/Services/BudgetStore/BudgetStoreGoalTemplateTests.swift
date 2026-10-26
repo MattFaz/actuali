@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import Actuali
 
@@ -69,5 +70,46 @@ struct BudgetStoreGoalTemplateTests {
         #expect(budgeted["cat_a"] == 1000)
         #expect(budgeted["cat_b"] == 2000)
         #expect(budgeted["cat_c"] == 0)
+    }
+
+    // MARK: - The synced feature flag
+
+    /// The Settings switch follows the tap, not the CRDT write: the flag is
+    /// published first and only rolled back if the write fails.
+    @Test func enablingGoalTemplatesPublishesTheFlagAndWritesThePreference() async throws {
+        let (database, url) = try await makeTestDatabase(
+            TestSchema.preferences, TestSchema.messagesCrdt, TestSchema.messagesClock
+        )
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        #expect(!store.goalTemplatesEnabled)
+
+        await store.setGoalTemplatesEnabled(true)
+
+        #expect(store.goalTemplatesEnabled)
+        let stored = try await DatabaseQueue(path: url.path).read { db in
+            try String.fetchOne(
+                db, sql: "SELECT value FROM preferences WHERE id = 'flags.goalTemplatesEnabled'"
+            )
+        }
+        #expect(stored == "true")
+    }
+
+    /// A failed write must not leave the switch on a flag the budget never
+    /// stored.
+    @Test func failedGoalTemplateWriteRollsTheFlagBack() async throws {
+        let (database, url) = try await makeTestDatabase(TestSchema.preferences)
+        defer { cleanup(url) }
+        let store = BudgetStore.previewInstance()
+        // Left unconfigured, so `setPreference` throws before it reaches a DB.
+        store.configureForTesting(
+            database: database,
+            syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        )
+
+        await store.setGoalTemplatesEnabled(true)
+
+        #expect(!store.goalTemplatesEnabled)
+        #expect(store.error != nil)
     }
 }

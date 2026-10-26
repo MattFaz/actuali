@@ -7987,12 +7987,17 @@ final class BudgetStore: ObservableObject {
     /// features toggle), so all clients agree on whether goals are on.
     func setGoalTemplatesEnabled(_ enabled: Bool) async {
         guard let syncClient else { return }
+        // Optimistic: the switch, and the value VoiceOver reads from it, have
+        // to follow the tap rather than the CRDT write, which waits its turn
+        // on the SyncClient actor and can lag seconds behind on a busy budget.
+        let previous = goalTemplatesEnabled
+        goalTemplatesEnabled = enabled
         do {
             try await syncClient.setPreference(
                 id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false"
             )
-            goalTemplatesEnabled = enabled
         } catch {
+            goalTemplatesEnabled = previous
             self.error = String(format: String(localized: "Failed to update goal templates setting: %@"), error.localizedDescription)
         }
     }
