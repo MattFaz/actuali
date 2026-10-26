@@ -45,19 +45,24 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
         // point invalid") while the app zooms back into its icon. So wait for an
         // on-screen frame that holds still across two polls, then press by
         // coordinate.
-        var lastFrame: CGRect?
-        let settledOnScreen = NSPredicate { _, _ in
-            let frame = icons.allElementsBoundByIndex.map(\.frame)
-                .first { !$0.isEmpty && screen.contains($0) }
-            defer { lastFrame = frame }
-            return frame != nil && frame == lastFrame
+        func settledIcon() -> XCUIElement? {
+            var lastFrame: CGRect?
+            for _ in 0..<10 {
+                let drawn = icons.allElementsBoundByIndex
+                    .map { ($0, $0.frame) }
+                    .first { !$0.1.isEmpty && screen.contains($0.1) }
+                if let drawn, drawn.1 == lastFrame {
+                    return drawn.0
+                }
+                lastFrame = drawn?.1
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+            return nil
         }
         var visibleIcon: XCUIElement?
         for _ in 0..<4 {
-            lastFrame = nil
-            let settled = XCTNSPredicateExpectation(predicate: settledOnScreen, object: nil)
-            if XCTWaiter.wait(for: [settled], timeout: 5) == .completed {
-                visibleIcon = icons.allElementsBoundByIndex.first { $0.frame == lastFrame }
+            visibleIcon = settledIcon()
+            if visibleIcon != nil {
                 break
             }
             springboard.swipeLeft()
