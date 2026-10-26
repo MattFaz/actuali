@@ -73,10 +73,22 @@ struct BudgetStoreGoalTemplateTests {
         #expect(budgeted["cat_c"] == 0)
     }
 
-    // MARK: - The synced feature flag
+    // MARK: - The synced feature flags
+
+    /// A store whose sync client was never configured, so every preference
+    /// write throws before it reaches a database. Clean up `url`.
+    private func makeStoreWhoseWritesFail() async throws -> (BudgetStore, URL) {
+        let (database, url) = try await makeTestDatabase(TestSchema.preferences)
+        let store = BudgetStore.previewInstance()
+        store.configureForTesting(
+            database: database,
+            syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        )
+        return (store, url)
+    }
 
     /// The Settings switch follows the tap, not the CRDT write: the flag is
-    /// published first and only rolled back if the write fails.
+    /// published first, and one toggle sends one notification.
     @Test func enablingGoalTemplatesPublishesTheFlagAndWritesThePreference() async throws {
         let (database, url) = try await makeTestDatabase(
             TestSchema.preferences, TestSchema.messagesCrdt, TestSchema.messagesClock
@@ -84,9 +96,14 @@ struct BudgetStoreGoalTemplateTests {
         defer { cleanup(url) }
         let store = try await makeTestStore(database: database)
         #expect(!store.goalTemplatesEnabled)
+        var published: [Bool] = []
+        let subscription = store.$goalTemplatesEnabled.dropFirst().sink { published.append($0) }
+        defer { subscription.cancel() }
 
         await store.setGoalTemplatesEnabled(true)
 
+        // The optimistic flip only; the write's re-assert must not repeat it.
+        #expect(published == [true])
         #expect(store.goalTemplatesEnabled)
         let stored = try await DatabaseQueue(path: url.path).read { db in
             try String.fetchOne(
@@ -101,14 +118,8 @@ struct BudgetStoreGoalTemplateTests {
     /// tap, then back off — not merely off at the end, which the old
     /// publish-after-the-write code produced too.
     @Test func failedGoalTemplateWriteShowsTheFlagOnThenRollsItBack() async throws {
-        let (database, url) = try await makeTestDatabase(TestSchema.preferences)
+        let (store, url) = try await makeStoreWhoseWritesFail()
         defer { cleanup(url) }
-        let store = BudgetStore.previewInstance()
-        // Left unconfigured, so `setPreference` throws before it reaches a DB.
-        store.configureForTesting(
-            database: database,
-            syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
-        )
         var published: [Bool] = []
         let subscription = store.$goalTemplatesEnabled.dropFirst().sink { published.append($0) }
         defer { subscription.cancel() }
@@ -117,6 +128,21 @@ struct BudgetStoreGoalTemplateTests {
 
         #expect(published == [true, false])
         #expect(!store.goalTemplatesEnabled)
+        #expect(store.error != nil)
+    }
+
+    /// The Automations Editor switch underneath it behaves the same way.
+    @Test func failedAutomationsWriteShowsTheFlagOnThenRollsItBack() async throws {
+        let (store, url) = try await makeStoreWhoseWritesFail()
+        defer { cleanup(url) }
+        var published: [Bool] = []
+        let subscription = store.$goalTemplatesUIEnabled.dropFirst().sink { published.append($0) }
+        defer { subscription.cancel() }
+
+        await store.setGoalTemplatesUIEnabled(true)
+
+        #expect(published == [true, false])
+        #expect(!store.goalTemplatesUIEnabled)
         #expect(store.error != nil)
     }
 }

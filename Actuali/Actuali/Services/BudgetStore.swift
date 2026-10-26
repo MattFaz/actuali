@@ -7997,8 +7997,9 @@ final class BudgetStore: ObservableObject {
                 id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false"
             )
             // A refresh that read preferences before this write landed can
-            // have published the old flag in the meantime, so re-assert.
-            goalTemplatesEnabled = enabled
+            // have published the old flag in the meantime, so re-assert —
+            // without a second notification when it already agrees.
+            assignIfChanged(\.goalTemplatesEnabled, enabled)
         } catch {
             goalTemplatesEnabled = previous
             self.error = String(format: String(localized: "Failed to update goal templates setting: %@"), error.localizedDescription)
@@ -8243,12 +8244,17 @@ final class BudgetStore: ObservableObject {
 
     func setGoalTemplatesUIEnabled(_ enabled: Bool) async {
         guard let syncClient else { return }
+        // Same reason as setGoalTemplatesEnabled: the switch, and the value
+        // VoiceOver reads from it, have to follow the tap.
+        let previous = goalTemplatesUIEnabled
+        goalTemplatesUIEnabled = enabled
         do {
             try await syncClient.setPreference(
                 id: "flags.goalTemplatesUIEnabled", value: enabled ? "true" : "false"
             )
-            goalTemplatesUIEnabled = enabled
+            assignIfChanged(\.goalTemplatesUIEnabled, enabled)
         } catch {
+            goalTemplatesUIEnabled = previous
             self.error = String(format: String(localized: "Failed to update automations setting: %@"), error.localizedDescription)
         }
     }
