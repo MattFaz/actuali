@@ -8039,7 +8039,9 @@ final class BudgetStore: ObservableObject {
             // sync clock fails, so read the one row back instead of assuming
             // the rollback took — and publish once, not twice.
             let stored = try? await activeDatabase.fetchPreference(id: id)
-            guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
+            // A toggle that started during that read owns the value now.
+            guard (flagWritesInFlight[id] ?? 0) == 0,
+                  currentBudgetId == budgetId, self.database === activeDatabase else { return }
             self[keyPath: keyPath] = stored.map { $0 == "true" } ?? previous
             self.error = String(format: errorFormat, error.localizedDescription)
         }
