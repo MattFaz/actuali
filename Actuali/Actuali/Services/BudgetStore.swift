@@ -8013,10 +8013,13 @@ final class BudgetStore: ObservableObject {
         let previous = self[keyPath: keyPath]
         self[keyPath: keyPath] = enabled
         goalTemplateFlagWrites += 1
-        defer { goalTemplateFlagWrites -= 1 }
         do {
             try await syncClient.setPreference(id: id, value: enabled ? "true" : "false")
+            goalTemplateFlagWrites -= 1
         } catch {
+            // Drop the guard before the re-read below, or refreshDataOnly
+            // skips the very row it has to re-publish.
+            goalTemplateFlagWrites -= 1
             // A budget switched under the write is not this switch's error.
             guard currentBudgetId == budgetId, self.database === activeDatabase else { return }
             self[keyPath: keyPath] = previous

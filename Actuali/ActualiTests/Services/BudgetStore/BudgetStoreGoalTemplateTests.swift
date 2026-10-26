@@ -76,10 +76,15 @@ struct BudgetStoreGoalTemplateTests {
     // MARK: - The synced feature flags
 
     /// A store whose sync client was never configured, so every preference
-    /// write throws before it reaches a database. Clean up `url`.
+    /// write throws before it reaches a database. The schema is complete so
+    /// the recovery refresh in the failure path runs to its publish batch.
+    /// Clean up `url`.
     private func makeStoreWhoseWritesFail() async throws -> (BudgetStore, URL) {
-        let (database, url) = try await makeTestDatabase(TestSchema.preferences)
+        let (database, url) = try await makeTestDatabase(
+            TestSchema.core + [TestSchema.preferences, TestSchema.tags]
+        )
         let store = BudgetStore.previewInstance()
+        store.widgetSnapshotStore = nil
         store.configureForTesting(
             database: database,
             syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
@@ -139,6 +144,27 @@ struct BudgetStoreGoalTemplateTests {
         #expect(store.goalTemplatesEnabled)
     }
 
+    /// A write that committed the row and then failed — saving the sync clock
+    /// is what usually throws — leaves the switch on what the budget stored,
+    /// not on the rollback. The recovery re-read owns the final value.
+    @Test func aFailedWriteThatCommittedTheRowEndsOnTheStoredFlag() async throws {
+        let (store, url) = try await makeStoreWhoseWritesFail()
+        defer { cleanup(url) }
+        try await DatabaseQueue(path: url.path).write { db in
+            try db.execute(
+                sql: """
+                INSERT OR REPLACE INTO preferences (id, value)
+                VALUES ('flags.goalTemplatesEnabled', 'true')
+                """
+            )
+        }
+
+        await store.setGoalTemplatesEnabled(true)
+
+        #expect(store.goalTemplatesEnabled)
+        #expect(store.error?.hasPrefix("Failed to update goal templates setting:") == true)
+    }
+
     /// A failed write must not leave the switch on a flag the budget never
     /// stored. The published values pin the order the switch sees: on from the
     /// tap, then back off — not merely off at the end, which the old
@@ -154,8 +180,6 @@ struct BudgetStoreGoalTemplateTests {
 
         #expect(published == [true, false])
         #expect(!store.goalTemplatesEnabled)
-        // The refresh after the rollback fails its own reads on this bare
-        // fixture, so the message has to prove the setter's error landed.
         #expect(store.error?.hasPrefix("Failed to update goal templates setting:") == true)
     }
 
