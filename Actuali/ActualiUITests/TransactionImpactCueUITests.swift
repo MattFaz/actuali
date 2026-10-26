@@ -24,10 +24,17 @@ final class TransactionImpactCueUITests: XCTestCase {
             let groceries = app.buttons.matching(
                 NSPredicate(format: "identifier BEGINSWITH 'transactionRow.' AND label CONTAINS 'Whole Foods'")
             ).firstMatch
-            // The register only materializes the rows on screen, and the
+            // The register only materializes the rows it draws, and the
             // expanded Upcoming Scheduled Transactions section (non-empty
-            // around month end) pushes Whole Foods below the fold.
-            scrollUntilHittable(groceries, in: app)
+            // around month end) pushes Whole Foods below the fold. Swipe
+            // slowly so the long register can't glide the row past unseen,
+            // and scan back in case it did.
+            for _ in 0..<12 where !groceries.isHittable {
+                app.swipeUp(velocity: .slow)
+            }
+            for _ in 0..<12 where !groceries.isHittable {
+                app.swipeDown(velocity: .slow)
+            }
             XCTAssertTrue(groceries.isHittable, "the demo budget has a Whole Foods row in reach")
             groceries.tap()
         }
