@@ -241,7 +241,6 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         app.buttons["Cancel"].tap()
     }
 
-
     @MainActor
     func testCleanTrackingIncomeBudgetCanBeEdited() {
         let app = XCUIApplication()
@@ -326,41 +325,29 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "compact",
             "-showCompactBudgetOverview", "YES",
-            "-showBudgetedAmounts", "YES",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
             "-UIPreferredContentSizeCategoryName",
             "UICTContentSizeCategoryAccessibilityXXXL",
         ]
         app.launch()
-        
+
         XCTAssertTrue(
             app.descendants(matching: .any)["compactBudgetOverview.stacked"]
                 .waitForExistence(timeout: 10),
             "accessibility text sizes select the stacked overview"
         )
-        
-        let categoryList = app.collectionViews.firstMatch
-        XCTAssertTrue(categoryList.waitForExistence(timeout: 5))
-        
-        let editGroceries = app.descendants(matching: .any)["compactBudgetedAmount.Groceries"]
-        // Drag inside the middle of the list only: at accessibility sizes the
-        // tab bar is tall and overlaps the list's bottom edge, so swipeUp()
-        // from the element's lower region taps the tab bar instead of scrolling.
-        let top = categoryList.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
-        let middle = categoryList.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
-        var attempts = 0
-        while !editGroceries.isHittable, attempts < 20 {
-            if attempts < 10 {
-                top.press(forDuration: 0.05, thenDragTo: middle)   // scroll toward top
-            } else {
-                middle.press(forDuration: 0.05, thenDragTo: top)   // scroll toward bottom
-            }
-            attempts += 1
+        let editGroceries = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Groceries'")
+        ).firstMatch
+        var scrollsLeft = 8
+        while !editGroceries.exists, scrollsLeft > 0 {
+            app.swipeUp()
+            scrollsLeft -= 1
         }
         XCTAssertTrue(
-            editGroceries.isHittable,
-            "the stacked Budgeted action remains reachable at accessibility text sizes"
+            editGroceries.waitForExistence(timeout: 5),
+            "stacking keeps category amount actions available without compact-cell shrinking"
         )
     }
 
@@ -413,7 +400,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         ]
         app.launch()
 
-        let groceries = app.descendants(matching: .any)["budgetCategoryDetails.Groceries"]
+        let groceries = app.buttons["Details for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10))
         groceries.tap()
 

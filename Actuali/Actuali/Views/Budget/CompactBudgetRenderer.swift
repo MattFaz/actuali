@@ -371,9 +371,6 @@ struct CompactCategoryBudgetRow: View {
         .frame(minHeight: CompactBudgetTableLayout.categoryRowMinimumHeight)
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .listRowBackground(Color(.systemBackground))
-        // Preserve a distinct row container so identifiers on child actions
-        // are not replaced by the row identifier in XCTest/VoiceOver.
-        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("compactBudgetCategory.\(category.categoryId)")
         .opacity(isDimmed ? 0.5 : 1)
         .modifier(CategoryRowContextMenu(
@@ -407,7 +404,6 @@ struct CompactCategoryBudgetRow: View {
                     }
                     .buttonStyle(.borderless)
                     .accessibilityLabel(editBudgetAccessibilityLabel)
-                    .accessibilityIdentifier("compactBudgetedAmount.\(category.categoryName)")
                 }
 
                 if showsSpent {
@@ -455,7 +451,6 @@ struct CompactCategoryBudgetRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(editBudgetAccessibilityLabel)
-                .accessibilityIdentifier("compactBudgetedAmount.\(category.categoryName)")
             }
 
             if showsSpent {
@@ -504,7 +499,6 @@ struct CompactCategoryBudgetRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(detailAccessibilityLabel)
-        .accessibilityIdentifier("budgetCategoryDetails.\(category.categoryName)")
     }
 
     private func stackedAmount(label: String, amount: Int, isBalance: Bool = false) -> some View {

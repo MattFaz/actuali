@@ -90,7 +90,6 @@ enum CompactBudgetAccessibility {
             : "Move money from %@, balance %@, %@"
         return ReportStrings.format(key, category, balance, tone, locale: locale, bundle: bundle)
     }
-
 }
 
 enum CompactBalanceTone: Equatable {

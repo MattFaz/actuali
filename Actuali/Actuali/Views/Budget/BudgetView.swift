@@ -1361,7 +1361,6 @@ struct CleanCategoryBudgetRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(BudgetCategoryAccessibility.details(category: category.categoryName, locale: locale))
-                .accessibilityIdentifier("budgetCategoryDetails.\(category.categoryName)")
                 Spacer()
                 // A zero balance has nothing to move and nothing to cover, so
                 // it stays a plain label.
@@ -1902,7 +1901,11 @@ struct IncomeCategoryRow: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(BudgetCategoryAccessibility.editBudget(category: income.categoryName, locale: locale))
+                .accessibilityLabel(CompactBudgetAccessibility.editBudget(
+                    category: income.categoryName,
+                    amount: budgetStore.displayBalance(income.budgeted),
+                    locale: locale
+                ))
                 .accessibilityIdentifier("incomeBudgeted.\(income.categoryId)")
             }
         }
