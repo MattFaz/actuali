@@ -2383,7 +2383,9 @@ private struct EditBudgetAmountTarget: Identifiable {
     let categoryName: String
     let budgeted: Int
 
-    var id: String { "\(month)-\(categoryId)" }
+    var id: String {
+        "\(month)-\(categoryId)"
+    }
 
     init(category: CategoryBudget) {
         month = category.month

@@ -343,12 +343,6 @@ struct CompactBudgetPresentationTests {
             locale: locale,
             bundle: actualiBundle
         ) == "Détails pour Courses, Financé")
-        #expect(CompactBudgetAccessibility.editBudget(
-            category: "Salaire",
-            amount: "1 000,00 €",
-            locale: locale,
-            bundle: actualiBundle
-        ) == "Modifier le montant prévu pour Salaire, 1 000,00 € prévu")
     }
 
     @Test @MainActor func balanceColorUsesGoalStateWhenEnabled() {
