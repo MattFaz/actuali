@@ -1,48 +1,45 @@
 import SwiftUI
 
-/// Section representation for account pickers (both the inline dropdown menu
-/// and the dedicated searchable picker).
-struct AccountPickerSection: Identifiable, Equatable, Sendable {
-    let id: String
-    let title: String
-    let accounts: [Account]
-}
-
-/// Searchable account list, companion to the transaction form's account dropdown.
+/// Searchable account list pushed from the transaction form's account row.
 /// Modeled after `CategoryPickerView` — pushed via `.navigationDestination`,
-/// with a search bar pinned above the list.
+/// with a search bar pinned above the list. Reuses `AccountListBucket` to mirror
+/// the Accounts tab layout (On Budget first, then Off Budget).
 struct AccountPickerView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedAccountId: String
     let accounts: [Account]
-    var autofocusSearch: Bool = true
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         List {
-            ForEach(filteredSections) { section in
-                Section(section.title) {
-                    ForEach(section.accounts) { account in
-                        Button {
-                            selectedAccountId = account.id
-                            dismiss()
-                        } label: {
-                            HStack {
-                                Text(account.name)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Text(budgetStore.formatCurrency(account.balance))
-                                    .foregroundStyle(.secondary)
-                                    .font(.callout)
-                                if selectedAccountId == account.id {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(.tint)
-                                }
-                            }
+            if !onBudgetBuckets.isEmpty {
+                Section(String(localized: "On Budget")) {
+                    ForEach(onBudgetBuckets) { bucket in
+                        if let group = bucket.group {
+                            Text(group.name)
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.secondary)
                         }
-                        .accessibilityIdentifier("accountPicker.account.\(account.id)")
+                        ForEach(bucket.accounts) { account in
+                            accountRow(account)
+                        }
+                    }
+                }
+            }
+
+            if !offBudgetBuckets.isEmpty {
+                Section(String(localized: "Off Budget")) {
+                    ForEach(offBudgetBuckets) { bucket in
+                        if let group = bucket.group {
+                            Text(group.name)
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(bucket.accounts) { account in
+                            accountRow(account)
+                        }
                     }
                 }
             }
@@ -51,7 +48,7 @@ struct AccountPickerView: View {
         .tint(.primary)
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
-            if filteredSections.isEmpty, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if onBudgetBuckets.isEmpty, offBudgetBuckets.isEmpty, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ContentUnavailableView.search(text: searchText)
             }
         }
@@ -69,106 +66,65 @@ struct AccountPickerView: View {
         // The navigation transition must settle before UIKit can claim the
         // first responder for this destination.
         .task {
-            guard autofocusSearch else { return }
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
             isSearchFocused = true
         }
     }
 
-    private var filteredSections: [AccountPickerSection] {
-        let grouped = Self.groupAccounts(accounts, groups: budgetStore.accountGroups)
-        return Self.filterSections(grouped, matching: searchText)
+    private func accountRow(_ account: Account) -> some View {
+        Button {
+            selectedAccountId = account.id
+            dismiss()
+        } label: {
+            HStack {
+                Text(account.name)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text(budgetStore.displayBalance(account.balance))
+                    .foregroundStyle(.secondary)
+                    .font(.callout)
+                if selectedAccountId == account.id {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                }
+            }
+        }
+        .accessibilityIdentifier("accountPicker.account.\(account.id)")
     }
 
-    /// Group open accounts into display sections: custom account groups first,
-    /// followed by ungrouped on-budget and off-budget sections. When no custom
-    /// groups exist, accounts fall into "On Budget" and "Off Budget".
-    nonisolated static func groupAccounts(
+    private var filteredAccounts: [Account] {
+        Self.filterAccounts(accounts, groups: budgetStore.accountGroups, matching: searchText)
+    }
+
+    private var onBudgetBuckets: [AccountListBucket] {
+        AccountListBucket.buckets(
+            for: filteredAccounts.filter { !$0.offBudget },
+            groups: budgetStore.accountGroups
+        )
+    }
+
+    private var offBudgetBuckets: [AccountListBucket] {
+        AccountListBucket.buckets(
+            for: filteredAccounts.filter(\.offBudget),
+            groups: budgetStore.accountGroups
+        )
+    }
+
+    /// Filter accounts by a case-insensitive query matching account name or custom group name.
+    nonisolated static func filterAccounts(
         _ accounts: [Account],
-        groups: [AccountGroup]
-    ) -> [AccountPickerSection] {
-        let activeGroups = groups.filter { !$0.tombstone }.sorted { $0.sortOrder < $1.sortOrder }
-        let groupIds = Set(activeGroups.map(\.id))
-
-        if activeGroups.isEmpty {
-            var sections: [AccountPickerSection] = []
-            let onBudget = accounts.filter { !$0.offBudget }
-            if !onBudget.isEmpty {
-                sections.append(AccountPickerSection(
-                    id: "on-budget",
-                    title: String(localized: "On Budget"),
-                    accounts: onBudget
-                ))
-            }
-            let offBudget = accounts.filter(\.offBudget)
-            if !offBudget.isEmpty {
-                sections.append(AccountPickerSection(
-                    id: "off-budget",
-                    title: String(localized: "Off Budget"),
-                    accounts: offBudget
-                ))
-            }
-            return sections
-        }
-
-        var sections: [AccountPickerSection] = []
-
-        // Custom account groups in their sort order
-        for group in activeGroups {
-            let members = accounts.filter { $0.groupId == group.id }
-            if !members.isEmpty {
-                sections.append(AccountPickerSection(
-                    id: group.id,
-                    title: group.name,
-                    accounts: members
-                ))
-            }
-        }
-
-        // Ungrouped on-budget accounts
-        let ungroupedOnBudget = accounts.filter { !$0.offBudget && ($0.groupId.map(groupIds.contains) != true) }
-        if !ungroupedOnBudget.isEmpty {
-            sections.append(AccountPickerSection(
-                id: "on-budget",
-                title: String(localized: "On Budget"),
-                accounts: ungroupedOnBudget
-            ))
-        }
-
-        // Ungrouped off-budget accounts
-        let ungroupedOffBudget = accounts.filter { $0.offBudget && ($0.groupId.map(groupIds.contains) != true) }
-        if !ungroupedOffBudget.isEmpty {
-            sections.append(AccountPickerSection(
-                id: "off-budget",
-                title: String(localized: "Off Budget"),
-                accounts: ungroupedOffBudget
-            ))
-        }
-
-        return sections
-    }
-
-    /// Filter sections and their contained accounts by a case-insensitive query.
-    /// Matches against either the account name or the section group title.
-    nonisolated static func filterSections(
-        _ sections: [AccountPickerSection],
+        groups: [AccountGroup],
         matching query: String
-    ) -> [AccountPickerSection] {
+    ) -> [Account] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return sections }
-
-        return sections.compactMap { section in
-            let matchesGroup = section.title.localizedCaseInsensitiveContains(trimmed)
-            let matchingAccounts = section.accounts.filter { account in
-                matchesGroup || account.name.localizedCaseInsensitiveContains(trimmed)
-            }
-            guard !matchingAccounts.isEmpty else { return nil }
-            return AccountPickerSection(
-                id: section.id,
-                title: section.title,
-                accounts: matchingAccounts
-            )
+        guard !trimmed.isEmpty else { return accounts }
+        let matchingGroupIds = Set(groups
+            .filter { $0.name.localizedCaseInsensitiveContains(trimmed) }
+            .map(\.id))
+        return accounts.filter { account in
+            account.name.localizedCaseInsensitiveContains(trimmed) ||
+                account.groupId.map(matchingGroupIds.contains) == true
         }
     }
 }

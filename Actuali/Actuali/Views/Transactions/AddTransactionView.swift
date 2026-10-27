@@ -315,10 +315,6 @@ struct AddTransactionView: View {
             }
     }
 
-    private var accountSections: [AccountPickerSection] {
-        AccountPickerView.groupAccounts(orderedOpenAccounts, groups: budgetStore.accountGroups)
-    }
-
     private var showsStandardCategoryFields: Bool {
         budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget != true
     }
@@ -579,17 +575,19 @@ struct AddTransactionView: View {
                 .listRowSeparator(.hidden, edges: .all)
 
                 Section {
-                    Picker(selection: $selectedAccountId) {
-                        ForEach(accountSections) { section in
-                            Section(section.title) {
-                                ForEach(section.accounts) { account in
-                                    Text(account.name).tag(account.id)
-                                }
-                            }
-                        }
+                    Button {
+                        dismissKeyboard()
+                        showAccountPicker = true
                     } label: {
-                        Label(String(localized: AddTransactionLocalization.account, locale: locale), systemImage: "building.columns")
+                        HStack {
+                            Label(String(localized: AddTransactionLocalization.account, locale: locale), systemImage: "building.columns")
+                            Spacer()
+                            Text(budgetStore.accounts.first { $0.id == selectedAccountId }?.name ?? "")
+                                .foregroundStyle(.secondary)
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("addTransaction.account")
                     .onChange(of: selectedAccountId) { oldValue, newValue in
                         if transferToAccountId == newValue {
@@ -597,24 +595,6 @@ struct AddTransactionView: View {
                             transferToAccountId = oldValue
                         }
                     }
-
-                    // Dedicated search for users with many accounts (GH #773).
-                    Button {
-                        dismissKeyboard()
-                        showAccountPicker = true
-                    } label: {
-                        HStack {
-                            Label(String(localized: "Search Accounts"), systemImage: "magnifyingglass")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .accessibilityHidden(true)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("addTransaction.searchAccount")
 
                     Button {
                         loadNearbyPayees()
@@ -843,8 +823,7 @@ struct AddTransactionView: View {
             .navigationDestination(isPresented: $showAccountPicker) {
                 AccountPickerView(
                     selectedAccountId: $selectedAccountId,
-                    accounts: orderedOpenAccounts,
-                    autofocusSearch: true
+                    accounts: orderedOpenAccounts
                 )
             }
             .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")

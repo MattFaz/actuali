@@ -30,10 +30,26 @@ enum AccountListRow: Identifiable {
     }
 }
 
-struct AccountListBucket: Identifiable {
+struct AccountListBucket: Identifiable, Equatable, Sendable {
     let id: String
     let group: AccountGroup?
     let accounts: [Account]
+
+    nonisolated static func buckets(for accounts: [Account], groups: [AccountGroup]) -> [AccountListBucket] {
+        var buckets: [AccountListBucket] = []
+        let groupIds = Set(groups.map(\.id))
+        let ungrouped = accounts.filter { $0.groupId.map(groupIds.contains) != true }
+        if !ungrouped.isEmpty {
+            buckets.append(AccountListBucket(id: "ungrouped", group: nil, accounts: ungrouped))
+        }
+        for group in groups {
+            let members = accounts.filter { $0.groupId == group.id }
+            if !members.isEmpty {
+                buckets.append(AccountListBucket(id: group.id, group: group, accounts: members))
+            }
+        }
+        return buckets
+    }
 }
 
 struct AccountGroupDropTarget: Equatable {
@@ -144,19 +160,7 @@ struct AccountsListView: View {
     }
 
     private func accountBuckets(for accounts: [Account]) -> [AccountListBucket] {
-        var buckets: [AccountListBucket] = []
-        let groupIds = Set(budgetStore.accountGroups.map(\.id))
-        let ungrouped = accounts.filter { $0.groupId.map(groupIds.contains) != true }
-        if !ungrouped.isEmpty {
-            buckets.append(AccountListBucket(id: "ungrouped", group: nil, accounts: ungrouped))
-        }
-        for group in budgetStore.accountGroups {
-            let members = accounts.filter { $0.groupId == group.id }
-            if !members.isEmpty {
-                buckets.append(AccountListBucket(id: group.id, group: group, accounts: members))
-            }
-        }
-        return buckets
+        AccountListBucket.buckets(for: accounts, groups: budgetStore.accountGroups)
     }
 
     /// A budget section as one flat run of rows, so a single `onMove` can
