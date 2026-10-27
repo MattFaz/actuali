@@ -388,6 +388,38 @@ struct PendingImportApproverTests {
         #expect(payeeMessages == 0)
     }
 
+    /// The financial-id path defers the new payee into the transaction's own
+    /// write; it must still be created and used when no rule replaces it.
+    @Test func newMerchantCreatesItsPayeeOnApproval() async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [account("acct_checking", "Checking")]
+        let item = PendingImport(
+            originBudgetId: store.currentBudgetId, amount: 7.25,
+            sourceCurrencyCode: "USD", payee: "BRAND NEW CAFE 777"
+        )
+        let form = BudgetStore.TransactionForm(
+            accountId: "acct_checking", type: .expense, amount: "7.25",
+            payeeName: "Brand New Cafe 777", transferToAccountId: nil, categoryId: nil,
+            notes: "", date: Date(), cleared: false
+        )
+
+        let result = try await PendingImportApprover(store: store).saveEdited(item, form: form)
+
+        #expect(result == .inserted(item.id.uuidString))
+        let queue = try DatabaseQueue(path: url.path)
+        let (savedPayee, payees, payeeMessages) = try await queue.read { db in
+            try (
+                String.fetchOne(db, sql: "SELECT description FROM transactions WHERE id = ?", arguments: [item.id.uuidString]),
+                Row.fetchAll(db, sql: "SELECT id, name FROM payees").map { ($0["id"] as String, $0["name"] as String) },
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'payees'") ?? 0
+            )
+        }
+        #expect(payees.map(\.1) == ["Brand New Cafe 777"])
+        #expect(savedPayee == payees.first?.0)
+        #expect(payeeMessages > 0)
+    }
+
     @Test func saveEditedPreservesExplicitCategoryAgainstMatchingRule() async throws {
         let (store, url) = try await makeWritableStore()
         defer { try? FileManager.default.removeItem(at: url) }

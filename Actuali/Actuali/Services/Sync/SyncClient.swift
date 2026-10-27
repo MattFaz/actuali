@@ -241,8 +241,10 @@ actor SyncClient {
     /// Create a transaction (optimistic local-first).
     /// `applyRules: false` skips the rules pass — used for split children,
     /// whose every field the caller spelled out explicitly (like `createSplit`).
-    /// `resolvePayeeName` creates a payee for `payeeName` (when `payeeId` is
-    /// nil) only after rules run, and only if no rule replaced it.
+    /// `resolvePayeeName` resolves `payeeName` (when `payeeId` is nil) before
+    /// rules run. A new name gets a provisional id and is created only if the
+    /// final transaction still uses it — upstream `resolvePayee` /
+    /// `createNewPayees` in loot-core accounts/sync.ts.
     @discardableResult
     func createTransaction(
         _ transaction: Transaction,
@@ -251,13 +253,29 @@ actor SyncClient {
         preserveCategory: Bool = false,
         resolvePayeeName: Bool = false
     ) async throws -> TransactionCreateResult {
-        try await createTransaction(
+        guard let database else { throw SyncError.notConfigured }
+        var transaction = transaction
+        var provisionalPayee: Payee?
+        if resolvePayeeName, transaction.payeeId == nil,
+           let name = transaction.payeeName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            // Rules see a set `payee` either way, so `notOneOf` and
+            // `doesNotContain` match a new merchant the way they do upstream.
+            if let existing = try database.payee(named: name) {
+                transaction.payeeId = existing.id
+            } else {
+                let payee = Payee(id: UUID().uuidString, name: name, transferAccountId: nil)
+                transaction.payeeId = payee.id
+                provisionalPayee = payee
+            }
+        }
+        return try await createTransaction(
             transaction,
             applyRules: applyRules,
             prepared: prepared,
             preserveCategory: preserveCategory,
             financialIdPolicy: .unique,
-            resolvePayeeName: resolvePayeeName
+            resolveOriginalBankPayee: false,
+            provisionalPayee: provisionalPayee
         )
     }
 
@@ -274,7 +292,7 @@ actor SyncClient {
             prepared: prepared,
             preserveCategory: false,
             financialIdPolicy: .occurrences(maxLiveFinancialIdOccurrences),
-            resolvePayeeName: true,
+            resolveOriginalBankPayee: true,
             expectedLink: expectedLink
         )
     }
@@ -365,7 +383,8 @@ actor SyncClient {
         prepared: PreparedRules?,
         preserveCategory: Bool,
         financialIdPolicy: FinancialIdPolicy,
-        resolvePayeeName: Bool,
+        resolveOriginalBankPayee: Bool,
+        provisionalPayee: Payee? = nil,
         expectedLink: ExpectedBankSyncLink? = nil
     ) async throws -> TransactionCreateResult {
         guard let database else { throw SyncError.notConfigured }
@@ -406,7 +425,7 @@ actor SyncClient {
                     pendingPayees: &pendingPayees,
                     pendingPayeesByName: &pendingPayeesByName
                 )
-            } else if resolvePayeeName,
+            } else if resolveOriginalBankPayee,
                       !result.changedFields.contains("payee"),
                       !result.changedFields.contains("payee_name"),
                       finalTransaction.payeeId == nil,
@@ -420,6 +439,14 @@ actor SyncClient {
             }
             if !result.changedFields.isEmpty {
                 logger.info("Rules updated \(result.changedFields.count, privacy: .public) field(s) on new transaction")
+            }
+        }
+        // Only create the provisional payee if it ended up being used (#777).
+        if let provisionalPayee, finalTransaction.payeeId == provisionalPayee.id {
+            if finalTransaction.financialId != nil {
+                pendingPayees.append(provisionalPayee)
+            } else {
+                try await createPayee(provisionalPayee)
             }
         }
 

@@ -219,6 +219,27 @@ struct TransactionLoggerSyncOutcomeTests {
         #expect(result.transaction.payeeId == payee?.id)
     }
 
+    /// Rules see a provisional id for a new merchant, as upstream does, so a
+    /// negated payee condition still matches it.
+    @Test func newMerchantMatchesNegatedPayeeRule() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+            VALUES ('not-rent', NULL, 'and',
+                '[{"op":"notOneOf","field":"description","value":["payee-rent"],"type":"id"}]',
+                '[{"op":"set","field":"category","value":"cat-treats","type":"id"}]', 0)
+            """)
+        }
+
+        let result = try await log(to: store)
+
+        #expect(result.transaction.categoryId == "cat-treats")
+        #expect(try database.payee(named: "Blue Bottle Coffee")?.id == result.transaction.payeeId)
+    }
+
     /// #283: a category pinned on the Shortcut is the user's choice, so it
     /// beats a category-setting rule, same as picking one in the add form.
     @Test func explicitCategoryWinsOverRules() async throws {
