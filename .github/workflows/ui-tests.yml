@@ -51,6 +51,13 @@ jobs:
             -dict-add "${{ steps.sim.outputs.id }}" \
             "<dict><key>ConnectHardwareKeyboard</key><false/></dict>"
 
+      # Left to xcodebuild, the device boots cold under the first suite, and
+      # its first launches time out or fail to terminate while the fresh
+      # device is still settling (runs 40410828647, 40427741563). Boot it
+      # here, after the keyboard pref, and wait for the boot to finish.
+      - name: Boot simulator
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.id }}" -b
+
       # Runs serially on the one simulator. Two parallel workers halved the
       # test phase but ran two sim clones on a 3-core runner, and the
       # contention timed out XCTest's own machinery rather than the tests:
