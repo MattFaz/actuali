@@ -169,6 +169,77 @@ struct TransactionLoggerSyncOutcomeTests {
         #expect(persistedCategory == "cat-rule")
     }
 
+    /// #777: a rule that re-points the payee must not leave the normalized
+    /// merchant behind as an unused payee. Upstream only creates an imported
+    /// payee "if it ended up being used" (loot-core accounts/sync.ts).
+    @Test func payeeReplacedByRuleIsNeverCreated() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO payees (id, name, tombstone) VALUES ('payee-mcd', 'McDonald''s', 0);
+            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+            VALUES ('set-payee', NULL, 'and',
+                '[{"op":"contains","field":"imported_description","value":"MCDONALDS RIVERDALE"}]',
+                '[{"op":"set","field":"payee","value":"payee-mcd","type":"id"}]', 0)
+            """)
+        }
+
+        let result = try await TransactionLogger(store: store).logTransaction(
+            accountId: "acct-1",
+            amountCents: -1250,
+            rawMerchant: "MCDONALDS RIVERDALE 1234",
+            notes: nil,
+            date: Date(timeIntervalSince1970: 1_750_000_000)
+        )
+
+        #expect(result.transaction.payeeId == "payee-mcd")
+        let payeeNames = try await database.dbQueueForTesting.read { db in
+            try String.fetchAll(db, sql: "SELECT name FROM payees")
+        }
+        #expect(payeeNames == ["McDonald's"])
+        let payeeMessages = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'payees'") ?? 0
+        }
+        #expect(payeeMessages == 0)
+    }
+
+    /// Deferring creation past the rules pass must still create and use the
+    /// payee when no rule replaces it.
+    @Test func newMerchantStillCreatesItsPayee() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+
+        let result = try await log(to: store)
+
+        let payee = try database.payee(named: "Blue Bottle Coffee")
+        #expect(payee != nil)
+        #expect(result.transaction.payeeId == payee?.id)
+    }
+
+    /// Rules see a provisional id for a new merchant, as upstream does, so a
+    /// negated payee condition still matches it.
+    @Test func newMerchantMatchesNegatedPayeeRule() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+            VALUES ('not-rent', NULL, 'and',
+                '[{"op":"notOneOf","field":"description","value":["payee-rent"],"type":"id"}]',
+                '[{"op":"set","field":"category","value":"cat-treats","type":"id"}]', 0)
+            """)
+        }
+
+        let result = try await log(to: store)
+
+        #expect(result.transaction.categoryId == "cat-treats")
+        #expect(try database.payee(named: "Blue Bottle Coffee")?.id == result.transaction.payeeId)
+    }
+
     /// #283: a category pinned on the Shortcut is the user's choice, so it
     /// beats a category-setting rule, same as picking one in the add form.
     @Test func explicitCategoryWinsOverRules() async throws {

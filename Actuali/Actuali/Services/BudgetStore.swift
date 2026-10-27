@@ -3457,10 +3457,14 @@ final class BudgetStore: ObservableObject {
 
     // MARK: - Payees
 
+    /// Existing payee with this name (case-insensitive)
+    func existingPayee(named name: String) -> Payee? {
+        payees.first { $0.name.lowercased() == name.lowercased() }
+    }
+
     /// Find an existing payee by name (case-insensitive) or create a new one
     func findOrCreatePayee(name: String) async throws -> Payee {
-        // Look for existing payee (case-insensitive)
-        if let existing = payees.first(where: { $0.name.lowercased() == name.lowercased() }) {
+        if let existing = existingPayee(named: name) {
             return existing
         }
 
@@ -4015,6 +4019,7 @@ final class BudgetStore: ObservableObject {
     func createTransaction(
         _ transaction: Transaction,
         preserveCategory: Bool = false,
+        resolvePayeeName: Bool = false,
         showImpact: Bool = false
     ) async throws -> SyncClient.TransactionCreateResult {
         guard let syncClient else {
@@ -4041,7 +4046,8 @@ final class BudgetStore: ObservableObject {
                 transaction,
                 applyRules: true,
                 prepared: prepared,
-                preserveCategory: preserveCategory
+                preserveCategory: preserveCategory,
+                resolvePayeeName: resolvePayeeName
             )
 
             // Publish the persisted row before the full refresh so local observers
