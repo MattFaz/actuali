@@ -340,8 +340,8 @@ final class BudgetDatabase: Sendable {
 
     /// Tables added upstream after the original budget file was created. These run
     /// unconditionally so CRDT messages targeting these tables have somewhere to land.
-    private static let createTableMigrations: [(id: Int64, sql: String)] = [
-        (1_780_606_215_005, """
+    private static let createTableMigrations: [(id: Int64, table: String, sql: String)] = [
+        (1_780_606_215_005, "bank_sync_local_links", """
             CREATE TABLE IF NOT EXISTS bank_sync_local_links (
                 account_id TEXT PRIMARY KEY,
                 external_account_id TEXT NOT NULL,
@@ -351,7 +351,7 @@ final class BudgetDatabase: Sendable {
         // Envelope buffers are synced rows in Actual's zero_budget_months
         // table. Older files may not have received the table-creation
         // migration yet, but local writes still need a real CRDT target.
-        (1_780_606_215_006, """
+        (1_780_606_215_006, "zero_budget_months", """
             CREATE TABLE IF NOT EXISTS zero_budget_months (
                 id TEXT PRIMARY KEY,
                 buffered INTEGER NOT NULL DEFAULT 0
@@ -364,7 +364,7 @@ final class BudgetDatabase: Sendable {
         // it, so doing it here would add yet another divergent page. Pageless
         // widgets still render via the nil-page fallback (ReportsTabView's
         // resolvePageId → fetchWidgets(pageId: nil)).
-        (1_765_518_577_215, """
+        (1_765_518_577_215, "dashboard_pages", """
         CREATE TABLE IF NOT EXISTS dashboard_pages (
             id TEXT PRIMARY KEY,
             name TEXT,
@@ -374,7 +374,7 @@ final class BudgetDatabase: Sendable {
         // Upstream 1768872504000 (Actual 26.4.0): payee locations. Same SQL
         // as upstream's migration, so we reuse its id — a file already
         // migrated by a modern client skips this cleanly.
-        (1_768_872_504_000, """
+        (1_768_872_504_000, "payee_locations", """
         CREATE TABLE IF NOT EXISTS payee_locations (
             id TEXT PRIMARY KEY,
             payee_id TEXT,
@@ -387,7 +387,7 @@ final class BudgetDatabase: Sendable {
         CREATE INDEX IF NOT EXISTS idx_payee_locations_tombstone_payee_created ON payee_locations (tombstone, payee_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_payee_locations_geo_tombstone ON payee_locations (tombstone, latitude, longitude)
         """),
-        (1_770_000_000_001, """
+        (1_770_000_000_001, "dashboard", """
             CREATE TABLE IF NOT EXISTS dashboard (
                 id TEXT PRIMARY KEY,
                 type TEXT,
@@ -400,7 +400,7 @@ final class BudgetDatabase: Sendable {
                 tombstone INTEGER NOT NULL DEFAULT 0
             )
         """),
-        (1_770_000_000_002, """
+        (1_770_000_000_002, "custom_reports", """
             CREATE TABLE IF NOT EXISTS custom_reports (
                 id TEXT PRIMARY KEY,
                 name TEXT,
@@ -423,14 +423,14 @@ final class BudgetDatabase: Sendable {
                 tombstone INTEGER NOT NULL DEFAULT 0
             )
         """),
-        (1_778_510_362_740, """
+        (1_778_510_362_740, "cleanup_groups", """
             CREATE TABLE IF NOT EXISTS cleanup_groups (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 tombstone INTEGER DEFAULT 0
             )
         """),
-        (1_787_013_118_115, """
+        (1_787_013_118_115, "account_groups", """
             CREATE TABLE IF NOT EXISTS account_groups (
                 id TEXT PRIMARY KEY,
                 name TEXT,
@@ -442,7 +442,7 @@ final class BudgetDatabase: Sendable {
         // the bank-sync link writes both the row and the accounts.bank pointer
         // to it, and a runtime check on one without the other would only half
         // protect the write.
-        (1_770_000_000_003, """
+        (1_770_000_000_003, "banks", """
             CREATE TABLE IF NOT EXISTS banks (
                 id TEXT PRIMARY KEY,
                 bank_id TEXT,
@@ -450,7 +450,7 @@ final class BudgetDatabase: Sendable {
                 tombstone INTEGER DEFAULT 0
             )
         """),
-        (1_770_000_000_004, """
+        (1_770_000_000_004, "tags", """
             CREATE TABLE IF NOT EXISTS tags (
                 id TEXT PRIMARY KEY,
                 tag TEXT,
@@ -483,14 +483,14 @@ final class BudgetDatabase: Sendable {
         1_780_606_215_003, // locally minted accounts.account_sync_source backfill
         1_780_606_215_004, // locally minted accounts.last_sync backfill
         1_787_013_118_116, // locally minted accounts.account_group_id backfill
-        1_787_013_118_117, // locally minted account_groups / account_group_id replay from messages_crdt
+        1_787_013_118_117, // locally minted replay of stored messages for created tables / backfilled columns
         1_770_000_000_003, // defensive CREATE banks
         1_770_000_000_004, // defensive CREATE tags
         1_780_606_215_005, // device-local FinanceKit link identities
         1_780_606_215_006, // envelope buffer rows
     ]
 
-    static let accountGroupsReplayMigrationId: Int64 = 1_787_013_118_117
+    static let storedMessageReplayMigrationId: Int64 = 1_787_013_118_117
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the
     /// guards of the write path below so a fully migrated file opens without
@@ -513,9 +513,7 @@ final class BudgetDatabase: Sendable {
             // needs its bookkeeping row — either way the write path has work.
             return true
         }
-        if !appliedIds.contains(accountGroupsReplayMigrationId),
-           try db.tableExists("account_groups"),
-           try db.tableExists("accounts") {
+        if !appliedIds.contains(storedMessageReplayMigrationId) {
             return true
         }
         return false
@@ -566,22 +564,21 @@ final class BudgetDatabase: Sendable {
 
             try Self.replayStoredMessages(db, into: addedColumns)
 
-            // Upstream 1787013118115 created account_groups; files that synced
-            // messages before the local table or column existed need those messages
-            // materialized into account_groups and accounts.account_group_id.
-            if !appliedIds.contains(Self.accountGroupsReplayMigrationId),
-               try db.tableExists("account_groups"),
-               try db.tableExists("accounts") {
-                let columns = [
-                    ("account_groups", "name"),
-                    ("account_groups", "sort_order"),
-                    ("account_groups", "tombstone"),
-                    ("accounts", "account_group_id"),
-                ]
+            // Create-table migrations materialize nothing: messages that arrived
+            // before the table existed stay in messages_crdt. Replay them once per
+            // budget, which also covers tables created by an earlier app version.
+            // Also replay accounts.account_group_id for files that synced group
+            // assignments before the backfill ran.
+            if !appliedIds.contains(Self.storedMessageReplayMigrationId) {
+                let columns = try Self.createTableMigrations
+                    .filter { try db.tableExists($0.table) }
+                    .flatMap { migration in
+                        try db.columns(in: migration.table).map { (migration.table, $0.name) }
+                    } + [("accounts", "account_group_id")]
                 try Self.replayStoredMessages(db, into: columns)
                 try db.execute(
                     sql: "INSERT INTO __migrations__ (id) VALUES (?)",
-                    arguments: [Self.accountGroupsReplayMigrationId]
+                    arguments: [Self.storedMessageReplayMigrationId]
                 )
             }
         }
@@ -600,6 +597,11 @@ final class BudgetDatabase: Sendable {
         guard !addedColumns.isEmpty, try db.tableExists("messages_crdt") else { return }
 
         for (table, column) in addedColumns {
+            // Confirm the target really exists before querying or writing.
+            guard try db.tableExists(table),
+                  try db.columns(in: table).contains(where: { $0.name == column })
+            else { continue }
+
             let rows = try Row.fetchAll(db, sql: """
             SELECT row, value, MAX(timestamp) AS ts
             FROM messages_crdt

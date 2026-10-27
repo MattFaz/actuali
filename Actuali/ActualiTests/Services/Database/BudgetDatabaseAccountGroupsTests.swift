@@ -186,7 +186,7 @@ struct BudgetDatabaseAccountGroupsTests {
             """)
 
             // Remove the replay migration id if already recorded, to simulate an existing budget
-            try db.execute(sql: "DELETE FROM __migrations__ WHERE id = ?", arguments: [BudgetDatabase.accountGroupsReplayMigrationId])
+            try db.execute(sql: "DELETE FROM __migrations__ WHERE id = ?", arguments: [BudgetDatabase.storedMessageReplayMigrationId])
         }
 
         // Re-open BudgetDatabase to trigger runPendingMigrations
@@ -200,8 +200,8 @@ struct BudgetDatabaseAccountGroupsTests {
         #expect(accounts.first?.groupId == "cash")
 
         let applied = try await reopened.dbQueueForTesting.read { db in
-            try Int64.fetchOne(db, sql: "SELECT id FROM __migrations__ WHERE id = ?", arguments: [BudgetDatabase.accountGroupsReplayMigrationId])
+            try Int64.fetchOne(db, sql: "SELECT id FROM __migrations__ WHERE id = ?", arguments: [BudgetDatabase.storedMessageReplayMigrationId])
         }
-        #expect(applied == BudgetDatabase.accountGroupsReplayMigrationId)
+        #expect(applied == BudgetDatabase.storedMessageReplayMigrationId)
     }
 }
