@@ -71,7 +71,7 @@ struct BudgetView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     @State private var selectedMonth = currentMonthString()
-    @State private var editingCategory: CategoryBudget?
+    @State private var editingBudgetAmount: EditBudgetAmountTarget?
     @State private var editingCategoryGroup: CategoryGroup?
     @State private var selectedCategory: CategoryBudget?
     @State private var renamingCategory: CategoryBudget?
@@ -215,8 +215,8 @@ struct BudgetView: View {
                     note: displayedMonthNote.text
                 )
             }
-            .sheet(item: $editingCategory) { category in
-                EditBudgetAmountSheet(category: category)
+            .sheet(item: $editingBudgetAmount) { target in
+                EditBudgetAmountSheet(target: target)
             }
             .sheet(item: $editingCategoryGroup) { group in
                 CategoryGroupSheet(group: group, month: selectedMonth)
@@ -324,7 +324,7 @@ struct BudgetView: View {
                             && !budgetStore.hiddenBudgetProgressCategoryIDs.contains(category.categoryId),
                         showsStatusDots: budgetStore.showCategoryStatusDots,
                         onShowDetails: { selectedCategory = $0 },
-                        onEditBudget: { editingCategory = $0 },
+                        onEditBudget: { editingBudgetAmount = EditBudgetAmountTarget(category: $0) },
                         onShowTransactions: showTransactions,
                         onMoveMoney: moveMoney,
                         onApplyTemplate: budgetStore.goalTemplatesEnabled
@@ -372,6 +372,7 @@ struct BudgetView: View {
                         isTrackingBudget: budget.isTrackingBudget,
                         showsSpent: budgetStore.showCompactSpentColumn,
                         showsBudgeted: budgetStore.showBudgetedAmounts,
+                        onEditBudget: { editingBudgetAmount = EditBudgetAmountTarget(income: $0) },
                         onShowTransactions: showTransactions
                     )
                 }
@@ -898,7 +899,7 @@ struct BudgetView: View {
                             setCategoryHidden(category.categoryId, hidden: $0)
                         },
                         onShowDetails: { selectedCategory = $0 },
-                        onEditBudget: { editingCategory = $0 },
+                        onEditBudget: { editingBudgetAmount = EditBudgetAmountTarget(category: $0) },
                         // Name shows all time, Spent shows
                         // the displayed month (GH #56).
                         onShowTransactions: showTransactions,
@@ -942,6 +943,7 @@ struct BudgetView: View {
                             setCategoryHidden(income.categoryId, hidden: $0)
                         },
                         showsBudgeted: budget.toBudget == nil && budgetStore.showBudgetedAmounts,
+                        onEditBudget: { editingBudgetAmount = EditBudgetAmountTarget(income: $0) },
                         onShowTransactions: showTransactions
                     )
                 }
@@ -1359,6 +1361,7 @@ struct CleanCategoryBudgetRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(BudgetCategoryAccessibility.details(category: category.categoryName, locale: locale))
+                .accessibilityIdentifier("budgetCategoryDetails.\(category.categoryName)")
                 Spacer()
                 // A zero balance has nothing to move and nothing to cover, so
                 // it stays a plain label.
@@ -1854,6 +1857,7 @@ struct IncomeCategoryRow: View {
     var isDimmed = false
     var onSetHidden: ((Bool) -> Void)?
     var showsBudgeted = false
+    var onEditBudget: (IncomeCategory) -> Void = { _ in }
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
     var body: some View {
@@ -1885,9 +1889,21 @@ struct IncomeCategoryRow: View {
                 ))
             }
             if showsBudgeted {
-                Text("Budgeted: \(budgetStore.displayBalance(income.budgeted))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button {
+                    onEditBudget(income)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Budgeted: \(budgetStore.displayBalance(income.budgeted))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "pencil")
+                            .font(.caption2)
+                            .foregroundStyle(.tint)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(BudgetCategoryAccessibility.editBudget(category: income.categoryName, locale: locale))
+                .accessibilityIdentifier("incomeBudgeted.\(income.categoryId)")
             }
         }
         .opacity(isDimmed ? 0.5 : 1)
@@ -2357,23 +2373,47 @@ struct CompactCategoryStatusDot: View {
     }
 }
 
+/// Shared fields needed to edit a category-month's budget, whether income or expense.
+private struct EditBudgetAmountTarget: Identifiable {
+    let month: String
+    let categoryId: String
+    let categoryName: String
+    let budgeted: Int
+
+    var id: String { "\(month)-\(categoryId)" }
+
+    init(category: CategoryBudget) {
+        month = category.month
+        categoryId = category.categoryId
+        categoryName = category.categoryName
+        budgeted = category.budgeted
+    }
+
+    init(income: IncomeCategory) {
+        month = income.month
+        categoryId = income.categoryId
+        categoryName = income.categoryName
+        budgeted = income.budgeted
+    }
+}
+
 /// Edit the budgeted amount for one category-month. Saving writes through
 /// the sync engine (optimistic local-first) and refreshes the month.
-struct EditBudgetAmountSheet: View {
+private struct EditBudgetAmountSheet: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
-    let category: CategoryBudget
+    let target: EditBudgetAmountTarget
 
     @State private var amountText: String
     @State private var errorMessage: String?
     @State private var isSaving = false
 
-    init(category: CategoryBudget) {
-        self.category = category
-        let initial = category.budgeted == 0
+    init(target: EditBudgetAmountTarget) {
+        self.target = target
+        let initial = target.budgeted == 0
             ? ""
-            : String(format: "%.2f", Double(category.budgeted) / 100.0)
+            : String(format: "%.2f", Double(target.budgeted) / 100.0)
         _amountText = State(initialValue: initial)
     }
 
@@ -2388,7 +2428,7 @@ struct EditBudgetAmountSheet: View {
                         autofocus: true
                     )
                 } header: {
-                    Text(ReportStrings.format("Budgeted in %@", MonthPicker.title(for: category.month, locale: locale), locale: locale, bundle: .main))
+                    Text(ReportStrings.format("Budgeted in %@", MonthPicker.title(for: target.month, locale: locale), locale: locale, bundle: .main))
                 } footer: {
                     if let errorMessage {
                         Text(errorMessage)
@@ -2396,7 +2436,7 @@ struct EditBudgetAmountSheet: View {
                     }
                 }
             }
-            .navigationTitle(category.categoryName)
+            .navigationTitle(target.categoryName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -2423,8 +2463,8 @@ struct EditBudgetAmountSheet: View {
                     allowNegative: true
                 )
                 try await budgetStore.setBudgetAmount(
-                    month: category.month,
-                    categoryId: category.categoryId,
+                    month: target.month,
+                    categoryId: target.categoryId,
                     amountCents: cents
                 )
                 dismiss()

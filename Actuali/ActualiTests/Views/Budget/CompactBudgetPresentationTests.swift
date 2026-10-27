@@ -343,12 +343,6 @@ struct CompactBudgetPresentationTests {
             locale: locale,
             bundle: actualiBundle
         ) == "Détails pour Courses, Financé")
-        #expect(CompactBudgetAccessibility.incomeBudgeted(
-            category: "Salaire",
-            amount: "1 000,00 €",
-            locale: locale,
-            bundle: actualiBundle
-        ) == "Budget prévu pour Salaire, 1 000,00 €")
     }
 
     @Test @MainActor func balanceColorUsesGoalStateWhenEnabled() {
