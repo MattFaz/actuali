@@ -483,7 +483,7 @@ final class BudgetDatabase: Sendable {
         1_780_606_215_003, // locally minted accounts.account_sync_source backfill
         1_780_606_215_004, // locally minted accounts.last_sync backfill
         1_787_013_118_116, // locally minted accounts.account_group_id backfill
-        1_787_013_118_117, // locally minted replay of stored messages for created tables / backfilled columns
+        1_787_013_118_117, // locally minted one-off replay of stored messages into created tables
         1_770_000_000_003, // defensive CREATE banks
         1_770_000_000_004, // defensive CREATE tags
         1_780_606_215_005, // device-local FinanceKit link identities
@@ -527,6 +527,7 @@ final class BudgetDatabase: Sendable {
             let appliedIds = try Set(Int64.fetchAll(db, sql: "SELECT id FROM __migrations__"))
 
             // CREATE migrations: run unconditionally (CREATE IF NOT EXISTS handles existing tables)
+            var createdTables: [String] = []
             for migration in Self.createTableMigrations where !appliedIds.contains(migration.id) {
                 logger.info("Applying create-table migration \(migration.id, privacy: .public)")
                 try db.execute(sql: migration.sql)
@@ -534,6 +535,7 @@ final class BudgetDatabase: Sendable {
                     sql: "INSERT INTO __migrations__ (id) VALUES (?)",
                     arguments: [migration.id]
                 )
+                createdTables.append(migration.table)
             }
 
             // Schema-guarded migrations: skip if the source table doesn't exist
@@ -562,20 +564,17 @@ final class BudgetDatabase: Sendable {
                 }
             }
 
-            try Self.replayStoredMessages(db, into: addedColumns)
-
-            // Create-table migrations materialize nothing: messages that arrived
-            // before the table existed stay in messages_crdt. Replay them once per
-            // budget, which also covers tables created by an earlier app version.
-            // Also replay accounts.account_group_id for files that synced group
-            // assignments before the backfill ran.
-            if !appliedIds.contains(Self.storedMessageReplayMigrationId) {
-                let columns = try Self.createTableMigrations
-                    .filter { try db.tableExists($0.table) }
-                    .flatMap { migration in
-                        try db.columns(in: migration.table).map { (migration.table, $0.name) }
-                    } + [("accounts", "account_group_id")]
-                try Self.replayStoredMessages(db, into: columns)
+            // Messages for a table that didn't exist yet stay in messages_crdt
+            // too, so a new table replays every column. Tables created before
+            // this replay existed get it once, under storedMessageReplayMigrationId.
+            let replayAllTables = !appliedIds.contains(Self.storedMessageReplayMigrationId)
+            let replayTables = try (replayAllTables ? Self.createTableMigrations.map(\.table) : createdTables)
+                .filter { try db.tableExists($0) }
+            let tableColumns = try replayTables.flatMap { table in
+                try db.columns(in: table).map { (table, $0.name) }
+            }
+            try Self.replayStoredMessages(db, into: addedColumns + tableColumns)
+            if replayAllTables {
                 try db.execute(
                     sql: "INSERT INTO __migrations__ (id) VALUES (?)",
                     arguments: [Self.storedMessageReplayMigrationId]
@@ -596,12 +595,10 @@ final class BudgetDatabase: Sendable {
     ) throws {
         guard !addedColumns.isEmpty, try db.tableExists("messages_crdt") else { return }
 
-        for (table, column) in addedColumns {
-            // Confirm the target really exists before querying or writing.
-            guard try db.tableExists(table),
-                  try db.columns(in: table).contains(where: { $0.name == column })
-            else { continue }
-
+        // Same whitelist as applyMessages: the stored messages are server
+        // data, and device-local tables like bank_sync_local_links have no id.
+        let schema = try syncableSchema(db)
+        for (table, column) in addedColumns where schema[table]?.contains(column) == true {
             let rows = try Row.fetchAll(db, sql: """
             SELECT row, value, MAX(timestamp) AS ts
             FROM messages_crdt
