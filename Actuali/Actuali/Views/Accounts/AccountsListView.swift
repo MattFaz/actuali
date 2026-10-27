@@ -34,6 +34,22 @@ struct AccountListBucket: Identifiable {
     let id: String
     let group: AccountGroup?
     let accounts: [Account]
+
+    nonisolated static func buckets(for accounts: [Account], groups: [AccountGroup]) -> [AccountListBucket] {
+        var buckets: [AccountListBucket] = []
+        let groupIds = Set(groups.map(\.id))
+        let ungrouped = accounts.filter { $0.groupId.map(groupIds.contains) != true }
+        if !ungrouped.isEmpty {
+            buckets.append(AccountListBucket(id: "ungrouped", group: nil, accounts: ungrouped))
+        }
+        for group in groups {
+            let members = accounts.filter { $0.groupId == group.id }
+            if !members.isEmpty {
+                buckets.append(AccountListBucket(id: group.id, group: group, accounts: members))
+            }
+        }
+        return buckets
+    }
 }
 
 struct AccountGroupDropTarget: Equatable {
@@ -144,19 +160,7 @@ struct AccountsListView: View {
     }
 
     private func accountBuckets(for accounts: [Account]) -> [AccountListBucket] {
-        var buckets: [AccountListBucket] = []
-        let groupIds = Set(budgetStore.accountGroups.map(\.id))
-        let ungrouped = accounts.filter { $0.groupId.map(groupIds.contains) != true }
-        if !ungrouped.isEmpty {
-            buckets.append(AccountListBucket(id: "ungrouped", group: nil, accounts: ungrouped))
-        }
-        for group in budgetStore.accountGroups {
-            let members = accounts.filter { $0.groupId == group.id }
-            if !members.isEmpty {
-                buckets.append(AccountListBucket(id: group.id, group: group, accounts: members))
-            }
-        }
-        return buckets
+        AccountListBucket.buckets(for: accounts, groups: budgetStore.accountGroups)
     }
 
     /// A budget section as one flat run of rows, so a single `onMove` can
@@ -417,9 +421,14 @@ struct AccountsListView: View {
     }
 
     private func filterAccountsAndGroups(_ accounts: [Account]) -> [Account] {
-        let query = accountSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        Self.filterAccounts(accounts, groups: budgetStore.accountGroups, matching: accountSearchText)
+    }
+
+    /// Matches an account by its own name or by its custom group's name.
+    nonisolated static func filterAccounts(_ accounts: [Account], groups: [AccountGroup], matching query: String) -> [Account] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return accounts }
-        let matchingGroupIds = Set(budgetStore.accountGroups
+        let matchingGroupIds = Set(groups
             .filter { $0.name.localizedCaseInsensitiveContains(query) }
             .map(\.id))
         return accounts.filter { account in

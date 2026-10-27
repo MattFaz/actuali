@@ -50,6 +50,7 @@ struct AddTransactionView: View {
     @State private var nearbyPayees: [NearbyPayee] = []
     @State private var showPayeePicker = false
     @State private var showCategoryPicker = false
+    @State private var showAccountPicker = false
     @State private var saveLocation = true
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
     /// True while the edit form's "Remove Split" is toggled on an existing
@@ -574,13 +575,23 @@ struct AddTransactionView: View {
                 .listRowSeparator(.hidden, edges: .all)
 
                 Section {
-                    Picker(selection: $selectedAccountId) {
-                        ForEach(orderedOpenAccounts) { account in
-                            Text(account.name).tag(account.id)
-                        }
+                    Button {
+                        dismissKeyboard()
+                        showAccountPicker = true
                     } label: {
-                        Label(String(localized: AddTransactionLocalization.account, locale: locale), systemImage: "building.columns")
+                        HStack {
+                            Label(String(localized: AddTransactionLocalization.account, locale: locale), systemImage: "building.columns")
+                            Spacer()
+                            Text(budgetStore.accounts.first { $0.id == selectedAccountId }?.name ?? "")
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("addTransaction.account")
                     .onChange(of: selectedAccountId) { oldValue, newValue in
                         if transferToAccountId == newValue {
@@ -812,6 +823,12 @@ struct AddTransactionView: View {
                 ) {
                     userPickedCategory = true
                 }
+            }
+            .navigationDestination(isPresented: $showAccountPicker) {
+                AccountPickerView(
+                    selectedAccountId: $selectedAccountId,
+                    accounts: orderedOpenAccounts
+                )
             }
             .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
             .navigationBarTitleDisplayMode(canDismiss ? .automatic : .inline)
