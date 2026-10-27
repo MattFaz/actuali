@@ -347,6 +347,47 @@ struct PendingImportApproverTests {
         #expect(try databaseRowCount(at: url) == 0)
     }
 
+    /// #777: the raw import text is only created as a payee if the saved
+    /// transaction still uses it after rules run.
+    @Test func payeeReplacedByRuleIsNeverCreated() async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [account("acct_checking", "Checking")]
+        let queue = try DatabaseQueue(path: url.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+            INSERT INTO payees (id, name, tombstone) VALUES ('payee-mcd', 'McDonald''s', 0);
+            INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+            VALUES ('set-payee',
+                '[{"op":"contains","field":"imported_description","value":"MCDONALDS RIVERDALE"}]',
+                '[{"op":"set","field":"payee","value":"payee-mcd","type":"id"}]', 0, 'and')
+            """)
+        }
+        let item = PendingImport(
+            originBudgetId: store.currentBudgetId, amount: 12.50,
+            sourceCurrencyCode: "USD", payee: "MCDONALDS RIVERDALE 1234"
+        )
+        let form = BudgetStore.TransactionForm(
+            accountId: "acct_checking", type: .expense, amount: "12.50",
+            payeeName: "MCDONALDS RIVERDALE 1234", transferToAccountId: nil, categoryId: nil,
+            notes: "", date: Date(), cleared: false
+        )
+
+        let result = try await PendingImportApprover(store: store).saveEdited(item, form: form)
+
+        #expect(result == .inserted(item.id.uuidString))
+        let (savedPayee, payeeNames, payeeMessages) = try await queue.read { db in
+            try (
+                String.fetchOne(db, sql: "SELECT description FROM transactions WHERE id = ?", arguments: [item.id.uuidString]),
+                String.fetchAll(db, sql: "SELECT name FROM payees"),
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'payees'") ?? 0
+            )
+        }
+        #expect(savedPayee == "payee-mcd")
+        #expect(payeeNames == ["McDonald's"])
+        #expect(payeeMessages == 0)
+    }
+
     @Test func saveEditedPreservesExplicitCategoryAgainstMatchingRule() async throws {
         let (store, url) = try await makeWritableStore()
         defer { try? FileManager.default.removeItem(at: url) }

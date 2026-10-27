@@ -241,12 +241,15 @@ actor SyncClient {
     /// Create a transaction (optimistic local-first).
     /// `applyRules: false` skips the rules pass — used for split children,
     /// whose every field the caller spelled out explicitly (like `createSplit`).
+    /// `resolvePayeeName` creates a payee for `payeeName` (when `payeeId` is
+    /// nil) only after rules run, and only if no rule replaced it.
     @discardableResult
     func createTransaction(
         _ transaction: Transaction,
         applyRules: Bool = true,
         prepared: PreparedRules? = nil,
-        preserveCategory: Bool = false
+        preserveCategory: Bool = false,
+        resolvePayeeName: Bool = false
     ) async throws -> TransactionCreateResult {
         try await createTransaction(
             transaction,
@@ -254,7 +257,7 @@ actor SyncClient {
             prepared: prepared,
             preserveCategory: preserveCategory,
             financialIdPolicy: .unique,
-            resolveOriginalBankPayee: false
+            resolvePayeeName: resolvePayeeName
         )
     }
 
@@ -271,7 +274,7 @@ actor SyncClient {
             prepared: prepared,
             preserveCategory: false,
             financialIdPolicy: .occurrences(maxLiveFinancialIdOccurrences),
-            resolveOriginalBankPayee: true,
+            resolvePayeeName: true,
             expectedLink: expectedLink
         )
     }
@@ -362,7 +365,7 @@ actor SyncClient {
         prepared: PreparedRules?,
         preserveCategory: Bool,
         financialIdPolicy: FinancialIdPolicy,
-        resolveOriginalBankPayee: Bool,
+        resolvePayeeName: Bool,
         expectedLink: ExpectedBankSyncLink? = nil
     ) async throws -> TransactionCreateResult {
         guard let database else { throw SyncError.notConfigured }
@@ -403,7 +406,7 @@ actor SyncClient {
                     pendingPayees: &pendingPayees,
                     pendingPayeesByName: &pendingPayeesByName
                 )
-            } else if resolveOriginalBankPayee,
+            } else if resolvePayeeName,
                       !result.changedFields.contains("payee"),
                       !result.changedFields.contains("payee_name"),
                       finalTransaction.payeeId == nil,
