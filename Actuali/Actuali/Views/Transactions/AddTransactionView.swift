@@ -584,6 +584,10 @@ struct AddTransactionView: View {
                             Spacer()
                             Text(budgetStore.accounts.first { $0.id == selectedAccountId }?.name ?? "")
                                 .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
                         }
                         .contentShape(Rectangle())
                     }

@@ -14,35 +14,8 @@ struct AccountPickerView: View {
 
     var body: some View {
         List {
-            if !onBudgetBuckets.isEmpty {
-                Section(String(localized: "On Budget")) {
-                    ForEach(onBudgetBuckets) { bucket in
-                        if let group = bucket.group {
-                            Text(group.name)
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(bucket.accounts) { account in
-                            accountRow(account)
-                        }
-                    }
-                }
-            }
-
-            if !offBudgetBuckets.isEmpty {
-                Section(String(localized: "Off Budget")) {
-                    ForEach(offBudgetBuckets) { bucket in
-                        if let group = bucket.group {
-                            Text(group.name)
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(bucket.accounts) { account in
-                            accountRow(account)
-                        }
-                    }
-                }
-            }
+            bucketSection(String(localized: "On Budget"), onBudgetBuckets)
+            bucketSection(String(localized: "Off Budget"), offBudgetBuckets)
         }
         .navigationTitle(String(localized: "Account"))
         .tint(.primary)
@@ -72,6 +45,25 @@ struct AccountPickerView: View {
         }
     }
 
+    @ViewBuilder
+    private func bucketSection(_ title: String, _ buckets: [AccountListBucket]) -> some View {
+        if !buckets.isEmpty {
+            Section(title) {
+                ForEach(buckets) { bucket in
+                    if let group = bucket.group {
+                        Text(group.name)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                    ForEach(bucket.accounts) { account in
+                        accountRow(account)
+                    }
+                }
+            }
+        }
+    }
+
     private func accountRow(_ account: Account) -> some View {
         Button {
             selectedAccountId = account.id
@@ -94,7 +86,7 @@ struct AccountPickerView: View {
     }
 
     private var filteredAccounts: [Account] {
-        Self.filterAccounts(accounts, groups: budgetStore.accountGroups, matching: searchText)
+        AccountsListView.filterAccounts(accounts, groups: budgetStore.accountGroups, matching: searchText)
     }
 
     private var onBudgetBuckets: [AccountListBucket] {
@@ -109,22 +101,5 @@ struct AccountPickerView: View {
             for: filteredAccounts.filter(\.offBudget),
             groups: budgetStore.accountGroups
         )
-    }
-
-    /// Filter accounts by a case-insensitive query matching account name or custom group name.
-    nonisolated static func filterAccounts(
-        _ accounts: [Account],
-        groups: [AccountGroup],
-        matching query: String
-    ) -> [Account] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return accounts }
-        let matchingGroupIds = Set(groups
-            .filter { $0.name.localizedCaseInsensitiveContains(trimmed) }
-            .map(\.id))
-        return accounts.filter { account in
-            account.name.localizedCaseInsensitiveContains(trimmed) ||
-                account.groupId.map(matchingGroupIds.contains) == true
-        }
     }
 }

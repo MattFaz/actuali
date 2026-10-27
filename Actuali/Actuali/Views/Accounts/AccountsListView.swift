@@ -30,7 +30,7 @@ enum AccountListRow: Identifiable {
     }
 }
 
-struct AccountListBucket: Identifiable, Equatable, Sendable {
+struct AccountListBucket: Identifiable {
     let id: String
     let group: AccountGroup?
     let accounts: [Account]
@@ -421,9 +421,14 @@ struct AccountsListView: View {
     }
 
     private func filterAccountsAndGroups(_ accounts: [Account]) -> [Account] {
-        let query = accountSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        Self.filterAccounts(accounts, groups: budgetStore.accountGroups, matching: accountSearchText)
+    }
+
+    /// Matches an account by its own name or by its custom group's name.
+    nonisolated static func filterAccounts(_ accounts: [Account], groups: [AccountGroup], matching query: String) -> [Account] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return accounts }
-        let matchingGroupIds = Set(budgetStore.accountGroups
+        let matchingGroupIds = Set(groups
             .filter { $0.name.localizedCaseInsensitiveContains(query) }
             .map(\.id))
         return accounts.filter { account in

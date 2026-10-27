@@ -1,7 +1,7 @@
 import Testing
 @testable import Actuali
 
-struct AccountPickerViewTests {
+struct AccountListBucketTests {
     private func makeAccount(
         id: String,
         name: String,
@@ -95,7 +95,7 @@ struct AccountPickerViewTests {
 
     @Test func filterReturnsAllAccountsWhenQueryIsEmpty() {
         let acc = makeAccount(id: "1", name: "Checking")
-        let result = AccountPickerView.filterAccounts([acc], groups: [], matching: "  ")
+        let result = AccountsListView.filterAccounts([acc], groups: [], matching: "  ")
 
         #expect(result.map(\.id) == ["1"])
     }
@@ -104,7 +104,7 @@ struct AccountPickerViewTests {
         let checking = makeAccount(id: "1", name: "Chase Checking")
         let savings = makeAccount(id: "2", name: "Ally Savings")
 
-        let result = AccountPickerView.filterAccounts([checking, savings], groups: [], matching: "chase")
+        let result = AccountsListView.filterAccounts([checking, savings], groups: [], matching: "chase")
 
         #expect(result.map(\.id) == ["1"])
     }
@@ -115,14 +115,14 @@ struct AccountPickerViewTests {
         let card2 = makeAccount(id: "2", name: "Sapphire Reserve", groupId: "g1")
         let checking = makeAccount(id: "3", name: "Checking", groupId: nil)
 
-        let result = AccountPickerView.filterAccounts([card1, card2, checking], groups: [group], matching: "Credit")
+        let result = AccountsListView.filterAccounts([card1, card2, checking], groups: [group], matching: "Credit")
 
         #expect(result.map(\.id) == ["1", "2"])
     }
 
     @Test func filterDropsAllAccountsWhenQueryDoesNotMatch() {
         let acc = makeAccount(id: "1", name: "Checking")
-        let result = AccountPickerView.filterAccounts([acc], groups: [], matching: "Crypto")
+        let result = AccountsListView.filterAccounts([acc], groups: [], matching: "Crypto")
 
         #expect(result.isEmpty)
     }
