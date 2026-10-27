@@ -158,4 +158,91 @@ struct BudgetDatabaseAccountGroupsTests {
         }
         #expect(order == ["source", "target", "after"])
     }
+
+    /// Stores `values` in messages_crdt as if they synced before this file
+    /// had anywhere to put them, and forgets the listed migration ids.
+    private func storeUnappliedMessages(
+        _ values: [(dataset: String, row: String, column: String, value: String)],
+        path: URL,
+        forgetting migrationIds: [Int64]
+    ) throws {
+        try DatabaseQueue(path: path.path).write { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS messages_crdt (
+                    id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL,
+                    row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL
+                )
+            """)
+            for (index, message) in values.enumerated() {
+                try db.execute(
+                    sql: "INSERT INTO messages_crdt (timestamp, dataset, row, column, value) VALUES (?, ?, ?, ?, ?)",
+                    arguments: [
+                        "2026-10-01T10:00:00.000Z-000\(index)-0000000000000001",
+                        message.dataset, message.row, message.column, message.value,
+                    ]
+                )
+            }
+            for id in migrationIds {
+                try db.execute(sql: "DELETE FROM __migrations__ WHERE id = ?", arguments: [id])
+            }
+        }
+    }
+
+    private let storedGroupMessages = [
+        (dataset: "account_groups", row: "cash", column: "name", value: "S:Cash Accounts"),
+        (dataset: "account_groups", row: "cash", column: "sort_order", value: "N:16384"),
+        (dataset: "account_groups", row: "cash", column: "tombstone", value: "N:0"),
+        (dataset: "account_groups", row: "deleted", column: "name", value: "S:Old Group"),
+        (dataset: "account_groups", row: "deleted", column: "tombstone", value: "N:1"),
+    ]
+
+    @Test func reopenReplaysStoredMessagesIntoTablesCreatedByAnEarlierVersion() async throws {
+        let (_, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        try storeUnappliedMessages(
+            storedGroupMessages, path: path,
+            forgetting: [BudgetDatabase.storedMessageReplayMigrationId]
+        )
+
+        let reopened = try BudgetDatabase(path: path)
+
+        let groups = try await reopened.fetchAccountGroups()
+        #expect(groups.map(\.name) == ["Cash Accounts"])
+        #expect(groups.first?.sortOrder == 16384)
+        // Recorded, so the next open takes no write lock.
+        #expect(try await reopened.dbQueueForTesting.read { try !BudgetDatabase.pendingMigrationWork($0) })
+    }
+
+    @Test func createTableMigrationReplaysStoredMessagesAfterTheOneOffReplay() async throws {
+        let (_, path) = try await makeTestDatabase(TestSchema.accounts)
+        defer { cleanup(path) }
+        // A future create-table migration: the one-off replay already ran,
+        // and the table arrives with this update.
+        try await DatabaseQueue(path: path.path).write { try $0.execute(sql: "DROP TABLE account_groups") }
+        try storeUnappliedMessages(storedGroupMessages, path: path, forgetting: [1_787_013_118_115])
+
+        let reopened = try BudgetDatabase(path: path)
+
+        #expect(try await reopened.fetchAccountGroups().map(\.name) == ["Cash Accounts"])
+    }
+
+    @Test func replaySkipsInternalTablesAServerCannotTarget() async throws {
+        let (_, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        // bank_sync_local_links is device-local and keyed by account_id,
+        // so applyMessages never writes it. A stored message for it must not
+        // make the file unopenable.
+        try storeUnappliedMessages(
+            [(dataset: "bank_sync_local_links", row: "checking", column: "source", value: "S:hostile")],
+            path: path,
+            forgetting: [BudgetDatabase.storedMessageReplayMigrationId]
+        )
+
+        let reopened = try BudgetDatabase(path: path)
+
+        let links = try await reopened.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM bank_sync_local_links")
+        }
+        #expect(links == 0)
+    }
 }
