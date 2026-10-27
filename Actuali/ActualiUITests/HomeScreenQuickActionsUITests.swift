@@ -38,24 +38,20 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
         }
 
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let icons = springboard.icons.matching(identifier: "Actuali")
         let screen = springboard.frame
         // SpringBoard exposes off-page icons with zero or off-screen frames,
-        // and querying its icons mid-animation fails the test outright: isHittable
-        // reports "Activation point invalid" while the app zooms back into its
-        // icon, and an element bound by index can vanish before its frame is
-        // read. So take one snapshot per poll (it throws rather than failing),
-        // wait for an on-screen frame that holds still across two polls, and
-        // press at that frame.
-        func iconFrames(in node: any XCUIElementSnapshot) -> [CGRect] {
-            (node.elementType == .icon && node.identifier == "Actuali" ? [node.frame] : [])
-                + node.children.flatMap { iconFrames(in: $0) }
-        }
+        // and reading an icon attribute mid-animation fails the test outright:
+        // isHittable reports "Activation point invalid" while the app zooms back
+        // into its icon, and .frame on an element that vanished first reports
+        // "No matches found". snapshot() throws instead, so wait for an on-screen
+        // frame that holds still across two polls, then press at that frame.
         func settledIconFrame() -> CGRect? {
             var lastFrame: CGRect?
             for _ in 0..<10 {
-                let frame = (try? springboard.snapshot()).flatMap { root in
-                    iconFrames(in: root).first { !$0.isEmpty && screen.contains($0) }
-                }
+                let frame = icons.allElementsBoundByIndex
+                    .compactMap { (try? $0.snapshot())?.frame }
+                    .first { !$0.isEmpty && screen.contains($0) }
                 if let frame, frame == lastFrame {
                     return frame
                 }
