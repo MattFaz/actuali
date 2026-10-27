@@ -65,10 +65,10 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
             "-showCompactBudgetOverview", "YES",
+            "-initialTab", "1",
         ]
         app.launch()
 
-        app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 10),
                       "starts in the clean layout")
 
@@ -224,21 +224,45 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         }
         XCTAssertTrue(salary.waitForExistence(timeout: 5),
                       "Income remains expanded")
-        let salaryBudget = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label BEGINSWITH 'Budgeted for Salary, '")
+        let salaryBudget = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Salary'")
         ).firstMatch
         XCTAssertTrue(
-            salaryBudget.exists,
-            "tracking Income's read-only budget needs its own currency-aware VoiceOver context"
+            salaryBudget.waitForExistence(timeout: 5),
+            "tracking income's Budgeted amount should open the same editor as expenses"
         )
         // "$" in a US locale, "USD" elsewhere; both are currency-aware.
         let salaryAmount = salaryBudget.label
         XCTAssertTrue(salaryAmount.contains("$") || salaryAmount.contains("USD"),
                       "the amount should be announced with its currency: \(salaryAmount)")
-        XCTAssertFalse(
-            salaryBudget.elementType == .button,
-            "tracking Income budget remains read-only in Compact"
-        )
+        salaryBudget.tap()
+        XCTAssertTrue(app.navigationBars["Salary"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields.firstMatch.exists)
+        app.buttons["Cancel"].tap()
+    }
+
+    @MainActor
+    func testCleanTrackingIncomeBudgetCanBeEdited() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-loadTrackingDemoData",
+            "-budgetDisplayStyle", "clean",
+            "-collapsedBudgetGroups", "",
+            "-initialTab", "1",
+        ]
+        app.launch()
+
+        let salaryBudget = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Salary'")
+        ).firstMatch
+        scrollUntilHittable(salaryBudget, in: app)
+        XCTAssertTrue(salaryBudget.isHittable, "Salary's budgeted amount should be editable in Clean")
+
+        salaryBudget.tap()
+        XCTAssertTrue(app.navigationBars["Salary"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields.firstMatch.exists)
+        app.buttons["Cancel"].tap()
     }
 
     @MainActor

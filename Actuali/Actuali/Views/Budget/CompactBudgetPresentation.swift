@@ -90,10 +90,6 @@ enum CompactBudgetAccessibility {
             : "Move money from %@, balance %@, %@"
         return ReportStrings.format(key, category, balance, tone, locale: locale, bundle: bundle)
     }
-
-    static func incomeBudgeted(category: String, amount: String, locale: Locale, bundle: Bundle = .main) -> String {
-        ReportStrings.format("Budgeted for %@, %@", category, amount, locale: locale, bundle: bundle)
-    }
 }
 
 enum CompactBalanceTone: Equatable {
