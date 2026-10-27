@@ -253,20 +253,20 @@ actor SyncClient {
         preserveCategory: Bool = false,
         resolvePayeeName: Bool = false
     ) async throws -> TransactionCreateResult {
-        guard let database else { throw SyncError.notConfigured }
         var transaction = transaction
         var provisionalPayee: Payee?
-        if resolvePayeeName, transaction.payeeId == nil,
-           let name = transaction.payeeName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+        if resolvePayeeName, transaction.payeeId == nil, let name = transaction.payeeName {
             // Rules see a set `payee` either way, so `notOneOf` and
             // `doesNotContain` match a new merchant the way they do upstream.
-            if let existing = try database.payee(named: name) {
-                transaction.payeeId = existing.id
-            } else {
-                let payee = Payee(id: UUID().uuidString, name: name, transferAccountId: nil)
-                transaction.payeeId = payee.id
-                provisionalPayee = payee
-            }
+            var candidates: [Payee] = []
+            var candidatesByName: [String: Payee] = [:]
+            transaction.payeeId = try await resolvePayee(
+                named: name,
+                deferCreation: true,
+                pendingPayees: &candidates,
+                pendingPayeesByName: &candidatesByName
+            )
+            provisionalPayee = candidates.first
         }
         return try await createTransaction(
             transaction,
