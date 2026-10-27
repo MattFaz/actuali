@@ -50,6 +50,7 @@ struct AddTransactionView: View {
     @State private var nearbyPayees: [NearbyPayee] = []
     @State private var showPayeePicker = false
     @State private var showCategoryPicker = false
+    @State private var showAccountPicker = false
     @State private var saveLocation = true
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
     /// True while the edit form's "Remove Split" is toggled on an existing
@@ -314,6 +315,10 @@ struct AddTransactionView: View {
             }
     }
 
+    private var accountSections: [AccountPickerSection] {
+        AccountPickerView.groupAccounts(orderedOpenAccounts, groups: budgetStore.accountGroups)
+    }
+
     private var showsStandardCategoryFields: Bool {
         budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget != true
     }
@@ -575,8 +580,12 @@ struct AddTransactionView: View {
 
                 Section {
                     Picker(selection: $selectedAccountId) {
-                        ForEach(orderedOpenAccounts) { account in
-                            Text(account.name).tag(account.id)
+                        ForEach(accountSections) { section in
+                            Section(section.title) {
+                                ForEach(section.accounts) { account in
+                                    Text(account.name).tag(account.id)
+                                }
+                            }
                         }
                     } label: {
                         Label(String(localized: AddTransactionLocalization.account, locale: locale), systemImage: "building.columns")
@@ -588,6 +597,24 @@ struct AddTransactionView: View {
                             transferToAccountId = oldValue
                         }
                     }
+
+                    // Dedicated search for users with many accounts (GH #773).
+                    Button {
+                        dismissKeyboard()
+                        showAccountPicker = true
+                    } label: {
+                        HStack {
+                            Label(String(localized: "Search Accounts"), systemImage: "magnifyingglass")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("addTransaction.searchAccount")
 
                     Button {
                         loadNearbyPayees()
@@ -812,6 +839,13 @@ struct AddTransactionView: View {
                 ) {
                     userPickedCategory = true
                 }
+            }
+            .navigationDestination(isPresented: $showAccountPicker) {
+                AccountPickerView(
+                    selectedAccountId: $selectedAccountId,
+                    accounts: orderedOpenAccounts,
+                    autofocusSearch: true
+                )
             }
             .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
             .navigationBarTitleDisplayMode(canDismiss ? .automatic : .inline)
