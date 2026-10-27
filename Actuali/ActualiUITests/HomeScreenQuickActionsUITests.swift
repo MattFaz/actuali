@@ -38,40 +38,47 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
         }
 
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let icons = springboard.icons.matching(identifier: "Actuali")
         let screen = springboard.frame
         // SpringBoard exposes off-page icons with zero or off-screen frames,
-        // and asking isHittable mid-animation fails the test outright ("Activation
-        // point invalid") while the app zooms back into its icon. So wait for an
-        // on-screen frame that holds still across two polls, then press by
-        // coordinate.
-        func settledIcon() -> XCUIElement? {
+        // and querying its icons mid-animation fails the test outright: isHittable
+        // reports "Activation point invalid" while the app zooms back into its
+        // icon, and an element bound by index can vanish before its frame is
+        // read. So take one snapshot per poll (it throws rather than failing),
+        // wait for an on-screen frame that holds still across two polls, and
+        // press at that frame.
+        func iconFrames(in node: any XCUIElementSnapshot) -> [CGRect] {
+            (node.elementType == .icon && node.identifier == "Actuali" ? [node.frame] : [])
+                + node.children.flatMap { iconFrames(in: $0) }
+        }
+        func settledIconFrame() -> CGRect? {
             var lastFrame: CGRect?
             for _ in 0..<10 {
-                let drawn = icons.allElementsBoundByIndex
-                    .map { ($0, $0.frame) }
-                    .first { !$0.1.isEmpty && screen.contains($0.1) }
-                if let drawn, drawn.1 == lastFrame {
-                    return drawn.0
+                let frame = (try? springboard.snapshot()).flatMap { root in
+                    iconFrames(in: root).first { !$0.isEmpty && screen.contains($0) }
                 }
-                lastFrame = drawn?.1
+                if let frame, frame == lastFrame {
+                    return frame
+                }
+                lastFrame = frame
                 Thread.sleep(forTimeInterval: 0.5)
             }
             return nil
         }
-        var visibleIcon: XCUIElement?
+        var iconFrame: CGRect?
         for _ in 0..<4 {
-            visibleIcon = settledIcon()
-            if visibleIcon != nil {
+            iconFrame = settledIconFrame()
+            if iconFrame != nil {
                 break
             }
             springboard.swipeLeft()
         }
-        guard let icon = visibleIcon else {
+        guard let iconFrame else {
             XCTFail("Actuali Home Screen icon not reachable: \(springboard.debugDescription)")
             return
         }
-        icon.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 1.2)
+        springboard.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: iconFrame.midX, dy: iconFrame.minY + iconFrame.height * 0.4))
+            .press(forDuration: 1.2)
         let shortcut = springboard.descendants(matching: .any).matching(
             NSPredicate(format: "label == %@", "Add Transaction")
         ).firstMatch
