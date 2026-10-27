@@ -483,11 +483,14 @@ final class BudgetDatabase: Sendable {
         1_780_606_215_003, // locally minted accounts.account_sync_source backfill
         1_780_606_215_004, // locally minted accounts.last_sync backfill
         1_787_013_118_116, // locally minted accounts.account_group_id backfill
+        1_787_013_118_117, // locally minted account_groups / account_group_id replay from messages_crdt
         1_770_000_000_003, // defensive CREATE banks
         1_770_000_000_004, // defensive CREATE tags
         1_780_606_215_005, // device-local FinanceKit link identities
         1_780_606_215_006, // envelope buffer rows
     ]
+
+    static let accountGroupsReplayMigrationId: Int64 = 1_787_013_118_117
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the
     /// guards of the write path below so a fully migrated file opens without
@@ -508,6 +511,11 @@ final class BudgetDatabase: Sendable {
             guard migration.requiresColumns.allSatisfy(existing.contains) else { continue }
             // Runnable (ALTER/CREATE INDEX), or the column already exists and
             // needs its bookkeeping row — either way the write path has work.
+            return true
+        }
+        if !appliedIds.contains(accountGroupsReplayMigrationId),
+           try db.tableExists("account_groups"),
+           try db.tableExists("accounts") {
             return true
         }
         return false
@@ -557,6 +565,25 @@ final class BudgetDatabase: Sendable {
             }
 
             try Self.replayStoredMessages(db, into: addedColumns)
+
+            // Upstream 1787013118115 created account_groups; files that synced
+            // messages before the local table or column existed need those messages
+            // materialized into account_groups and accounts.account_group_id.
+            if !appliedIds.contains(Self.accountGroupsReplayMigrationId),
+               try db.tableExists("account_groups"),
+               try db.tableExists("accounts") {
+                let columns = [
+                    ("account_groups", "name"),
+                    ("account_groups", "sort_order"),
+                    ("account_groups", "tombstone"),
+                    ("accounts", "account_group_id"),
+                ]
+                try Self.replayStoredMessages(db, into: columns)
+                try db.execute(
+                    sql: "INSERT INTO __migrations__ (id) VALUES (?)",
+                    arguments: [Self.accountGroupsReplayMigrationId]
+                )
+            }
         }
     }
 
