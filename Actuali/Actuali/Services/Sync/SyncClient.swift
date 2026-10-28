@@ -1372,6 +1372,161 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Delete a category, redirecting its transactions and budget balance to
+    /// another category when a transfer destination is required or supplied.
+    func deleteCategory(id: String, transferToId: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        let groups = try await database.fetchCategoryGroups()
+        let categories = groups.flatMap(\.categories)
+        guard let category = categories.first(where: { $0.id == id }) else {
+            throw BudgetDatabase.CategoryWriteError.categoryNotFound
+        }
+
+        if let transferToId {
+            guard transferToId != id else { throw BudgetStoreError.transferCategoriesMatch }
+            guard let target = categories.first(where: { $0.id == transferToId }) else {
+                throw BudgetDatabase.CategoryWriteError.categoryNotFound
+            }
+            guard target.isIncome == category.isIncome else {
+                throw BudgetDatabase.CategoryWriteError.transferCategoryTypeMismatch
+            }
+        }
+
+        try await deleteCategories(
+            [category],
+            group: nil,
+            transferToId: transferToId,
+            database: database
+        )
+    }
+
+    /// Delete a category group and transfer all of its categories to one
+    /// surviving category, matching Actual's group-delete behavior.
+    func deleteCategoryGroup(id: String, transferToId: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        let groups = try await database.fetchCategoryGroups()
+        guard let group = groups.first(where: { $0.id == id }) else {
+            throw BudgetDatabase.CategoryWriteError.groupNotFound
+        }
+        let allCategories = groups.flatMap(\.categories)
+
+        if let transferToId {
+            guard !group.categories.contains(where: { $0.id == transferToId }) else {
+                throw BudgetStoreError.transferCategoriesMatch
+            }
+            guard let target = allCategories.first(where: { $0.id == transferToId }) else {
+                throw BudgetDatabase.CategoryWriteError.categoryNotFound
+            }
+            guard target.isIncome == group.isIncome else {
+                throw BudgetDatabase.CategoryWriteError.transferCategoryTypeMismatch
+            }
+        }
+
+        try await deleteCategories(
+            group.categories,
+            group: group,
+            transferToId: transferToId,
+            database: database
+        )
+    }
+
+    private func deleteCategories(
+        _ categories: [Category],
+        group: CategoryGroup?,
+        transferToId: String?,
+        database: BudgetDatabase
+    ) async throws {
+        let sourceIds = categories.map(\.id)
+        if transferToId == nil {
+            for category in categories {
+                if try await database.categoryRequiresTransfer(id: category.id) {
+                    throw BudgetStoreError.missingTransferDestination
+                }
+            }
+        }
+
+        // Message generation awaits the HLC actor, so SyncClient can be
+        // re-entered and another operation can change the budget mid-delete.
+        // Retry from a fresh, single-read snapshot; never apply stale absolute
+        // amounts or tombstones if the transfer's inputs changed meanwhile.
+        for _ in 0..<3 {
+            let plan = if let transferToId {
+                try database.categoryTransferPlan(
+                    sourceCategoryIds: sourceIds,
+                    toCategoryId: transferToId
+                )
+            } else {
+                nil
+            }
+
+            var messages: [CRDTMessage] = []
+            if let plan {
+                for write in plan.budgetWrites {
+                    var fields: [(column: String, value: (any Sendable)?)] = []
+                    if write.createsRow {
+                        fields.append(("month", write.monthInt))
+                        fields.append(("category", write.categoryId))
+                    }
+                    fields.append(("amount", write.amount))
+                    messages += try await messageGenerator.messages(
+                        dataset: write.table,
+                        row: write.rowId,
+                        fields: fields
+                    )
+                }
+
+                for mapping in plan.mappings {
+                    messages += try await messageGenerator.messages(
+                        dataset: CategoryMapping.datasetName,
+                        row: mapping.id,
+                        fields: [("transferId", mapping.targetId)]
+                    )
+                }
+            }
+
+            for category in categories {
+                let message = try await messageGenerator.messageForDelete(category)
+                messages.append(message)
+            }
+            if let group {
+                messages += try await messageGenerator.messages(
+                    dataset: CategoryGroup.datasetName,
+                    row: group.id,
+                    fields: [("tombstone", 1)]
+                )
+            }
+
+            if let transferToId, let plan {
+                guard try database.categoryTransferPlanMatches(
+                    sourceCategoryIds: sourceIds,
+                    toCategoryId: transferToId,
+                    expected: plan
+                ) else {
+                    continue
+                }
+            } else if try database.categoriesRequireTransfer(ids: sourceIds) {
+                // A transaction or effective budget amount appeared after the
+                // initial preflight. Let the UI ask for a destination rather
+                // than deleting data with no transfer.
+                throw BudgetStoreError.missingTransferDestination
+            }
+
+            // No async suspension occurs between revalidation and this atomic
+            // SQLite apply, so operations in this actor cannot interleave here.
+            for message in try database.applyMessagesAndInsertMessages(messages) {
+                merkle = merkle.inserting(message.timestamp)
+            }
+            merkle = merkle.pruned()
+            try saveClock()
+            scheduleAutomaticSync()
+            return
+        }
+
+        throw BudgetDatabase.CategoryWriteError.transferDataChanged
+    }
+
     /// Record a location for a payee (optimistic local-first). Callers are
     /// responsible for the server-version guard and 500 m dedupe — this
     /// method just writes.

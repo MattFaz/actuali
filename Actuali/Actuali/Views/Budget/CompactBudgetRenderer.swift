@@ -190,6 +190,7 @@ struct CompactBudgetGroupHeader: View {
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)?
     var onRename: (() -> Void)?
+    var onDelete: (() -> Void)?
     var onApplyTemplate: (() -> Void)?
     var onOverwriteTemplate: (() -> Void)?
     let totals: CategoryGroupTotals?
@@ -217,6 +218,7 @@ struct CompactBudgetGroupHeader: View {
             onOverwriteTemplate: onOverwriteTemplate,
             onRename: onRename,
             onSetHidden: onSetHidden,
+            onDelete: onDelete,
             locale: locale
         )
     }
@@ -355,6 +357,7 @@ struct CompactCategoryBudgetRow: View {
     /// callers gate it on the goalTemplatesEnabled flag.
     var onApplyTemplate: ((CategoryBudget) -> Void)?
     let onRename: (CategoryBudget) -> Void
+    var onDelete: ((CategoryBudget) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -382,7 +385,8 @@ struct CompactCategoryBudgetRow: View {
             onShowTransactions: onShowTransactions,
             onMoveMoney: onMoveMoney,
             onApplyTemplate: onApplyTemplate,
-            onRename: onRename
+            onRename: onRename,
+            onDelete: onDelete
         ))
     }
 
@@ -728,6 +732,7 @@ struct CompactIncomeCategoryRow: View {
     let showsBudgeted: Bool
     var onEditBudget: (IncomeCategory) -> Void = { _ in }
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
+    var onDelete: (() -> Void)?
 
     private var layout: CompactBudgetTableLayout {
         CompactBudgetTableLayout(isTrackingBudget: isTrackingBudget, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
@@ -793,6 +798,12 @@ struct CompactIncomeCategoryRow: View {
                 } label: {
                     Label(isHidden ? String(localized: "Show", bundle: .main, locale: locale) : String(localized: "Hide", bundle: .main, locale: locale), systemImage: isHidden ? "eye" : "eye.slash")
                 }
+            }
+            if let onDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete Category", systemImage: "trash")
+                }
+                .accessibilityIdentifier("categoryDelete.action")
             }
         }
     }

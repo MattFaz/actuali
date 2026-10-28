@@ -191,6 +191,165 @@ struct NewCategorySheet: View {
     }
 }
 
+struct CategoryDeletionRequest: Identifiable {
+    enum Kind: Equatable {
+        case category
+        case group
+    }
+
+    let id: String
+    let name: String
+    let categoryIds: [String]
+    let isIncome: Bool
+    let kind: Kind
+    let month: String
+    let requiresTransfer: Bool
+
+    var isGroup: Bool {
+        kind == .group
+    }
+}
+
+private struct CategoryTransferGroupOption: Identifiable {
+    let group: CategoryGroup
+    let categories: [Category]
+
+    var id: String {
+        group.id
+    }
+}
+
+/// Actual-style confirm-delete sheet. A destination is mandatory whenever the
+/// source contains transaction history or has a non-zero budget in any month.
+struct CategoryDeletionSheet: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+
+    let request: CategoryDeletionRequest
+
+    @State private var transferCategoryId: String?
+    @State private var requiresTransfer: Bool
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    init(request: CategoryDeletionRequest) {
+        self.request = request
+        _requiresTransfer = State(initialValue: request.requiresTransfer)
+    }
+
+    private var selectableGroups: [CategoryTransferGroupOption] {
+        let excludedIds = Set(request.categoryIds)
+        return budgetStore.categoryGroups
+            .filter { $0.isIncome == request.isIncome }
+            .sorted { $0.sortOrder < $1.sortOrder }
+            .compactMap { group in
+                let categories = group.categories.filter { !excludedIds.contains($0.id) }
+                guard !categories.isEmpty else { return nil }
+                return CategoryTransferGroupOption(group: group, categories: categories)
+            }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(request.name)
+                        .font(.headline)
+                    if requiresTransfer {
+                        Text("All existing transactions and budget balances will be transferred to the selected category before deletion.")
+                    } else {
+                        Text("Are you sure you want to delete this item?")
+                    }
+                }
+
+                if requiresTransfer {
+                    Section("Transfer to:") {
+                        Picker("Category", selection: $transferCategoryId) {
+                            Text("Select a category").tag(String?.none)
+                            ForEach(selectableGroups) { option in
+                                Section(option.group.name) {
+                                    ForEach(option.categories) { category in
+                                        Text(category.name).tag(Optional(category.id))
+                                    }
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("categoryDelete.transferTo")
+                        .onChange(of: transferCategoryId) { _, _ in
+                            errorMessage = nil
+                        }
+                    }
+
+                    if selectableGroups.isEmpty {
+                        Text("No eligible categories are available to receive the transfer.")
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                }
+            }
+            .navigationTitle(request.isGroup ? LocalizedStringKey("Delete Group") : LocalizedStringKey("Delete Category"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Delete", role: .destructive) {
+                        Task { await submit() }
+                    }
+                    .accessibilityIdentifier("categoryDelete.confirm")
+                    .disabled(isSaving || (requiresTransfer && (transferCategoryId == nil || selectableGroups.isEmpty)))
+                }
+            }
+            .disabled(isSaving)
+            .interactiveDismissDisabled(isSaving)
+        }
+    }
+
+    private func submit() async {
+        guard !isSaving else { return }
+        guard !requiresTransfer || transferCategoryId != nil else {
+            errorMessage = String(localized: "You must select a category")
+            return
+        }
+
+        isSaving = true
+        errorMessage = nil
+        do {
+            let targetId = requiresTransfer ? transferCategoryId : nil
+            if request.isGroup {
+                try await budgetStore.deleteCategoryGroup(
+                    id: request.id,
+                    transferToId: targetId,
+                    month: request.month
+                )
+            } else {
+                try await budgetStore.deleteCategory(
+                    id: request.id,
+                    transferToId: targetId,
+                    month: request.month
+                )
+            }
+            dismiss()
+        } catch BudgetStoreError.missingTransferDestination {
+            // The data may have changed since the parent view's preflight. Keep
+            // this sheet open and expose the destination picker without forcing
+            // the user to cancel and restart deletion.
+            requiresTransfer = true
+            transferCategoryId = nil
+            errorMessage = BudgetStoreError.missingTransferDestination.localizedDescription
+            isSaving = false
+        } catch {
+            errorMessage = error.localizedDescription
+            isSaving = false
+        }
+    }
+}
+
 #Preview("New Group") {
     CategoryGroupSheet()
         .environmentObject(BudgetStore.previewInstance())
