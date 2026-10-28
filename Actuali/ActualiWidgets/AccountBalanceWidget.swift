@@ -52,8 +52,7 @@ struct AccountBalanceProvider: AppIntentTimelineProvider {
 
     private func entry(for configuration: SelectAccountsIntent, in context: Context) -> AccountBalanceEntry {
         let limit = context.family == .systemSmall ? 1 : 4
-        guard let snapshot = WidgetSnapshotStore.standard()?.read(),
-              snapshot.isForMonth(containing: .now) else {
+        guard let snapshot = WidgetSnapshotStore.standard()?.read() else {
             return AccountBalanceEntry(date: .now, balancesHidden: false, accounts: [], hasSnapshot: false)
         }
         let chosenIds = (configuration.accounts ?? []).map(\.id)

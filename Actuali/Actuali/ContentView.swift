@@ -20,6 +20,22 @@ struct ContentView: View {
     /// sidebar becomes an overlay drawer instead; see `\.isWideLayout`.
     private static let wideLayoutThreshold: CGFloat = 1000
 
+    nonisolated static func tab(forDeepLink url: URL) -> Int? {
+        let host = url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        switch host {
+        case "add-transaction":
+            return StartTab.addTransaction.tabTag
+        case "budget", "bills":
+            return StartTab.budget.tabTag
+        case "accounts":
+            return StartTab.accounts.tabTag
+        case "reports":
+            return StartTab.reports.tabTag
+        default:
+            return nil
+        }
+    }
+
     /// Presents whenever the store publishes an error; dismissing clears it
     /// so the next failure can present again.
     private var errorAlertBinding: Binding<Bool> {
@@ -42,18 +58,8 @@ struct ContentView: View {
                 onShake: budgetStore.handleDeviceShake
             ))
             .onOpenURL { url in
-                let host = url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                switch host {
-                case "add-transaction":
-                    notificationRouter.pendingTabNavigation = StartTab.addTransaction.tabTag
-                case "budget", "bills":
-                    notificationRouter.pendingTabNavigation = StartTab.budget.tabTag
-                case "accounts":
-                    notificationRouter.pendingTabNavigation = StartTab.accounts.tabTag
-                case "reports":
-                    notificationRouter.pendingTabNavigation = StartTab.reports.tabTag
-                default:
-                    break
+                if let tab = Self.tab(forDeepLink: url) {
+                    notificationRouter.pendingTabNavigation = tab
                 }
             }
             .sensoryFeedback(.impact(weight: .medium), trigger: budgetStore.shakeFeedbackTrigger)

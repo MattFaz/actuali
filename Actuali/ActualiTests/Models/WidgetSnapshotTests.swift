@@ -310,6 +310,11 @@ struct WidgetSnapshotTests {
     // MARK: - Upcoming Bills
 
     @Test func makePopulatesUpcomingBills() {
+        let accounts = [
+            Account(id: "a1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 1, balance: 100),
+            Account(id: "closed-acc", name: "Old", type: .checking, offBudget: false, closed: true, sortOrder: 2, balance: 0),
+        ]
+
         let schedules = [
             ScheduleSummary(
                 id: "s1", name: "Electric", ruleId: nil,
@@ -338,7 +343,36 @@ struct WidgetSnapshotTests {
                 customUpcomingLength: nil, sortOrder: nil, isCustom: false,
                 conditionsJSON: nil, actionsJSON: nil
             ),
+            ScheduleSummary(
+                id: "s-paid", name: "Rent", ruleId: nil,
+                nextDate: DayDate(year: 2026, month: 8, day: 21), nextDateRowId: nil, baseNextDateTs: nil,
+                accountId: "a1", payeeId: nil,
+                amount: .fixed(-100_000), amountOp: .isExactly, dateOp: nil,
+                dateCondition: nil, postsTransaction: true, completed: false,
+                customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+                conditionsJSON: nil, actionsJSON: nil
+            ),
+            ScheduleSummary(
+                id: "s-closed", name: "Old Bill", ruleId: nil,
+                nextDate: DayDate(year: 2026, month: 8, day: 23), nextDateRowId: nil, baseNextDateTs: nil,
+                accountId: "closed-acc", payeeId: nil,
+                amount: .fixed(-3000), amountOp: .isExactly, dateOp: nil,
+                dateCondition: nil, postsTransaction: true, completed: false,
+                customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+                conditionsJSON: nil, actionsJSON: nil
+            ),
+            ScheduleSummary(
+                id: "s-empty-name", name: "", ruleId: nil,
+                nextDate: DayDate(year: 2026, month: 8, day: 26), nextDateRowId: nil, baseNextDateTs: nil,
+                accountId: "a1", payeeId: "p1",
+                amount: .fixed(-4000), amountOp: .isExactly, dateOp: nil,
+                dateCondition: nil, postsTransaction: true, completed: false,
+                customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+                conditionsJSON: nil, actionsJSON: nil
+            ),
         ]
+
+        let payees = [Payee(id: "p1", name: "Netflix", transferAccountId: nil)]
 
         let snapshot = WidgetSnapshot.make(
             from: [],
@@ -346,14 +380,19 @@ struct WidgetSnapshotTests {
             balancesHidden: false,
             generatedAt: Date(),
             format: { "$\($0)" },
+            accounts: accounts,
             schedules: schedules,
-            scheduleStatuses: ["s3": .due]
+            scheduleStatuses: ["s3": .due, "s-paid": .paid],
+            payees: payees
         )
 
-        #expect(snapshot.upcomingBills?.count == 2)
+        // Paid (s-paid), completed (s2), and closed account (s-closed) are dropped
+        #expect(snapshot.upcomingBills?.count == 3)
         #expect(snapshot.upcomingBills?[0].id == "s3") // earlier date (Aug 22 vs Aug 25)
         #expect(snapshot.upcomingBills?[0].status == "due")
         #expect(snapshot.upcomingBills?[1].id == "s1")
         #expect(snapshot.upcomingBills?[1].status == "upcoming")
+        #expect(snapshot.upcomingBills?[2].id == "s-empty-name")
+        #expect(snapshot.upcomingBills?[2].title == "Netflix") // empty name fell back to payee
     }
 }

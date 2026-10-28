@@ -89,9 +89,10 @@ struct SpendingSummaryWidgetView: View {
     let entry: SpendingSummaryEntry
 
     private var spentFraction: Double {
-        guard let spent = entry.totalSpent, let budgeted = entry.totalBudgeted, budgeted > 0 else {
-            return 0
-        }
+        guard !entry.balancesHidden,
+              let spent = entry.totalSpent,
+              let budgeted = entry.totalBudgeted, budgeted > 0
+        else { return 0 }
         return min(max(Double(abs(spent)) / Double(budgeted), 0.0), 1.0)
     }
 

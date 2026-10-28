@@ -23,14 +23,9 @@ extension BudgetStore {
             payees: payees
         )
         // Keep the footer's refresh time current without reloading unchanged balances.
-        let contentChanged = snapshot.month != previous?.month
-            || snapshot.balancesHidden != previous?.balancesHidden
-            || snapshot.categories != previous?.categories
-            || snapshot.accounts != previous?.accounts
-            || snapshot.netWorth != previous?.netWorth
-            || snapshot.toBudget != previous?.toBudget
-            || snapshot.totalSpent != previous?.totalSpent
-            || snapshot.upcomingBills != previous?.upcomingBills
+        var comparable = snapshot
+        comparable.generatedAt = previous?.generatedAt ?? .distantPast
+        let contentChanged = comparable != previous
         do {
             try store.write(snapshot)
             lastWidgetSnapshot = (store.fileURL, snapshot)
@@ -98,9 +93,11 @@ extension WidgetSnapshot {
         let netWorth = openAccounts.reduce(0) { $0 + $1.balance }
 
         let payeeMap = Dictionary(payees.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let activeAccountIds = Set(openAccounts.map(\.id))
         let billItems = Self.buildUpcomingBills(
             schedules: schedules,
             statuses: scheduleStatuses,
+            activeAccountIds: activeAccountIds,
             payeeMap: payeeMap,
             format: format
         )
@@ -127,22 +124,31 @@ extension WidgetSnapshot {
     }
 
     /// Extracts the next upcoming bills from schedules. Keeps it simple:
-    /// non-completed schedules with a nextDate, sorted by date, capped at 8.
+    /// non-completed, non-paid schedules for open accounts with a nextDate,
+    /// sorted by date, capped at 8.
     private static func buildUpcomingBills(
         schedules: [ScheduleSummary],
         statuses: [String: ScheduleStatus],
+        activeAccountIds: Set<String>,
         payeeMap: [String: String],
         format: (Int) -> String
     ) -> [WidgetBillItem] {
         schedules
-            .filter { !$0.completed && $0.nextDate != nil }
-            .sorted { ($0.nextDate ?? .distantFuture) < ($1.nextDate ?? .distantFuture) }
+            .filter { schedule in
+                guard !schedule.completed,
+                      statuses[schedule.id] != .paid,
+                      let accountId = schedule.accountId,
+                      activeAccountIds.contains(accountId)
+                else { return false }
+                return true
+            }
+            .compactMap { schedule in schedule.nextDate.map { (schedule, $0) } }
+            .sorted { $0.1 < $1.1 }
             .prefix(8)
-            .map { schedule in
-                let title = schedule.name
+            .map { schedule, date in
+                let title = schedule.name.flatMap { $0.isEmpty ? nil : $0 }
                     ?? schedule.payeeId.flatMap { payeeMap[$0] }
-                    ?? "Scheduled"
-                let date = schedule.nextDate!
+                    ?? String(localized: "Scheduled")
                 let status = statuses[schedule.id]
                 let statusString = switch status {
                 case .missed: "overdue"
@@ -160,11 +166,5 @@ extension WidgetSnapshot {
                     status: statusString
                 )
             }
-    }
-}
-
-private extension DayDate {
-    static var distantFuture: DayDate {
-        DayDate(year: 9999, month: 12, day: 31)
     }
 }

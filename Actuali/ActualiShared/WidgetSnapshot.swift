@@ -49,7 +49,7 @@ struct WidgetSnapshot: Codable, Equatable {
     /// The budget month these balances describe ("2026-08"). The widget
     /// refuses to show a past month as current — see isForMonth(containing:).
     let month: String
-    let generatedAt: Date
+    var generatedAt: Date
     /// Mirrors the app's hide-balances privacy setting. The formatted amounts
     /// arrive already masked; the widget additionally mutes overspent
     /// coloring so the sign doesn't leak through the mask.
