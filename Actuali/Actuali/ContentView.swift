@@ -41,6 +41,21 @@ struct ContentView: View {
                 isEnabled: budgetStore.shakeToHideBalances,
                 onShake: budgetStore.handleDeviceShake
             ))
+            .onOpenURL { url in
+                let host = url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                switch host {
+                case "add-transaction":
+                    notificationRouter.pendingTabNavigation = StartTab.addTransaction.tabTag
+                case "budget", "bills":
+                    notificationRouter.pendingTabNavigation = StartTab.budget.tabTag
+                case "accounts":
+                    notificationRouter.pendingTabNavigation = StartTab.accounts.tabTag
+                case "reports":
+                    notificationRouter.pendingTabNavigation = StartTab.reports.tabTag
+                default:
+                    break
+                }
+            }
             .sensoryFeedback(.impact(weight: .medium), trigger: budgetStore.shakeFeedbackTrigger)
             .alert("Something Went Wrong", isPresented: errorAlertBinding) {
                 Button("OK") {}

@@ -1,0 +1,87 @@
+import SwiftUI
+import WidgetKit
+
+struct QuickAddTransactionWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(
+            kind: "QuickAddTransactionWidget",
+            provider: QuickAddTransactionProvider()
+        ) { entry in
+            QuickAddTransactionWidgetView(entry: entry)
+        }
+        .configurationDisplayName(String(localized: "Add Transaction"))
+        .description(String(localized: "Quickly open Actuali to record a new transaction."))
+        .supportedFamilies([.systemSmall, .accessoryCircular])
+    }
+}
+
+struct QuickAddTransactionEntry: TimelineEntry {
+    let date: Date
+
+    static let sample = QuickAddTransactionEntry(date: .now)
+}
+
+struct QuickAddTransactionProvider: TimelineProvider {
+    func placeholder(in context: Context) -> QuickAddTransactionEntry {
+        .sample
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (QuickAddTransactionEntry) -> Void) {
+        completion(.sample)
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<QuickAddTransactionEntry>) -> Void) {
+        let entry = QuickAddTransactionEntry(date: .now)
+        let nextMidnight = Calendar.current.startOfDay(for: .now.addingTimeInterval(86400))
+        completion(Timeline(entries: [entry], policy: .after(nextMidnight)))
+    }
+}
+
+struct QuickAddTransactionWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+
+    let entry: QuickAddTransactionEntry
+
+    var body: some View {
+        Group {
+            if family == .accessoryCircular {
+                circularLayout
+            } else {
+                smallLayout
+            }
+        }
+        .containerBackground(.fill.tertiary, for: .widget)
+        .widgetURL(URL(string: "actuali://add-transaction"))
+    }
+
+    private var smallLayout: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.15))
+                    .frame(width: 52, height: 52)
+                Image(systemName: "plus")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            VStack(spacing: 2) {
+                Text(String(localized: "Add Transaction"))
+                    .font(.subheadline.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                Text(String(localized: "Record spending"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var circularLayout: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            Image(systemName: "plus")
+                .font(.title3.weight(.bold))
+        }
+    }
+}
