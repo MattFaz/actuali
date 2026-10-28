@@ -11,7 +11,11 @@ struct QuickAddTransactionWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Add Transaction"))
         .description(String(localized: "Quickly open Actuali to record a new transaction."))
-        .supportedFamilies([.systemSmall, .accessoryCircular])
+        .supportedFamilies([
+            .accessoryCircular,
+            .accessoryRectangular,
+            .accessoryInline,
+        ])
     }
 }
 
@@ -44,44 +48,46 @@ struct QuickAddTransactionWidgetView: View {
 
     var body: some View {
         Group {
-            if family == .accessoryCircular {
+            switch family {
+            case .accessoryRectangular:
+                rectangularLayout
+            case .accessoryInline:
+                inlineLayout
+            default:
                 circularLayout
-            } else {
-                smallLayout
             }
         }
         .containerBackground(.fill.tertiary, for: .widget)
         .widgetURL(URL(string: "actuali://add-transaction"))
     }
 
-    private var smallLayout: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.15))
-                    .frame(width: 52, height: 52)
-                Image(systemName: "plus")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(Color.accentColor)
-            }
-            VStack(spacing: 2) {
-                Text(String(localized: "Add Transaction"))
-                    .font(.subheadline.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                Text(String(localized: "Record spending"))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     private var circularLayout: some View {
         ZStack {
             AccessoryWidgetBackground()
-            Image(systemName: "plus")
-                .font(.title3.weight(.bold))
+            Image(systemName: "creditcard.badge.plus")
+                .font(.title3)
         }
+    }
+
+    private var rectangularLayout: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "creditcard.badge.plus")
+                .font(.title2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(String(localized: "Add Transaction"))
+                    .font(.headline)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(String(localized: "Record spending"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var inlineLayout: some View {
+        Label(String(localized: "Add Transaction"), systemImage: "creditcard.badge.plus")
     }
 }
