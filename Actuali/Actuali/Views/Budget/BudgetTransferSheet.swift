@@ -86,6 +86,16 @@ enum BudgetTransferLocalization {
     }
 }
 
+/// Suggested amount for covering overspending. To Budget is intentionally
+/// uncapped, while a category source may only contribute its available funds.
+enum BudgetTransferAmount {
+    static func suggestedCoverAmount(overspentAmount: Int, availableInSource: Int?) -> Int {
+        let needed = max(0, overspentAmount)
+        guard let availableInSource else { return needed }
+        return min(needed, max(0, availableInSource))
+    }
+}
+
 /// Move budgeted funds between categories (GH #128). Adapts to the tapped
 /// balance: in the red it covers the overspending from "To Budget" or a
 /// category with available funds; in the green it sends the surplus to
@@ -126,10 +136,22 @@ struct BudgetTransferSheet: View {
         // category with funds. Surplus: default to sending back to To Budget.
         let hasToBudget = context.canUseToBudget
         let firstCategory = context.rankedCategories.first.map { Endpoint.category($0.categoryId) }
-        _endpoint = State(initialValue: hasToBudget ? .toBudget : (firstCategory ?? .toBudget))
-        // Prefill with the full amount in play: the overspending to cover,
-        // or the surplus available to move.
-        _amountText = State(initialValue: String(format: "%.2f", Double(abs(context.amount)) / 100.0))
+        let initialEndpoint = hasToBudget ? Endpoint.toBudget : (firstCategory ?? .toBudget)
+        _endpoint = State(initialValue: initialEndpoint)
+
+        let initialSourceAvailable: Int?
+        if case .category(let id) = initialEndpoint {
+            initialSourceAvailable = context.rankedCategories.first { $0.categoryId == id }?.available
+        } else {
+            initialSourceAvailable = nil
+        }
+        let initialAmount = BudgetTransferAmount.suggestedCoverAmount(
+            overspentAmount: abs(context.amount),
+            availableInSource: context.amount < 0 ? initialSourceAvailable : nil
+        )
+        // Cover from To Budget with the full overspend; when a category is
+        // selected, prefill only what that category can contribute.
+        _amountText = State(initialValue: String(format: "%.2f", Double(initialAmount) / 100.0))
     }
 
     private var isCovering: Bool {
@@ -163,7 +185,9 @@ struct BudgetTransferSheet: View {
         if case .category(let id) = endpoint {
             return eligibleCategories.first(where: { $0.categoryId == id })?.available
         }
-        return context.budget.toBudget
+        // To Budget may go negative when covering overspending; only category
+        // sources are constrained by their available balance.
+        return nil
     }
 
     var body: some View {
@@ -248,6 +272,21 @@ struct BudgetTransferSheet: View {
                         .disabled(isSaving || !hasOptions)
                 }
             }
+        }
+        .onChange(of: endpoint) { _, newEndpoint in
+            guard isCovering else { return }
+            let availableInSource: Int?
+            if case .category(let id) = newEndpoint {
+                availableInSource = eligibleCategories.first { $0.categoryId == id }?.available
+            } else {
+                availableInSource = nil
+            }
+            let amount = BudgetTransferAmount.suggestedCoverAmount(
+                overspentAmount: abs(context.amount),
+                availableInSource: availableInSource
+            )
+            amountText = String(format: "%.2f", Double(amount) / 100.0)
+            errorMessage = nil
         }
         .presentationDetents([.fraction(0.70), .large])
         .interactiveDismissDisabled(isSaving)
