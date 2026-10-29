@@ -25,14 +25,14 @@ final class TransactionSearchUITests: XCTestCase {
         tapSearch(in: app, customButtonIdentifier: "transactions.search")
         let searchField = activeSearchField(in: app, customFieldIdentifier: "transactions.searchField")
         XCTAssertTrue(searchField.waitForExistence(timeout: 10))
-        typeSearchText("netflix", in: searchField, app: app)
+        typeSearchText("netflix", in: searchField)
 
         let netflixRow = app.staticTexts["Netflix"].firstMatch
         XCTAssertTrue(netflixRow.waitForExistence(timeout: 10),
                       "search should surface Netflix transactions")
 
         // Append garbage -> no matches -> the empty state must render.
-        typeSearchText("zzz", in: searchField, app: app)
+        typeSearchText("zzz", in: searchField)
         let noResults = app.staticTexts
             .matching(NSPredicate(format: "label CONTAINS[c] 'No Results'"))
             .firstMatch
@@ -47,7 +47,7 @@ final class TransactionSearchUITests: XCTestCase {
 
         // Reopening and cancelling must remove the query and restore results.
         let restoredSearchField = activeSearchField(in: app, customFieldIdentifier: "transactions.searchField")
-        typeSearchText("netflix", in: restoredSearchField, app: app)
+        typeSearchText("netflix", in: restoredSearchField)
         cancelSearch(in: app, customButtonIdentifier: "transactions.search")
         XCTAssertFalse(noResults.exists,
                        "cancelling search should clear the filter and restore results")
@@ -94,82 +94,9 @@ final class TransactionSearchUITests: XCTestCase {
         XCTAssertTrue(searchField.waitForExistence(timeout: 10))
         searchField.tap()
         cancelSearch(in: app, customButtonIdentifier: "accountDetails.search")
-    }
-
-    @MainActor
-    private func typeSearchText(_ text: String, in field: XCUIElement, app: XCUIApplication) {
-        func waitForFocus(_ timeout: TimeInterval) -> Bool {
-            let focused = NSPredicate(format: "hasKeyboardFocus == true")
-            let expectation = XCTNSPredicateExpectation(predicate: focused, object: field)
-            return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
-        }
-
-        // Native search may already be focused by the system after expansion.
-        if !waitForFocus(2) {
-            field.tap()
-            if !waitForFocus(3) {
-                field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-            }
-        }
-        XCTAssertTrue(waitForFocus(5), "the search field should have keyboard focus before typing")
-        field.typeText(text)
-    }
-
-    @MainActor
-    private func tapSearch(in app: XCUIApplication, customButtonIdentifier: String) {
-        let customButton = app.buttons[customButtonIdentifier]
-        if customButton.waitForExistence(timeout: 1) {
-            customButton.tap()
-            return
-        }
-
-        // On iOS 26+, SwiftUI owns the minimized toolbar search affordance.
-        let nativeSearchControl = app.navigationBars.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS[c] %@", "Search"))
-            .firstMatch
-        XCTAssertTrue(nativeSearchControl.waitForExistence(timeout: 10),
-                      "the native minimized search control should be visible")
-        nativeSearchControl.tap()
-    }
-
-    @MainActor
-    private func activeSearchField(in app: XCUIApplication, customFieldIdentifier: String) -> XCUIElement {
-        let customField = app.textFields[customFieldIdentifier]
-        if customField.exists {
-            return customField
-        }
-        return app.searchFields.firstMatch
-    }
-
-    @MainActor
-    private func clearSearch(in app: XCUIApplication, customClearIdentifier: String) {
-        let customClearButton = app.buttons[customClearIdentifier]
-        if customClearButton.waitForExistence(timeout: 1) {
-            customClearButton.tap()
-            return
-        }
-
-        let nativeClearButton = app.navigationBars.descendants(matching: .button)
-            .matching(NSPredicate(format: "label CONTAINS[c] %@", "Clear"))
-            .firstMatch
-        XCTAssertTrue(nativeClearButton.waitForExistence(timeout: 10),
-                      "the native search field should expose a clear control")
-        nativeClearButton.tap()
-    }
-
-    @MainActor
-    private func cancelSearch(in app: XCUIApplication, customButtonIdentifier: String) {
-        let cancelButton = app.navigationBars.descendants(matching: .button)
-            .matching(NSPredicate(format: "label CONTAINS[c] 'Cancel' OR label == 'Close'"))
-            .firstMatch
-        if cancelButton.waitForExistence(timeout: 1) {
-            cancelButton.tap()
-            return
-        }
-
-        let customButton = app.buttons[customButtonIdentifier]
-        XCTAssertTrue(customButton.waitForExistence(timeout: 10),
-                      "the fallback search toggle should remain available")
-        customButton.tap()
+        XCTAssertFalse(app.textFields["accountDetails.searchField"].exists)
+        XCTAssertFalse(app.searchFields.firstMatch.exists)
+        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 10),
+                      "cancelling search should restore the account transactions")
     }
 }

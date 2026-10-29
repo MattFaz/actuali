@@ -200,33 +200,11 @@ struct TransactionsListView: View {
             text: $searchText,
             isPresented: $isTransactionSearchActive,
             isFocused: $isTransactionSearchFocused,
-            isSelecting: $isSelecting,
             prompt: "Search transactions",
             accessibilityPrefix: "transactions"
         )
         .task { await budgetStore.loadSchedules() }
         .toolbar {
-            if #unavailable(iOS 26.0) {
-                if !isSelecting || isTransactionSearchActive {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            if isTransactionSearchActive {
-                                isTransactionSearchActive = false
-                                isTransactionSearchFocused = false
-                                searchText = ""
-                            } else {
-                                isTransactionSearchActive = true
-                            }
-                        } label: {
-                            Image(systemName: isTransactionSearchActive ? "xmark" : "magnifyingglass")
-                        }
-                        .accessibilityLabel(isTransactionSearchActive
-                            ? String(localized: "Cancel Search")
-                            : String(localized: "Search transactions"))
-                        .accessibilityIdentifier("transactions.search")
-                    }
-                }
-            }
             ToolbarItem(placement: .primaryAction) {
                 Button(isSelecting ? "Done" : "Select") {
                     selectionModeBinding.wrappedValue.toggle()

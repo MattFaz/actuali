@@ -896,27 +896,6 @@ struct AccountDetailView: View {
 
     @ToolbarContentBuilder
     private var accountToolbarContent: some ToolbarContent {
-        if #unavailable(iOS 26.0) {
-            if !isSelecting || isTransactionSearchActive {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        if isTransactionSearchActive {
-                            isTransactionSearchActive = false
-                            isTransactionSearchFocused = false
-                            searchText = ""
-                        } else {
-                            isTransactionSearchActive = true
-                        }
-                    } label: {
-                        Image(systemName: isTransactionSearchActive ? "xmark" : "magnifyingglass")
-                    }
-                    .accessibilityLabel(isTransactionSearchActive
-                        ? String(localized: "Cancel Search")
-                        : String(localized: "Search transactions"))
-                    .accessibilityIdentifier("accountDetails.search")
-                }
-            }
-        }
         ToolbarItem(placement: .primaryAction) {
             if isSelecting {
                 Button("Done") {
@@ -1016,7 +995,6 @@ struct AccountDetailView: View {
             text: $searchText,
             isPresented: $isTransactionSearchActive,
             isFocused: $isTransactionSearchFocused,
-            isSelecting: $isSelecting,
             prompt: "Search transactions",
             accessibilityPrefix: "accountDetails"
         )

@@ -65,9 +65,7 @@ struct GlassSearchBar: View {
 private struct OnDemandSearchModifier: ViewModifier {
     @Binding private var text: String
     @Binding private var isPresented: Bool
-    @Binding private var isSelecting: Bool
     @FocusState.Binding private var isFocused: Bool
-    private let isEnabled: Bool
     private let prompt: LocalizedStringKey
     private let accessibilityPrefix: String
 
@@ -75,69 +73,60 @@ private struct OnDemandSearchModifier: ViewModifier {
         text: Binding<String>,
         isPresented: Binding<Bool>,
         isFocused: FocusState<Bool>.Binding,
-        isSelecting: Binding<Bool>,
-        isEnabled: Bool,
         prompt: LocalizedStringKey,
         accessibilityPrefix: String
     ) {
         _text = text
         _isPresented = isPresented
         _isFocused = isFocused
-        _isSelecting = isSelecting
-        self.isEnabled = isEnabled
         self.prompt = prompt
         self.accessibilityPrefix = accessibilityPrefix
     }
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if isEnabled && (!isSelecting || isPresented) {
-            if #available(iOS 26.0, *) {
-                content
-                    .searchable(
-                        text: $text,
-                        isPresented: $isPresented,
-                        placement: .toolbar,
-                        prompt: Text(prompt)
-                    )
-                    .searchFocused($isFocused)
-                    .searchToolbarBehavior(.minimize)
-                    .onChange(of: isPresented) { _, presented in
-                        if presented {
-                            // The focus binding can update before the native field is ready.
-                            Task { @MainActor in
-                                for _ in 0..<10 {
-                                    try? await Task.sleep(for: .milliseconds(200))
-                                    guard isPresented else { return }
-                                    isFocused = true
-                                }
-                            }
-                        } else {
-                            isFocused = false
-                            text = ""
-                        }
-                    }
-            } else {
-                content
-                    .safeAreaInset(edge: .top, spacing: 0) {
-                        if isPresented {
-                            GlassSearchBar(
-                                text: $text,
-                                isFocused: $isFocused,
-                                prompt: prompt,
-                                accessibilityPrefix: accessibilityPrefix
-                            )
-                        }
-                    }
-                    .onChange(of: isPresented) { _, presented in
-                        if !presented {
-                            isFocused = false
-                            text = ""
-                        }
-                    }
-            }
+        if #available(iOS 26.0, *) {
+            content
+                .searchable(
+                    text: $text,
+                    isPresented: $isPresented,
+                    placement: .toolbar,
+                    prompt: Text(prompt)
+                )
+                .searchFocused($isFocused)
+                .searchToolbarBehavior(.minimize)
+                .onChange(of: isPresented) { _, presented in
+                    guard !presented else { return }
+                    isFocused = false
+                    text = ""
+                }
         } else {
             content
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if isPresented {
+                        GlassSearchBar(
+                            text: $text,
+                            isFocused: $isFocused,
+                            prompt: prompt,
+                            accessibilityPrefix: accessibilityPrefix
+                        )
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            isPresented.toggle()
+                            if !isPresented {
+                                isFocused = false
+                                text = ""
+                            }
+                        } label: {
+                            Image(systemName: isPresented ? "xmark" : "magnifyingglass")
+                        }
+                        .accessibilityLabel(isPresented ? Text("Cancel Search") : Text(prompt))
+                        .accessibilityIdentifier("\(accessibilityPrefix).search")
+                    }
+                }
         }
     }
 }
@@ -147,8 +136,6 @@ extension View {
         text: Binding<String>,
         isPresented: Binding<Bool>,
         isFocused: FocusState<Bool>.Binding,
-        isSelecting: Binding<Bool>,
-        isEnabled: Bool = true,
         prompt: LocalizedStringKey,
         accessibilityPrefix: String
     ) -> some View {
@@ -157,8 +144,6 @@ extension View {
                 text: text,
                 isPresented: isPresented,
                 isFocused: isFocused,
-                isSelecting: isSelecting,
-                isEnabled: isEnabled,
                 prompt: prompt,
                 accessibilityPrefix: accessibilityPrefix
             )
