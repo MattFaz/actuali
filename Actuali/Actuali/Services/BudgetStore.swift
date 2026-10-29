@@ -2877,6 +2877,17 @@ final class BudgetStore: ObservableObject {
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
             let fetchedTags = await (try? openedDb.fetchTags(includeHidden: true)) ?? []
+            // The widget snapshot published below lists upcoming bills, so
+            // schedules must be in hand before it is written.
+            let fetchedSchedules: ([ScheduleSummary], [String: ScheduleStatus], [String: Set<DayDate>])?
+            let fetchedScheduleError: String?
+            do {
+                fetchedSchedules = try await fetchSchedules(database: openedDb, upcomingLength: fetchedUpcomingLength)
+                fetchedScheduleError = nil
+            } catch {
+                fetchedSchedules = nil
+                fetchedScheduleError = error.localizedDescription
+            }
             let currentMonth = currentMonthString()
             let displayedMonth = budgetMonthRequestGeneration == monthRequestGenerationBeforeLoad
                 ? lastViewedBudgetMonth ?? currentMonth
@@ -2972,6 +2983,9 @@ final class BudgetStore: ObservableObject {
                 currentBudgetMonth = fetchedBudgetMonth
             }
             widgetBudgetMonth = fetchedWidgetBudgetMonth
+            publishSchedules(fetchedSchedules ?? ([], [:], [:]))
+            schedulesLoaded = true
+            scheduleLoadError = fetchedScheduleError
             goalTemplatesEnabled = fetchedGoalTemplatesFlag
             goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             tags = fetchedTags
