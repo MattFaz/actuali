@@ -717,6 +717,14 @@
 		A7550B922EE7B4F9007026DC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				// iOS-on-Mac lacks Wallet APIs; optional imports let the runtime gates run.
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					FinanceKit,
+					"-weak_framework",
+					FinanceKitUI,
+				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Actuali.entitlements;
@@ -745,7 +753,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -761,6 +769,14 @@
 		A7550B932EE7B4F9007026DC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				// iOS-on-Mac lacks Wallet APIs; optional imports let the runtime gates run.
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					FinanceKit,
+					"-weak_framework",
+					FinanceKitUI,
+				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Actuali.entitlements;
@@ -789,7 +805,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -933,6 +949,11 @@
 		AD00000000000000000009DF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					FinanceKit,
+				);
 				CODE_SIGN_ENTITLEMENTS = ActualiWalletDelivery.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = GJGY9A384M;
@@ -960,6 +981,11 @@
 		AD0000000000000000000ADF /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					FinanceKit,
+				);
 				CODE_SIGN_ENTITLEMENTS = ActualiWalletDelivery.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = GJGY9A384M;

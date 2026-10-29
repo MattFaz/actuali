@@ -7,7 +7,39 @@ struct AppleWalletSyncTests {
     @Test func simulatorWalletAvailabilityDoesNotOpenFinanceStore() async {
         #expect(await FinanceKitWalletStore().availability() == .unsupported)
     }
+
+    @Test(.timeLimit(.minutes(1))) func unsupportedWalletOperationsDoNotOpenFinanceStore() async throws {
+        let store = FinanceKitWalletStore()
+        #expect(try await store.requestAccess() == false)
+        #expect(try await store.accounts().isEmpty)
+        #expect(try await store.transactions(
+            accountId: "11111111-1111-1111-1111-111111111111", sinceDay: 20_261_001
+        ).isEmpty)
+        #expect(!store.setBackgroundDelivery(enabled: true))
+        #expect(!store.setBackgroundDelivery(enabled: false))
+    }
     #endif
+
+    @Test func walletDataSupportDependsOnPlatformAndAvailability() {
+        #expect(!FinanceKitWalletStore.supportsFinancialData(isIOSAppOnMac: true, isDataAvailable: true))
+        #expect(!FinanceKitWalletStore.supportsFinancialData(isIOSAppOnMac: true, isDataAvailable: false))
+        #expect(!FinanceKitWalletStore.supportsFinancialData(isIOSAppOnMac: false, isDataAvailable: false))
+        #expect(FinanceKitWalletStore.supportsFinancialData(isIOSAppOnMac: false, isDataAvailable: true))
+    }
+
+    @Test func macSupportCheckDoesNotEnterFinanceKit() {
+        func unavailableFramework() -> Bool {
+            Issue.record("FinanceKit must not be called when running on Mac")
+            return true
+        }
+        // Keep the call outside #expect: its diagnostic macro eagerly captures
+        // arguments, which would evaluate the autoclosure before our gate.
+        let supported = FinanceKitWalletStore.supportsFinancialData(
+            isIOSAppOnMac: true,
+            isDataAvailable: unavailableFramework()
+        )
+        #expect(!supported)
+    }
 
     private func transaction(
         id: String = "11111111-1111-1111-1111-111111111111",
