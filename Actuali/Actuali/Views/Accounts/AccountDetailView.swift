@@ -27,6 +27,8 @@ struct AccountDetailView: View {
     /// paged transaction list, which only holds a window of the history.
     @State private var loanTotalPaid: Int?
     @State private var searchText = ""
+    @State private var isTransactionSearchActive = false
+    @FocusState private var isTransactionSearchFocused: Bool
     @State private var showingAddTransaction = false
     @State private var showingReconcile = false
     @State private var showingWalletImport = false
@@ -894,6 +896,27 @@ struct AccountDetailView: View {
 
     @ToolbarContentBuilder
     private var accountToolbarContent: some ToolbarContent {
+        if #unavailable(iOS 26.0) {
+            if !isSelecting || isTransactionSearchActive {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        if isTransactionSearchActive {
+                            isTransactionSearchActive = false
+                            isTransactionSearchFocused = false
+                            searchText = ""
+                        } else {
+                            isTransactionSearchActive = true
+                        }
+                    } label: {
+                        Image(systemName: isTransactionSearchActive ? "xmark" : "magnifyingglass")
+                    }
+                    .accessibilityLabel(isTransactionSearchActive
+                        ? String(localized: "Cancel Search")
+                        : String(localized: "Search transactions"))
+                    .accessibilityIdentifier("accountDetails.search")
+                }
+            }
+        }
         ToolbarItem(placement: .primaryAction) {
             if isSelecting {
                 Button("Done") {
@@ -989,7 +1012,14 @@ struct AccountDetailView: View {
         .listSectionSpacing(.compact)
         .readableWidth()
         .navigationTitle(account.name)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .onDemandSearch(
+            text: $searchText,
+            isPresented: $isTransactionSearchActive,
+            isFocused: $isTransactionSearchFocused,
+            isSelecting: $isSelecting,
+            prompt: "Search transactions",
+            accessibilityPrefix: "accountDetails"
+        )
         .toolbar {
             accountToolbarContent
             runningBalanceToolbarItem
@@ -1082,6 +1112,13 @@ struct AccountDetailView: View {
         .sheet(item: $selectedStatement) { statement in
             CreditCardStatementDetailView(account: account, statement: statement)
                 .environmentObject(budgetStore)
+        }
+        .onChange(of: account.id) { _, _ in
+            // Search belongs to the selected account; don't carry a hidden filter
+            // or an open search field into the next account in the iPad split view.
+            isTransactionSearchActive = false
+            isTransactionSearchFocused = false
+            searchText = ""
         }
         .task(id: reloadID) {
             let searchChanged = previousSearchText != searchText

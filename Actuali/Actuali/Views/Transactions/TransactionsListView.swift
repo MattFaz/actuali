@@ -5,6 +5,8 @@ struct TransactionsListView: View {
     @AppStorage("showUpcomingScheduledTransactions") private var showUpcomingSchedules = true
     @State private var pager: TransactionPager?
     @State private var searchText = ""
+    @State private var isTransactionSearchActive = false
+    @FocusState private var isTransactionSearchFocused: Bool
     @State private var editingTransaction: Transaction?
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
@@ -194,9 +196,37 @@ struct TransactionsListView: View {
         .contentMargins(.horizontal, 6, for: .scrollContent)
         .readableWidth()
         .navigationTitle("All Accounts")
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .onDemandSearch(
+            text: $searchText,
+            isPresented: $isTransactionSearchActive,
+            isFocused: $isTransactionSearchFocused,
+            isSelecting: $isSelecting,
+            prompt: "Search transactions",
+            accessibilityPrefix: "transactions"
+        )
         .task { await budgetStore.loadSchedules() }
         .toolbar {
+            if #unavailable(iOS 26.0) {
+                if !isSelecting || isTransactionSearchActive {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            if isTransactionSearchActive {
+                                isTransactionSearchActive = false
+                                isTransactionSearchFocused = false
+                                searchText = ""
+                            } else {
+                                isTransactionSearchActive = true
+                            }
+                        } label: {
+                            Image(systemName: isTransactionSearchActive ? "xmark" : "magnifyingglass")
+                        }
+                        .accessibilityLabel(isTransactionSearchActive
+                            ? String(localized: "Cancel Search")
+                            : String(localized: "Search transactions"))
+                        .accessibilityIdentifier("transactions.search")
+                    }
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button(isSelecting ? "Done" : "Select") {
                     selectionModeBinding.wrappedValue.toggle()
