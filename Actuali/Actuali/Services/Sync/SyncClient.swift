@@ -1452,13 +1452,11 @@ actor SyncClient {
         // Retry from a fresh, single-read snapshot; never apply stale absolute
         // amounts or tombstones if the transfer's inputs changed meanwhile.
         for _ in 0..<3 {
-            let plan = if let transferToId {
+            let plan = try transferToId.map {
                 try database.categoryTransferPlan(
                     sourceCategoryIds: sourceIds,
-                    toCategoryId: transferToId
+                    toCategoryId: $0
                 )
-            } else {
-                nil
             }
 
             var messages: [CRDTMessage] = []
