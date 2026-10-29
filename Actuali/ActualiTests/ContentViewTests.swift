@@ -6,9 +6,7 @@ struct ContentViewTests {
     @Test func tabForDeepLinkMapsKnownRoutes() {
         #expect(ContentView.tab(forDeepLink: URL(string: "actuali://add-transaction")!) == StartTab.addTransaction.tabTag)
         #expect(ContentView.tab(forDeepLink: URL(string: "actuali://budget")!) == StartTab.budget.tabTag)
-        #expect(ContentView.tab(forDeepLink: URL(string: "actuali://bills")!) == StartTab.budget.tabTag)
         #expect(ContentView.tab(forDeepLink: URL(string: "actuali://accounts")!) == StartTab.accounts.tabTag)
-        #expect(ContentView.tab(forDeepLink: URL(string: "actuali://reports")!) == StartTab.reports.tabTag)
     }
 
     @Test func tabForDeepLinkReturnsNilForUnknownRoute() {

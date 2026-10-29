@@ -304,7 +304,7 @@ struct WidgetSnapshotTests {
         #expect(snapshot.formattedToBudget == "$45000")
         #expect(snapshot.totalBudgeted == 200_000)
         #expect(snapshot.totalSpent == -150_000)
-        #expect(snapshot.totalIncome == 300_000)
+        #expect(snapshot.formattedTotalIncome == "$300000")
     }
 
     // MARK: - Upcoming Bills
@@ -389,10 +389,38 @@ struct WidgetSnapshotTests {
         // Paid (s-paid), completed (s2), and closed account (s-closed) are dropped
         #expect(snapshot.upcomingBills?.count == 3)
         #expect(snapshot.upcomingBills?[0].id == "s3") // earlier date (Aug 22 vs Aug 25)
-        #expect(snapshot.upcomingBills?[0].status == "due")
+        #expect(snapshot.upcomingBills?[0].status == .due)
         #expect(snapshot.upcomingBills?[1].id == "s1")
-        #expect(snapshot.upcomingBills?[1].status == "upcoming")
+        #expect(snapshot.upcomingBills?[1].status == .upcoming)
         #expect(snapshot.upcomingBills?[2].id == "s-empty-name")
         #expect(snapshot.upcomingBills?[2].title == "Netflix") // empty name fell back to payee
+    }
+
+    @Test func upcomingBillsMarkMissedOverdueAndCapAtEight() {
+        let schedules = (1...10).map { day in
+            ScheduleSummary(
+                id: "s\(day)", name: "Bill \(day)", ruleId: nil,
+                nextDate: DayDate(year: 2026, month: 8, day: day), nextDateRowId: nil, baseNextDateTs: nil,
+                accountId: "a1", payeeId: nil,
+                amount: .fixed(-1000), amountOp: .isExactly, dateOp: nil,
+                dateCondition: nil, postsTransaction: true, completed: false,
+                customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+                conditionsJSON: nil, actionsJSON: nil
+            )
+        }
+
+        let snapshot = WidgetSnapshot.make(
+            from: [],
+            month: "2026-08",
+            balancesHidden: false,
+            generatedAt: Date(),
+            format: { "$\($0)" },
+            accounts: [Account(id: "a1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 1, balance: 0)],
+            schedules: schedules.reversed(),
+            scheduleStatuses: ["s1": .missed]
+        )
+
+        #expect(snapshot.upcomingBills?.map(\.id) == (1...8).map { "s\($0)" })
+        #expect(snapshot.upcomingBills?.first?.status == .overdue)
     }
 }

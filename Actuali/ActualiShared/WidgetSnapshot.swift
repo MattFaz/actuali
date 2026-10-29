@@ -37,8 +37,11 @@ struct WidgetBillItem: Codable, Equatable, Identifiable {
     let dueDay: Int
     let dueMonth: Int
     let dueYear: Int
-    /// "overdue", "due", "upcoming"
-    let status: String
+    let status: Status
+
+    enum Status: String, Codable {
+        case overdue, due, upcoming
+    }
 }
 
 /// Everything the widget needs to render, written by the app after each data
@@ -74,7 +77,6 @@ struct WidgetSnapshot: Codable, Equatable {
     /// Negative (money out), net of inflows.
     var totalSpent: Int?
     var formattedTotalSpent: String?
-    var totalIncome: Int?
     var formattedTotalIncome: String?
 
     // MARK: - Bills

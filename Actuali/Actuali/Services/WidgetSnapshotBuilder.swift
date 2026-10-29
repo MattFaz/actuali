@@ -117,7 +117,6 @@ extension WidgetSnapshot {
         snapshot.formattedTotalBudgeted = budgetMonth.map { format($0.totalBudgeted) }
         snapshot.totalSpent = budgetMonth?.totalSpent
         snapshot.formattedTotalSpent = budgetMonth.map { format($0.totalSpent) }
-        snapshot.totalIncome = budgetMonth?.totalIncome
         snapshot.formattedTotalIncome = budgetMonth.map { format($0.totalIncome) }
         snapshot.upcomingBills = billItems
         return snapshot
@@ -149,11 +148,10 @@ extension WidgetSnapshot {
                 let title = schedule.name.flatMap { $0.isEmpty ? nil : $0 }
                     ?? schedule.payeeId.flatMap { payeeMap[$0] }
                     ?? String(localized: "Scheduled")
-                let status = statuses[schedule.id]
-                let statusString = switch status {
-                case .missed: "overdue"
-                case .due: "due"
-                default: "upcoming"
+                let status: WidgetBillItem.Status = switch statuses[schedule.id] {
+                case .missed: .overdue
+                case .due: .due
+                default: .upcoming
                 }
                 return WidgetBillItem(
                     id: schedule.id,
@@ -163,7 +161,7 @@ extension WidgetSnapshot {
                     dueDay: date.day,
                     dueMonth: date.month,
                     dueYear: date.year,
-                    status: statusString
+                    status: status
                 )
             }
     }

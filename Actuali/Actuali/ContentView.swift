@@ -25,12 +25,10 @@ struct ContentView: View {
         switch host {
         case "add-transaction":
             return StartTab.addTransaction.tabTag
-        case "budget", "bills":
+        case "budget":
             return StartTab.budget.tabTag
         case "accounts":
             return StartTab.accounts.tabTag
-        case "reports":
-            return StartTab.reports.tabTag
         default:
             return nil
         }

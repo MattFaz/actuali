@@ -31,9 +31,8 @@ struct QuickAddTransactionProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<QuickAddTransactionEntry>) -> Void) {
-        let entry = QuickAddTransactionEntry(date: .now)
-        let nextMidnight = Calendar.current.startOfDay(for: .now.addingTimeInterval(86400))
-        completion(Timeline(entries: [entry], policy: .after(nextMidnight)))
+        // Static content: nothing to refresh.
+        completion(Timeline(entries: [.sample], policy: .never))
     }
 }
 
@@ -43,7 +42,8 @@ struct QuickAddTransactionWidgetView: View {
     var body: some View {
         ZStack {
             AccessoryWidgetBackground()
-            Image(systemName: "creditcard.badge.plus")
+            // creditcard.badge.plus is SF Symbols 8 (iOS 27) and renders blank on iOS 18.
+            Image(systemName: "plus")
                 .font(.title3)
         }
         .containerBackground(.fill.tertiary, for: .widget)

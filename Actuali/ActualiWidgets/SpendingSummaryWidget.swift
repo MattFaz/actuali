@@ -22,7 +22,6 @@ struct SpendingSummaryEntry: TimelineEntry {
     let formattedTotalSpent: String?
     let totalBudgeted: Int?
     let formattedTotalBudgeted: String?
-    let totalIncome: Int?
     let formattedTotalIncome: String?
     let hasSnapshot: Bool
 
@@ -33,7 +32,6 @@ struct SpendingSummaryEntry: TimelineEntry {
         formattedTotalSpent: "$1,842.00",
         totalBudgeted: 320_000,
         formattedTotalBudgeted: "$3,200.00",
-        totalIncome: 450_000,
         formattedTotalIncome: "$4,500.00",
         hasSnapshot: true
     )
@@ -63,7 +61,6 @@ struct SpendingSummaryProvider: TimelineProvider {
                 formattedTotalSpent: nil,
                 totalBudgeted: nil,
                 formattedTotalBudgeted: nil,
-                totalIncome: nil,
                 formattedTotalIncome: nil,
                 hasSnapshot: false
             )
@@ -75,7 +72,6 @@ struct SpendingSummaryProvider: TimelineProvider {
             formattedTotalSpent: snapshot.formattedTotalSpent,
             totalBudgeted: snapshot.totalBudgeted,
             formattedTotalBudgeted: snapshot.formattedTotalBudgeted,
-            totalIncome: snapshot.totalIncome,
             formattedTotalIncome: snapshot.formattedTotalIncome,
             hasSnapshot: true
         )

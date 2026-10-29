@@ -25,9 +25,9 @@ struct UpcomingBillsEntry: TimelineEntry {
         date: .now,
         balancesHidden: false,
         bills: [
-            WidgetBillItem(id: "1", title: "Electric Utility", amount: -8500, formattedAmount: "$85.00", dueDay: 29, dueMonth: 10, dueYear: 2026, status: "due"),
-            WidgetBillItem(id: "2", title: "Internet", amount: -6000, formattedAmount: "$60.00", dueDay: 2, dueMonth: 11, dueYear: 2026, status: "upcoming"),
-            WidgetBillItem(id: "3", title: "Rent", amount: -120_000, formattedAmount: "$1,200.00", dueDay: 5, dueMonth: 11, dueYear: 2026, status: "upcoming"),
+            WidgetBillItem(id: "1", title: "Electric Utility", amount: -8500, formattedAmount: "$85.00", dueDay: 29, dueMonth: 10, dueYear: 2026, status: .due),
+            WidgetBillItem(id: "2", title: "Internet", amount: -6000, formattedAmount: "$60.00", dueDay: 2, dueMonth: 11, dueYear: 2026, status: .upcoming),
+            WidgetBillItem(id: "3", title: "Rent", amount: -120_000, formattedAmount: "$1,200.00", dueDay: 5, dueMonth: 11, dueYear: 2026, status: .upcoming),
         ],
         hasSnapshot: true
     )
@@ -114,16 +114,16 @@ struct UpcomingBillsWidgetView: View {
                 .font(.title2.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-                .foregroundStyle(entry.balancesHidden ? .primary : amountColor(for: bill.status))
+                .foregroundStyle(amountColor(for: bill))
             HStack(spacing: 4) {
                 Text(dateString(for: bill))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                if bill.status == "overdue" {
+                if bill.status == .overdue {
                     Text(String(localized: "Overdue"))
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.red)
-                } else if bill.status == "due" {
+                } else if bill.status == .due {
                     Text(String(localized: "Due"))
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.orange)
@@ -157,7 +157,7 @@ struct UpcomingBillsWidgetView: View {
             ForEach(Array(entry.bills.prefix(3))) { bill in
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(amountColor(for: bill.status))
+                        .fill(statusColor(bill.status))
                         .frame(width: 6, height: 6)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(bill.title)
@@ -171,7 +171,7 @@ struct UpcomingBillsWidgetView: View {
                     Text(bill.formattedAmount)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
-                        .foregroundStyle(entry.balancesHidden ? .primary : amountColor(for: bill.status))
+                        .foregroundStyle(amountColor(for: bill))
                 }
             }
             Spacer(minLength: 0)
@@ -193,11 +193,20 @@ struct UpcomingBillsWidgetView: View {
         return formatter.string(from: date)
     }
 
-    private func amountColor(for status: String) -> Color {
+    /// Income schedules read green, as in the Schedules list, so a paycheck
+    /// is not mistaken for a bill. Hidden balances stay neutral so the sign does not leak.
+    private func amountColor(for bill: WidgetBillItem) -> Color {
+        if entry.balancesHidden {
+            return .primary
+        }
+        return bill.amount > 0 ? .green : statusColor(bill.status)
+    }
+
+    private func statusColor(_ status: WidgetBillItem.Status) -> Color {
         switch status {
-        case "overdue": .red
-        case "due": .orange
-        default: .secondary
+        case .overdue: .red
+        case .due: .orange
+        case .upcoming: .secondary
         }
     }
 }
