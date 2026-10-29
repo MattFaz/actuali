@@ -275,6 +275,50 @@ struct CategoryBudgetProgressTests {
         #expect(!context.canUseToBudget)
     }
 
+    @Test func coverAmountAndLimitFollowTheSelectedSource() {
+        let overspent = makeCategory(
+            id: "target",
+            groupId: "home",
+            budgeted: 0,
+            spent: -5000,
+            available: -5000
+        )
+        let partial = makeCategory(
+            id: "partial",
+            groupId: "home",
+            budgeted: 1200,
+            spent: 0,
+            available: 1200
+        )
+        let sufficient = makeCategory(
+            id: "sufficient",
+            groupId: "home",
+            budgeted: 6000,
+            spent: 0,
+            available: 6000
+        )
+        let context = BudgetTransferContext(
+            category: overspent,
+            budget: BudgetMonth(
+                month: overspent.month,
+                categoryBudgets: [partial, sufficient],
+                toBudget: 3000
+            )
+        )
+
+        // Selecting a category limits the suggested amount to what it has.
+        #expect(context.suggestedCoverAmount(fromCategoryId: "partial") == 1200)
+        #expect(context.coverLimit(fromCategoryId: "partial") == 1200)
+
+        // Switching to a sufficiently funded category still caps at the overspend.
+        #expect(context.suggestedCoverAmount(fromCategoryId: "sufficient") == 5000)
+        #expect(context.coverLimit(fromCategoryId: "sufficient") == 6000)
+
+        // To Budget can go negative, but a typo cannot transfer more than the overspend.
+        #expect(context.suggestedCoverAmount(fromCategoryId: nil) == 5000)
+        #expect(context.coverLimit(fromCategoryId: nil) == 5000)
+    }
+
     @Test func toBudgetTransferUsesCategoriesAsTheOtherEndpoint() {
         let partial = makeCategory(id: "partial", groupId: "home", budgeted: 3000, spent: 0, available: 3000)
         let large = makeCategory(id: "large", groupId: "other", budgeted: 12000, spent: 0, available: 12000)

@@ -57,6 +57,20 @@ struct BudgetTransferContext: Identifiable {
         }
     }
 
+    /// Maximum amount the selected source can contribute while covering.
+    /// To Budget can go negative, so the overspend itself is the limit.
+    func coverLimit(fromCategoryId id: String?) -> Int {
+        guard let id, let source = rankedCategories.first(where: { $0.categoryId == id }) else {
+            return abs(amount)
+        }
+        return source.available
+    }
+
+    /// Prefilled cover amount, capped by the overspend and selected source.
+    func suggestedCoverAmount(fromCategoryId id: String?) -> Int {
+        min(abs(amount), coverLimit(fromCategoryId: id))
+    }
+
     var canUseToBudget: Bool {
         guard let category, let toBudget = budget.toBudget else { return false }
         return category.available < 0 ? toBudget > 0 : true
@@ -83,16 +97,6 @@ enum BudgetTransferLocalization {
             locale: locale,
             bundle: bundle
         ))
-    }
-}
-
-/// Suggested amount for covering overspending. To Budget is intentionally
-/// uncapped, while a category source may only contribute its available funds.
-enum BudgetTransferAmount {
-    static func suggestedCoverAmount(overspentAmount: Int, availableInSource: Int?) -> Int {
-        let needed = max(0, overspentAmount)
-        guard let availableInSource else { return needed }
-        return min(needed, max(0, availableInSource))
     }
 }
 
@@ -139,16 +143,9 @@ struct BudgetTransferSheet: View {
         let initialEndpoint = hasToBudget ? Endpoint.toBudget : (firstCategory ?? .toBudget)
         _endpoint = State(initialValue: initialEndpoint)
 
-        let initialSourceAvailable: Int?
-        if case .category(let id) = initialEndpoint {
-            initialSourceAvailable = context.rankedCategories.first { $0.categoryId == id }?.available
-        } else {
-            initialSourceAvailable = nil
-        }
-        let initialAmount = BudgetTransferAmount.suggestedCoverAmount(
-            overspentAmount: abs(context.amount),
-            availableInSource: context.amount < 0 ? initialSourceAvailable : nil
-        )
+        let initialAmount = context.amount < 0
+            ? context.suggestedCoverAmount(fromCategoryId: initialEndpoint.categoryId)
+            : abs(context.amount)
         // Cover from To Budget with the full overspend; when a category is
         // selected, prefill only what that category can contribute.
         _amountText = State(initialValue: String(format: "%.2f", Double(initialAmount) / 100.0))
@@ -178,16 +175,10 @@ struct BudgetTransferSheet: View {
         max(0, abs(context.amount) - rolledOverAmount)
     }
 
-    private var sourceAvailable: Int? {
-        if !isCovering {
-            return context.amount
-        }
-        if case .category(let id) = endpoint {
-            return eligibleCategories.first(where: { $0.categoryId == id })?.available
-        }
-        // To Budget may go negative when covering overspending; only category
-        // sources are constrained by their available balance.
-        return nil
+    private var sourceAvailable: Int {
+        isCovering
+            ? context.coverLimit(fromCategoryId: endpoint.categoryId)
+            : context.amount
     }
 
     var body: some View {
@@ -275,16 +266,7 @@ struct BudgetTransferSheet: View {
         }
         .onChange(of: endpoint) { _, newEndpoint in
             guard isCovering else { return }
-            let availableInSource: Int?
-            if case .category(let id) = newEndpoint {
-                availableInSource = eligibleCategories.first { $0.categoryId == id }?.available
-            } else {
-                availableInSource = nil
-            }
-            let amount = BudgetTransferAmount.suggestedCoverAmount(
-                overspentAmount: abs(context.amount),
-                availableInSource: availableInSource
-            )
+            let amount = context.suggestedCoverAmount(fromCategoryId: newEndpoint.categoryId)
             amountText = String(format: "%.2f", Double(amount) / 100.0)
             errorMessage = nil
         }
@@ -298,7 +280,7 @@ struct BudgetTransferSheet: View {
         Task {
             do {
                 let cents = try BudgetStore.budgetAmountCents(from: amountText)
-                if let sourceAvailable, cents > sourceAvailable {
+                if cents > sourceAvailable {
                     throw BudgetStoreError.transferAmountExceedsSource
                 }
                 // Covering pulls money into the tapped category; moving a
