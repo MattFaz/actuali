@@ -63,9 +63,11 @@ struct SyncClientCategoryDeletionTests {
 
         try await syncClient.deleteCategory(id: "cat-food", transferToId: "cat-fun")
 
+        // legacy-food's row already reached cat-food when it merged, so only
+        // cat-food's own cell moves; sweeping the alias would double-count.
         #expect(try await amount("cat-food", database: database) == 0)
-        #expect(try await amount("legacy-food", database: database) == 0)
-        #expect(try await amount("cat-fun", database: database) == 8500)
+        #expect(try await amount("legacy-food", database: database) == 2500)
+        #expect(try await amount("cat-fun", database: database) == 6000)
         #expect(try await transferTarget("cat-food", database: database) == "cat-fun")
         #expect(try await transferTarget("legacy-food", database: database) == "cat-fun")
 
@@ -82,6 +84,33 @@ struct SyncClientCategoryDeletionTests {
         let messages = try messageRows(path: path)
         #expect(messages.contains { $0["dataset"] as String? == "categories" && $0["row"] as String? == "cat-food" && $0["column"] as String? == "tombstone" })
         #expect(messages.contains { $0["dataset"] as String? == "category_mapping" && $0["row"] as String? == "legacy-food" && $0["column"] as String? == "transferId" })
+    }
+
+    @Test func transferToACategoryOfTheOtherTypeIsRefused() async throws {
+        let (database, path, syncClient) = try await makeDatabase(
+            seed: """
+            INSERT INTO category_groups (id, name, sort_order, is_income) VALUES
+                ('grp-daily', 'Daily', 16384, 0),
+                ('grp-income', 'Income', 32768, 1);
+            INSERT INTO categories (id, name, cat_group, sort_order, is_income) VALUES
+                ('cat-food', 'Food', 'grp-daily', 16384, 0),
+                ('cat-pay', 'Pay', 'grp-income', 16384, 1);
+            INSERT INTO category_mapping (id, transferId) VALUES
+                ('cat-food', 'cat-food'), ('cat-pay', 'cat-pay');
+            INSERT INTO transactions (id, category, tombstone) VALUES ('txn-food', 'cat-food', 0);
+            """
+        )
+        defer { cleanup(path) }
+
+        await #expect(throws: BudgetDatabase.CategoryWriteError.transferCategoryTypeMismatch) {
+            try await syncClient.deleteCategory(id: "cat-food", transferToId: "cat-pay")
+        }
+        await #expect(throws: BudgetDatabase.CategoryWriteError.transferCategoryTypeMismatch) {
+            try await syncClient.deleteCategoryGroup(id: "grp-daily", transferToId: "cat-pay")
+        }
+        // SyncClient holds the database weakly; keep it alive through the calls.
+        withExtendedLifetime(database) {}
+        #expect(try messageRows(path: path).isEmpty)
     }
 
     @Test func deletionWithoutDestinationRefusesToDiscardTransactionHistory() async throws {

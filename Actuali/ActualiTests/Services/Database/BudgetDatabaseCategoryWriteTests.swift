@@ -244,10 +244,10 @@ struct BudgetDatabaseCategoryWriteTests {
         )
         defer { cleanup(url) }
 
-        let writes = try db.categoryBudgetTransferWrites(
+        let writes = try db.categoryTransferPlan(
             sourceCategoryIds: ["cat-groceries", "cat-fuel"],
             toCategoryId: "cat-coffee"
-        )
+        ).budgetWrites
 
         #expect(writes.count == 5)
         #expect(writes.contains {
@@ -273,10 +273,10 @@ struct BudgetDatabaseCategoryWriteTests {
             )
         }
 
-        let updates = try db.categoryMappingsForTransfer(
+        let updates = try db.categoryTransferPlan(
             sourceCategoryIds: ["cat-groceries", "cat-fuel"],
             toCategoryId: "cat-coffee"
-        )
+        ).mappings
 
         #expect(updates.map(\.id) == ["cat-fuel", "cat-groceries", "cat-old"])
         #expect(updates.allSatisfy { $0.targetId == "cat-coffee" })
@@ -317,7 +317,11 @@ struct BudgetDatabaseCategoryWriteTests {
         #expect(!requiresTransfer)
     }
 
-    @Test func legacyMappedBudgetAmountsAreTransferredAndStalePlansAreRejected() async throws {
+    /// An alias's budget row already reached its survivor when it merged
+    /// (upstream doTransfer never clears it), so a later delete moves only
+    /// the category's own cells, and the alias row alone doesn't force a
+    /// destination, matching upstream isCategoryTransferRequired.
+    @Test func legacyAliasBudgetRowsAreNotSweptAgain() async throws {
         let (db, url) = try await makeTestDatabase(
             TestSchema.categories,
             TestSchema.categoryGroups,
@@ -349,30 +353,34 @@ struct BudgetDatabaseCategoryWriteTests {
             toCategoryId: "cat-target"
         )
         #expect(plan.budgetWrites.contains {
-            $0.rowId == "202601-cat-target" && $0.amount == 9000 && !$0.createsRow
+            $0.rowId == "202601-cat-target" && $0.amount == 6000 && !$0.createsRow
         })
-        #expect(plan.budgetWrites.contains {
-            $0.rowId == "202601-legacy-food" && $0.amount == 0 && !$0.createsRow
-        })
+        #expect(!plan.budgetWrites.contains { $0.rowId == "202601-legacy-food" })
         #expect(plan.mappings.contains {
             $0.id == "legacy-food" && $0.targetId == "cat-target"
         })
-        #expect(try db.categoryTransferPlanMatches(
-            sourceCategoryIds: ["cat-food"],
-            toCategoryId: "cat-target",
-            expected: plan
-        ))
 
         try await db.dbQueueForTesting.write { conn in
-            try conn.execute(
-                sql: "UPDATE zero_budgets SET amount = 6000 WHERE id = '202601-cat-target'"
-            )
+            try conn.execute(sql: "UPDATE zero_budgets SET amount = 0 WHERE id = '202601-cat-food'")
         }
-        #expect(try db.categoryTransferPlanMatches(
-            sourceCategoryIds: ["cat-food"],
-            toCategoryId: "cat-target",
-            expected: plan
-        ) == false)
+        let requiresTransfer = try await db.categoryRequiresTransfer(id: "cat-food")
+        #expect(!requiresTransfer)
+    }
+
+    @Test func transferPlanRejectsDeletedSourceOrTarget() async throws {
+        let (db, url) = try await makeTestDatabase(
+            TestSchema.categories,
+            TestSchema.categoryGroups,
+            TestSchema.categoryMapping,
+            TestSchema.zeroBudgets,
+            """
+            INSERT INTO category_groups (id, name, sort_order) VALUES ('grp-source', 'Source', 16384.0);
+            INSERT INTO categories (id, name, cat_group, sort_order) VALUES
+                ('cat-food', 'Food', 'grp-source', 16384.0),
+                ('cat-target', 'Target', 'grp-source', 32768.0);
+            """
+        )
+        defer { cleanup(url) }
 
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: "UPDATE categories SET tombstone = 1 WHERE id = 'cat-food'")

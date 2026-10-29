@@ -1251,18 +1251,17 @@ final class BudgetDatabase: Sendable {
     /// node id). First message > watermark means the row itself is new, not
     /// an edit to an existing transaction; the creator's node id keeps this
     /// device's own writes (manual adds, Wallet automation) out of the result.
-    func fetchTransactionsCreated(
-        afterMessageId watermark: Int64,
-        excludingNode nodeId: String
-    ) async throws -> [Transaction] {
+    func fetchTransactionsCreated(afterMessageId watermark: Int64,
+                                  excludingNode nodeId: String) async throws -> [Transaction] {
         try await dbQueue.read { db in
             let sql = Self.transactionSelect + """
-            AND t.id IN (
-                SELECT row FROM messages_crdt
-                WHERE dataset = 'transactions'
-                GROUP BY row
-                HAVING MIN(id) > ? AND substr(MIN(timestamp), -16) <> ?
-            )
+
+              AND t.id IN (
+                  SELECT row FROM messages_crdt
+                  WHERE dataset = 'transactions'
+                  GROUP BY row
+                  HAVING MIN(id) > ? AND substr(MIN(timestamp), -16) <> ?
+              )
             ORDER BY t.date DESC, t.sort_order DESC
             """
             let rows = try Row.fetchAll(db, sql: sql, arguments: [watermark, nodeId])
@@ -1761,7 +1760,6 @@ final class BudgetDatabase: Sendable {
         case duplicateCategoryName(name: String, groupName: String)
         case groupNotFound
         case categoryNotFound
-        case transferDataChanged
         case transferCategoryTypeMismatch
 
         var errorDescription: String? {
@@ -1774,8 +1772,6 @@ final class BudgetDatabase: Sendable {
                 String(localized: "That category group no longer exists")
             case .categoryNotFound:
                 String(localized: "That category no longer exists")
-            case .transferDataChanged:
-                String(localized: "The budget changed while the item was being deleted. Please try again.")
             case .transferCategoryTypeMismatch:
                 String(localized: "You can only transfer to a category of the same type.")
             }
@@ -2592,7 +2588,7 @@ final class BudgetDatabase: Sendable {
     /// One CRDT write needed to preserve a month's budget when categories
     /// are merged. The source cell is cleared after its value is added to the
     /// surviving category so report reads cannot count the allocation twice.
-    struct CategoryBudgetTransferWrite: Equatable {
+    struct CategoryBudgetTransferWrite {
         let table: String
         let rowId: String
         let monthInt: Int
@@ -2602,9 +2598,7 @@ final class BudgetDatabase: Sendable {
     }
 
     /// Related budget and mapping writes captured from the same SQLite read.
-    /// SyncClient rechecks this snapshot after async HLC generation so a budget
-    /// edit made while the actor is reentrant cannot be overwritten.
-    struct CategoryTransferPlan: Equatable {
+    struct CategoryTransferPlan {
         let budgetWrites: [CategoryBudgetTransferWrite]
         let mappings: [CategoryMapping]
     }
@@ -2640,9 +2634,12 @@ final class BudgetDatabase: Sendable {
             guard targetIsActive else { throw CategoryWriteError.categoryNotFound }
 
             let mappingIds = try Self.categoryMappingIdsForTransfer(db, sourceCategoryIds: sourceIds)
+            // Budget rows move only for the categories being deleted, as in
+            // upstream doTransfer: an older alias already gave its amount to
+            // its survivor when it merged, so sweeping it again double-counts.
             let budgetWrites = try Self.categoryBudgetTransferWrites(
                 db,
-                sourceCategoryIds: mappingIds,
+                sourceCategoryIds: sourceIds,
                 toCategoryId: toCategoryId
             )
             let mappings = mappingIds.map { CategoryMapping(id: $0, targetId: toCategoryId) }
@@ -2650,41 +2647,8 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    /// True only while the plan's source rows, target totals, and legacy
-    /// category aliases still match the state used to prepare the CRDT batch.
-    func categoryTransferPlanMatches(
-        sourceCategoryIds: [String],
-        toCategoryId: String,
-        expected: CategoryTransferPlan
-    ) throws -> Bool {
-        try categoryTransferPlan(
-            sourceCategoryIds: sourceCategoryIds,
-            toCategoryId: toCategoryId
-        ) == expected
-    }
-
-    func categoryBudgetTransferWrites(
-        sourceCategoryIds: [String],
-        toCategoryId: String
-    ) throws -> [CategoryBudgetTransferWrite] {
-        try categoryTransferPlan(
-            sourceCategoryIds: sourceCategoryIds,
-            toCategoryId: toCategoryId
-        ).budgetWrites
-    }
-
     /// Redirect every removed category ID and any older IDs already mapped to
     /// one of them straight to the survivor. Mapping lookups resolve one hop.
-    func categoryMappingsForTransfer(
-        sourceCategoryIds: [String],
-        toCategoryId: String
-    ) throws -> [CategoryMapping] {
-        try categoryTransferPlan(
-            sourceCategoryIds: sourceCategoryIds,
-            toCategoryId: toCategoryId
-        ).mappings
-    }
-
     private static func categoryMappingIdsForTransfer(
         _ db: Database,
         sourceCategoryIds: [String]
@@ -2768,26 +2732,13 @@ final class BudgetDatabase: Sendable {
         return writes
     }
 
-    /// Whether a category has transactions or a non-zero effective budget that
-    /// must be preserved by choosing a destination before deletion.
+    /// Whether a category has transactions or a non-zero budget that must be
+    /// preserved by choosing a destination before deletion. Mirrors upstream
+    /// isCategoryTransferRequired: transactions resolve through
+    /// category_mapping, but only the category's own budget cells count.
     func categoryRequiresTransfer(id: String) async throws -> Bool {
         try await dbQueue.read { db in
             try Self.categoryRequiresTransfer(db, id: id)
-        }
-    }
-
-    /// Synchronous final guard used immediately before committing the delete
-    /// batch, after any async message generation has yielded the actor.
-    func categoriesRequireTransfer(ids: [String]) throws -> Bool {
-        let categoryIds = Array(Set(ids))
-        guard !categoryIds.isEmpty else { return false }
-        return try dbQueue.read { db in
-            for id in categoryIds {
-                if try Self.categoryRequiresTransfer(db, id: id) {
-                    return true
-                }
-            }
-            return false
         }
     }
 
@@ -2812,8 +2763,7 @@ final class BudgetDatabase: Sendable {
             sql: """
             SELECT 1
             FROM \(table) b
-            LEFT JOIN category_mapping cm ON cm.id = b.category
-            WHERE COALESCE(cm.transferId, b.category) = ? AND b.amount != 0
+            WHERE b.category = ? AND b.amount != 0
             LIMIT 1
             """,
             arguments: [id]

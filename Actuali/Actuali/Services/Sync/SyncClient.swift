@@ -1374,6 +1374,12 @@ actor SyncClient {
 
     /// Delete a category, redirecting its transactions and budget balance to
     /// another category when a transfer destination is required or supplied.
+    /// Mirrors upstream deleteCategory / deleteCategoryGroup
+    /// (loot-core server/budget/app.ts), doTransfer (budget/base.ts) and
+    /// db.deleteCategory's category_mapping forwarding (db/index.ts). Unlike
+    /// upstream, the source budget cells are zeroed too, because Actuali's
+    /// reflect_budgets reads (fetchTrackingBudgetMonths) resolve rows through
+    /// category_mapping and would otherwise count the moved amount twice.
     func deleteCategory(id: String, transferToId: String?) async throws {
         guard let database else { throw SyncError.notConfigured }
 
@@ -1447,82 +1453,46 @@ actor SyncClient {
             }
         }
 
-        // Message generation awaits the HLC actor, so SyncClient can be
-        // re-entered and another operation can change the budget mid-delete.
-        // Retry from a fresh, single-read snapshot; never apply stale absolute
-        // amounts or tombstones if the transfer's inputs changed meanwhile.
-        for _ in 0..<3 {
-            let plan = try transferToId.map {
-                try database.categoryTransferPlan(
-                    sourceCategoryIds: sourceIds,
-                    toCategoryId: $0
-                )
-            }
-
-            var messages: [CRDTMessage] = []
-            if let plan {
-                for write in plan.budgetWrites {
-                    var fields: [(column: String, value: (any Sendable)?)] = []
-                    if write.createsRow {
-                        fields.append(("month", write.monthInt))
-                        fields.append(("category", write.categoryId))
-                    }
-                    fields.append(("amount", write.amount))
-                    messages += try await messageGenerator.messages(
-                        dataset: write.table,
-                        row: write.rowId,
-                        fields: fields
-                    )
-                }
-
-                for mapping in plan.mappings {
-                    messages += try await messageGenerator.messages(
-                        dataset: CategoryMapping.datasetName,
-                        row: mapping.id,
-                        fields: [("transferId", mapping.targetId)]
-                    )
-                }
-            }
-
-            for category in categories {
-                let message = try await messageGenerator.messageForDelete(category)
-                messages.append(message)
-            }
-            if let group {
-                messages += try await messageGenerator.messages(
-                    dataset: CategoryGroup.datasetName,
-                    row: group.id,
-                    fields: [("tombstone", 1)]
-                )
-            }
-
-            if let transferToId, let plan {
-                guard try database.categoryTransferPlanMatches(
-                    sourceCategoryIds: sourceIds,
-                    toCategoryId: transferToId,
-                    expected: plan
-                ) else {
-                    continue
-                }
-            } else if try database.categoriesRequireTransfer(ids: sourceIds) {
-                // A transaction or effective budget amount appeared after the
-                // initial preflight. Let the UI ask for a destination rather
-                // than deleting data with no transfer.
-                throw BudgetStoreError.missingTransferDestination
-            }
-
-            // No async suspension occurs between revalidation and this atomic
-            // SQLite apply, so operations in this actor cannot interleave here.
-            for message in try database.applyMessagesAndInsertMessages(messages) {
-                merkle = merkle.inserting(message.timestamp)
-            }
-            merkle = merkle.pruned()
-            try saveClock()
-            scheduleAutomaticSync()
-            return
+        // Same read-generate-apply shape as transferBudget: the plan is read
+        // once, then the whole batch lands in one atomic apply.
+        let plan = try transferToId.map {
+            try database.categoryTransferPlan(sourceCategoryIds: sourceIds, toCategoryId: $0)
         }
 
-        throw BudgetDatabase.CategoryWriteError.transferDataChanged
+        var messages: [CRDTMessage] = []
+        for write in plan?.budgetWrites ?? [] {
+            var fields: [(column: String, value: (any Sendable)?)] = []
+            if write.createsRow {
+                fields.append(("month", write.monthInt))
+                fields.append(("category", write.categoryId))
+            }
+            fields.append(("amount", write.amount))
+            messages += try await messageGenerator.messages(dataset: write.table, row: write.rowId, fields: fields)
+        }
+        for mapping in plan?.mappings ?? [] {
+            messages += try await messageGenerator.messages(
+                dataset: CategoryMapping.datasetName,
+                row: mapping.id,
+                fields: [("transferId", mapping.targetId)]
+            )
+        }
+        for category in categories {
+            try await messages.append(messageGenerator.messageForDelete(category))
+        }
+        if let group {
+            messages += try await messageGenerator.messages(
+                dataset: CategoryGroup.datasetName,
+                row: group.id,
+                fields: [("tombstone", 1)]
+            )
+        }
+
+        for message in try database.applyMessagesAndInsertMessages(messages) {
+            merkle = merkle.inserting(message.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
     }
 
     /// Record a location for a payee (optimistic local-first). Callers are
