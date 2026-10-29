@@ -1135,7 +1135,7 @@ private struct AccountTransactionsScreen: View {
             }
         }
         .task(id: "\(account?.id ?? "")|\(scope?.rawValue ?? "")") {
-            if (account?.offBudget == true || scope == .offBudget),
+            if account?.offBudget == true || scope == .offBudget,
                budgetStore.transactionStatusFilter == .uncategorized {
                 budgetStore.transactionStatusFilter = .all
             }
@@ -1240,7 +1240,7 @@ struct AccountSectionHeader: View {
     let total: Int
     @Binding var isExpanded: Bool
     var allowsCollapse = true
-    var onShowTransactions: (() -> Void)? = nil
+    var onShowTransactions: (() -> Void)?
 
     var body: some View {
         let totalText = budgetStore.displayBalance(total)
