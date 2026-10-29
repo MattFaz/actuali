@@ -6,7 +6,7 @@ struct TransactionsListViewTests {
         _ id: String,
         offBudget: Bool,
         closed: Bool = false,
-        sortOrder: Double
+        sortOrder: Int
     ) -> Account {
         Account(
             id: id,

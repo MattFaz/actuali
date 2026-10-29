@@ -28,7 +28,7 @@ enum AccountTransactionsScope: String, Hashable {
 
 struct TransactionsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
-    var scope: AccountTransactionsScope? = nil
+    var scope: AccountTransactionsScope?
     @AppStorage("showUpcomingScheduledTransactions") private var showUpcomingSchedules = true
     @State private var pager: TransactionPager?
     @State private var searchText = ""
