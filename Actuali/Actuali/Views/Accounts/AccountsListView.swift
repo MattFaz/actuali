@@ -545,7 +545,8 @@ struct AccountsListView: View {
                                     title: String(localized: "Closed Accounts"),
                                     total: closedTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isClosedExpanded,
-                                    allowsCollapse: !isSearchingAccounts
+                                    allowsCollapse: !isSearchingAccounts,
+                                    totalTrailingPadding: 0
                                 )
                             }
                         }
@@ -1241,6 +1242,7 @@ struct AccountSectionHeader: View {
     @Binding var isExpanded: Bool
     var allowsCollapse = true
     var onShowTransactions: (() -> Void)?
+    var totalTrailingPadding: CGFloat = 24
 
     var body: some View {
         let totalText = budgetStore.displayBalance(total)
@@ -1315,7 +1317,7 @@ struct AccountSectionHeader: View {
                             .font(.headline.weight(.regular))
                             .foregroundStyle(balanceColor(for: total))
                             .animatedAmount(totalText)
-                            .padding(.trailing, 24)
+                            .padding(.trailing, identifier == "closed" ? totalTrailingPadding : 20)
                             .textCase(nil)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
