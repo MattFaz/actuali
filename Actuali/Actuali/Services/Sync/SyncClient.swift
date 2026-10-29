@@ -1372,6 +1372,129 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Delete a category, redirecting its transactions and budget balance to
+    /// another category when a transfer destination is required or supplied.
+    /// Mirrors upstream deleteCategory / deleteCategoryGroup
+    /// (loot-core server/budget/app.ts), doTransfer (budget/base.ts) and
+    /// db.deleteCategory's category_mapping forwarding (db/index.ts). Unlike
+    /// upstream, the source budget cells are zeroed too, because Actuali's
+    /// reflect_budgets reads (fetchTrackingBudgetMonths) resolve rows through
+    /// category_mapping and would otherwise count the moved amount twice.
+    func deleteCategory(id: String, transferToId: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        let groups = try await database.fetchCategoryGroups()
+        let categories = groups.flatMap(\.categories)
+        guard let category = categories.first(where: { $0.id == id }) else {
+            throw BudgetDatabase.CategoryWriteError.categoryNotFound
+        }
+
+        if let transferToId {
+            guard transferToId != id else { throw BudgetStoreError.transferCategoriesMatch }
+            guard let target = categories.first(where: { $0.id == transferToId }) else {
+                throw BudgetDatabase.CategoryWriteError.categoryNotFound
+            }
+            guard target.isIncome == category.isIncome else {
+                throw BudgetDatabase.CategoryWriteError.transferCategoryTypeMismatch
+            }
+        }
+
+        try await deleteCategories(
+            [category],
+            group: nil,
+            transferToId: transferToId,
+            database: database
+        )
+    }
+
+    /// Delete a category group and transfer all of its categories to one
+    /// surviving category, matching Actual's group-delete behavior.
+    func deleteCategoryGroup(id: String, transferToId: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        let groups = try await database.fetchCategoryGroups()
+        guard let group = groups.first(where: { $0.id == id }) else {
+            throw BudgetDatabase.CategoryWriteError.groupNotFound
+        }
+        let allCategories = groups.flatMap(\.categories)
+
+        if let transferToId {
+            guard !group.categories.contains(where: { $0.id == transferToId }) else {
+                throw BudgetStoreError.transferCategoriesMatch
+            }
+            guard let target = allCategories.first(where: { $0.id == transferToId }) else {
+                throw BudgetDatabase.CategoryWriteError.categoryNotFound
+            }
+            guard target.isIncome == group.isIncome else {
+                throw BudgetDatabase.CategoryWriteError.transferCategoryTypeMismatch
+            }
+        }
+
+        try await deleteCategories(
+            group.categories,
+            group: group,
+            transferToId: transferToId,
+            database: database
+        )
+    }
+
+    private func deleteCategories(
+        _ categories: [Category],
+        group: CategoryGroup?,
+        transferToId: String?,
+        database: BudgetDatabase
+    ) async throws {
+        let sourceIds = categories.map(\.id)
+        if transferToId == nil {
+            for category in categories {
+                if try await database.categoryRequiresTransfer(id: category.id) {
+                    throw BudgetStoreError.missingTransferDestination
+                }
+            }
+        }
+
+        // Same read-generate-apply shape as transferBudget: the plan is read
+        // once, then the whole batch lands in one atomic apply.
+        let plan = try transferToId.map {
+            try database.categoryTransferPlan(sourceCategoryIds: sourceIds, toCategoryId: $0)
+        }
+
+        var messages: [CRDTMessage] = []
+        for write in plan?.budgetWrites ?? [] {
+            var fields: [(column: String, value: (any Sendable)?)] = []
+            if write.createsRow {
+                fields.append(("month", write.monthInt))
+                fields.append(("category", write.categoryId))
+            }
+            fields.append(("amount", write.amount))
+            messages += try await messageGenerator.messages(dataset: write.table, row: write.rowId, fields: fields)
+        }
+        for mapping in plan?.mappings ?? [] {
+            messages += try await messageGenerator.messages(
+                dataset: CategoryMapping.datasetName,
+                row: mapping.id,
+                fields: [("transferId", mapping.targetId)]
+            )
+        }
+        for category in categories {
+            try await messages.append(messageGenerator.messageForDelete(category))
+        }
+        if let group {
+            messages += try await messageGenerator.messages(
+                dataset: CategoryGroup.datasetName,
+                row: group.id,
+                fields: [("tombstone", 1)]
+            )
+        }
+
+        for message in try database.applyMessagesAndInsertMessages(messages) {
+            merkle = merkle.inserting(message.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     /// Record a location for a payee (optimistic local-first). Callers are
     /// responsible for the server-version guard and 500 m dedupe — this
     /// method just writes.

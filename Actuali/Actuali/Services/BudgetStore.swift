@@ -3958,6 +3958,60 @@ final class BudgetStore: ObservableObject {
         await fetchBudgetMonth(month)
     }
 
+    /// Whether deleting a category needs a transfer destination. If this
+    /// preflight fails, the UI should fail closed rather than risk discarding
+    /// transaction history or a budget balance.
+    func categoryRequiresTransfer(id: String) async throws -> Bool {
+        guard let database else { throw BudgetStoreError.syncNotConfigured }
+        return try await database.categoryRequiresTransfer(id: id)
+    }
+
+    func categoryGroupRequiresTransfer(id: String) async throws -> Bool {
+        guard let database else { throw BudgetStoreError.syncNotConfigured }
+        let groups = try await database.fetchCategoryGroups()
+        guard let group = groups.first(where: { $0.id == id }) else {
+            throw BudgetDatabase.CategoryWriteError.groupNotFound
+        }
+        for category in group.categories {
+            if try await database.categoryRequiresTransfer(id: category.id) {
+                return true
+            }
+        }
+        return false
+    }
+
+    func deleteCategory(id: String, transferToId: String?, month: String) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        do {
+            try await syncClient.deleteCategory(id: id, transferToId: transferToId)
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch let error as BudgetStoreError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
+    func deleteCategoryGroup(id: String, transferToId: String?, month: String) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        do {
+            try await syncClient.deleteCategoryGroup(id: id, transferToId: transferToId)
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch let error as BudgetStoreError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryGroupUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
     /// Money in and out across every account for one "yyyy-MM" month, for the
     /// accounts tab's summary group (GH #256). Nil when there's no budget open
     /// or the query failed, so the card keeps its last figures rather than

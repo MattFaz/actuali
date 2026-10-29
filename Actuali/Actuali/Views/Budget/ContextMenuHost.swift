@@ -6,6 +6,7 @@ struct ContextMenuHostAction {
     let title: String
     let systemImage: String
     let handler: () -> Void
+    var isDestructive = false
 
     static func groupActions(
         isHidden: Bool,
@@ -13,6 +14,7 @@ struct ContextMenuHostAction {
         onOverwriteTemplate: (() -> Void)? = nil,
         onRename: (() -> Void)?,
         onSetHidden: ((Bool) -> Void)?,
+        onDelete: (() -> Void)? = nil,
         locale: Locale
     ) -> [Self] {
         var items: [Self] = []
@@ -39,6 +41,14 @@ struct ContextMenuHostAction {
                 title: ReportStrings.text(isHidden ? "Show Group" : "Hide Group", locale: locale, bundle: .main),
                 systemImage: isHidden ? "eye" : "eye.slash",
                 handler: { onSetHidden(!isHidden) }
+            ))
+        }
+        if let onDelete {
+            items.append(.init(
+                title: String(localized: "Delete Group", bundle: .main, locale: locale),
+                systemImage: "trash",
+                handler: onDelete,
+                isDestructive: true
             ))
         }
         return items
@@ -98,9 +108,12 @@ struct ContextMenuHost: UIViewRepresentable {
             let items = actions
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
                 UIMenu(children: items.map { item in
-                    UIAction(title: item.title, image: UIImage(systemName: item.systemImage)) { _ in
-                        item.handler()
-                    }
+                    UIAction(
+                        title: item.title,
+                        image: UIImage(systemName: item.systemImage),
+                        attributes: item.isDestructive ? .destructive : [],
+                        handler: { _ in item.handler() }
+                    )
                 })
             }
         }

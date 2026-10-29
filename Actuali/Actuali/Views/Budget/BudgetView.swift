@@ -73,6 +73,7 @@ struct BudgetView: View {
     @State private var selectedMonth = currentMonthString()
     @State private var editingBudgetAmount: EditBudgetAmountTarget?
     @State private var editingCategoryGroup: CategoryGroup?
+    @State private var pendingCategoryDeletion: CategoryDeletionRequest?
     @State private var selectedCategory: CategoryBudget?
     @State private var renamingCategory: CategoryBudget?
     @State private var renameText = ""
@@ -221,6 +222,9 @@ struct BudgetView: View {
             .sheet(item: $editingCategoryGroup) { group in
                 CategoryGroupSheet(group: group, month: selectedMonth)
             }
+            .sheet(item: $pendingCategoryDeletion) { request in
+                CategoryDeletionSheet(request: request)
+            }
             // Compact only — in a wide window the inspector below presents
             // the same selection instead. The conditional binding also hands
             // an open presentation over to the other style on a window resize.
@@ -329,7 +333,8 @@ struct BudgetView: View {
                         onMoveMoney: moveMoney,
                         onApplyTemplate: budgetStore.goalTemplatesEnabled
                             ? { runTemplates(.apply, for: $0) } : nil,
-                        onRename: { beginRenaming($0) }
+                        onRename: { beginRenaming($0) },
+                        onDelete: { requestDeleteCategory(id: $0.categoryId, name: $0.categoryName, isIncome: false) }
                     )
                 }
             }
@@ -342,6 +347,7 @@ struct BudgetView: View {
                     setCategoryGroupHidden(group.id, hidden: $0)
                 },
                 onRename: { editCategoryGroup(group.id) },
+                onDelete: { requestDeleteCategoryGroup(group.id) },
                 onApplyTemplate: groupTemplateAction(.apply, for: group),
                 onOverwriteTemplate: groupTemplateAction(.overwrite, for: group),
                 totals: budgetStore.showGroupTotals ? group.totals : nil,
@@ -373,7 +379,8 @@ struct BudgetView: View {
                         showsSpent: budgetStore.showCompactSpentColumn,
                         showsBudgeted: budgetStore.showBudgetedAmounts,
                         onEditBudget: { editingBudgetAmount = EditBudgetAmountTarget(income: $0) },
-                        onShowTransactions: showTransactions
+                        onShowTransactions: showTransactions,
+                        onDelete: { requestDeleteCategory(id: income.categoryId, name: income.categoryName, isIncome: true) }
                     )
                 }
             }
@@ -906,7 +913,8 @@ struct BudgetView: View {
                         onMoveMoney: moveMoney,
                         onApplyTemplate: budgetStore.goalTemplatesEnabled
                             ? { runTemplates(.apply, for: $0) } : nil,
-                        onRename: { beginRenaming($0) }
+                        onRename: { beginRenaming($0) },
+                        onDelete: { requestDeleteCategory(id: $0.categoryId, name: $0.categoryName, isIncome: false) }
                     )
                 }
             }
@@ -919,6 +927,7 @@ struct BudgetView: View {
                     setCategoryGroupHidden(group.id, hidden: $0)
                 },
                 onRename: { editCategoryGroup(group.id) },
+                onDelete: { requestDeleteCategoryGroup(group.id) },
                 onApplyTemplate: groupTemplateAction(.apply, for: group),
                 onOverwriteTemplate: groupTemplateAction(.overwrite, for: group),
                 balanceTotal: group.totals.balance,
@@ -944,7 +953,8 @@ struct BudgetView: View {
                         },
                         showsBudgeted: budget.toBudget == nil && budgetStore.showBudgetedAmounts,
                         onEditBudget: { editingBudgetAmount = EditBudgetAmountTarget(income: $0) },
-                        onShowTransactions: showTransactions
+                        onShowTransactions: showTransactions,
+                        onDelete: { requestDeleteCategory(id: income.categoryId, name: income.categoryName, isIncome: true) }
                     )
                 }
             }
@@ -1115,6 +1125,39 @@ struct BudgetView: View {
 
     private func editCategoryGroup(_ id: String) {
         editingCategoryGroup = budgetStore.categoryGroups.first { $0.id == id }
+    }
+
+    private func requestDeleteCategory(id: String, name: String, isIncome: Bool) {
+        Task {
+            // A failed preflight must not allow existing history or balances to
+            // be deleted without a destination.
+            let requiresTransfer = await (try? budgetStore.categoryRequiresTransfer(id: id)) ?? true
+            pendingCategoryDeletion = CategoryDeletionRequest(
+                id: id,
+                name: name,
+                categoryIds: [id],
+                isIncome: isIncome,
+                kind: .category,
+                month: selectedMonth,
+                requiresTransfer: requiresTransfer
+            )
+        }
+    }
+
+    private func requestDeleteCategoryGroup(_ id: String) {
+        Task {
+            guard let group = budgetStore.categoryGroups.first(where: { $0.id == id }) else { return }
+            let requiresTransfer = await (try? budgetStore.categoryGroupRequiresTransfer(id: id)) ?? true
+            pendingCategoryDeletion = CategoryDeletionRequest(
+                id: group.id,
+                name: group.name,
+                categoryIds: group.categories.map(\.id),
+                isIncome: group.isIncome,
+                kind: .group,
+                month: selectedMonth,
+                requiresTransfer: requiresTransfer
+            )
+        }
     }
 
     private func setCategoryGroupHidden(_ id: String, hidden: Bool) {
@@ -1344,6 +1387,7 @@ struct CleanCategoryBudgetRow: View {
     /// callers gate it on the goalTemplatesEnabled flag.
     var onApplyTemplate: ((CategoryBudget) -> Void)?
     let onRename: (CategoryBudget) -> Void
+    var onDelete: ((CategoryBudget) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1443,7 +1487,8 @@ struct CleanCategoryBudgetRow: View {
             onShowTransactions: onShowTransactions,
             onMoveMoney: onMoveMoney,
             onApplyTemplate: onApplyTemplate,
-            onRename: onRename
+            onRename: onRename,
+            onDelete: onDelete
         ))
     }
 
@@ -1467,6 +1512,7 @@ struct CategoryRowContextMenu: ViewModifier {
     let onMoveMoney: (CategoryBudget) -> Void
     let onApplyTemplate: ((CategoryBudget) -> Void)?
     let onRename: (CategoryBudget) -> Void
+    var onDelete: ((CategoryBudget) -> Void)?
 
     func body(content: Content) -> some View {
         content.contextMenu {
@@ -1515,6 +1561,12 @@ struct CategoryRowContextMenu: ViewModifier {
                         systemImage: isProgressBarHidden ? "plus.rectangle" : "minus.rectangle"
                     )
                 }
+            }
+            if let onDelete {
+                Button(role: .destructive) { onDelete(category) } label: {
+                    Label("Delete Category", systemImage: "trash")
+                }
+                .accessibilityIdentifier("categoryDelete.action")
             }
         }
     }
@@ -1754,6 +1806,7 @@ struct BudgetGroupHeader: View {
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)?
     var onRename: (() -> Void)?
+    var onDelete: (() -> Void)?
     var onApplyTemplate: (() -> Void)?
     var onOverwriteTemplate: (() -> Void)?
     /// Income groups show the money received beside their name.
@@ -1823,10 +1876,11 @@ struct BudgetGroupHeader: View {
             onOverwriteTemplate: onOverwriteTemplate,
             onRename: onRename,
             onSetHidden: onSetHidden,
+            onDelete: onDelete,
             locale: locale
         )
         return ForEach(items.indices, id: \.self) { index in
-            Button(action: items[index].handler) {
+            Button(role: items[index].isDestructive ? .destructive : nil, action: items[index].handler) {
                 Label(items[index].title, systemImage: items[index].systemImage)
             }
         }
@@ -1858,6 +1912,7 @@ struct IncomeCategoryRow: View {
     var showsBudgeted = false
     var onEditBudget: (IncomeCategory) -> Void = { _ in }
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
+    var onDelete: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1924,6 +1979,12 @@ struct IncomeCategoryRow: View {
                 } label: {
                     Label(BudgetCategoryAccessibility.visibility(isHidden: isHidden, locale: locale), systemImage: isHidden ? "eye" : "eye.slash")
                 }
+            }
+            if let onDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete Category", systemImage: "trash")
+                }
+                .accessibilityIdentifier("categoryDelete.action")
             }
         }
     }

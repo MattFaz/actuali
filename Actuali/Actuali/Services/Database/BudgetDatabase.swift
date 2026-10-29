@@ -1760,6 +1760,7 @@ final class BudgetDatabase: Sendable {
         case duplicateCategoryName(name: String, groupName: String)
         case groupNotFound
         case categoryNotFound
+        case transferCategoryTypeMismatch
 
         var errorDescription: String? {
             switch self {
@@ -1771,6 +1772,8 @@ final class BudgetDatabase: Sendable {
                 String(localized: "That category group no longer exists")
             case .categoryNotFound:
                 String(localized: "That category no longer exists")
+            case .transferCategoryTypeMismatch:
+                String(localized: "You can only transfer to a category of the same type.")
             }
         }
     }
@@ -2580,6 +2583,191 @@ final class BudgetDatabase: Sendable {
                 amount: existing?["amount"] ?? 0
             )
         }
+    }
+
+    /// One CRDT write needed to preserve a month's budget when categories
+    /// are merged. The source cell is cleared after its value is added to the
+    /// surviving category so report reads cannot count the allocation twice.
+    struct CategoryBudgetTransferWrite {
+        let table: String
+        let rowId: String
+        let monthInt: Int
+        let categoryId: String
+        let amount: Int
+        let createsRow: Bool
+    }
+
+    /// Related budget and mapping writes captured from the same SQLite read.
+    struct CategoryTransferPlan {
+        let budgetWrites: [CategoryBudgetTransferWrite]
+        let mappings: [CategoryMapping]
+    }
+
+    func categoryTransferPlan(
+        sourceCategoryIds: [String],
+        toCategoryId: String
+    ) throws -> CategoryTransferPlan {
+        let sourceIds = Array(Set(sourceCategoryIds).filter { $0 != toCategoryId }).sorted()
+        guard !sourceIds.isEmpty else {
+            return CategoryTransferPlan(budgetWrites: [], mappings: [])
+        }
+
+        return try dbQueue.read { db in
+            let placeholders = sourceIds.map { _ in "?" }.joined(separator: ",")
+            let activeSources = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*) FROM categories
+                WHERE id IN (\(placeholders)) AND (tombstone = 0 OR tombstone IS NULL)
+                """,
+                arguments: StatementArguments(sourceIds)
+            ) ?? 0
+            guard activeSources == sourceIds.count else {
+                throw CategoryWriteError.categoryNotFound
+            }
+
+            let targetIsActive = try Bool.fetchOne(db, sql: """
+            SELECT 1 FROM categories
+            WHERE id = ? AND (tombstone = 0 OR tombstone IS NULL)
+            LIMIT 1
+            """, arguments: [toCategoryId]) ?? false
+            guard targetIsActive else { throw CategoryWriteError.categoryNotFound }
+
+            let mappingIds = try Self.categoryMappingIdsForTransfer(db, sourceCategoryIds: sourceIds)
+            // Budget rows move only for the categories being deleted, as in
+            // upstream doTransfer: an older alias already gave its amount to
+            // its survivor when it merged, so sweeping it again double-counts.
+            let budgetWrites = try Self.categoryBudgetTransferWrites(
+                db,
+                sourceCategoryIds: sourceIds,
+                toCategoryId: toCategoryId
+            )
+            let mappings = mappingIds.map { CategoryMapping(id: $0, targetId: toCategoryId) }
+            return CategoryTransferPlan(budgetWrites: budgetWrites, mappings: mappings)
+        }
+    }
+
+    /// Redirect every removed category ID and any older IDs already mapped to
+    /// one of them straight to the survivor. Mapping lookups resolve one hop.
+    private static func categoryMappingIdsForTransfer(
+        _ db: Database,
+        sourceCategoryIds: [String]
+    ) throws -> [String] {
+        let placeholders = sourceCategoryIds.map { _ in "?" }.joined(separator: ",")
+        let rows = try Row.fetchAll(db, sql: """
+        SELECT id FROM category_mapping
+        WHERE id IN (\(placeholders)) OR transferId IN (\(placeholders))
+        """, arguments: StatementArguments(sourceCategoryIds + sourceCategoryIds))
+        var mappingIds = Set(rows.compactMap { row -> String? in row["id"] })
+        // A self-mapping can be missing in older/imported files. Creating
+        // it here prevents transaction history pointing to a deleted ID.
+        mappingIds.formUnion(sourceCategoryIds)
+        return mappingIds.sorted()
+    }
+
+    private static func categoryBudgetTransferWrites(
+        _ db: Database,
+        sourceCategoryIds: [String],
+        toCategoryId: String
+    ) throws -> [CategoryBudgetTransferWrite] {
+        let sourceIds = Array(Set(sourceCategoryIds).filter { $0 != toCategoryId }).sorted()
+        guard !sourceIds.isEmpty, let table = try Self.budgetTable(db) else { return [] }
+
+        let placeholders = sourceIds.map { _ in "?" }.joined(separator: ",")
+        let rows = try Row.fetchAll(db, sql: """
+        SELECT id, month, category, amount
+        FROM \(table)
+        WHERE category IN (\(placeholders)) AND amount != 0
+        ORDER BY month, category, id
+        """, arguments: StatementArguments(sourceIds))
+
+        var sourceRowsByMonth: [Int: [(id: String, categoryId: String, amount: Int)]] = [:]
+        for row in rows {
+            guard let rowId: String = row["id"],
+                  let monthInt: Int = row["month"],
+                  let categoryId: String = row["category"]
+            else { continue }
+            sourceRowsByMonth[monthInt, default: []].append((
+                id: rowId,
+                categoryId: categoryId,
+                amount: row["amount"] ?? 0
+            ))
+        }
+
+        var writes: [CategoryBudgetTransferWrite] = []
+        for monthInt in sourceRowsByMonth.keys.sorted() {
+            guard let sourceRows = sourceRowsByMonth[monthInt] else { continue }
+            let sourceTotal = sourceRows.reduce(0) { $0 + $1.amount }
+
+            if sourceTotal != 0 {
+                let targetRow = try Row.fetchOne(
+                    db,
+                    sql: "SELECT id, amount FROM \(table) WHERE month = ? AND category = ?",
+                    arguments: [monthInt, toCategoryId]
+                )
+                let targetAmount: Int = targetRow?["amount"] ?? 0
+                let targetRowId: String = targetRow?["id"] ?? "\(monthInt)-\(toCategoryId)"
+                let createsTargetRow = targetRow.map { _ in false } ?? true
+                writes.append(CategoryBudgetTransferWrite(
+                    table: table,
+                    rowId: targetRowId,
+                    monthInt: monthInt,
+                    categoryId: toCategoryId,
+                    amount: targetAmount + sourceTotal,
+                    createsRow: createsTargetRow
+                ))
+            }
+
+            for sourceRow in sourceRows {
+                writes.append(CategoryBudgetTransferWrite(
+                    table: table,
+                    rowId: sourceRow.id,
+                    monthInt: monthInt,
+                    categoryId: sourceRow.categoryId,
+                    amount: 0,
+                    createsRow: false
+                ))
+            }
+        }
+        return writes
+    }
+
+    /// Whether a category has transactions or a non-zero budget that must be
+    /// preserved by choosing a destination before deletion. Mirrors upstream
+    /// isCategoryTransferRequired: transactions resolve through
+    /// category_mapping, but only the category's own budget cells count.
+    func categoryRequiresTransfer(id: String) async throws -> Bool {
+        try await dbQueue.read { db in
+            try Self.categoryRequiresTransfer(db, id: id)
+        }
+    }
+
+    private static func categoryRequiresTransfer(_ db: Database, id: String) throws -> Bool {
+        if try db.tableExists("transactions") {
+            let hasTransactions = try Bool.fetchOne(db, sql: """
+            SELECT 1
+            FROM transactions t
+            LEFT JOIN category_mapping cm ON cm.id = t.category
+            WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+              AND COALESCE(cm.transferId, t.category) = ?
+            LIMIT 1
+            """, arguments: [id]) ?? false
+            if hasTransactions {
+                return true
+            }
+        }
+
+        guard let table = try budgetTable(db) else { return false }
+        return try Bool.fetchOne(
+            db,
+            sql: """
+            SELECT 1
+            FROM \(table) b
+            WHERE b.category = ? AND b.amount != 0
+            LIMIT 1
+            """,
+            arguments: [id]
+        ) ?? false
     }
 
     /// Which budget table this file uses, or nil when it has neither. Real

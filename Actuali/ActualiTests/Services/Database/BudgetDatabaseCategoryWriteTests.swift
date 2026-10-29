@@ -215,4 +215,192 @@ struct BudgetDatabaseCategoryWriteTests {
             try db.insertCategory(id: "cat-orphan", name: "Orphan", groupId: "grp-gone")
         }
     }
+
+    @Test func categoryBudgetTransferAddsEveryMonthAndClearsSourceCells() async throws {
+        let (db, url) = try await makeTestDatabase(
+            TestSchema.categories,
+            TestSchema.categoryGroups,
+            TestSchema.categoryMapping,
+            TestSchema.zeroBudgets,
+            """
+            INSERT INTO category_groups (id, name, sort_order) VALUES
+                ('grp-daily', 'Daily', 16384.0),
+                ('grp-bills', 'Bills', 32768.0);
+            INSERT INTO categories (id, name, cat_group, sort_order) VALUES
+                ('cat-groceries', 'Groceries', 'grp-daily', 16384.0),
+                ('cat-fuel', 'Fuel', 'grp-daily', 32768.0),
+                ('cat-coffee', 'Coffee', 'grp-bills', 16384.0);
+            INSERT INTO category_mapping (id, transferId) VALUES
+                ('cat-groceries', 'cat-groceries'),
+                ('cat-fuel', 'cat-fuel'),
+                ('cat-coffee', 'cat-coffee');
+            INSERT INTO zero_budgets (id, month, category, amount) VALUES
+                ('202601-cat-groceries', 202601, 'cat-groceries', 12500),
+                ('202601-cat-fuel', 202601, 'cat-fuel', -1000),
+                ('202601-cat-coffee', 202601, 'cat-coffee', 5000),
+                ('202602-cat-groceries', 202602, 'cat-groceries', 2500),
+                ('202602-cat-coffee', 202602, 'cat-coffee', 4000);
+            """
+        )
+        defer { cleanup(url) }
+
+        let writes = try db.categoryTransferPlan(
+            sourceCategoryIds: ["cat-groceries", "cat-fuel"],
+            toCategoryId: "cat-coffee"
+        ).budgetWrites
+
+        #expect(writes.count == 5)
+        #expect(writes.contains {
+            $0.monthInt == 202_601 && $0.categoryId == "cat-coffee" && $0.amount == 16500 && !$0.createsRow
+        })
+        #expect(writes.contains {
+            $0.monthInt == 202_602 && $0.categoryId == "cat-coffee" && $0.amount == 6500 && !$0.createsRow
+        })
+        #expect(writes.filter { $0.categoryId == "cat-groceries" || $0.categoryId == "cat-fuel" }
+            .allSatisfy { $0.amount == 0 && !$0.createsRow })
+    }
+
+    @Test func categoryTransferForwardsAliasesToTheSurvivingCategory() async throws {
+        let (db, url) = try await makeDatabase()
+        defer { cleanup(url) }
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(
+                sql: "INSERT INTO categories (id, name, cat_group, sort_order) VALUES ('cat-coffee', 'Coffee', 'grp-bills', 49152.0)"
+            )
+            try conn.execute(
+                sql: "INSERT INTO category_mapping (id, transferId) VALUES ('cat-old', 'cat-groceries')"
+            )
+        }
+
+        let updates = try db.categoryTransferPlan(
+            sourceCategoryIds: ["cat-groceries", "cat-fuel"],
+            toCategoryId: "cat-coffee"
+        ).mappings
+
+        #expect(updates.map(\.id) == ["cat-fuel", "cat-groceries", "cat-old"])
+        #expect(updates.allSatisfy { $0.targetId == "cat-coffee" })
+    }
+
+    @Test func categoryTransferIsRequiredForTransactionsOrNonzeroBudgetAmounts() async throws {
+        let (db, url) = try await makeTestDatabase(
+            TestSchema.categories,
+            TestSchema.categoryGroups,
+            TestSchema.categoryMapping,
+            TestSchema.transactions,
+            TestSchema.zeroBudgets,
+            """
+            INSERT INTO category_groups (id, name, sort_order) VALUES ('grp-daily', 'Daily', 16384.0);
+            INSERT INTO categories (id, name, cat_group, sort_order) VALUES ('cat-groceries', 'Groceries', 'grp-daily', 16384.0);
+            INSERT INTO category_mapping (id, transferId) VALUES
+                ('cat-groceries', 'cat-groceries'),
+                ('cat-old', 'cat-groceries');
+            INSERT INTO transactions (id, category, tombstone) VALUES ('txn-old', 'cat-old', 0);
+            """
+        )
+        defer { cleanup(url) }
+
+        #expect(try await db.categoryRequiresTransfer(id: "cat-groceries"))
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: "UPDATE transactions SET tombstone = 1 WHERE id = 'txn-old'")
+            try conn.execute(
+                sql: "INSERT INTO zero_budgets (id, month, category, amount) VALUES ('202601-cat-groceries', 202601, 'cat-groceries', 2500)"
+            )
+        }
+        #expect(try await db.categoryRequiresTransfer(id: "cat-groceries"))
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: "UPDATE zero_budgets SET amount = 0 WHERE category = 'cat-groceries'")
+        }
+        let requiresTransfer = try await db.categoryRequiresTransfer(id: "cat-groceries")
+        #expect(!requiresTransfer)
+    }
+
+    /// An alias's budget row already reached its survivor when it merged
+    /// (upstream doTransfer never clears it), so a later delete moves only
+    /// the category's own cells, and the alias row alone doesn't force a
+    /// destination, matching upstream isCategoryTransferRequired.
+    @Test func legacyAliasBudgetRowsAreNotSweptAgain() async throws {
+        let (db, url) = try await makeTestDatabase(
+            TestSchema.categories,
+            TestSchema.categoryGroups,
+            TestSchema.categoryMapping,
+            TestSchema.zeroBudgets,
+            """
+            INSERT INTO category_groups (id, name, sort_order) VALUES
+                ('grp-source', 'Source', 16384.0),
+                ('grp-target', 'Target', 32768.0);
+            INSERT INTO categories (id, name, cat_group, sort_order) VALUES
+                ('cat-food', 'Food', 'grp-source', 16384.0),
+                ('cat-target', 'Target', 'grp-target', 16384.0);
+            INSERT INTO category_mapping (id, transferId) VALUES
+                ('cat-food', 'cat-food'),
+                ('cat-target', 'cat-target'),
+                ('legacy-food', 'cat-food');
+            INSERT INTO zero_budgets (id, month, category, amount) VALUES
+                ('202601-cat-food', 202601, 'cat-food', 2000),
+                ('202601-legacy-food', 202601, 'legacy-food', 3000),
+                ('202601-cat-target', 202601, 'cat-target', 4000);
+            """
+        )
+        defer { cleanup(url) }
+
+        #expect(try await db.categoryRequiresTransfer(id: "cat-food"))
+
+        let plan = try db.categoryTransferPlan(
+            sourceCategoryIds: ["cat-food"],
+            toCategoryId: "cat-target"
+        )
+        #expect(plan.budgetWrites.contains {
+            $0.rowId == "202601-cat-target" && $0.amount == 6000 && !$0.createsRow
+        })
+        #expect(!plan.budgetWrites.contains { $0.rowId == "202601-legacy-food" })
+        #expect(plan.mappings.contains {
+            $0.id == "legacy-food" && $0.targetId == "cat-target"
+        })
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: "UPDATE zero_budgets SET amount = 0 WHERE id = '202601-cat-food'")
+        }
+        let requiresTransfer = try await db.categoryRequiresTransfer(id: "cat-food")
+        #expect(!requiresTransfer)
+    }
+
+    @Test func transferPlanRejectsDeletedSourceOrTarget() async throws {
+        let (db, url) = try await makeTestDatabase(
+            TestSchema.categories,
+            TestSchema.categoryGroups,
+            TestSchema.categoryMapping,
+            TestSchema.zeroBudgets,
+            """
+            INSERT INTO category_groups (id, name, sort_order) VALUES ('grp-source', 'Source', 16384.0);
+            INSERT INTO categories (id, name, cat_group, sort_order) VALUES
+                ('cat-food', 'Food', 'grp-source', 16384.0),
+                ('cat-target', 'Target', 'grp-source', 32768.0);
+            """
+        )
+        defer { cleanup(url) }
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: "UPDATE categories SET tombstone = 1 WHERE id = 'cat-food'")
+        }
+        #expect(throws: BudgetDatabase.CategoryWriteError.categoryNotFound) {
+            try db.categoryTransferPlan(
+                sourceCategoryIds: ["cat-food"],
+                toCategoryId: "cat-target"
+            )
+        }
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: "UPDATE categories SET tombstone = 0 WHERE id = 'cat-food'")
+            try conn.execute(sql: "UPDATE categories SET tombstone = 1 WHERE id = 'cat-target'")
+        }
+        #expect(throws: BudgetDatabase.CategoryWriteError.categoryNotFound) {
+            try db.categoryTransferPlan(
+                sourceCategoryIds: ["cat-food"],
+                toCategoryId: "cat-target"
+            )
+        }
+    }
 }
