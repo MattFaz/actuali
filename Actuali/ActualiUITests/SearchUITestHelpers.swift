@@ -1,7 +1,7 @@
 import XCTest
 
+@MainActor
 extension XCTestCase {
-    @MainActor
     func searchControl(in app: XCUIApplication, customButtonIdentifier: String) -> XCUIElement {
         let customButton = app.buttons[customButtonIdentifier]
         if customButton.exists {
@@ -12,7 +12,6 @@ extension XCTestCase {
             .firstMatch
     }
 
-    @MainActor
     func tapSearch(in app: XCUIApplication, customButtonIdentifier: String) {
         let control = searchControl(in: app, customButtonIdentifier: customButtonIdentifier)
         XCTAssertTrue(control.waitForExistence(timeout: 10),
@@ -20,7 +19,6 @@ extension XCTestCase {
         control.tap()
     }
 
-    @MainActor
     func activeSearchField(in app: XCUIApplication, customFieldIdentifier: String) -> XCUIElement {
         if ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 {
             let nativeField = app.searchFields.firstMatch
@@ -39,7 +37,6 @@ extension XCTestCase {
         return customField
     }
 
-    @MainActor
     func typeSearchText(_ text: String, in field: XCUIElement) {
         func waitForFocus(_ timeout: TimeInterval) -> Bool {
             let focused = NSPredicate(format: "hasKeyboardFocus == true")
@@ -57,7 +54,6 @@ extension XCTestCase {
         field.typeText(text)
     }
 
-    @MainActor
     func clearSearch(in app: XCUIApplication, customClearIdentifier: String) {
         let customClearButton = app.buttons[customClearIdentifier]
         if customClearButton.waitForExistence(timeout: 1) {
@@ -73,7 +69,6 @@ extension XCTestCase {
         nativeClearButton.tap()
     }
 
-    @MainActor
     func cancelSearch(in app: XCUIApplication, customButtonIdentifier: String) {
         let nativeCancelButton = app.navigationBars.descendants(matching: .button)
             .matching(NSPredicate(format: "label CONTAINS[c] 'Cancel' OR label == 'Close'"))
