@@ -5,6 +5,8 @@ import SwiftUI
 /// Accounts, and a save can tell when All Accounts is already showing.
 private enum AccountsRoute: Hashable {
     case allAccounts
+    case onBudgetTransactions
+    case offBudgetTransactions
     case account(Account)
 }
 
@@ -13,6 +15,8 @@ private enum AccountsRoute: Hashable {
 /// and a stored value would stop matching its row the moment it did.
 private enum AccountSelection: Hashable {
     case allAccounts
+    case onBudgetTransactions
+    case offBudgetTransactions
     case account(String)
 }
 
@@ -499,7 +503,8 @@ struct AccountsListView: View {
                                     title: String(localized: "On Budget"),
                                     total: onBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOnBudgetExpanded,
-                                    allowsCollapse: !isSearchingAccounts && !isReordering
+                                    allowsCollapse: !isSearchingAccounts && !isReordering,
+                                    onShowTransactions: { path.append(.onBudgetTransactions) }
                                 )
                             }
                             .listSectionSeparator(.hidden)
@@ -519,7 +524,8 @@ struct AccountsListView: View {
                                     title: String(localized: "Off Budget"),
                                     total: offBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOffBudgetExpanded,
-                                    allowsCollapse: !isSearchingAccounts && !isReordering
+                                    allowsCollapse: !isSearchingAccounts && !isReordering,
+                                    onShowTransactions: { path.append(.offBudgetTransactions) }
                                 )
                             }
                             .listSectionSeparator(.hidden)
@@ -539,7 +545,8 @@ struct AccountsListView: View {
                                     title: String(localized: "Closed Accounts"),
                                     total: closedTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isClosedExpanded,
-                                    allowsCollapse: !isSearchingAccounts
+                                    allowsCollapse: !isSearchingAccounts,
+                                    totalTrailingPadding: 0
                                 )
                             }
                         }
@@ -555,6 +562,8 @@ struct AccountsListView: View {
             .navigationDestination(for: AccountsRoute.self) { route in
                 switch route {
                 case .allAccounts: AccountTransactionsScreen()
+                case .onBudgetTransactions: AccountTransactionsScreen(scope: .onBudget)
+                case .offBudgetTransactions: AccountTransactionsScreen(scope: .offBudget)
                 case .account(let account): AccountTransactionsScreen(account: account)
                 }
             }
@@ -591,7 +600,7 @@ struct AccountsListView: View {
                                     total: onBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOnBudgetExpanded,
                                     allowsCollapse: !isSearchingAccounts && !isReordering,
-                                    totalTrailingPadding: 0
+                                    onShowTransactions: { selection = .onBudgetTransactions }
                                 )
                             }
                             .listSectionSeparator(.hidden)
@@ -612,7 +621,7 @@ struct AccountsListView: View {
                                     total: offBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOffBudgetExpanded,
                                     allowsCollapse: !isSearchingAccounts && !isReordering,
-                                    totalTrailingPadding: 0
+                                    onShowTransactions: { selection = .offBudgetTransactions }
                                 )
                             }
                             .listSectionSeparator(.hidden)
@@ -631,8 +640,7 @@ struct AccountsListView: View {
                                     title: String(localized: "Closed Accounts"),
                                     total: closedTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isClosedExpanded,
-                                    allowsCollapse: !isSearchingAccounts,
-                                    totalTrailingPadding: 0
+                                    allowsCollapse: !isSearchingAccounts
                                 )
                             }
                         }
@@ -658,6 +666,10 @@ struct AccountsListView: View {
                     }
                 case .allAccounts:
                     AccountTransactionsScreen()
+                case .onBudgetTransactions:
+                    AccountTransactionsScreen(scope: .onBudget)
+                case .offBudgetTransactions:
+                    AccountTransactionsScreen(scope: .offBudget)
                 case nil:
                     ContentUnavailableView(
                         "No Account Selected",
@@ -1102,27 +1114,29 @@ struct AccountsListView: View {
 private struct AccountTransactionsScreen: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     var account: Account?
+    var scope: AccountTransactionsScope?
 
     var body: some View {
         Group {
             if let account {
                 AccountDetailView(account: account)
             } else {
-                TransactionsListView()
+                TransactionsListView(scope: scope)
+                    .id(scope?.rawValue ?? "all")
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             if budgetStore.showTransactionStatusFilters {
                 TransactionFilterStrip(
                     selection: $budgetStore.transactionStatusFilter,
-                    filters: account?.offBudget == true
+                    filters: account?.offBudget == true || scope == .offBudget
                         ? TransactionStatusFilter.allCases.filter { $0 != .uncategorized }
                         : TransactionStatusFilter.allCases
                 )
             }
         }
-        .task(id: account?.id) {
-            if account?.offBudget == true,
+        .task(id: "\(account?.id ?? "")|\(scope?.rawValue ?? "")") {
+            if account?.offBudget == true || scope == .offBudget,
                budgetStore.transactionStatusFilter == .uncategorized {
                 budgetStore.transactionStatusFilter = .all
             }
@@ -1218,8 +1232,8 @@ struct AccountsSummaryCard: View {
 }
 
 /// Header used for the On Budget, Off Budget, and Closed Accounts sections.
-/// The section name sits on the left, the total is right-aligned, and tapping
-/// anywhere on the header expands/collapses that section.
+/// The section title and trailing disclosure collapse the section; the small
+/// arrow beside a budget title opens that section's transactions.
 struct AccountSectionHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let identifier: String
@@ -1227,70 +1241,113 @@ struct AccountSectionHeader: View {
     let total: Int
     @Binding var isExpanded: Bool
     var allowsCollapse = true
-    /// Extra trailing inset lining the total up with row balances that sit
-    /// left of a NavigationLink disclosure chevron. The split layout's rows
-    /// carry no chevron, so it passes zero to keep its totals flush too.
+    var onShowTransactions: (() -> Void)?
     var totalTrailingPadding: CGFloat = 24
 
     var body: some View {
         let totalText = budgetStore.displayBalance(total)
-        Button {
-            isExpanded.toggle()
-        } label: {
-            HStack(spacing: 8) {
-                if identifier == "closed" {
-                    DisclosureChevron(isExpanded: isExpanded)
-                        .frame(width: 12)
-                    sectionTitle
-                }
-                Spacer()
-                Text(totalText)
-                    .font(.headline.weight(.regular))
-                    .foregroundStyle(balanceColor(for: total))
-                    .animatedAmount(totalText)
-                    .padding(.trailing, identifier == "closed" ? totalTrailingPadding : 20)
-                    // Grouped-list headers uppercase their content; fine for
-                    // the title (string headers always rendered that way) but
-                    // it would mangle alphabetic currency symbols ("kr"→"KR").
-                    .textCase(nil)
-                    // One line always: a narrow sidebar wraps "USD 48,800.00"
-                    // onto two lines rather than shrinking it.
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .overlay(alignment: .leading) {
-                if identifier != "closed" {
-                    sectionTitle
+        Group {
+            if identifier != "closed", let onShowTransactions {
+                HStack(spacing: 0) {
+                    Button(action: onShowTransactions) {
+                        HStack(spacing: 8) {
+                            sectionTitle
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                        }
                         .padding(.leading, 8)
-                        .allowsHitTesting(false)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!allowsCollapse)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityLabel(String(format: String(localized: "Show %@ transactions"), title))
+                    .accessibilityIdentifier("account.group.\(identifier).transactions")
+                    .accessibilityHint(String(localized: "Opens transactions for this budget group"))
+
+                    Button {
+                        isExpanded.toggle()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(totalText)
+                                .font(.headline.weight(.regular))
+                                .foregroundStyle(balanceColor(for: total))
+                                .animatedAmount(totalText)
+                                .textCase(nil)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                            DisclosureChevron(isExpanded: isExpanded)
+                                .frame(width: 12, height: 20)
+                                .accessibilityHidden(true)
+                        }
+                        .padding(.leading, 8)
+                        .padding(.trailing, 8)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!allowsCollapse)
+                    .accessibilityLabel(
+                        String(
+                            format: String(localized: "accounts.group.accessibility"),
+                            title,
+                            expandedState,
+                            totalText
+                        )
+                    )
+                    .accessibilityIdentifier("account.group.\(identifier).disclosure")
+                    .accessibilityHint(collapseHint)
                 }
-            }
-            .overlay(alignment: .trailing) {
-                if identifier != "closed" {
-                    DisclosureChevron(isExpanded: isExpanded)
-                        .frame(width: 12, height: 20)
-                        .allowsHitTesting(false)
+            } else {
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    HStack(spacing: 8) {
+                        if identifier == "closed" {
+                            DisclosureChevron(isExpanded: isExpanded)
+                                .frame(width: 12)
+                                .accessibilityHidden(true)
+                        }
+                        sectionTitle
+                        Spacer(minLength: 8)
+                        Text(totalText)
+                            .font(.headline.weight(.regular))
+                            .foregroundStyle(balanceColor(for: total))
+                            .animatedAmount(totalText)
+                            .padding(.trailing, identifier == "closed" ? totalTrailingPadding : 20)
+                            .textCase(nil)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .disabled(!allowsCollapse)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityLabel(
+                    String(
+                        format: String(localized: "accounts.group.accessibility"),
+                        title,
+                        expandedState,
+                        totalText
+                    )
+                )
+                .accessibilityIdentifier("account.group.\(identifier)")
+                .accessibilityHint(collapseHint)
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .disabled(!allowsCollapse)
         .listRowSeparator(.hidden)
-        .accessibilityAddTraits(.isHeader)
-        // State lives in the label, not the hint: hints are read last and can
-        // be disabled outright, and a collapsed section is otherwise
-        // indistinguishable from an empty one. Same convention as the budget
-        // tab's group headers ("Essentials, collapsed").
-        .accessibilityLabel(String(format: String(localized: "accounts.group.accessibility"), title, expandedState, totalText))
-        .accessibilityIdentifier("account.group.\(identifier)")
-        // Hints describe the result of the action, not the gesture itself —
-        // VoiceOver already announces this as double-tap-activatable.
-        .accessibilityHint(allowsCollapse
-            ? (isExpanded
-                ? String(localized: "Collapses this section")
-                : String(localized: "Expands this section"))
-            : "")
+    }
+
+    private var collapseHint: String {
+        guard allowsCollapse else { return "" }
+        return isExpanded
+            ? String(localized: "Collapses this section")
+            : String(localized: "Expands this section")
     }
 
     private var expandedState: String {

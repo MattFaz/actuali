@@ -10,8 +10,11 @@ final class AccountsSearchUITests: XCTestCase {
         app.launch()
         app.tabBars.buttons["Accounts"].tap()
 
-        let header = app.buttons["account.group.on-budget"]
+        let header = app.buttons["account.group.on-budget.disclosure"]
         XCTAssertTrue(header.waitForExistence(timeout: 10))
+        let transactionsButton = app.buttons["account.group.on-budget.transactions"]
+        XCTAssertTrue(transactionsButton.waitForExistence(timeout: 10))
+        XCTAssertTrue(transactionsButton.isEnabled)
         let chase = app.staticTexts["Chase Checking"].firstMatch
         if !chase.exists {
             header.tap()
@@ -29,12 +32,17 @@ final class AccountsSearchUITests: XCTestCase {
                       "visible search results must be announced as expanded")
         XCTAssertFalse(header.isEnabled,
                        "search forces rows open, so collapse must not be offered")
+        XCTAssertFalse(
+            transactionsButton.isEnabled,
+            "search should disable navigation from budget section headers"
+        )
         XCTAssertFalse(app.staticTexts["All Accounts"].firstMatch.exists)
 
         app.buttons["accounts.search"].tap()
         XCTAssertTrue(header.waitForExistence(timeout: 10))
         XCTAssertTrue(header.label.contains("collapsed"))
         XCTAssertTrue(header.isEnabled)
+        XCTAssertTrue(transactionsButton.isEnabled)
         XCTAssertFalse(chase.exists,
                        "cancelling search must restore the saved collapsed state")
         header.tap()
@@ -53,7 +61,7 @@ final class AccountsSearchUITests: XCTestCase {
 
         let chase = app.staticTexts["Chase Checking"].firstMatch
         if !chase.waitForExistence(timeout: 2) {
-            let onBudgetHeader = app.buttons["account.group.on-budget"]
+            let onBudgetHeader = app.buttons["account.group.on-budget.disclosure"]
             XCTAssertTrue(onBudgetHeader.waitForExistence(timeout: 10))
             onBudgetHeader.tap()
         }
