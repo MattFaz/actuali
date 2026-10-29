@@ -5,6 +5,8 @@ struct TransactionsListView: View {
     @AppStorage("showUpcomingScheduledTransactions") private var showUpcomingSchedules = true
     @State private var pager: TransactionPager?
     @State private var searchText = ""
+    @State private var isTransactionSearchActive = false
+    @FocusState private var isTransactionSearchFocused: Bool
     @State private var editingTransaction: Transaction?
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
@@ -189,12 +191,23 @@ struct TransactionsListView: View {
                         }
                     }
                 }
+            } else {
+                // The pager is created by the `.task` below, which needs a view
+                // to attach to; an empty Group drops it (and the title and
+                // toolbar) on iOS 18, leaving a blank screen.
+                Color.clear
             }
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
         .readableWidth()
         .navigationTitle("All Accounts")
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .onDemandSearch(
+            text: $searchText,
+            isPresented: $isTransactionSearchActive,
+            isFocused: $isTransactionSearchFocused,
+            prompt: "Search transactions",
+            accessibilityPrefix: "transactions"
+        )
         .task { await budgetStore.loadSchedules() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
