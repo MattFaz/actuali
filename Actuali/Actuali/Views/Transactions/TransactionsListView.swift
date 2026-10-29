@@ -191,6 +191,11 @@ struct TransactionsListView: View {
                         }
                     }
                 }
+            } else {
+                // The pager is created by the `.task` below, which needs a view
+                // to attach to; an empty Group drops it (and the title and
+                // toolbar) on iOS 18, leaving a blank screen.
+                Color.clear
             }
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)

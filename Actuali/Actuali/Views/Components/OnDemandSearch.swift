@@ -1,26 +1,14 @@
 import SwiftUI
 
-/// A shared capsule search field for screens that need explicit, on-demand search
-/// on iOS versions before the native minimized toolbar search is available.
-struct GlassSearchBar: View {
-    @Binding private var text: String
-    @FocusState.Binding private var isFocused: Bool
-    private let prompt: LocalizedStringKey
-    private let accessibilityPrefix: String
+/// The capsule search field used on iOS versions before the native minimized
+/// toolbar search is available.
+struct CapsuleSearchField: View {
+    @Binding var text: String
+    @FocusState.Binding var isFocused: Bool
+    let prompt: LocalizedStringKey
+    let accessibilityPrefix: String
 
-    init(
-        text: Binding<String>,
-        isFocused: FocusState<Bool>.Binding,
-        prompt: LocalizedStringKey,
-        accessibilityPrefix: String
-    ) {
-        _text = text
-        _isFocused = isFocused
-        self.prompt = prompt
-        self.accessibilityPrefix = accessibilityPrefix
-    }
-
-    private var field: some View {
+    var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
@@ -50,38 +38,20 @@ struct GlassSearchBar: View {
         }
         .frame(minHeight: 44)
         .padding(.horizontal, 12)
-    }
-
-    var body: some View {
-        field
-            .background(.quaternary, in: Capsule())
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+        .background(.quaternary, in: Capsule())
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 }
 
-/// Uses the system's minimized Liquid Glass search control on iOS 26+, with the
-/// shared custom field as a fallback on older supported OS versions.
+/// Uses the system's minimized Liquid Glass search control on iOS 26+, with
+/// `CapsuleSearchField` as a fallback on older supported OS versions.
 private struct OnDemandSearchModifier: ViewModifier {
-    @Binding private var text: String
-    @Binding private var isPresented: Bool
-    @FocusState.Binding private var isFocused: Bool
-    private let prompt: LocalizedStringKey
-    private let accessibilityPrefix: String
-
-    init(
-        text: Binding<String>,
-        isPresented: Binding<Bool>,
-        isFocused: FocusState<Bool>.Binding,
-        prompt: LocalizedStringKey,
-        accessibilityPrefix: String
-    ) {
-        _text = text
-        _isPresented = isPresented
-        _isFocused = isFocused
-        self.prompt = prompt
-        self.accessibilityPrefix = accessibilityPrefix
-    }
+    @Binding var text: String
+    @Binding var isPresented: Bool
+    @FocusState.Binding var isFocused: Bool
+    let prompt: LocalizedStringKey
+    let accessibilityPrefix: String
 
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
@@ -103,7 +73,7 @@ private struct OnDemandSearchModifier: ViewModifier {
             content
                 .safeAreaInset(edge: .top, spacing: 0) {
                     if isPresented {
-                        GlassSearchBar(
+                        CapsuleSearchField(
                             text: $text,
                             isFocused: $isFocused,
                             prompt: prompt,

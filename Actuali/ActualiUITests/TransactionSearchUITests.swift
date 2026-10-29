@@ -45,12 +45,15 @@ final class TransactionSearchUITests: XCTestCase {
                       "clearing the search should restore the transaction list")
         XCTAssertFalse(noResults.exists)
 
-        // Reopening and cancelling must remove the query and restore results.
+        // Cancelling must drop the query, not just hide the field: start from
+        // a no-match state so a leftover filter would keep No Results on screen.
         let restoredSearchField = activeSearchField(in: app, customFieldIdentifier: "transactions.searchField")
-        typeSearchText("netflix", in: restoredSearchField)
+        typeSearchText("zzzz", in: restoredSearchField)
+        XCTAssertTrue(noResults.waitForExistence(timeout: 10))
         cancelSearch(in: app, customButtonIdentifier: "transactions.search")
-        XCTAssertFalse(noResults.exists,
-                       "cancelling search should clear the filter and restore results")
+        XCTAssertTrue(noResults.waitForNonExistence(timeout: 10),
+                      "cancelling search should clear the filter and restore results")
+        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 10))
     }
 
     @MainActor
@@ -94,8 +97,9 @@ final class TransactionSearchUITests: XCTestCase {
         XCTAssertTrue(searchField.waitForExistence(timeout: 10))
         searchField.tap()
         cancelSearch(in: app, customButtonIdentifier: "accountDetails.search")
-        XCTAssertFalse(app.textFields["accountDetails.searchField"].exists)
-        XCTAssertFalse(app.searchFields.firstMatch.exists)
+        // The native field animates away, so wait rather than sample.
+        XCTAssertTrue(app.textFields["accountDetails.searchField"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.searchFields.firstMatch.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 10),
                       "cancelling search should restore the account transactions")
     }

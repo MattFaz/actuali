@@ -71,7 +71,7 @@ extension XCTestCase {
 
     func cancelSearch(in app: XCUIApplication, customButtonIdentifier: String) {
         let nativeCancelButton = app.navigationBars.descendants(matching: .button)
-            .matching(NSPredicate(format: "label CONTAINS[c] 'Cancel' OR label == 'Close'"))
+            .matching(NSPredicate(format: "label CONTAINS[c] 'Cancel' OR label ==[c] 'Close'"))
             .firstMatch
         if nativeCancelButton.waitForExistence(timeout: 2) {
             nativeCancelButton.tap()

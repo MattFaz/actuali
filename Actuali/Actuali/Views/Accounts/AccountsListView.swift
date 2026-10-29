@@ -709,34 +709,28 @@ struct AccountsListView: View {
             .accessibilityIdentifier("accounts.topBox")
     }
 
+    @ViewBuilder
     private var emptyState: some View {
-        Group {
-            if budgetStore.currentBudgetId != nil {
-                // A budget is loaded, it just has no accounts (yet) —
-                // "go connect a server" would be wrong advice here (GH #122).
-                ContentUnavailableView(
-                    String(localized: "No Accounts"),
-                    systemImage: "dollarsign.circle",
-                    description: Text(String(localized: "This budget doesn't have any accounts yet. Create one in Actual Budget, then sync."))
-                )
-            } else if budgetStore.isConnected {
-                ContentUnavailableView(
-                    String(localized: "Select a Budget"),
-                    systemImage: "dollarsign.circle",
-                    description: Text(String(localized: "You're connected. Choose a budget in More → Connection & Data to load it here."))
-                )
-            } else {
-                ContentUnavailableView(
-                    String(localized: "No Budget Loaded"),
-                    systemImage: "dollarsign.circle",
-                    description: Text(String(localized: "Go to More → Connection & Data to connect to your Actual Budget server"))
-                )
-            }
-        }
-        .onAppear {
-            isAccountSearchActive = false
-            isAccountSearchFocused = false
-            accountSearchText = ""
+        if budgetStore.currentBudgetId != nil {
+            // A budget is loaded, it just has no accounts (yet) —
+            // "go connect a server" would be wrong advice here (GH #122).
+            ContentUnavailableView(
+                String(localized: "No Accounts"),
+                systemImage: "dollarsign.circle",
+                description: Text(String(localized: "This budget doesn't have any accounts yet. Create one in Actual Budget, then sync."))
+            )
+        } else if budgetStore.isConnected {
+            ContentUnavailableView(
+                String(localized: "Select a Budget"),
+                systemImage: "dollarsign.circle",
+                description: Text(String(localized: "You're connected. Choose a budget in More → Connection & Data to load it here."))
+            )
+        } else {
+            ContentUnavailableView(
+                String(localized: "No Budget Loaded"),
+                systemImage: "dollarsign.circle",
+                description: Text(String(localized: "Go to More → Connection & Data to connect to your Actual Budget server"))
+            )
         }
     }
 
@@ -765,6 +759,21 @@ struct AccountsListView: View {
                 if hasNoSearchResults {
                     ContentUnavailableView.search(text: accountSearchText)
                 }
+            }
+            // Searching filters the rows a drag moves among, so reordering and
+            // search stay mutually exclusive (beginReordering clears search).
+            .onChange(of: isAccountSearchActive) { _, active in
+                if active {
+                    finishReordering()
+                }
+            }
+            // The List carrying search leaves with the last account; don't
+            // reopen it with a stale query when accounts come back.
+            .onChange(of: hasNoAccounts) { _, empty in
+                guard empty else { return }
+                isAccountSearchActive = false
+                isAccountSearchFocused = false
+                accountSearchText = ""
             }
             .toolbar {
                 if isReordering {
