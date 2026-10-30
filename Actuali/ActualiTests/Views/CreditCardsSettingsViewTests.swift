@@ -76,6 +76,8 @@ struct CreditCardsSettingsViewTests {
         #expect(CreditCardsSettingsView.dayOptionLabel(15, locale: Locale(identifier: "en_US")) == "15th")
         #expect(CreditCardsSettingsView.dayOptionLabel(30, locale: Locale(identifier: "en_US")) == "30th")
         #expect(CreditCardsSettingsView.dayOptionLabel(31, locale: Locale(identifier: "en_US")) == "31st (Last day of month)")
+        #expect(CreditCardsSettingsView.dayOptionLabel(31, locale: Locale(identifier: "de_DE")) == "31. (Letzter Tag des Monats)")
+        #expect(CreditCardsSettingsView.dayOptionLabel(31, locale: Locale(identifier: "fr_FR")) == "31e (Dernier jour du mois)")
     }
 
     @Test func cardsWithZeroBalanceSortAtTheEnd() {

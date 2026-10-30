@@ -54,10 +54,10 @@ struct CreditCardsSettingsView: View {
 
     /// Formats a day-of-month picker option. Day 31 clarifies that shorter
     /// months clamp to their final day (e.g. Apple Card statements, GH #716).
-    nonisolated static func dayOptionLabel(_ day: Int, locale: Locale = .current) -> String {
+    nonisolated static func dayOptionLabel(_ day: Int, locale: Locale = .current, bundle: Bundle = .main) -> String {
         let ordinal = ScheduleDescription.ordinal(day, locale: locale)
         guard day == 31 else { return ordinal }
-        return String(format: String(localized: "%@ (Last day of month)"), ordinal)
+        return ReportStrings.format("%@ (Last day of month)", ordinal, locale: locale, bundle: bundle)
     }
 
     private var unconfiguredAccounts: [Account] {
