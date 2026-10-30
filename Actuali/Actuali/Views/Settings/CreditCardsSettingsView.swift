@@ -52,6 +52,14 @@ struct CreditCardsSettingsView: View {
         }
     }
 
+    /// Formats a day-of-month picker option. Day 31 clarifies that shorter
+    /// months clamp to their final day (e.g. Apple Card statements, GH #716).
+    nonisolated static func dayOptionLabel(_ day: Int, locale: Locale = .current) -> String {
+        let ordinal = ScheduleDescription.ordinal(day, locale: locale)
+        guard day == 31 else { return ordinal }
+        return String(format: String(localized: "%@ (Last day of month)"), ordinal)
+    }
+
     private var unconfiguredAccounts: [Account] {
         let configuredIds = Set(budgetStore.creditCardStatementDays.keys)
         return budgetStore.accounts
@@ -169,7 +177,7 @@ struct CreditCardsSettingsView: View {
 
                     Picker(String(localized: "Statement Closing Day"), selection: $selectedStatementDay) {
                         ForEach(1...31, id: \.self) { day in
-                            Text(ScheduleDescription.ordinal(day, locale: locale)).tag(day)
+                            Text(Self.dayOptionLabel(day, locale: locale)).tag(day)
                         }
                     }
 
@@ -189,7 +197,7 @@ struct CreditCardsSettingsView: View {
                     } else {
                         Picker(String(localized: "Payment Due Day"), selection: $selectedDueDay) {
                             ForEach(1...31, id: \.self) { day in
-                                Text(ScheduleDescription.ordinal(day, locale: locale)).tag(day)
+                                Text(Self.dayOptionLabel(day, locale: locale)).tag(day)
                             }
                         }
                     }

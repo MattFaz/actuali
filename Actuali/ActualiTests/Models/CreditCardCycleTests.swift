@@ -216,6 +216,39 @@ struct CreditCardCycleTests {
         #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2026, month: 2, day: 28))
     }
 
+    @Test func appleCardEndOfMonthCycleAndDueDates() {
+        // Apple Card: closes on last day of month, due on last day of following month (GH #716).
+        let cycle = CreditCardCycle(statementDay: 31, paymentDue: .dayOfMonth(31))
+
+        // September closes on Sep 30, due on Oct 31
+        let sepStatement = DayDate(year: 2026, month: 9, day: 30)
+        #expect(cycle.dueDate(forStatement: sepStatement) == DayDate(year: 2026, month: 10, day: 31))
+
+        // October closes on Oct 31, due on Nov 30
+        let octStatement = DayDate(year: 2026, month: 10, day: 31)
+        #expect(cycle.dueDate(forStatement: octStatement) == DayDate(year: 2026, month: 11, day: 30))
+
+        // January closes on Jan 31, due on Feb 28 (non-leap year)
+        let janStatement = DayDate(year: 2026, month: 1, day: 31)
+        #expect(cycle.dueDate(forStatement: janStatement) == DayDate(year: 2026, month: 2, day: 28))
+
+        // Leap year: January 2028 closes on Jan 31, due on Feb 29
+        let janLeapStatement = DayDate(year: 2028, month: 1, day: 31)
+        #expect(cycle.dueDate(forStatement: janLeapStatement) == DayDate(year: 2028, month: 2, day: 29))
+
+        // February 2026 closes on Feb 28, due on Mar 31
+        let febStatement = DayDate(year: 2026, month: 2, day: 28)
+        #expect(cycle.dueDate(forStatement: febStatement) == DayDate(year: 2026, month: 3, day: 31))
+
+        // Mid-cycle check: on Sep 15, active cycle is Sep 1 - Sep 30, upcoming due is the pending Aug statement (due Sep 30)
+        let sep15 = DayDate(year: 2026, month: 9, day: 15)
+        let range = cycle.cycleRange(for: sep15)
+        #expect(range.start == DayDate(year: 2026, month: 9, day: 1))
+        #expect(range.end == DayDate(year: 2026, month: 9, day: 30))
+        #expect(cycle.upcomingStatementDate(for: sep15) == DayDate(year: 2026, month: 8, day: 31))
+        #expect(cycle.upcomingDueDate(for: sep15) == DayDate(year: 2026, month: 9, day: 30))
+    }
+
     @Test func upcomingDueDateRollsOverYearEndWithDueDay() {
         let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
         // Today is Dec 20, 2026: Dec 15 statement closed, due on Jan 1, 2027
