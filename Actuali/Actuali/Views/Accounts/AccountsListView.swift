@@ -1503,6 +1503,12 @@ struct AccountTypeAvatar: View {
         if closed {
             return Color.secondary.opacity(0.18)
         }
+        if hasDeposit || type == .investment {
+            return Color.green.opacity(0.18)
+        }
+        if hasLoan || type == .mortgage || type == .debt {
+            return Color.blue.opacity(0.18)
+        }
         if type == .credit {
             return Color.orange.opacity(0.18)
         }
@@ -1511,12 +1517,6 @@ struct AccountTypeAvatar: View {
         }
         if type == .savings {
             return Color.purple.opacity(0.18)
-        }
-        if hasDeposit || type == .investment {
-            return Color.green.opacity(0.18)
-        }
-        if hasLoan || type == .mortgage || type == .debt {
-            return Color.blue.opacity(0.18)
         }
         return Color.secondary.opacity(0.18)
     }
@@ -1530,6 +1530,12 @@ struct AccountTypeAvatar: View {
         if closed {
             return Color.secondary
         }
+        if hasDeposit || type == .investment {
+            return .green
+        }
+        if hasLoan || type == .mortgage || type == .debt {
+            return .blue
+        }
         if type == .credit {
             return .orange
         }
@@ -1538,12 +1544,6 @@ struct AccountTypeAvatar: View {
         }
         if type == .savings {
             return .purple
-        }
-        if hasDeposit || type == .investment {
-            return .green
-        }
-        if hasLoan || type == .mortgage || type == .debt {
-            return .blue
         }
         return .primary
     }
