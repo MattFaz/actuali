@@ -1455,11 +1455,162 @@ private struct AccountGroupTotal: View {
     }
 }
 
+/// Circular avatar with an SF Symbol icon matching the account type and instrument.
+/// Features a dark translucent tint with a vibrant icon (or solid white circle for credit cards),
+/// matching native iOS design aesthetics.
+struct AccountTypeAvatar: View {
+    let account: Account
+    var hasLoan: Bool = false
+    var hasDeposit: Bool = false
+
+    private var icon: String {
+        if account.closed {
+            return account.type == .credit ? "creditcard" : defaultTypeIcon
+        }
+        if hasDeposit || account.name.localizedCaseInsensitiveContains("deposit") ||
+            account.name.split(whereSeparator: { !$0.isLetter }).contains(where: { $0.caseInsensitiveCompare("cd") == .orderedSame }) {
+            return "lock.fill"
+        }
+        if hasLoan || account.type == .mortgage || account.type == .debt {
+            let lower = account.name.lowercased()
+            if lower.contains("car") || lower.contains("auto") || lower.contains("vehicle") {
+                return "car.fill"
+            }
+            if lower.contains("mortgage") || lower.contains("home") || account.type == .mortgage {
+                return "house.fill"
+            }
+            return "banknote.fill"
+        }
+        return defaultTypeIcon
+    }
+
+    private var defaultTypeIcon: String {
+        switch account.type {
+        case .checking: "building.columns.fill"
+        case .savings: "piggybank.fill"
+        case .credit: "creditcard.fill"
+        case .mortgage, .debt: "house.fill"
+        case .investment: "chart.line.uptrend.xyaxis"
+        case .other: "banknote.fill"
+        }
+    }
+
+    private var circleFill: Color {
+        if account.closed {
+            return Color.secondary.opacity(0.18)
+        }
+        if account.type == .credit {
+            return .white
+        }
+        if account.type == .checking {
+            return Color.blue.opacity(0.18)
+        }
+        if account.type == .savings {
+            return Color.purple.opacity(0.18)
+        }
+        if hasDeposit || account.type == .investment {
+            return Color.green.opacity(0.18)
+        }
+        if hasLoan || account.type == .mortgage || account.type == .debt {
+            return Color.blue.opacity(0.18)
+        }
+        return Color.secondary.opacity(0.18)
+    }
+
+    private var iconColor: Color {
+        if account.closed {
+            return Color.secondary
+        }
+        if account.type == .credit {
+            return Color(white: 0.12)
+        }
+        if account.type == .checking {
+            return .blue
+        }
+        if account.type == .savings {
+            return .purple
+        }
+        if hasDeposit || account.type == .investment {
+            return .green
+        }
+        if hasLoan || account.type == .mortgage || account.type == .debt {
+            return .blue
+        }
+        return .primary
+    }
+
+    var body: some View {
+        ZStack {
+            Circle().fill(circleFill)
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(iconColor)
+        }
+        .frame(width: 36, height: 36)
+    }
+}
+
 struct AccountRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let account: Account
     @State private var isCreatingGroup = false
     @State private var newGroupName = ""
+
+    private var progress: Double? {
+        Self.progress(
+            for: account,
+            loanConfig: budgetStore.activeLoanConfig(for: account.id),
+            depositConfig: budgetStore.activeDepositConfig(for: account.id),
+            creditCardDues: budgetStore.creditCardStatementDues[account.id],
+            hasActiveCreditCardCycle: budgetStore.activeCreditCardCycle(for: account.id) != nil
+        )
+    }
+
+    /// Share of payoff or term completed (0...1), or nil when the account has no tracking.
+    /// Pure so tests can exercise all combinations of loan, deposit, and credit card configs.
+    nonisolated static func progress(
+        for account: Account,
+        loanConfig: LoanConfig?,
+        depositConfig: DepositConfig?,
+        creditCardDues: [CreditCardCycle.StatementDue]?,
+        hasActiveCreditCardCycle: Bool = true,
+        today: DayDate = .today()
+    ) -> Double? {
+        guard !account.closed else { return nil }
+        if let loanConfig {
+            return loanConfig.fractionPaidOff(accountBalance: account.balance)
+        }
+        if let depositConfig {
+            return depositConfig.fractionElapsed(on: today)
+        }
+        if hasActiveCreditCardCycle,
+           let dues = creditCardDues,
+           let due = CreditCardCycle.pendingStatementDue(in: dues, today: today) {
+            if due.isPaid {
+                return 1.0
+            }
+            guard due.statementBalance > 0 else { return nil }
+            let paid = max(0, due.statementBalance - due.remainingDue)
+            return min(1.0, max(0.0, Double(paid) / Double(due.statementBalance)))
+        }
+        return nil
+    }
+
+    private func progressBarColor(p: Double, hasLoan: Bool, hasDeposit: Bool) -> Color {
+        if account.closed {
+            return Color.secondary.opacity(0.3)
+        }
+        if p >= 1.0 {
+            return .green
+        }
+        if account.type == .credit {
+            return .red
+        }
+        if hasDeposit {
+            return .green
+        }
+        return .blue
+    }
 
     var body: some View {
         // The group menu is the only context-menu item, so without it there
@@ -1473,14 +1624,43 @@ struct AccountRow: View {
 
     private var row: some View {
         let balance = budgetStore.displayBalance(account.balance)
-        return HStack {
-            Text(account.name)
-                .font(.body)
-                .padding(.leading, 8)
-            Spacer()
-            Text(balance)
-                .foregroundStyle(balanceColor(for: account.balance))
-                .animatedAmount(balance)
+        let loanConfig = budgetStore.activeLoanConfig(for: account.id)
+        let depositConfig = budgetStore.activeDepositConfig(for: account.id)
+        let hasLoan = loanConfig != nil
+        let hasDeposit = depositConfig != nil
+
+        return HStack(alignment: .center, spacing: 12) {
+            AccountTypeAvatar(
+                account: account,
+                hasLoan: hasLoan,
+                hasDeposit: hasDeposit
+            )
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(account.name)
+                        .font(.body)
+                    Spacer()
+                    Text(balance)
+                        .foregroundStyle(balanceColor(for: account.balance))
+                        .animatedAmount(balance)
+                }
+                if let p = progress {
+                    let barColor = progressBarColor(p: p, hasLoan: hasLoan, hasDeposit: hasDeposit)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.secondary.opacity(0.18))
+                                .frame(height: 3)
+                            Capsule().fill(barColor)
+                                .frame(width: geo.size.width * CGFloat(min(p, 1)), height: 3)
+                        }
+                    }
+                    .frame(height: 3)
+                    .accessibilityLabel(LoanSummaryRow.percentText(min(max(p, 0), 1)))
+                    .accessibilityIdentifier("accountRow.progress.\(account.id)")
+                }
+            }
         }
         .alert(String(localized: "Create Group"), isPresented: $isCreatingGroup) {
             TextField(String(localized: "Group Name"), text: $newGroupName)
