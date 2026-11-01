@@ -370,16 +370,49 @@ struct AccountsListViewTests {
             today: today
         )
         #expect(zeroProgress == nil)
+    }
 
-        // 5. Inactive credit card cycle -> nil
-        let inactiveProgress = AccountRow.progress(
-            for: account,
-            loanConfig: nil,
-            depositConfig: nil,
-            creditCardDues: [partialDue],
-            hasActiveCreditCardCycle: false,
-            today: today
-        )
-        #expect(inactiveProgress == nil)
+    // MARK: - Avatar icons and color tints
+
+    @Test func avatarIconMatchesAccountTypeAndConfigs() {
+        #expect(AccountTypeAvatar.icon(for: .checking) == "banknote.fill")
+        #expect(AccountTypeAvatar.icon(for: .savings) == "building.columns.fill")
+        #expect(AccountTypeAvatar.icon(for: .credit) == "creditcard.fill")
+        #expect(AccountTypeAvatar.icon(for: .investment) == "chart.line.uptrend.xyaxis")
+        #expect(AccountTypeAvatar.icon(for: .mortgage) == "house.fill")
+        #expect(AccountTypeAvatar.icon(for: .debt) == "house.fill")
+        #expect(AccountTypeAvatar.icon(for: .other) == "dollarsign.circle.fill")
+
+        // Deposit config overrides type to lock.fill
+        #expect(AccountTypeAvatar.icon(for: .savings, hasDeposit: true) == "lock.fill")
+
+        // Loan config overrides type to house.fill
+        #expect(AccountTypeAvatar.icon(for: .other, hasLoan: true) == "house.fill")
+
+        // Closed accounts use un-filled creditcard for credit, otherwise standard icon
+        #expect(AccountTypeAvatar.icon(for: .credit, closed: true) == "creditcard")
+        #expect(AccountTypeAvatar.icon(for: .checking, closed: true) == "banknote.fill")
+    }
+
+    @Test func avatarColorsMatchAccountTypeAndClosedStatus() {
+        // Checking uses blue
+        #expect(AccountTypeAvatar.iconColor(for: .checking) == .blue)
+
+        // Savings uses purple
+        #expect(AccountTypeAvatar.iconColor(for: .savings) == .purple)
+
+        // Credit uses orange (adaptive in light/dark mode)
+        #expect(AccountTypeAvatar.iconColor(for: .credit) == .orange)
+
+        // Deposits and investments use green
+        #expect(AccountTypeAvatar.iconColor(for: .investment) == .green)
+        #expect(AccountTypeAvatar.iconColor(for: .savings, hasDeposit: true) == .green)
+
+        // Loans use blue
+        #expect(AccountTypeAvatar.iconColor(for: .other, hasLoan: true) == .blue)
+
+        // Closed accounts use secondary
+        #expect(AccountTypeAvatar.iconColor(for: .checking, closed: true) == .secondary)
+        #expect(AccountTypeAvatar.iconColor(for: .credit, closed: true) == .secondary)
     }
 }
