@@ -119,12 +119,11 @@ enum DepositGrowth {
 
         let maturityDate = config.openedOn.adding(months: term)
         let lastEligibleDate = min(max(date, config.openedOn), maturityDate.adding(days: -1))
-        let intervals: Int
-        switch config.contributionFrequency.period {
+        let intervals = switch config.contributionFrequency.period {
         case .days(let days):
-            intervals = config.openedOn.days(until: lastEligibleDate) / days
+            config.openedOn.days(until: lastEligibleDate) / days
         case .months(let months):
-            intervals = wholeMonthsElapsed(from: config.openedOn, to: lastEligibleDate) / months
+            wholeMonthsElapsed(from: config.openedOn, to: lastEligibleDate) / months
         }
         return intervals + 1
     }

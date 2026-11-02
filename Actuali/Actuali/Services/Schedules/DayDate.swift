@@ -44,11 +44,11 @@ struct DayDate: Comparable, Hashable {
     static func lastDay(year: Int, month: Int) -> Int {
         switch month {
         case 2:
-            return isLeapYear(year) ? 29 : 28
+            isLeapYear(year) ? 29 : 28
         case 4, 6, 9, 11:
-            return 30
+            30
         default:
-            return 31
+            31
         }
     }
 
@@ -86,7 +86,7 @@ struct DayDate: Comparable, Hashable {
         let era = (shiftedDay >= 0 ? shiftedDay : shiftedDay - 146_096) / 146_097
         let dayOfEra = shiftedDay - era * 146_097
         let yearOfEra = (
-            dayOfEra - dayOfEra / 1_460 + dayOfEra / 36_524 - dayOfEra / 146_096
+            dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146_096
         ) / 365
         var year = yearOfEra + era * 400
         let dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100)

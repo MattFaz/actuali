@@ -278,10 +278,10 @@ struct DepositEditorView: View {
             Text(String(localized: "Deposit Details"))
         } footer: {
             Text(String(localized: """
-                A fixed deposit is one lump sum left for the term. A recurring deposit adds the same amount at the selected contribution frequency.
+            A fixed deposit is one lump sum left for the term. A recurring deposit adds the same amount at the selected contribution frequency.
 
-                Interest is credited on whole compounding periods, so the value steps up at the end of each one rather than growing smoothly — the same way your bank reports it.
-                """))
+            Interest is credited on whole compounding periods, so the value steps up at the end of each one rather than growing smoothly — the same way your bank reports it.
+            """))
         }
     }
 
