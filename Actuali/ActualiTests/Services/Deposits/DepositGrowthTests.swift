@@ -112,13 +112,16 @@ struct DepositGrowthTests {
         #expect(march.adding(days: -1) == leapDay)
 
         let nonLeapCentury = DayDate(year: 1900, month: 2, day: 28)
-        let leapCentury = DayDate(year: 2000, month: 2, day: 28)
+        let leapCenturyFebruary28 = DayDate(year: 2000, month: 2, day: 28)
+        let leapCenturyFebruary29 = DayDate(year: 2000, month: 2, day: 29)
+        let leapCenturyMarch = DayDate(year: 2000, month: 3, day: 1)
         #expect(nonLeapCentury.days(until: DayDate(year: 1900, month: 3, day: 1)) == 1)
-        #expect(leapCentury.days(until: DayDate(year: 2000, month: 3, day: 1)) == 2)
+        #expect(leapCenturyFebruary28.days(until: leapCenturyMarch) == 2)
         #expect(nonLeapCentury.adding(days: 1) == DayDate(year: 1900, month: 3, day: 1))
-        #expect(leapCentury.adding(days: 1) == DayDate(year: 2000, month: 2, day: 29))
+        #expect(leapCenturyFebruary28.adding(days: 1) == leapCenturyFebruary29)
+        #expect(leapCenturyFebruary29.adding(days: 1) == leapCenturyMarch)
         #expect(DayDate(year: 1900, month: 1, day: 31).adding(months: 1) == nonLeapCentury)
-        #expect(DayDate(year: 2000, month: 1, day: 31).adding(months: 1) == leapCentury)
+        #expect(DayDate(year: 2000, month: 1, day: 31).adding(months: 1) == leapCenturyFebruary29)
     }
 
     // MARK: - Fixed deposits
