@@ -14,8 +14,9 @@ struct DepositGrowthChart: View {
 
     let config: DepositConfig
 
+    @State private var points: [DepositGrowth.Point] = []
+
     var body: some View {
-        let points = DepositGrowth.curve(config)
         Chart {
             ForEach(points) { point in
                 LineMark(
@@ -46,5 +47,8 @@ struct DepositGrowthChart: View {
             hidden: budgetStore.hideBalances
         ))
         .accessibilityHidden(budgetStore.hideBalances)
+        .task(id: config) {
+            points = DepositGrowth.curve(config)
+        }
     }
 }

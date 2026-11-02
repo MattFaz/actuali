@@ -10961,6 +10961,53 @@
         }
       }
     },
+    "A fixed deposit is one lump sum left for the term. A recurring deposit adds the same amount at the selected contribution frequency.\n\nInterest is credited on whole compounding periods, so the value steps up at the end of each one rather than growing smoothly — the same way your bank reports it." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Festgeld ist ein einmaliger Betrag, der für die gesamte Laufzeit angelegt bleibt. Bei einer wiederkehrenden Einlage wird derselbe Betrag in der gewählten Häufigkeit eingezahlt.\n\nZinsen werden nur für vollständige Zinsperioden gutgeschrieben. Der Wert steigt daher am Ende jeder Periode sprunghaft an, statt gleichmäßig zu wachsen – so wie bei Ihrer Bank."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A fixed deposit is one lump sum left for the term. A recurring deposit adds the same amount at the selected contribution frequency.\n\nInterest is credited on whole compounding periods, so the value steps up at the end of each one rather than growing smoothly — the same way your bank reports it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un depósito a plazo fijo es una única cantidad que permanece invertida durante todo el plazo. Un depósito recurrente añade la misma cantidad con la frecuencia de aportación seleccionada.\n\nLos intereses se abonan en periodos de capitalización completos, por lo que el valor aumenta al final de cada periodo en lugar de crecer de forma continua, igual que lo refleja tu banco."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un dépôt à terme est une somme unique laissée pendant toute la durée. Un dépôt récurrent ajoute le même montant selon la fréquence de versement choisie.\n\nLes intérêts sont crédités par périodes de capitalisation entières : la valeur augmente donc par paliers à la fin de chaque période plutôt que de croître régulièrement, comme dans le relevé de votre banque."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un deposito vincolato è un'unica somma lasciata per tutta la durata. Un deposito ricorrente aggiunge lo stesso importo secondo la frequenza di versamento selezionata.\n\nGli interessi vengono accreditati su periodi di capitalizzazione completi, quindi il valore aumenta a scatti alla fine di ogni periodo invece di crescere in modo continuo, come indicato dalla banca."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Een termijndeposito is één bedrag dat de hele looptijd blijft staan. Bij een periodieke inleg wordt hetzelfde bedrag toegevoegd volgens de gekozen inlegfrequentie.\n\nRente wordt per volledige renteperiode bijgeschreven, dus de waarde stijgt aan het einde van elke periode in stappen in plaats van geleidelijk — net zoals uw bank het weergeeft."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um depósito a prazo fixo é um único valor aplicado durante todo o prazo. Um depósito recorrente adiciona o mesmo valor na frequência de contribuição selecionada.\n\nOs juros são creditados em períodos completos de capitalização, então o valor aumenta em etapas ao fim de cada período, em vez de crescer continuamente — como o banco apresenta."
+          }
+        }
+      }
+    },
     "A weekly or daily cap is multiplied by the number of weeks or days in the month, so the effective monthly cap changes with each month." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18107,6 +18154,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Antes de usar um atalho, configure as Correspondências de cartões e contas em Mais → Transações e automação para que as compras sejam registradas na conta certa."
+          }
+        }
+      }
+    },
+    "Bi-weekly" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle zwei Wochen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bi-weekly"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada dos semanas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toutes les deux semaines"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni due settimane"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elke twee weken"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A cada duas semanas"
           }
         }
       }
@@ -31411,6 +31505,100 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gastos do ciclo"
+          }
+        }
+      }
+    },
+    "Contribution Amount" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einzahlungsbetrag"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contribution Amount"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importe de aportación"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Montant de la contribution"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importo del versamento"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inlegbedrag"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valor da contribuição"
+          }
+        }
+      }
+    },
+    "Contribution Frequency" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einzahlungshäufigkeit"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contribution Frequency"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frecuencia de aportación"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fréquence des versements"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frequenza dei versamenti"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inlegfrequentie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frequência das contribuições"
           }
         }
       }
@@ -50219,6 +50407,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Corresponde a"
+          }
+        }
+      }
+    },
+    "Maturity Value" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wert bei Fälligkeit"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maturity Value"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valor al vencimiento"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valeur à l’échéance"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valore alla scadenza"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waarde op de vervaldatum"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valor no vencimento"
           }
         }
       }
