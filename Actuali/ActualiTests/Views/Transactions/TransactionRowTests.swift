@@ -45,7 +45,20 @@ struct TransactionRowTests {
         #expect(payee(nil, isParent: true) == "Split")
         #expect(payee(nil, isParent: true, offBudget: true) == "Split")
         #expect(payee(nil, offBudget: true) == "No payee")
-        #expect(payee(nil) == "Unknown")
+        #expect(payee(nil) == "(No Payee)")
+        #expect(payee("") == "(No Payee)")
+        #expect(payee("   ") == "(No Payee)")
+
+    }
+
+    @Test func payeeLabelPreservesRealPayeeNamesThatMatchFallbackWords() {
+        #expect(payee("Unknown") == "Unknown")
+        #expect(TransactionRow.payeeLabel(
+            payeeName: "Inconnu",
+            isParent: false,
+            isInOffBudgetAccount: false,
+            locale: Locale(identifier: "fr_FR")
+        ) == "Inconnu")
     }
 
     @Test func splitParentShowsSplitThenBreakdown() {

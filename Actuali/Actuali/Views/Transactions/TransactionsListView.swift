@@ -475,21 +475,28 @@ struct TransactionRow: View {
         transaction.transferId != nil || transaction.transferAcct != nil
     }
 
-    /// Split parents may resolve no payee (mixed child payees) — label them
-    /// "Split" like the desktop app, not "Unknown". Off-budget rows say
-    /// "No payee": they're commonly payee-less (balance adjustments) and
-    /// "Unknown" read as a bug (GH #123).
+    /// Split parents with one agreed child payee show that payee; mixed or
+    /// missing child payees show "Split". A regular transaction without a
+    /// payee name shows "(No Payee)" on-budget.
     nonisolated static func payeeLabel(
         payeeName: String?,
         isParent: Bool,
         isInOffBudgetAccount: Bool,
         locale: Locale
     ) -> String {
-        payeeName ?? (isParent
-            ? String(localized: TransactionsListLocalization.split, locale: locale)
-            : (isInOffBudgetAccount
-                ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
-                : String(localized: TransactionsListLocalization.unknown, locale: locale)))
+        if let payeeName,
+           !payeeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return payeeName
+        }
+        if isParent {
+            return String(localized: TransactionsListLocalization.split, locale: locale)
+        }
+        return String(
+            localized: isInOffBudgetAccount
+                ? TransactionsListLocalization.noPayee
+                : TransactionsListLocalization.missingPayee,
+            locale: locale
+        )
     }
 
     /// Caption under the payee. Off-budget accounts aren't categorized at all
@@ -727,6 +734,7 @@ struct ClearedIndicator: View {
 enum TransactionsListLocalization {
     static let cleared: String.LocalizationValue = "Cleared"
     static let noPayee: String.LocalizationValue = "No payee"
+    static let missingPayee: String.LocalizationValue = "(No Payee)"
     static let notSelected: String.LocalizationValue = "Not selected"
     static let offBudget: String.LocalizationValue = "Off budget"
     static let reconciled: String.LocalizationValue = "Reconciled"
@@ -736,7 +744,6 @@ enum TransactionsListLocalization {
     static let transfer: String.LocalizationValue = "Transfer"
     static let uncleared: String.LocalizationValue = "Uncleared"
     static let uncategorized: String.LocalizationValue = "Uncategorized"
-    static let unknown: String.LocalizationValue = "Unknown"
     static let unknownAccount: String.LocalizationValue = "Unknown Account"
 
     static func text(

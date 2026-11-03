@@ -13,6 +13,7 @@ struct TransactionLocalizationTests {
             "Transfer": ["Transfer", "Virement", "Transferência"],
             "Split": ["Split", "Ventilation", "Divisão"],
             "No payee": ["No payee", "Sans bénéficiaire", "Sem beneficiário"],
+            "(No Payee)": ["(No Payee)", "(Sans bénéficiaire)", "(Sem beneficiário)"],
             "Unknown": ["Unknown", "Inconnu", "Desconhecido"],
             "Cleared": ["Cleared", "Pointée", "Compensado"],
             "Reconciled": ["Reconciled", "Rapproché", "Conciliado"],
