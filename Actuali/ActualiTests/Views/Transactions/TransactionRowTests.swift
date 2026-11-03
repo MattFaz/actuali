@@ -7,18 +7,13 @@ import UIKit
 struct TransactionRowTests {
     private let locale = Locale(identifier: "en_US")
 
-    private func payee(_ name: String?, isParent: Bool = false) -> String {
-        TransactionRow.payeeLabel(
-            payeeName: name,
-            isParent: isParent,
-            locale: locale
-        )
+    private func payee(_ name: String?) -> String {
+        TransactionRow.payeeLabel(payeeName: name, locale: locale)
     }
 
     private func category(
         _ name: String?,
         isParent: Bool = false,
-        splitBreakdown: String? = nil,
         offBudget: Bool = false,
         isTransfer: Bool = false,
         needsCategory: Bool = false
@@ -26,7 +21,6 @@ struct TransactionRowTests {
         TransactionRow.categoryLabel(
             categoryName: name,
             isParent: isParent,
-            splitBreakdown: splitBreakdown,
             isInOffBudgetAccount: offBudget,
             isTransfer: isTransfer,
             needsCategory: needsCategory,
@@ -35,30 +29,19 @@ struct TransactionRowTests {
     }
 
     @Test func payeeLabelShowsResolvedPayee() {
-        #expect(payee("Grocery Store", isParent: true) == "Grocery Store")
         #expect(payee("Grocery Store") == "Grocery Store")
     }
 
     @Test func payeeLabelFallbacks() {
-        // Mixed child payees resolve nil; the parent still reads as a split.
-        #expect(payee(nil, isParent: true) == "Split")
+        // Mixed child payees resolve nil; the category line carries the
+        // split label and icon, so the payee line must not repeat "Split".
         #expect(payee(nil) == "No payee")
         #expect(payee("") == "No payee")
         #expect(payee("   ") == "No payee")
     }
 
-    @Test func splitParentShowsSplitThenBreakdown() {
-        #expect(category(nil, isParent: true, splitBreakdown: "Food $6.00\nFun +$4.00")
-            == "Split\nFood $6.00\nFun +$4.00")
+    @Test func splitParentShowsOnlySplit() {
         #expect(category(nil, isParent: true) == "Split")
-    }
-
-    @Test @MainActor func splitPortionsEachGetTheirOwnLine() throws {
-        let food = Actuali.Transaction.SplitPortion(categoryName: "Food", amount: -60)
-        let fun = Actuali.Transaction.SplitPortion(categoryName: "Fun", amount: -40)
-        let one = try renderedRow(splitPortions: [food])
-        let two = try renderedRow(splitPortions: [food, fun])
-        #expect(two.height > one.height)
     }
 
     @Test func categoryLabelPreservesCategoryTransferAndUncategorized() {
@@ -69,8 +52,7 @@ struct TransactionRowTests {
     }
 
     @Test func offBudgetTakesPrecedenceOverSplit() {
-        #expect(category("Food", isParent: true, splitBreakdown: "Food $6.00", offBudget: true)
-            == "Off budget")
+        #expect(category("Food", isParent: true, offBudget: true) == "Off budget")
     }
 
     @Test @MainActor func accountNamesWrapAtDefaultAndAccessibilitySizes() throws {
@@ -154,7 +136,6 @@ struct TransactionRowTests {
     private func renderedRow(
         accountName: String = "A",
         notes: String? = nil,
-        splitPortions: [Actuali.Transaction.SplitPortion]? = nil,
         width: CGFloat = 390,
         size: DynamicTypeSize = .large,
         tagColor: String = "#ff0000"
@@ -169,9 +150,8 @@ struct TransactionRowTests {
             id: "transaction", accountId: "account", date: 20_261_004, amount: -100,
             payeeId: nil, payeeName: "Cafe", categoryId: "category", categoryName: "Food",
             notes: notes, cleared: false, reconciled: false, transferId: nil,
-            isParent: splitPortions != nil, parentId: nil, tombstone: false, sortOrder: nil, importedPayee: nil
+            isParent: false, parentId: nil, tombstone: false, sortOrder: nil, importedPayee: nil
         )
-        transaction.splitPortions = splitPortions
         let renderer = ImageRenderer(content: TransactionRow(transaction: transaction, showDate: false)
             .environmentObject(store)
             .environment(\.locale, locale)
