@@ -59,7 +59,7 @@ struct TransactionsListView: View {
         showUpcomingSchedules: Bool = true
     ) -> Bool {
         transactionsEmpty && !isLoading
-            && (isSearching || statusFilter != .all || !showUpcomingSchedules
+            && (isSearching || !statusFilter.includesUpcomingSchedules || !showUpcomingSchedules
                 || (schedulesLoaded && !hasUpcomingSchedules))
     }
 
@@ -117,8 +117,13 @@ struct TransactionsListView: View {
     }
 
     var body: some View {
+        let shouldShowUpcomingSchedules = showUpcomingSchedules
+            && searchQuery == nil && budgetStore.transactionStatusFilter.includesUpcomingSchedules
+        let scheduledEntries = shouldShowUpcomingSchedules && budgetStore.schedulesLoaded
+            ? upcomingScheduleEntries : []
+
         Group {
-            if let pager, searchQuery == nil, budgetStore.transactionStatusFilter == .all,
+            if let pager, shouldShowUpcomingSchedules,
                Self.showsScheduleLoadFailure(
                    transactionsEmpty: pager.transactions.isEmpty,
                    isLoading: budgetStore.isLoading,
@@ -132,12 +137,8 @@ struct TransactionsListView: View {
                         systemImage: "exclamationmark.triangle"
                     )
                 }
-            } else if let pager,
-                      showUpcomingSchedules,
-                      searchQuery == nil,
-                      budgetStore.transactionStatusFilter == .all,
-                      pager.transactions.isEmpty,
-                      !budgetStore.schedulesLoaded {
+            } else if let pager, shouldShowUpcomingSchedules,
+                      pager.transactions.isEmpty, !budgetStore.schedulesLoaded {
                 ProgressView()
             } else if let pager, Self.showsEmptyState(
                 transactionsEmpty: pager.transactions.isEmpty,
@@ -145,7 +146,7 @@ struct TransactionsListView: View {
                 isSearching: searchQuery != nil,
                 statusFilter: budgetStore.transactionStatusFilter,
                 schedulesLoaded: budgetStore.schedulesLoaded,
-                hasUpcomingSchedules: !upcomingScheduleEntries.isEmpty,
+                hasUpcomingSchedules: !scheduledEntries.isEmpty,
                 showUpcomingSchedules: showUpcomingSchedules
             ) {
                 if searchQuery != nil {
@@ -169,7 +170,7 @@ struct TransactionsListView: View {
                 }
             } else if let pager {
                 List {
-                    if showUpcomingSchedules, searchQuery == nil, budgetStore.transactionStatusFilter == .all {
+                    if shouldShowUpcomingSchedules {
                         if budgetStore.scheduleLoadError != nil {
                             Section {
                                 Label(
@@ -179,9 +180,9 @@ struct TransactionsListView: View {
                                 .foregroundStyle(.secondary)
                             }
                         }
-                        if budgetStore.schedulesLoaded, !upcomingScheduleEntries.isEmpty {
+                        if !scheduledEntries.isEmpty {
                             UpcomingScheduleSections(
-                                entries: upcomingScheduleEntries
+                                entries: scheduledEntries
                             )
                         }
                     }

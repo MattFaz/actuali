@@ -19,6 +19,11 @@ enum TransactionStatusFilter: String, CaseIterable, Identifiable {
         rawValue
     }
 
+    /// Scheduled transactions have neither cleared nor reconciled status until posted.
+    var includesUpcomingSchedules: Bool {
+        self == .all || self == .uncleared || self == .unreconciled
+    }
+
     /// Chip label. Reuses the keys the row status dot and the Uncategorized
     /// list already localize, so the chips ship in every existing language.
     func label(locale: Locale = .autoupdatingCurrent, bundle: Bundle = .main) -> String {

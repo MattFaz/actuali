@@ -111,6 +111,116 @@ struct TransactionsListViewTests {
         ))
     }
 
+    @Test func upcomingSchedulesAreRelevantOnlyToAllUnclearedAndUnreconciled() {
+        let eligibleFilters = TransactionStatusFilter.allCases.filter { $0.includesUpcomingSchedules }
+        #expect(eligibleFilters == [.all, .uncleared, .unreconciled])
+    }
+
+    @Test func upcomingSchedulesKeepUnclearedAndUnreconciledRegistersOutOfTheEmptyState() {
+        for filter in [TransactionStatusFilter.uncleared, .unreconciled] {
+            #expect(!TransactionsListView.showsEmptyState(
+                transactionsEmpty: true,
+                isLoading: false,
+                isSearching: false,
+                statusFilter: filter,
+                schedulesLoaded: true,
+                hasUpcomingSchedules: true
+            ))
+            #expect(!TransactionsListView.showsEmptyState(
+                transactionsEmpty: true,
+                isLoading: false,
+                isSearching: false,
+                statusFilter: filter,
+                schedulesLoaded: false,
+                hasUpcomingSchedules: false
+            ))
+            #expect(!AccountDetailView.showsEmptyTransactions(
+                isSearching: false,
+                statusFilter: filter,
+                schedulesLoaded: true,
+                hasUpcomingSchedules: true,
+                scheduleLoadFailed: false
+            ))
+            #expect(!AccountDetailView.showsEmptyTransactions(
+                isSearching: false,
+                statusFilter: filter,
+                schedulesLoaded: false,
+                hasUpcomingSchedules: false,
+                scheduleLoadFailed: false
+            ))
+            #expect(TransactionsListView.showsEmptyState(
+                transactionsEmpty: true,
+                isLoading: false,
+                isSearching: false,
+                statusFilter: filter,
+                schedulesLoaded: true,
+                hasUpcomingSchedules: false
+            ))
+            #expect(AccountDetailView.showsEmptyTransactions(
+                isSearching: false,
+                statusFilter: filter,
+                schedulesLoaded: true,
+                hasUpcomingSchedules: false,
+                scheduleLoadFailed: false
+            ))
+        }
+    }
+
+    @Test func upcomingScheduleVisibilityRespectsSearchAndVisibilityPreference() {
+        for filter in [TransactionStatusFilter.uncleared, .unreconciled] {
+            #expect(TransactionsListView.showsEmptyState(
+                transactionsEmpty: true,
+                isLoading: false,
+                isSearching: true,
+                statusFilter: filter,
+                schedulesLoaded: true,
+                hasUpcomingSchedules: true
+            ))
+            #expect(AccountDetailView.showsEmptyTransactions(
+                isSearching: true,
+                statusFilter: filter,
+                schedulesLoaded: true,
+                hasUpcomingSchedules: true,
+                scheduleLoadFailed: false
+            ))
+            #expect(TransactionsListView.showsEmptyState(
+                transactionsEmpty: true,
+                isLoading: false,
+                isSearching: false,
+                statusFilter: filter,
+                schedulesLoaded: true,
+                hasUpcomingSchedules: true,
+                showUpcomingSchedules: false
+            ))
+            #expect(AccountDetailView.showsEmptyTransactions(
+                isSearching: false,
+                statusFilter: filter,
+                schedulesLoaded: true,
+                hasUpcomingSchedules: true,
+                scheduleLoadFailed: false,
+                showUpcomingSchedules: false
+            ))
+        }
+
+        for filter in [TransactionStatusFilter.cleared, .reconciled, .uncategorized] {
+            #expect(TransactionsListView.showsEmptyState(
+                transactionsEmpty: true,
+                isLoading: false,
+                isSearching: false,
+                statusFilter: filter,
+                schedulesLoaded: true,
+                hasUpcomingSchedules: true
+            ))
+            #expect(AccountDetailView.showsEmptyTransactions(
+                isSearching: false,
+                statusFilter: filter,
+                schedulesLoaded: true,
+                hasUpcomingSchedules: true,
+                scheduleLoadFailed: false
+            ))
+        }
+    }
+
     @Test func searchAndFilterEmptyStatesDoNotWaitForSchedulesToLoad() {
         #expect(TransactionsListView.showsEmptyState(
             transactionsEmpty: true,
