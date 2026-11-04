@@ -146,7 +146,7 @@ struct TransactionRowTests {
             offBudget: false, closed: false, sortOrder: 0, balance: 0
         )]
         store.tags = [Tag(tag: "reimbursable", color: tagColor)]
-        var transaction = Transaction(
+        let transaction = Transaction(
             id: "transaction", accountId: "account", date: 20_261_004, amount: -100,
             payeeId: nil, payeeName: "Cafe", categoryId: "category", categoryName: "Food",
             notes: notes, cleared: false, reconciled: false, transferId: nil,

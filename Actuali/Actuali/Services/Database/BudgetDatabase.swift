@@ -995,7 +995,7 @@ final class BudgetDatabase: Sendable {
             -- Split parents may carry no payee of their own (payees can
             -- live on the children, GH #47). When the live children agree
             -- on one payee, display it; mixed payees resolve NULL and the
-            -- UI labels the row "Split".
+            -- row uses "No payee" with "Split" on the category line.
             LEFT JOIN (
                 SELECT ct.parent_id AS parent_id,
                        CASE WHEN COUNT(DISTINCT ct.description) = 1
