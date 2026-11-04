@@ -545,8 +545,7 @@ struct AccountsListView: View {
                                     title: String(localized: "Closed Accounts"),
                                     total: closedTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isClosedExpanded,
-                                    allowsCollapse: !isSearchingAccounts,
-                                    totalTrailingPadding: 0
+                                    allowsCollapse: !isSearchingAccounts
                                 )
                             }
                         }
@@ -648,7 +647,8 @@ struct AccountsListView: View {
                                     title: String(localized: "Closed Accounts"),
                                     total: closedTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isClosedExpanded,
-                                    allowsCollapse: !isSearchingAccounts
+                                    allowsCollapse: !isSearchingAccounts,
+                                    totalTrailingPadding: 0
                                 )
                             }
                         }
@@ -1208,8 +1208,9 @@ struct AccountsSummaryCard: View {
 }
 
 /// Header used for the On Budget, Off Budget, and Closed Accounts sections.
-/// The section title and trailing disclosure collapse the section; the small
-/// arrow beside a budget title opens that section's transactions.
+/// The budget sections split into two buttons: the title and arrow open that
+/// section's transactions, the total and chevron expand/collapse it. Closed
+/// Accounts has no transactions list, so its whole header collapses.
 struct AccountSectionHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let identifier: String
@@ -1218,12 +1219,15 @@ struct AccountSectionHeader: View {
     @Binding var isExpanded: Bool
     var allowsCollapse = true
     var onShowTransactions: (() -> Void)?
+    /// Extra trailing inset lining the Closed total up with row balances that
+    /// sit left of a NavigationLink disclosure chevron. The split layout's rows
+    /// carry no chevron, so it passes zero to keep its totals flush too.
     var totalTrailingPadding: CGFloat = 24
 
     var body: some View {
         let totalText = budgetStore.displayBalance(total)
         Group {
-            if identifier != "closed", let onShowTransactions {
+            if let onShowTransactions {
                 HStack(spacing: 0) {
                     Button(action: onShowTransactions) {
                         HStack(spacing: 8) {
@@ -1252,7 +1256,10 @@ struct AccountSectionHeader: View {
                                 .font(.headline.weight(.regular))
                                 .foregroundStyle(balanceColor(for: total))
                                 .animatedAmount(totalText)
+                                // Grouped-list headers uppercase their content,
+                                // which would mangle currency symbols ("kr"→"KR").
                                 .textCase(nil)
+                                // One line always: a narrow sidebar would wrap it.
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
                             DisclosureChevron(isExpanded: isExpanded)
@@ -1260,7 +1267,6 @@ struct AccountSectionHeader: View {
                                 .accessibilityHidden(true)
                         }
                         .padding(.leading, 8)
-                        .padding(.trailing, 8)
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
                     }
@@ -1282,18 +1288,16 @@ struct AccountSectionHeader: View {
                     isExpanded.toggle()
                 } label: {
                     HStack(spacing: 8) {
-                        if identifier == "closed" {
-                            DisclosureChevron(isExpanded: isExpanded)
-                                .frame(width: 12)
-                                .accessibilityHidden(true)
-                        }
+                        DisclosureChevron(isExpanded: isExpanded)
+                            .frame(width: 12)
+                            .accessibilityHidden(true)
                         sectionTitle
                         Spacer(minLength: 8)
                         Text(totalText)
                             .font(.headline.weight(.regular))
                             .foregroundStyle(balanceColor(for: total))
                             .animatedAmount(totalText)
-                            .padding(.trailing, identifier == "closed" ? totalTrailingPadding : 20)
+                            .padding(.trailing, totalTrailingPadding)
                             .textCase(nil)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
