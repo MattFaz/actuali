@@ -839,7 +839,7 @@ struct AccountDetailView: View {
             if !scheduledEntries.isEmpty {
                 UpcomingScheduleSections(
                     entries: scheduledEntries,
-                    showRunningBalance: showRunningBalance
+                    showRunningBalance: shouldShowRunningBalance
                 )
             }
         }

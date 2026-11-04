@@ -66,11 +66,13 @@ struct TransactionsListView: View {
     nonisolated static func showsScheduleLoadFailure(
         transactionsEmpty: Bool,
         isLoading: Bool,
+        statusFilter: TransactionStatusFilter,
         schedulesLoaded: Bool,
         scheduleLoadFailed: Bool,
         showUpcomingSchedules: Bool = true
     ) -> Bool {
-        showUpcomingSchedules && transactionsEmpty && !isLoading && schedulesLoaded && scheduleLoadFailed
+        statusFilter == .all && showUpcomingSchedules
+            && transactionsEmpty && !isLoading && schedulesLoaded && scheduleLoadFailed
     }
 
     /// Wraps `isSelecting` so every path that leaves selection mode — the
@@ -127,6 +129,7 @@ struct TransactionsListView: View {
                Self.showsScheduleLoadFailure(
                    transactionsEmpty: pager.transactions.isEmpty,
                    isLoading: budgetStore.isLoading,
+                   statusFilter: budgetStore.transactionStatusFilter,
                    schedulesLoaded: budgetStore.schedulesLoaded,
                    scheduleLoadFailed: budgetStore.scheduleLoadError != nil,
                    showUpcomingSchedules: showUpcomingSchedules

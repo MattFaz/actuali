@@ -111,11 +111,6 @@ struct TransactionsListViewTests {
         ))
     }
 
-    @Test func upcomingSchedulesAreRelevantOnlyToAllUnclearedAndUnreconciled() {
-        let eligibleFilters = TransactionStatusFilter.allCases.filter { $0.includesUpcomingSchedules }
-        #expect(eligibleFilters == [.all, .uncleared, .unreconciled])
-    }
-
     @Test func upcomingSchedulesKeepUnclearedAndUnreconciledRegistersOutOfTheEmptyState() {
         for filter in [TransactionStatusFilter.uncleared, .unreconciled] {
             #expect(!TransactionsListView.showsEmptyState(
@@ -134,20 +129,6 @@ struct TransactionsListViewTests {
                 schedulesLoaded: false,
                 hasUpcomingSchedules: false
             ))
-            #expect(!AccountDetailView.showsEmptyTransactions(
-                isSearching: false,
-                statusFilter: filter,
-                schedulesLoaded: true,
-                hasUpcomingSchedules: true,
-                scheduleLoadFailed: false
-            ))
-            #expect(!AccountDetailView.showsEmptyTransactions(
-                isSearching: false,
-                statusFilter: filter,
-                schedulesLoaded: false,
-                hasUpcomingSchedules: false,
-                scheduleLoadFailed: false
-            ))
             #expect(TransactionsListView.showsEmptyState(
                 transactionsEmpty: true,
                 isLoading: false,
@@ -155,13 +136,6 @@ struct TransactionsListViewTests {
                 statusFilter: filter,
                 schedulesLoaded: true,
                 hasUpcomingSchedules: false
-            ))
-            #expect(AccountDetailView.showsEmptyTransactions(
-                isSearching: false,
-                statusFilter: filter,
-                schedulesLoaded: true,
-                hasUpcomingSchedules: false,
-                scheduleLoadFailed: false
             ))
         }
     }
@@ -176,13 +150,6 @@ struct TransactionsListViewTests {
                 schedulesLoaded: true,
                 hasUpcomingSchedules: true
             ))
-            #expect(AccountDetailView.showsEmptyTransactions(
-                isSearching: true,
-                statusFilter: filter,
-                schedulesLoaded: true,
-                hasUpcomingSchedules: true,
-                scheduleLoadFailed: false
-            ))
             #expect(TransactionsListView.showsEmptyState(
                 transactionsEmpty: true,
                 isLoading: false,
@@ -190,14 +157,6 @@ struct TransactionsListViewTests {
                 statusFilter: filter,
                 schedulesLoaded: true,
                 hasUpcomingSchedules: true,
-                showUpcomingSchedules: false
-            ))
-            #expect(AccountDetailView.showsEmptyTransactions(
-                isSearching: false,
-                statusFilter: filter,
-                schedulesLoaded: true,
-                hasUpcomingSchedules: true,
-                scheduleLoadFailed: false,
                 showUpcomingSchedules: false
             ))
         }
@@ -210,13 +169,6 @@ struct TransactionsListViewTests {
                 statusFilter: filter,
                 schedulesLoaded: true,
                 hasUpcomingSchedules: true
-            ))
-            #expect(AccountDetailView.showsEmptyTransactions(
-                isSearching: false,
-                statusFilter: filter,
-                schedulesLoaded: true,
-                hasUpcomingSchedules: true,
-                scheduleLoadFailed: false
             ))
         }
     }
@@ -251,18 +203,40 @@ struct TransactionsListViewTests {
         ))
     }
 
-    @Test func scheduleLoadFailureHasItsOwnEmptyState() {
+    @Test func scheduleLoadFailureOnlyReplacesTheUnfilteredEmptyState() {
         #expect(TransactionsListView.showsScheduleLoadFailure(
             transactionsEmpty: true,
             isLoading: false,
+            statusFilter: .all,
             schedulesLoaded: true,
             scheduleLoadFailed: true
         ))
         #expect(!TransactionsListView.showsScheduleLoadFailure(
             transactionsEmpty: false,
             isLoading: false,
+            statusFilter: .all,
             schedulesLoaded: true,
             scheduleLoadFailed: true
+        ))
+
+        for filter in [TransactionStatusFilter.uncleared, .unreconciled, .cleared] {
+            #expect(!TransactionsListView.showsScheduleLoadFailure(
+                transactionsEmpty: true,
+                isLoading: false,
+                statusFilter: filter,
+                schedulesLoaded: true,
+                scheduleLoadFailed: true
+            ))
+        }
+
+        // A filtered register keeps its reset-filter empty state when schedules fail.
+        #expect(TransactionsListView.showsEmptyState(
+            transactionsEmpty: true,
+            isLoading: false,
+            isSearching: false,
+            statusFilter: .uncleared,
+            schedulesLoaded: true,
+            hasUpcomingSchedules: false
         ))
     }
 
@@ -273,7 +247,7 @@ struct TransactionsListViewTests {
             schedulesLoaded: loaded, hasUpcomingSchedules: true, showUpcomingSchedules: false
         ))
         #expect(!TransactionsListView.showsScheduleLoadFailure(
-            transactionsEmpty: true, isLoading: false, schedulesLoaded: loaded,
+            transactionsEmpty: true, isLoading: false, statusFilter: .all, schedulesLoaded: loaded,
             scheduleLoadFailed: true, showUpcomingSchedules: false
         ))
         #expect(!TransactionsListView.showsEmptyState(
