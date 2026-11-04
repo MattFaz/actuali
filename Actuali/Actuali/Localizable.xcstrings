@@ -54505,53 +54505,6 @@
         }
       }
     },
-    "(No Payee)" : {
-      "comment" : "Fallback label for an on-budget transaction without a payee",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(Kein Zahlungsempfänger)"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(No Payee)"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(Sin beneficiario)"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(Sans bénéficiaire)"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(Nessun beneficiario)"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(Geen begunstigde)"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(Sem beneficiário)"
-          }
-        }
-      }
-    },
     "No payee" : {
       "comment" : "Fallback label for a transaction without a payee",
       "extractionState" : "stale",

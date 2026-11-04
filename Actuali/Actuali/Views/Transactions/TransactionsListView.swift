@@ -475,26 +475,22 @@ struct TransactionRow: View {
         transaction.transferId != nil || transaction.transferAcct != nil
     }
 
-    /// Split parents with one agreed child payee show that payee; mixed or
-    /// missing child payees show "Split". A regular transaction without a
-    /// payee name shows "(No Payee)" on-budget.
+    /// Split parents may resolve no payee (mixed child payees), so they read
+    /// "Split" like the desktop app. Every other payee-less row reads
+    /// "No payee"; "Unknown" read as a bug for these rows (GH #123).
     nonisolated static func payeeLabel(
         payeeName: String?,
         isParent: Bool,
-        isInOffBudgetAccount: Bool,
         locale: Locale
     ) -> String {
         if let payeeName,
            !payeeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return payeeName
         }
-        if isParent {
-            return String(localized: TransactionsListLocalization.split, locale: locale)
-        }
         return String(
-            localized: isInOffBudgetAccount
-                ? TransactionsListLocalization.noPayee
-                : TransactionsListLocalization.missingPayee,
+            localized: isParent
+                ? TransactionsListLocalization.split
+                : TransactionsListLocalization.noPayee,
             locale: locale
         )
     }
@@ -643,7 +639,6 @@ struct TransactionRow: View {
                 Text(Self.payeeLabel(
                     payeeName: transaction.payeeName,
                     isParent: transaction.isParent,
-                    isInOffBudgetAccount: isInOffBudgetAccount,
                     locale: locale
                 ))
                 .font(.body)
@@ -734,7 +729,6 @@ struct ClearedIndicator: View {
 enum TransactionsListLocalization {
     static let cleared: String.LocalizationValue = "Cleared"
     static let noPayee: String.LocalizationValue = "No payee"
-    static let missingPayee: String.LocalizationValue = "(No Payee)"
     static let notSelected: String.LocalizationValue = "Not selected"
     static let offBudget: String.LocalizationValue = "Off budget"
     static let reconciled: String.LocalizationValue = "Reconciled"

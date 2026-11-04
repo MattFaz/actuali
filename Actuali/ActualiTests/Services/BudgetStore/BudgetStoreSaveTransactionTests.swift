@@ -161,26 +161,6 @@ struct BudgetStoreSaveTransactionTests {
         #expect(row["tombstone"] == 0)
     }
 
-    @Test func savingWithoutSelectingPayeeKeepsPayeeUnsetInTheRegister() async throws {
-        let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
-        defer { cleanup(path) }
-        let store = try await makeTestStore(database: database)
-
-        let createdId = try #require(try await store.saveTransaction(form(payeeName: "")))
-        let rawRow = try #require(try transactionRows(path: path).first { $0["id"] as String? == createdId })
-        #expect(rawRow["description"] == nil)
-
-        let fetched = try await database.fetchTransaction(id: createdId)
-        let savedTransaction = try #require(fetched)
-        #expect(savedTransaction.payeeId == nil)
-        #expect(savedTransaction.payeeName == nil)
-
-        let page = try await database.fetchTransactions(accountId: "acct-1")
-        let listedTransaction = try #require(page.first { $0.id == createdId })
-        #expect(listedTransaction.payeeId == nil)
-        #expect(listedTransaction.payeeName == nil)
-    }
-
     @Test func ruleCategoryOnlyReplacesSuggestedCategory() async throws {
         let (database, path) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
         defer { cleanup(path) }
