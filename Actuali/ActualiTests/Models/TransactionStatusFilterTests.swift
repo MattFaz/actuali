@@ -3,7 +3,7 @@ import Testing
 
 struct TransactionStatusFilterTests {
     @Test func upcomingSchedulesAreRelevantOnlyToAllUnclearedAndUnreconciled() {
-        let eligibleFilters = TransactionStatusFilter.allCases.filter { $0.includesUpcomingSchedules }
+        let eligibleFilters = TransactionStatusFilter.allCases.filter(\.includesUpcomingSchedules)
         #expect(eligibleFilters == [.all, .uncleared, .unreconciled])
     }
 }
