@@ -544,6 +544,14 @@ struct AccountsListView: View {
                             }
                         }
                     }
+                    // Keep native search attached to the List itself so iOS can focus its search field.
+                    .onDemandSearch(
+                        text: $accountSearchText,
+                        isPresented: $isAccountSearchActive,
+                        isFocused: $isAccountSearchFocused,
+                        prompt: "Search Accounts",
+                        accessibilityPrefix: "accounts"
+                    )
                     .environment(\.editMode, .constant(isReordering ? .active : .inactive))
                     // Capped like the transactions this pushes to, so a
                     // narrow-iPad account list doesn't stretch a row's balance
@@ -637,6 +645,13 @@ struct AccountsListView: View {
                             }
                         }
                     }
+                    .onDemandSearch(
+                        text: $accountSearchText,
+                        isPresented: $isAccountSearchActive,
+                        isFocused: $isAccountSearchFocused,
+                        prompt: "Search Accounts",
+                        accessibilityPrefix: "accounts"
+                    )
                     .environment(\.editMode, .constant(isReordering ? .active : .inactive))
                 }
             }
@@ -719,9 +734,8 @@ struct AccountsListView: View {
         }
     }
 
-    /// Everything both layouts hang off their account list: title, notification
-    /// routing, pull-to-refresh, loading overlay, search.
-    /// Shared so the two layouts can't drift apart.
+    /// Shared presentation for both account-list layouts: margins, empty search
+    /// results, and toolbar items. Search itself stays attached to each List.
     private func withChrome(@ViewBuilder _ content: () -> some View) -> some View {
         Group(content: content)
             // Both layouts' section state lives in @AppStorage, and a write to
@@ -746,41 +760,20 @@ struct AccountsListView: View {
                     ContentUnavailableView.search(text: accountSearchText)
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if isAccountSearchActive {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                        TextField(String(localized: "Search Accounts"), text: $accountSearchText)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .submitLabel(.done)
-                            .focused($isAccountSearchFocused)
-                            .accessibilityIdentifier("accounts.searchField")
-                            .onSubmit { isAccountSearchFocused = false }
-                            // Focus after the conditional field joins the view tree.
-                            .task { isAccountSearchFocused = true }
-                        if !accountSearchText.isEmpty {
-                            Button {
-                                accountSearchText = ""
-                                isAccountSearchFocused = true
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                                    .frame(minWidth: 44, minHeight: 44)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(String(localized: "Clear Search"))
-                            .accessibilityIdentifier("accounts.searchClear")
-                        }
-                    }
-                    .frame(minHeight: 44)
-                    .padding(.horizontal, 12)
-                    .background(.quaternary, in: Capsule())
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+            // Searching filters the rows a drag moves among, so reordering and
+            // search stay mutually exclusive (beginReordering clears search).
+            .onChange(of: isAccountSearchActive) { _, active in
+                if active {
+                    finishReordering()
                 }
+            }
+            // The List carrying search leaves with the last account; don't
+            // reopen it with a stale query when accounts come back.
+            .onChange(of: hasNoAccounts) { _, empty in
+                guard empty else { return }
+                isAccountSearchActive = false
+                isAccountSearchFocused = false
+                accountSearchText = ""
             }
             .toolbar {
                 if isReordering {
@@ -790,23 +783,6 @@ struct AccountsListView: View {
                         }
                         .fontWeight(.semibold)
                         .accessibilityIdentifier("accounts.reorderDone")
-                    }
-                }
-                if !isReordering, !hasNoAccounts || isAccountSearchActive {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            isAccountSearchActive.toggle()
-                            if !isAccountSearchActive {
-                                isAccountSearchFocused = false
-                                accountSearchText = ""
-                            }
-                        } label: {
-                            Image(systemName: isAccountSearchActive ? "xmark" : "magnifyingglass")
-                        }
-                        .accessibilityLabel(isAccountSearchActive
-                            ? String(localized: "Cancel Search")
-                            : String(localized: "Search Accounts"))
-                        .accessibilityIdentifier("accounts.search")
                     }
                 }
                 if !isReordering {
