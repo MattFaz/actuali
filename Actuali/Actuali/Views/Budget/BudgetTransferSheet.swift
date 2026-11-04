@@ -58,12 +58,11 @@ struct BudgetTransferContext: Identifiable {
     }
 
     /// Maximum amount the selected source can contribute while covering.
-    /// To Budget can go negative, so the overspend itself is the limit.
+    /// Matches upstream `coverOverspending`, which never takes more than the
+    /// source's leftover, To Budget (`nil`) included.
     func coverLimit(fromCategoryId id: String?) -> Int {
-        guard let id, let source = rankedCategories.first(where: { $0.categoryId == id }) else {
-            return abs(amount)
-        }
-        return source.available
+        guard let id else { return budget.toBudget ?? 0 }
+        return rankedCategories.first(where: { $0.categoryId == id })?.available ?? 0
     }
 
     /// Prefilled cover amount, capped by the overspend and selected source.
@@ -143,11 +142,11 @@ struct BudgetTransferSheet: View {
         let initialEndpoint = hasToBudget ? Endpoint.toBudget : (firstCategory ?? .toBudget)
         _endpoint = State(initialValue: initialEndpoint)
 
+        // Covering prefills what the selected source can give, up to the
+        // overspend; a surplus prefills the full amount to move.
         let initialAmount = context.amount < 0
             ? context.suggestedCoverAmount(fromCategoryId: initialEndpoint.categoryId)
             : abs(context.amount)
-        // Cover from To Budget with the full overspend; when a category is
-        // selected, prefill only what that category can contribute.
         _amountText = State(initialValue: String(format: "%.2f", Double(initialAmount) / 100.0))
     }
 

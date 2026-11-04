@@ -314,9 +314,17 @@ struct CategoryBudgetProgressTests {
         #expect(context.suggestedCoverAmount(fromCategoryId: "sufficient") == 5000)
         #expect(context.coverLimit(fromCategoryId: "sufficient") == 6000)
 
-        // To Budget can go negative, but a typo cannot transfer more than the overspend.
-        #expect(context.suggestedCoverAmount(fromCategoryId: nil) == 5000)
-        #expect(context.coverLimit(fromCategoryId: nil) == 5000)
+        // To Budget is limited by its own balance, like upstream, so covering
+        // never pushes it negative.
+        #expect(context.suggestedCoverAmount(fromCategoryId: nil) == 3000)
+        #expect(context.coverLimit(fromCategoryId: nil) == 3000)
+
+        let funded = BudgetTransferContext(
+            category: overspent,
+            budget: BudgetMonth(month: overspent.month, categoryBudgets: [partial], toBudget: 9000)
+        )
+        #expect(funded.suggestedCoverAmount(fromCategoryId: nil) == 5000)
+        #expect(funded.coverLimit(fromCategoryId: nil) == 9000)
     }
 
     @Test func toBudgetTransferUsesCategoriesAsTheOtherEndpoint() {
