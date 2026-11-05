@@ -66,7 +66,7 @@ final class TransactionSearchUITests: XCTestCase {
 
         // Expand the budget section and any nested account group that hides
         // Chase Checking; avoid racing a collapsed row during initial rendering.
-        let budgetHeader = app.buttons["account.group.on-budget"]
+        let budgetHeader = app.buttons["account.group.on-budget.disclosure"]
         XCTAssertTrue(budgetHeader.waitForExistence(timeout: 10))
         if budgetHeader.label.localizedCaseInsensitiveContains("collapsed") {
             budgetHeader.tap()

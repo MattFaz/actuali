@@ -4039,6 +4039,7 @@ final class BudgetStore: ObservableObject {
     /// BudgetDatabase.fetchTransactions for the exact semantics.
     func fetchTransactions(
         accountId: String? = nil,
+        accountIds: [String]? = nil,
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
@@ -4046,7 +4047,8 @@ final class BudgetStore: ObservableObject {
     ) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(
-                accountId: accountId, limit: limit, offset: offset, search: search,
+                accountId: accountId, accountIds: accountIds,
+                limit: limit, offset: offset, search: search,
                 statusFilter: statusFilter
             ) ?? []
         } catch is CancellationError {

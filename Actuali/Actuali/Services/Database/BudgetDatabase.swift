@@ -961,6 +961,7 @@ final class BudgetDatabase: Sendable {
     /// reason: pages stay full-sized and cover full history.
     func fetchTransactions(
         accountId: String? = nil,
+        accountIds: [String]? = nil,
         startDate: Int? = nil,
         endDate: Int? = nil,
         limit: Int = BudgetDatabase.transactionPageSize,
@@ -1023,6 +1024,15 @@ final class BudgetDatabase: Sendable {
             if let accountId {
                 sql += " AND t.acct = ?"
                 arguments.append(accountId)
+            }
+
+            if let accountIds {
+                guard !accountIds.isEmpty else { return [] }
+                let placeholders = Array(repeating: "?", count: accountIds.count).joined(separator: ", ")
+                sql += " AND t.acct IN (\(placeholders))"
+                for id in accountIds {
+                    arguments.append(id)
+                }
             }
 
             if let startDate {

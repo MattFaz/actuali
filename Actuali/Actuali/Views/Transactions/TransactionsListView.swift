@@ -1,7 +1,34 @@
 import SwiftUI
 
+enum AccountTransactionsScope: String, Hashable {
+    case onBudget
+    case offBudget
+
+    var title: String {
+        switch self {
+        case .onBudget: String(localized: "On Budget")
+        case .offBudget: String(localized: "Off Budget")
+        }
+    }
+
+    func accountIds(in accounts: [Account]) -> [String] {
+        accounts
+            .filter { !$0.closed && $0.offBudget == (self == .offBudget) }
+            .map(\.id)
+    }
+
+    func scoped(_ entries: [UpcomingScheduleEntry], accounts: [Account]) -> [UpcomingScheduleEntry] {
+        let scopedAccountIds = Set(accountIds(in: accounts))
+        return entries.filter { entry in
+            guard let accountId = entry.schedule.accountId else { return false }
+            return scopedAccountIds.contains(accountId)
+        }
+    }
+}
+
 struct TransactionsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    var scope: AccountTransactionsScope?
     @AppStorage("showUpcomingScheduledTransactions") private var showUpcomingSchedules = true
     @State private var pager: TransactionPager?
     @State private var searchText = ""
@@ -17,7 +44,9 @@ struct TransactionsListView: View {
     }
 
     private var upcomingScheduleEntries: [UpcomingScheduleEntry] {
-        budgetStore.upcomingRegisterEntries()
+        let entries = budgetStore.upcomingRegisterEntries()
+        guard let scope else { return entries }
+        return scope.scoped(entries, accounts: budgetStore.accounts)
     }
 
     nonisolated static func showsEmptyState(
@@ -71,8 +100,10 @@ struct TransactionsListView: View {
             return pager
         }
         let store = budgetStore
+        let scope = scope
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
+                accountIds: scope?.accountIds(in: store.accounts),
                 limit: limit, offset: offset, search: search,
                 statusFilter: store.transactionStatusFilter
             )
@@ -101,8 +132,12 @@ struct TransactionsListView: View {
                         systemImage: "exclamationmark.triangle"
                     )
                 }
-            } else if let pager, showUpcomingSchedules, searchQuery == nil, budgetStore.transactionStatusFilter == .all,
-                      pager.transactions.isEmpty, !budgetStore.schedulesLoaded {
+            } else if let pager,
+                      showUpcomingSchedules,
+                      searchQuery == nil,
+                      budgetStore.transactionStatusFilter == .all,
+                      pager.transactions.isEmpty,
+                      !budgetStore.schedulesLoaded {
                 ProgressView()
             } else if let pager, Self.showsEmptyState(
                 transactionsEmpty: pager.transactions.isEmpty,
@@ -200,7 +235,7 @@ struct TransactionsListView: View {
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
         .readableWidth()
-        .navigationTitle("All Accounts")
+        .navigationTitle(scope?.title ?? String(localized: "All Accounts"))
         .onDemandSearch(
             text: $searchText,
             isPresented: $isTransactionSearchActive,
