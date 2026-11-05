@@ -1455,8 +1455,8 @@ private struct AccountGroupTotal: View {
     }
 }
 
-/// Circular avatar with an SF Symbol icon matching the account type and instrument.
-/// Features a translucent tinted badge matching native iOS design aesthetics across light and dark modes.
+/// Circular badge with an SF Symbol for the account type, or for the loan or
+/// deposit it tracks. Symbols follow `AccountBalanceWidget.iconName`.
 struct AccountTypeAvatar: View {
     let account: Account
     var hasLoan: Bool = false
@@ -1465,19 +1465,11 @@ struct AccountTypeAvatar: View {
     // ponytail: icon derived from account.type and active configs only.
     // Ceiling: no vehicle/personal split for loans. Upgrade path: store
     // the loan instrument kind on LoanConfig when the loan editor gains the field.
-    nonisolated static func icon(
-        for type: AccountType,
-        hasDeposit: Bool = false,
-        hasLoan: Bool = false,
-        closed: Bool = false
-    ) -> String {
-        if closed {
-            return type == .credit ? "creditcard" : defaultTypeIcon(for: type)
-        }
+    nonisolated static func icon(for type: AccountType, hasDeposit: Bool = false, hasLoan: Bool = false) -> String {
         if hasDeposit {
             return "lock.fill"
         }
-        if hasLoan || type == .mortgage {
+        if hasLoan {
             return "house.fill"
         }
         return defaultTypeIcon(for: type)
@@ -1488,39 +1480,14 @@ struct AccountTypeAvatar: View {
         case .checking: "banknote.fill"
         case .savings: "building.columns.fill"
         case .credit: "creditcard.fill"
-        case .mortgage, .debt: "house.fill"
+        case .mortgage: "house.fill"
+        case .debt: "exclamationmark.triangle.fill"
         case .investment: "chart.line.uptrend.xyaxis"
         case .other: "dollarsign.circle.fill"
         }
     }
 
-    nonisolated static func circleFill(
-        for type: AccountType,
-        hasDeposit: Bool = false,
-        hasLoan: Bool = false,
-        closed: Bool = false
-    ) -> Color {
-        if closed {
-            return Color.secondary.opacity(0.18)
-        }
-        if hasDeposit || type == .investment {
-            return Color.green.opacity(0.18)
-        }
-        if hasLoan || type == .mortgage || type == .debt {
-            return Color.blue.opacity(0.18)
-        }
-        if type == .credit {
-            return Color.orange.opacity(0.18)
-        }
-        if type == .checking {
-            return Color.blue.opacity(0.18)
-        }
-        if type == .savings {
-            return Color.purple.opacity(0.18)
-        }
-        return Color.secondary.opacity(0.18)
-    }
-
+    /// Icon color; the badge fills with the same color at low opacity.
     nonisolated static func iconColor(
         for type: AccountType,
         hasDeposit: Bool = false,
@@ -1528,32 +1495,30 @@ struct AccountTypeAvatar: View {
         closed: Bool = false
     ) -> Color {
         if closed {
-            return Color.secondary
+            return .secondary
         }
-        if hasDeposit || type == .investment {
+        if hasDeposit {
             return .green
         }
-        if hasLoan || type == .mortgage || type == .debt {
+        if hasLoan {
             return .blue
         }
-        if type == .credit {
-            return .orange
+        switch type {
+        case .checking, .mortgage, .debt: return .blue
+        case .savings: return .purple
+        case .credit: return .orange
+        case .investment: return .green
+        case .other: return .primary
         }
-        if type == .checking {
-            return .blue
-        }
-        if type == .savings {
-            return .purple
-        }
-        return .primary
     }
 
     var body: some View {
+        let color = Self.iconColor(for: account.type, hasDeposit: hasDeposit, hasLoan: hasLoan, closed: account.closed)
         ZStack {
-            Circle().fill(Self.circleFill(for: account.type, hasDeposit: hasDeposit, hasLoan: hasLoan, closed: account.closed))
-            Image(systemName: Self.icon(for: account.type, hasDeposit: hasDeposit, hasLoan: hasLoan, closed: account.closed))
+            Circle().fill(color.opacity(0.18))
+            Image(systemName: Self.icon(for: account.type, hasDeposit: hasDeposit, hasLoan: hasLoan))
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Self.iconColor(for: account.type, hasDeposit: hasDeposit, hasLoan: hasLoan, closed: account.closed))
+                .foregroundStyle(color)
         }
         .frame(width: 36, height: 36)
     }
@@ -1581,26 +1546,20 @@ struct AccountRow: View {
         if let depositConfig {
             return depositConfig.fractionElapsed(on: today)
         }
-        if let dues = creditCardDues,
-           let due = CreditCardCycle.pendingStatementDue(in: dues, today: today) {
-            if due.isPaid {
-                return 1.0
-            }
-            guard due.statementBalance > 0 else { return nil }
-            let paid = max(0, due.statementBalance - due.remainingDue)
-            return min(1.0, max(0.0, Double(paid) / Double(due.statementBalance)))
-        }
-        return nil
+        // remainingDue never exceeds statementBalance (calculateStatementDue), so this stays in 0...1.
+        guard let dues = creditCardDues,
+              let due = CreditCardCycle.pendingStatementDue(in: dues, today: today),
+              due.statementBalance > 0 else { return nil }
+        return Double(due.statementBalance - due.remainingDue) / Double(due.statementBalance)
     }
 
-    private func progressBarColor(p: Double, hasDeposit: Bool) -> Color {
-        if p >= 1.0 {
+    /// One account is one instrument, so a bar that is neither loan nor
+    /// deposit is a tracked card, whatever the account's type.
+    nonisolated static func progressBarColor(p: Double, hasLoan: Bool, hasDeposit: Bool) -> Color {
+        if p >= 1.0 || hasDeposit {
             return .green
         }
-        if account.type == .credit {
-            return .red
-        }
-        return hasDeposit ? .green : .blue
+        return hasLoan ? .blue : .red
     }
 
     var body: some View {
@@ -1644,9 +1603,9 @@ struct AccountRow: View {
                         .animatedAmount(balance)
                 }
                 if let p = progress {
-                    ProgressView(value: min(max(p, 0), 1))
+                    ProgressView(value: p)
                         .progressViewStyle(.linear)
-                        .tint(progressBarColor(p: p, hasDeposit: hasDeposit))
+                        .tint(Self.progressBarColor(p: p, hasLoan: hasLoan, hasDeposit: hasDeposit))
                         .accessibilityIdentifier("accountRow.progress.\(account.id)")
                 }
             }

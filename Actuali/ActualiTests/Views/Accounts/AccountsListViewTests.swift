@@ -381,7 +381,7 @@ struct AccountsListViewTests {
         #expect(AccountTypeAvatar.icon(for: .credit) == "creditcard.fill")
         #expect(AccountTypeAvatar.icon(for: .investment) == "chart.line.uptrend.xyaxis")
         #expect(AccountTypeAvatar.icon(for: .mortgage) == "house.fill")
-        #expect(AccountTypeAvatar.icon(for: .debt) == "house.fill")
+        #expect(AccountTypeAvatar.icon(for: .debt) == "exclamationmark.triangle.fill")
         #expect(AccountTypeAvatar.icon(for: .other) == "dollarsign.circle.fill")
 
         // Deposit config overrides type to lock.fill
@@ -389,10 +389,6 @@ struct AccountsListViewTests {
 
         // Loan config overrides type to house.fill
         #expect(AccountTypeAvatar.icon(for: .other, hasLoan: true) == "house.fill")
-
-        // Closed accounts use un-filled creditcard for credit, otherwise standard icon
-        #expect(AccountTypeAvatar.icon(for: .credit, closed: true) == "creditcard")
-        #expect(AccountTypeAvatar.icon(for: .checking, closed: true) == "banknote.fill")
     }
 
     @Test func avatarColorsMatchAccountTypeAndClosedStatus() {
@@ -415,5 +411,14 @@ struct AccountsListViewTests {
         // Closed accounts use secondary
         #expect(AccountTypeAvatar.iconColor(for: .checking, closed: true) == .secondary)
         #expect(AccountTypeAvatar.iconColor(for: .credit, closed: true) == .secondary)
+    }
+
+    @Test func progressBarColorFollowsInstrumentNotAccountType() {
+        // A card can be tracked on any account type, so an unpaid bar is red
+        // whenever the account carries neither a loan nor a deposit.
+        #expect(AccountRow.progressBarColor(p: 0.4, hasLoan: false, hasDeposit: false) == .red)
+        #expect(AccountRow.progressBarColor(p: 0.4, hasLoan: true, hasDeposit: false) == .blue)
+        #expect(AccountRow.progressBarColor(p: 0.4, hasLoan: false, hasDeposit: true) == .green)
+        #expect(AccountRow.progressBarColor(p: 1.0, hasLoan: false, hasDeposit: false) == .green)
     }
 }
