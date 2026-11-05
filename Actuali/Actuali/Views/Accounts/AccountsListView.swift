@@ -1455,11 +1455,112 @@ private struct AccountGroupTotal: View {
     }
 }
 
+/// Circular badge with an SF Symbol for the account type, or for the loan or
+/// deposit it tracks. Symbols follow `AccountBalanceWidget.iconName`.
+struct AccountTypeAvatar: View {
+    let account: Account
+    var hasLoan: Bool = false
+    var hasDeposit: Bool = false
+
+    // ponytail: icon derived from account.type and active configs only.
+    // Ceiling: no vehicle/personal split for loans. Upgrade path: store
+    // the loan instrument kind on LoanConfig when the loan editor gains the field.
+    nonisolated static func icon(for type: AccountType, hasDeposit: Bool = false, hasLoan: Bool = false) -> String {
+        if hasDeposit {
+            return "lock.fill"
+        }
+        if hasLoan {
+            return "house.fill"
+        }
+        return defaultTypeIcon(for: type)
+    }
+
+    nonisolated static func defaultTypeIcon(for type: AccountType) -> String {
+        switch type {
+        case .checking: "banknote.fill"
+        case .savings: "building.columns.fill"
+        case .credit: "creditcard.fill"
+        case .mortgage: "house.fill"
+        case .debt: "exclamationmark.triangle.fill"
+        case .investment: "chart.line.uptrend.xyaxis"
+        case .other: "dollarsign.circle.fill"
+        }
+    }
+
+    /// Icon color; the badge fills with the same color at low opacity.
+    nonisolated static func iconColor(
+        for type: AccountType,
+        hasDeposit: Bool = false,
+        hasLoan: Bool = false,
+        closed: Bool = false
+    ) -> Color {
+        if closed {
+            return .secondary
+        }
+        if hasDeposit {
+            return .green
+        }
+        if hasLoan {
+            return .blue
+        }
+        switch type {
+        case .checking, .mortgage, .debt: return .blue
+        case .savings: return .purple
+        case .credit: return .orange
+        case .investment: return .green
+        case .other: return .primary
+        }
+    }
+
+    var body: some View {
+        let color = Self.iconColor(for: account.type, hasDeposit: hasDeposit, hasLoan: hasLoan, closed: account.closed)
+        ZStack {
+            Circle().fill(color.opacity(0.18))
+            Image(systemName: Self.icon(for: account.type, hasDeposit: hasDeposit, hasLoan: hasLoan))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(color)
+        }
+        .frame(width: 36, height: 36)
+    }
+}
+
 struct AccountRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let account: Account
     @State private var isCreatingGroup = false
     @State private var newGroupName = ""
+
+    /// Share of payoff or term completed (0...1), or nil when the account has no tracking.
+    /// Pure so tests can exercise all combinations of loan, deposit, and credit card configs.
+    nonisolated static func progress(
+        for account: Account,
+        loanConfig: LoanConfig?,
+        depositConfig: DepositConfig?,
+        creditCardDues: [CreditCardCycle.StatementDue]?,
+        today: DayDate = .today()
+    ) -> Double? {
+        guard !account.closed else { return nil }
+        if let loanConfig {
+            return loanConfig.fractionPaidOff(accountBalance: account.balance)
+        }
+        if let depositConfig {
+            return depositConfig.fractionElapsed(on: today)
+        }
+        // remainingDue never exceeds statementBalance (calculateStatementDue), so this stays in 0...1.
+        guard let dues = creditCardDues,
+              let due = CreditCardCycle.pendingStatementDue(in: dues, today: today),
+              due.statementBalance > 0 else { return nil }
+        return Double(due.statementBalance - due.remainingDue) / Double(due.statementBalance)
+    }
+
+    /// One account is one instrument, so a bar that is neither loan nor
+    /// deposit is a tracked card, whatever the account's type.
+    nonisolated static func progressBarColor(p: Double, hasLoan: Bool, hasDeposit: Bool) -> Color {
+        if p >= 1.0 || hasDeposit {
+            return .green
+        }
+        return hasLoan ? .blue : .red
+    }
 
     var body: some View {
         // The group menu is the only context-menu item, so without it there
@@ -1473,14 +1574,41 @@ struct AccountRow: View {
 
     private var row: some View {
         let balance = budgetStore.displayBalance(account.balance)
-        return HStack {
-            Text(account.name)
-                .font(.body)
-                .padding(.leading, 8)
-            Spacer()
-            Text(balance)
-                .foregroundStyle(balanceColor(for: account.balance))
-                .animatedAmount(balance)
+        let loanConfig = budgetStore.activeLoanConfig(for: account.id)
+        let depositConfig = budgetStore.activeDepositConfig(for: account.id)
+        let hasLoan = loanConfig != nil
+        let hasDeposit = depositConfig != nil
+        let progress = Self.progress(
+            for: account,
+            loanConfig: loanConfig,
+            depositConfig: depositConfig,
+            creditCardDues: budgetStore.creditCardStatementDues[account.id]
+        )
+
+        return HStack(alignment: .center, spacing: 12) {
+            AccountTypeAvatar(
+                account: account,
+                hasLoan: hasLoan,
+                hasDeposit: hasDeposit
+            )
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(account.name)
+                        .font(.body)
+                    Spacer()
+                    Text(balance)
+                        .foregroundStyle(balanceColor(for: account.balance))
+                        .animatedAmount(balance)
+                }
+                if let p = progress {
+                    ProgressView(value: p)
+                        .progressViewStyle(.linear)
+                        .tint(Self.progressBarColor(p: p, hasLoan: hasLoan, hasDeposit: hasDeposit))
+                        .accessibilityIdentifier("accountRow.progress.\(account.id)")
+                }
+            }
         }
         .alert(String(localized: "Create Group"), isPresented: $isCreatingGroup) {
             TextField(String(localized: "Group Name"), text: $newGroupName)
