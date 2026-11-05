@@ -133,7 +133,7 @@ struct AccountDetailView: View {
         scheduleLoadFailed: Bool,
         showUpcomingSchedules: Bool = true
     ) -> Bool {
-        isSearching || statusFilter != .all || !showUpcomingSchedules
+        isSearching || !statusFilter.includesUpcomingSchedules || !showUpcomingSchedules
             || (schedulesLoaded && !hasUpcomingSchedules && !scheduleLoadFailed)
     }
 
@@ -821,7 +821,12 @@ struct AccountDetailView: View {
     }
 
     @ViewBuilder private var transactionSection: some View {
-        if showUpcomingSchedules, searchQuery == nil, budgetStore.transactionStatusFilter == .all {
+        let shouldShowUpcomingSchedules = showUpcomingSchedules
+            && searchQuery == nil && budgetStore.transactionStatusFilter.includesUpcomingSchedules
+        let scheduledEntries = shouldShowUpcomingSchedules && budgetStore.schedulesLoaded
+            ? upcomingScheduleEntries : []
+
+        if shouldShowUpcomingSchedules {
             if budgetStore.scheduleLoadError != nil {
                 Section {
                     Label(
@@ -831,10 +836,10 @@ struct AccountDetailView: View {
                     .foregroundStyle(.secondary)
                 }
             }
-            if budgetStore.schedulesLoaded, !upcomingScheduleEntries.isEmpty {
+            if !scheduledEntries.isEmpty {
                 UpcomingScheduleSections(
-                    entries: upcomingScheduleEntries,
-                    showRunningBalance: showRunningBalance
+                    entries: scheduledEntries,
+                    showRunningBalance: shouldShowRunningBalance
                 )
             }
         }
@@ -874,7 +879,7 @@ struct AccountDetailView: View {
                         isSearching: searchQuery != nil,
                         statusFilter: budgetStore.transactionStatusFilter,
                         schedulesLoaded: budgetStore.schedulesLoaded,
-                        hasUpcomingSchedules: !upcomingScheduleEntries.isEmpty,
+                        hasUpcomingSchedules: !scheduledEntries.isEmpty,
                         scheduleLoadFailed: budgetStore.scheduleLoadError != nil,
                         showUpcomingSchedules: showUpcomingSchedules
                     ) {
