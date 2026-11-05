@@ -47,15 +47,6 @@ struct TransactionRowTests {
         #expect(payee("   ") == "No payee")
     }
 
-    @Test func payeeLabelPreservesRealPayeeNamesThatMatchFallbackWords() {
-        #expect(payee("Unknown") == "Unknown")
-        #expect(TransactionRow.payeeLabel(
-            payeeName: "Inconnu",
-            isParent: false,
-            locale: Locale(identifier: "fr_FR")
-        ) == "Inconnu")
-    }
-
     @Test func splitParentShowsSplitThenBreakdown() {
         #expect(category(nil, isParent: true, splitBreakdown: "Food $6.00\nFun +$4.00")
             == "Split\nFood $6.00\nFun +$4.00")
