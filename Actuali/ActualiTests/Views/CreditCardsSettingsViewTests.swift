@@ -71,6 +71,15 @@ struct CreditCardsSettingsViewTests {
         #expect(ScheduleDescription.ordinal(1, locale: Locale(identifier: "en_US")) == "1st")
     }
 
+    @Test func dayOptionLabelAppendsLastDayOfMonthForDay31() {
+        #expect(CreditCardsSettingsView.dayOptionLabel(1, locale: Locale(identifier: "en_US")) == "1st")
+        #expect(CreditCardsSettingsView.dayOptionLabel(15, locale: Locale(identifier: "en_US")) == "15th")
+        #expect(CreditCardsSettingsView.dayOptionLabel(30, locale: Locale(identifier: "en_US")) == "30th")
+        #expect(CreditCardsSettingsView.dayOptionLabel(31, locale: Locale(identifier: "en_US")) == "31st (Last day of month)")
+        #expect(CreditCardsSettingsView.dayOptionLabel(31, locale: Locale(identifier: "de_DE")) == "31. (Letzter Tag des Monats)")
+        #expect(CreditCardsSettingsView.dayOptionLabel(31, locale: Locale(identifier: "fr_FR")) == "31e (Dernier jour du mois)")
+    }
+
     @Test func cardsWithZeroBalanceSortAtTheEnd() {
         let today = DayDate(year: 2026, month: 2, day: 20)
         let soon = CreditCardCycle(statementDay: 15) // due in 10d
