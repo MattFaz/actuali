@@ -15,10 +15,30 @@ enum DepositGrowth {
     /// close, and it stops a corrupt term from looping forever.
     static let maxTermMonths = LoanAmortization.maxMonths
 
-    /// Compounding periods completed after `months` have elapsed.
-    static func completedPeriods(afterMonths months: Int, compounding: DepositConfig.Compounding) -> Int {
-        guard months > 0 else { return 0 }
-        return months / compounding.periodMonths
+    /// Completed periods between two calendar days. Daily, weekly and
+    /// bi-weekly compounding use actual elapsed days; longer frequencies use
+    /// clamped month anniversaries so Jan 31 + 3 months is one full quarter.
+    static func completedPeriods(
+        from start: DayDate,
+        to end: DayDate,
+        compounding: DepositConfig.Compounding
+    ) -> Int {
+        guard start < end else { return 0 }
+        switch compounding.period {
+        case .days(let days):
+            return start.days(until: end) / days
+        case .months(let months):
+            return wholeMonthsElapsed(from: start, to: end) / months
+        }
+    }
+
+    /// Whole calendar months, respecting clamped month-end anniversaries.
+    static func wholeMonthsElapsed(from start: DayDate, to end: DayDate) -> Int {
+        var months = (end.year - start.year) * 12 + end.month - start.month
+        if start.adding(months: months) > end {
+            months -= 1
+        }
+        return max(0, months)
     }
 
     /// One amount compounded for a number of whole periods.
@@ -39,8 +59,14 @@ enum DepositGrowth {
     /// day one, and a matured one is worth its maturity value and no more —
     /// the money stops earning at maturity rather than compounding forever.
     static func value(_ config: DepositConfig, afterMonths: Int) -> Int {
+        value(config, on: config.openedOn.adding(months: afterMonths))
+    }
+
+    /// What `config` is worth on a calendar day, in cents.
+    static func value(_ config: DepositConfig, on date: DayDate) -> Int {
         let term = min(max(0, config.termMonths), maxTermMonths)
-        let months = min(max(0, afterMonths), term)
+        let maturityDate = config.openedOn.adding(months: term)
+        let date = min(max(date, config.openedOn), maturityDate)
         guard config.amount > 0 else { return 0 }
 
         switch config.kind {
@@ -50,21 +76,21 @@ enum DepositGrowth {
                 config.amount,
                 annualRatePercent: config.annualRatePercent,
                 compounding: config.compounding,
-                periods: completedPeriods(afterMonths: months, compounding: config.compounding)
+                periods: completedPeriods(from: config.openedOn, to: date, compounding: config.compounding)
             ).rounded())
 
         case .recurring:
-            // Each instalment compounds only for the time since it was paid,
-            // so they can't share one exponent — the first has the whole term
-            // behind it and the last has barely a month.
+            // Each contribution compounds from the date it was added.
             var total = 0.0
-            for instalment in 0..<instalmentsMade(config, afterMonths: months) {
+            for instalment in 0..<instalmentsMade(config, on: date) {
+                let instalmentDate = contributionDate(config, index: instalment)
                 total += compounded(
                     config.amount,
                     annualRatePercent: config.annualRatePercent,
                     compounding: config.compounding,
                     periods: completedPeriods(
-                        afterMonths: months - instalment,
+                        from: instalmentDate,
+                        to: date,
                         compounding: config.compounding
                     )
                 )
@@ -74,25 +100,53 @@ enum DepositGrowth {
     }
 
     /// How many instalments a recurring deposit has taken by `afterMonths`.
-    /// The first goes in on the opening day, so month 0 already has one.
     static func instalmentsMade(_ config: DepositConfig, afterMonths: Int) -> Int {
+        instalmentsMade(config, on: config.openedOn.adding(months: afterMonths))
+    }
+
+    /// Contributions begin on the opening day and repeat until, but not on,
+    /// the maturity date. Day-based schedules use fixed elapsed-day intervals;
+    /// month-based schedules stay on the opening day's clamped anniversary.
+    static func instalmentsMade(_ config: DepositConfig, on date: DayDate) -> Int {
         guard config.kind == .recurring else { return 1 }
         let term = min(max(0, config.termMonths), maxTermMonths)
         guard term > 0 else { return 0 }
-        return min(max(0, afterMonths) + 1, term)
+
+        let maturityDate = config.openedOn.adding(months: term)
+        let lastEligibleDate = min(max(date, config.openedOn), maturityDate.adding(days: -1))
+        let intervals = switch config.contributionFrequency.period {
+        case .days(let days):
+            config.openedOn.days(until: lastEligibleDate) / days
+        case .months(let months):
+            wholeMonthsElapsed(from: config.openedOn, to: lastEligibleDate) / months
+        }
+        return intervals + 1
+    }
+
+    private static func contributionDate(_ config: DepositConfig, index: Int) -> DayDate {
+        switch config.contributionFrequency.period {
+        case .days(let days):
+            config.openedOn.adding(days: index * days)
+        case .months(let months):
+            config.openedOn.adding(months: index * months)
+        }
     }
 
     /// What has gone in by `afterMonths` — the baseline interest is measured
     /// against, and the figure that makes a zero-rate deposit read as exactly
     /// what was paid into it.
     static func deposited(_ config: DepositConfig, afterMonths: Int) -> Int {
+        deposited(config, on: config.openedOn.adding(months: afterMonths))
+    }
+
+    static func deposited(_ config: DepositConfig, on date: DayDate) -> Int {
         guard config.amount > 0 else { return 0 }
         switch config.kind {
         case .fixed:
             // The lump sum is in from day one, whatever the term says.
             return config.amount
         case .recurring:
-            return config.amount * instalmentsMade(config, afterMonths: afterMonths)
+            return config.amount * instalmentsMade(config, on: date)
         }
     }
 }

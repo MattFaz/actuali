@@ -436,10 +436,16 @@ struct AccountDetailView: View {
         )
         breakdownRow(
             config.kind == .recurring
-                ? String(localized: "Monthly Instalment")
+                ? String(localized: "Contribution Amount")
                 : String(localized: "Deposit Amount"),
             amount: config.amount
         )
+        if config.kind == .recurring {
+            breakdownRow(
+                String(localized: "Contribution Frequency"),
+                value: DepositEditorView.contributionFrequencyLabel(config.contributionFrequency)
+            )
+        }
         breakdownRow(String(localized: "Interest Rate"), value: LoanSummaryRow.percentText(config.annualRatePercent / 100))
         breakdownRow(String(localized: "Compounding"), value: DepositEditorView.compoundingLabel(config.compounding))
         breakdownRow(String(localized: "Opened"), value: config.openedOn.displayText)
