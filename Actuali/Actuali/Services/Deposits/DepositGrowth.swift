@@ -59,9 +59,7 @@ enum DepositGrowth {
     /// day one, and a matured one is worth its maturity value and no more —
     /// the money stops earning at maturity rather than compounding forever.
     static func value(_ config: DepositConfig, afterMonths: Int) -> Int {
-        let term = min(max(0, config.termMonths), maxTermMonths)
-        let months = min(max(0, afterMonths), term)
-        return value(config, on: config.openedOn.adding(months: months))
+        value(config, on: config.openedOn.adding(months: afterMonths))
     }
 
     /// What `config` is worth on a calendar day, in cents.
@@ -102,11 +100,8 @@ enum DepositGrowth {
     }
 
     /// How many instalments a recurring deposit has taken by `afterMonths`.
-    /// Retained for the month-by-month growth curve and existing callers.
     static func instalmentsMade(_ config: DepositConfig, afterMonths: Int) -> Int {
-        let term = min(max(0, config.termMonths), maxTermMonths)
-        let months = min(max(0, afterMonths), term)
-        return instalmentsMade(config, on: config.openedOn.adding(months: months))
+        instalmentsMade(config, on: config.openedOn.adding(months: afterMonths))
     }
 
     /// Contributions begin on the opening day and repeat until, but not on,
@@ -141,9 +136,7 @@ enum DepositGrowth {
     /// against, and the figure that makes a zero-rate deposit read as exactly
     /// what was paid into it.
     static func deposited(_ config: DepositConfig, afterMonths: Int) -> Int {
-        let term = min(max(0, config.termMonths), maxTermMonths)
-        let months = min(max(0, afterMonths), term)
-        return deposited(config, on: config.openedOn.adding(months: months))
+        deposited(config, on: config.openedOn.adding(months: afterMonths))
     }
 
     static func deposited(_ config: DepositConfig, on date: DayDate) -> Int {

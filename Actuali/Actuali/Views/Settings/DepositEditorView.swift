@@ -268,7 +268,7 @@ struct DepositEditorView: View {
                 .accessibilityIdentifier("depositEditor.matures")
 
                 LabeledContent(
-                    String(localized: "Maturity Value"),
+                    String(localized: "Value at Maturity"),
                     value: budgetStore.displayBalance(config.maturityValue)
                 )
                 .foregroundStyle(.secondary)
