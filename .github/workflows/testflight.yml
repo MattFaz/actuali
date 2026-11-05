@@ -84,6 +84,9 @@ jobs:
             -destination "generic/platform=iOS" \
             -archivePath "$RUNNER_TEMP/Actuali.xcarchive"
 
+      - name: Check optional Wallet imports for iOS-on-Mac
+        run: python3 dev/scripts/check-wallet-linkage.py "$RUNNER_TEMP/Actuali.xcarchive/Products/Applications/Actuali.app"
+
       - name: Upload to TestFlight
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}

@@ -12,9 +12,9 @@ struct WalletImportView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
 
-    /// Whether this device can offer Wallet transactions at all (Apple Card /
-    /// Apple Cash are US-only; unsupported devices hide the entry points).
-    static let isSupported = FinanceStore.isDataAvailable(.financialData)
+    /// Unsupported platforms (including iOS-on-Mac) and devices without
+    /// eligible Wallet data hide the entry points before constructing the picker.
+    static let isSupported = FinanceKitWalletStore.isSupported
 
     @State private var selectedAccountId: String?
     @State private var walletSelection: [FinanceKit.Transaction] = []
