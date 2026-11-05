@@ -475,35 +475,24 @@ struct TransactionRow: View {
         transaction.transferId != nil || transaction.transferAcct != nil
     }
 
-    /// Split parents may resolve no payee (mixed child payees), so they read
-    /// "Split" like the desktop app. Every other payee-less row reads
-    /// "No payee"; "Unknown" read as a bug for these rows (GH #123).
-    nonisolated static func payeeLabel(
-        payeeName: String?,
-        isParent: Bool,
-        locale: Locale
-    ) -> String {
+    /// Payee-less rows read "No payee", as the PWA does; "Unknown" read as a
+    /// bug (GH #123). Split parents with mixed child payees land here too:
+    /// "Split" sits on the category line, so the payee line doesn't repeat it.
+    nonisolated static func payeeLabel(payeeName: String?, locale: Locale) -> String {
         if let payeeName,
            !payeeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return payeeName
         }
-        return String(
-            localized: isParent
-                ? TransactionsListLocalization.split
-                : TransactionsListLocalization.noPayee,
-            locale: locale
-        )
+        return String(localized: TransactionsListLocalization.noPayee, locale: locale)
     }
 
     /// Caption under the payee. Off-budget accounts aren't categorized at all
-    /// ("Off budget", GH #123); split parents say "Split" (as the PWA does)
-    /// with each child's line beneath it, so the split reads at a glance
-    /// without opening it (GH #552); transfers that can't take a category
-    /// show "Transfer" instead of nagging "Uncategorized" (GH #104).
+    /// ("Off budget", GH #123); split parents say "Split" (as the PWA does);
+    /// transfers that can't take a category show "Transfer" instead of
+    /// nagging "Uncategorized" (GH #104).
     nonisolated static func categoryLabel(
         categoryName: String?,
         isParent: Bool,
-        splitBreakdown: String?,
         isInOffBudgetAccount: Bool,
         isTransfer: Bool,
         needsCategory: Bool,
@@ -513,8 +502,7 @@ struct TransactionRow: View {
             return String(localized: TransactionsListLocalization.offBudget, locale: locale)
         }
         if isParent {
-            let split = String(localized: TransactionsListLocalization.split, locale: locale)
-            return splitBreakdown.map { "\(split)\n\($0)" } ?? split
+            return String(localized: TransactionsListLocalization.split, locale: locale)
         }
         if categoryName == nil, isTransfer, !needsCategory {
             return String(localized: TransactionsListLocalization.transfer, locale: locale)
@@ -523,22 +511,10 @@ struct TransactionRow: View {
             ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
     }
 
-    /// One "Food $6.00" line per child: outflows unsigned, inflows keep a "+"
-    /// so a credit line inside a spend split stays distinguishable (GH #216).
-    private var splitBreakdown: String? {
-        guard let portions = transaction.splitPortions, !portions.isEmpty else { return nil }
-        return portions.map { portion in
-            let name = portion.categoryName
-                ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
-            return "\(name) \(budgetStore.displaySpentCaption(portion.amount))"
-        }.joined(separator: "\n")
-    }
-
     private var categoryLabel: String {
         Self.categoryLabel(
             categoryName: transaction.categoryName,
             isParent: transaction.isParent,
-            splitBreakdown: splitBreakdown,
             isInOffBudgetAccount: isInOffBudgetAccount,
             isTransfer: isTransfer,
             needsCategory: transaction.needsCategory(
@@ -636,15 +612,9 @@ struct TransactionRow: View {
                     .frame(width: 28, height: 28)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(Self.payeeLabel(
-                    payeeName: transaction.payeeName,
-                    isParent: transaction.isParent,
-                    locale: locale
-                ))
-                .font(.body)
-                // First-baseline so the split glyph stays beside "Split"
-                // rather than centring on the stacked child lines.
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(Self.payeeLabel(payeeName: transaction.payeeName, locale: locale))
+                    .font(.body)
+                HStack(spacing: 4) {
                     if transaction.isParent {
                         Image(systemName: "arrow.triangle.branch")
                             .font(.caption2)
