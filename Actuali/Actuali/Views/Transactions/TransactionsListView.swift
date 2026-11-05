@@ -475,21 +475,24 @@ struct TransactionRow: View {
         transaction.transferId != nil || transaction.transferAcct != nil
     }
 
-    /// Split parents may resolve no payee (mixed child payees) — label them
-    /// "Split" like the desktop app, not "Unknown". Off-budget rows say
-    /// "No payee": they're commonly payee-less (balance adjustments) and
-    /// "Unknown" read as a bug (GH #123).
+    /// Split parents may resolve no payee (mixed child payees), so they read
+    /// "Split" like the desktop app. Every other payee-less row reads
+    /// "No payee"; "Unknown" read as a bug for these rows (GH #123).
     nonisolated static func payeeLabel(
         payeeName: String?,
         isParent: Bool,
-        isInOffBudgetAccount: Bool,
         locale: Locale
     ) -> String {
-        payeeName ?? (isParent
-            ? String(localized: TransactionsListLocalization.split, locale: locale)
-            : (isInOffBudgetAccount
-                ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
-                : String(localized: TransactionsListLocalization.unknown, locale: locale)))
+        if let payeeName,
+           !payeeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return payeeName
+        }
+        return String(
+            localized: isParent
+                ? TransactionsListLocalization.split
+                : TransactionsListLocalization.noPayee,
+            locale: locale
+        )
     }
 
     /// Caption under the payee. Off-budget accounts aren't categorized at all
@@ -636,7 +639,6 @@ struct TransactionRow: View {
                 Text(Self.payeeLabel(
                     payeeName: transaction.payeeName,
                     isParent: transaction.isParent,
-                    isInOffBudgetAccount: isInOffBudgetAccount,
                     locale: locale
                 ))
                 .font(.body)
@@ -736,7 +738,6 @@ enum TransactionsListLocalization {
     static let transfer: String.LocalizationValue = "Transfer"
     static let uncleared: String.LocalizationValue = "Uncleared"
     static let uncategorized: String.LocalizationValue = "Uncategorized"
-    static let unknown: String.LocalizationValue = "Unknown"
     static let unknownAccount: String.LocalizationValue = "Unknown Account"
 
     static func text(

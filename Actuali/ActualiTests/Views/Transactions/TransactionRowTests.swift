@@ -7,11 +7,10 @@ import UIKit
 struct TransactionRowTests {
     private let locale = Locale(identifier: "en_US")
 
-    private func payee(_ name: String?, isParent: Bool = false, offBudget: Bool = false) -> String {
+    private func payee(_ name: String?, isParent: Bool = false) -> String {
         TransactionRow.payeeLabel(
             payeeName: name,
             isParent: isParent,
-            isInOffBudgetAccount: offBudget,
             locale: locale
         )
     }
@@ -43,9 +42,9 @@ struct TransactionRowTests {
     @Test func payeeLabelFallbacks() {
         // Mixed child payees resolve nil; the parent still reads as a split.
         #expect(payee(nil, isParent: true) == "Split")
-        #expect(payee(nil, isParent: true, offBudget: true) == "Split")
-        #expect(payee(nil, offBudget: true) == "No payee")
-        #expect(payee(nil) == "Unknown")
+        #expect(payee(nil) == "No payee")
+        #expect(payee("") == "No payee")
+        #expect(payee("   ") == "No payee")
     }
 
     @Test func splitParentShowsSplitThenBreakdown() {
