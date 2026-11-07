@@ -3686,6 +3686,17 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
+    /// Delete an account together with all its transactions (upstream
+    /// `closeAccount(forced: true)`). Transfer partners in other accounts
+    /// stay, minus their payee and link. Not undoable.
+    func forceCloseAccount(_ account: Account) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        guard !account.closed else { return }
+        try await unlinkBankAccount(accountId: account.id)
+        try await syncClient.forceCloseAccount(id: account.id)
+        await refreshDataOnly()
+    }
+
     func reopenAccount(_ account: Account) async throws {
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.setAccountClosed(accountId: account.id, closed: false)

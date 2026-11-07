@@ -776,6 +776,47 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    struct ForceCloseTargets: Sendable {
+        /// Every live row in the account (split children included).
+        let transactionIds: [String]
+        /// Transfer partners to unlink; rows in the account itself are
+        /// tombstoned anyway, so they are left out.
+        let partnerIds: [String]
+        let transferPayeeId: String?
+    }
+
+    func forceCloseTargets(accountId: String) throws -> ForceCloseTargets {
+        try dbQueue.read { db in
+            let ids = try String.fetchAll(db, sql: "SELECT id FROM transactions WHERE acct = ? AND tombstone = 0", arguments: [accountId])
+            let partners = try String.fetchAll(db, sql: """
+            SELECT p.id FROM transactions t JOIN transactions p ON p.id = t.transferred_id
+            WHERE t.acct = ? AND t.tombstone = 0 AND p.acct != ?
+            """, arguments: [accountId, accountId])
+            let payee = try String.fetchOne(db, sql: "SELECT id FROM payees WHERE transfer_acct = ?", arguments: [accountId])
+            return ForceCloseTargets(transactionIds: ids, partnerIds: partners, transferPayeeId: payee)
+        }
+    }
+
+    /// Delete the account, its transactions and its transfer payee, and unlink
+    /// the partner legs, with all CRDT messages, in one SQLite transaction.
+    func forceCloseAccount(
+        accountId: String,
+        targets: ForceCloseTargets,
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try db.execute(sql: "UPDATE transactions SET tombstone = 1 WHERE acct = ?", arguments: [accountId])
+            for partnerId in targets.partnerIds {
+                try db.execute(sql: "UPDATE transactions SET description = NULL, transferred_id = NULL WHERE id = ?", arguments: [partnerId])
+            }
+            try db.execute(sql: "UPDATE accounts SET tombstone = 1 WHERE id = ?", arguments: [accountId])
+            if let payeeId = targets.transferPayeeId {
+                try db.execute(sql: "UPDATE payees SET tombstone = 1 WHERE id = ?", arguments: [payeeId])
+            }
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
     struct AccountGroupMoveResult: Equatable {
         let id: String
         let sortOrder: Double

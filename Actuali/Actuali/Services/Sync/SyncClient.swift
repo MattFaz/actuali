@@ -1186,6 +1186,36 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    /// Upstream `closeAccount(forced: true)`: one batch that unlinks each
+    /// transfer partner, tombstones the account's transactions, the account
+    /// and its transfer payee.
+    func forceCloseAccount(id: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let targets = try database.forceCloseTargets(accountId: id)
+        // Upstream throws rather than leave a transfer payee behind.
+        guard let payeeId = targets.transferPayeeId else { throw SyncError.notConfigured }
+
+        var messages: [CRDTMessage] = []
+        for partnerId in targets.partnerIds {
+            messages += try await messageGenerator.messages(
+                dataset: "transactions", row: partnerId,
+                fields: [("description", nil), ("transferred_id", nil)]
+            )
+        }
+        for transactionId in targets.transactionIds {
+            messages += try await messageGenerator.messages(dataset: "transactions", row: transactionId, fields: [("tombstone", 1)])
+        }
+        messages += try await messageGenerator.messages(dataset: "accounts", row: id, fields: [("tombstone", 1)])
+        messages += try await messageGenerator.messages(dataset: "payees", row: payeeId, fields: [("tombstone", 1)])
+
+        for msg in try database.forceCloseAccount(accountId: id, targets: targets, messages: messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     func moveAccount(accountId: String, toGroupId: String?, beforeAccountId: String?) async throws {
         guard let database else { throw SyncError.notConfigured }
         let result = try database.moveAccount(
