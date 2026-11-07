@@ -135,7 +135,7 @@ final class SettingsNavigationUITests: XCTestCase {
         let goalTemplates = app.descendants(matching: .any)["transactionAutomation.goalTemplates"]
         let automationsEditor = app.descendants(matching: .any)["transactionAutomation.automationsEditor"]
         var swipes = 0
-        while (!goalTemplates.exists || !automationsEditor.exists) && swipes < 30 {
+        while !goalTemplates.exists || !automationsEditor.exists, swipes < 30 {
             app.swipeUp(velocity: .slow)
             swipes += 1
         }
