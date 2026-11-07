@@ -91,7 +91,7 @@ struct BudgetView: View {
     /// open budget file.
     @State private var monthNoteMonth: String?
     @State private var editingMonthNote = false
-    @State private var editingCategoryStatusColors = false
+    @State private var editingBudgetViewOptions = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
@@ -217,8 +217,8 @@ struct BudgetView: View {
                     note: displayedMonthNote.text
                 )
             }
-            .sheet(isPresented: $editingCategoryStatusColors) {
-                CategoryStatusColorPickerSheet()
+            .sheet(isPresented: $editingBudgetViewOptions) {
+                BudgetViewSheet()
             }
             .sheet(item: $editingBudgetAmount) { target in
                 EditBudgetAmountSheet(target: target)
@@ -462,7 +462,7 @@ struct BudgetView: View {
                     ? { runCleanup() } : nil,
                 monthNote: displayedMonthNote,
                 onEditMonthNote: hasBudget ? { editingMonthNote = true } : nil,
-                onEditCategoryStatusColors: { editingCategoryStatusColors = true }
+                onEditBudgetViewOptions: { editingBudgetViewOptions = true }
             )
             .tint(.primary)
             .accessibilityIdentifier("budget.optionsMenu")

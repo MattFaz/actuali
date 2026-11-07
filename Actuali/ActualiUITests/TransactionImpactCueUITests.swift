@@ -70,18 +70,9 @@ final class TransactionImpactCueUITests: XCTestCase {
             "-initialTab", "1",
             "-resetStatusFilterState",
             "-transactionDisplayMode", "flat",
-            "-showTransactionImpactCue", "YES",
+            "-showTransactionImpactCue", "NO",
         ]
         app.launch()
-        app.tabBars.buttons["Budget"].tap()
-        app.buttons["Budget options"].tap()
-        app.buttons["Budget View"].tap()
-
-        let impactToggle = app.buttons["budgetOptions.showBalanceImpact"]
-        XCTAssertTrue(impactToggle.waitForExistence(timeout: 5))
-        XCTAssertTrue(impactToggle.isSelected)
-        impactToggle.tap()
-
         duplicateChipotle(app)
 
         let cue = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'transactionImpactCue.'")).firstMatch

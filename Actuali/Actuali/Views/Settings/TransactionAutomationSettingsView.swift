@@ -84,6 +84,8 @@ struct TransactionAutomationSettingsView: View {
 
                 Toggle(String(localized: "Category from Payee History"), isOn: $budgetStore.suggestCategoryFromPayeeHistory)
                     .accessibilityIdentifier("transactionAutomation.categoryFromPayeeHistory")
+                Toggle(String(localized: "Show Balance Impact"), isOn: $budgetStore.showTransactionImpactCue)
+                    .accessibilityIdentifier("transactionAutomation.showBalanceImpact")
             } header: {
                 Text(String(localized: "Transaction Behavior"))
             } footer: {

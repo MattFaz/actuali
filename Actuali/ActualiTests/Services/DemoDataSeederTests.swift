@@ -25,6 +25,7 @@ struct DemoDataSeederTests {
     private static let trackingSeed = Result { try seed(tracking: true) }
     private static let uncategorizedSeed = Result { try seed(seedUncategorized: true) }
     private static let unsupportedBankSyncSeed = Result { try seed(seedUnsupportedBankSync: true) }
+    private static let goalTemplatesSeed = Result { try seed(goalTemplatesEnabled: true) }
     private static let august31Seed = Result {
         try seed(now: Calendar(identifier: .gregorian)
             .date(from: DateComponents(year: 2026, month: 8, day: 31, hour: 12))!)
@@ -34,12 +35,14 @@ struct DemoDataSeederTests {
         tracking: Bool = false,
         seedUncategorized: Bool = false,
         seedUnsupportedBankSync: Bool = false,
+        goalTemplatesEnabled: Bool = false,
         now: Date = Date()
     ) throws -> Seed {
         try DemoDataSeeder.seed(
             tracking: tracking,
             seedUncategorized: seedUncategorized,
             seedUnsupportedBankSync: seedUnsupportedBankSync,
+            goalTemplatesEnabled: goalTemplatesEnabled,
             now: now
         )
         let copy = FileManager.default.temporaryDirectory
@@ -286,6 +289,16 @@ struct DemoDataSeederTests {
                     "\(account.name) starting balance miscategorized")
         }
         #expect(try await database.fetchUncategorizedCount() == 0)
+    }
+
+    /// Goal-template UI tests need the synced Actual preference but must not
+    /// enable it through a SyncClient-dependent settings write.
+    @Test func goalTemplatesSeedEnablesTheSyncedFlag() async throws {
+        let defaultDatabase = try open(Self.defaultSeed)
+        #expect(try await defaultDatabase.fetchPreference(id: "flags.goalTemplatesEnabled") == nil)
+
+        let enabledDatabase = try open(Self.goalTemplatesSeed)
+        #expect(try await enabledDatabase.fetchPreference(id: "flags.goalTemplatesEnabled") == "true")
     }
 
     /// The demo tracks a loan and a deposit so both features show in demo

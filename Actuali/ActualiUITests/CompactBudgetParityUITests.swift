@@ -166,26 +166,35 @@ final class CompactBudgetParityUITests: XCTestCase {
                        "a category with no budget or activity has no progress to visualize")
 
         openBudgetViewMenu(in: app)
-        let sharedProgressBars = app.buttons["budgetOptions.showBudgetProgressBars"]
+        let sharedProgressBars = app.switches["budgetView.showBudgetProgressBars"]
+        scrollUntilHittable(sharedProgressBars, in: app, maxSwipes: 12, velocity: .slow)
         XCTAssertTrue(sharedProgressBars.waitForExistence(timeout: 5))
         tapSwitch(sharedProgressBars)
-        app.tabBars.buttons["Budget"].tap()
+        app.buttons["budgetView.done"].tap()
         XCTAssertTrue(emptyStatus.waitForExistence(timeout: 5),
                       "turning off progress bars leaves status dots alone")
         XCTAssertFalse(emptyBar.exists)
 
         openBudgetViewMenu(in: app)
-        tapSwitch(sharedProgressBars)
-        let statusDots = app.buttons["budgetOptions.showCategoryStatusDots"]
+        let restoredProgressBars = app.switches["budgetView.showBudgetProgressBars"]
+        let statusDots = app.switches["budgetView.showCategoryStatusDots"]
+        scrollUntilHittable(restoredProgressBars, in: app, maxSwipes: 12, velocity: .slow)
+        XCTAssertTrue(restoredProgressBars.waitForExistence(timeout: 5))
+        tapSwitch(restoredProgressBars)
+        scrollUntilHittable(statusDots, in: app, maxSwipes: 12, velocity: .slow)
         XCTAssertTrue(statusDots.waitForExistence(timeout: 5))
         tapSwitch(statusDots)
-        app.tabBars.buttons["Budget"].tap()
+        app.buttons["budgetView.done"].tap()
         XCTAssertTrue(emptyStatus.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Details for Parking"].exists)
         XCTAssertFalse(emptyBar.exists)
 
         openBudgetViewMenu(in: app)
-        tapSwitch(statusDots)
+        let restoredStatusDots = app.switches["budgetView.showCategoryStatusDots"]
+        scrollUntilHittable(restoredStatusDots, in: app, maxSwipes: 12, velocity: .slow)
+        XCTAssertTrue(restoredStatusDots.waitForExistence(timeout: 5))
+        tapSwitch(restoredStatusDots)
+        app.buttons["budgetView.done"].tap()
     }
 
     @MainActor

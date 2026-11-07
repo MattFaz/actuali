@@ -11,6 +11,14 @@ final class SettingsNavigationUITests: XCTestCase {
             let conventionalAmountEntry = app.switches["Conventional Amount Entry"]
             XCTAssertTrue(conventionalAmountEntry.waitForExistence(timeout: 5),
                           "Conventional Amount Entry should remain in Transactions & Automation")
+            let balanceImpact = app.switches["transactionAutomation.showBalanceImpact"]
+            var settingsSwipes = 0
+            while !balanceImpact.exists, settingsSwipes < 8 {
+                app.swipeUp(velocity: .slow)
+                settingsSwipes += 1
+            }
+            XCTAssertTrue(balanceImpact.waitForExistence(timeout: 5),
+                          "Show Balance Impact belongs with transaction behavior settings")
             let toggles = experimentalToggles(in: app)
             content = toggles.goalTemplates
         case "Display":
