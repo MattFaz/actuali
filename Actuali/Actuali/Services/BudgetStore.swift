@@ -3697,6 +3697,13 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
+    func setAccountType(_ account: Account, type: AccountType) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        guard account.type != type else { return }
+        try await syncClient.setAccountType(accountId: account.id, type: type)
+        await refreshDataOnly()
+    }
+
     func reopenAccount(_ account: Account) async throws {
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.setAccountClosed(accountId: account.id, closed: false)
@@ -3764,7 +3771,12 @@ final class BudgetStore: ObservableObject {
     /// is always the sum of its transactions, so this transaction IS the
     /// starting balance, not a display shortcut).
     @discardableResult
-    func createAccount(name: String, offBudget: Bool, startingBalanceCents: Int) async throws -> Account {
+    func createAccount(
+        name: String,
+        offBudget: Bool,
+        startingBalanceCents: Int,
+        type: AccountType = .checking
+    ) async throws -> Account {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
             throw BudgetStoreError.invalidAccountName
@@ -3781,7 +3793,7 @@ final class BudgetStore: ObservableObject {
         let account = Account(
             id: UUID().uuidString,
             name: trimmedName,
-            type: .checking,
+            type: type,
             offBudget: offBudget,
             closed: false,
             sortOrder: sortOrder,

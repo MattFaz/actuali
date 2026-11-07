@@ -1159,6 +1159,18 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    func setAccountType(accountId: String, type: AccountType) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        try database.setAccountType(accountId: accountId, type: type)
+        let messages = try await messageGenerator.messages(dataset: "accounts", row: accountId, fields: [("type", type.rawValue)])
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     func setAccountClosed(accountId: String, closed: Bool) async throws {
         guard let database else { throw SyncError.notConfigured }
         try database.setAccountClosed(accountId: accountId, closed: closed)
