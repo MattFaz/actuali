@@ -727,6 +727,12 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    func setAccountType(accountId: String, type: AccountType) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "UPDATE accounts SET type = ? WHERE id = ?", arguments: [type.rawValue, accountId])
+        }
+    }
+
     func setAccountClosed(accountId: String, closed: Bool) throws {
         try dbQueue.write { db in
             try db.execute(sql: "UPDATE accounts SET closed = ? WHERE id = ?", arguments: [closed ? 1 : 0, accountId])

@@ -1600,11 +1600,29 @@ struct AccountRow: View {
                 if budgetStore.accountGroupWritesEnabled {
                     groupMenu
                 }
+                typeMenu
                 closeMenu
             }
             .sheet(isPresented: $isClosing) {
                 CloseAccountSheet(account: account)
             }
+    }
+
+    private var typeMenu: some View {
+        Menu(String(localized: "accounts.type.title"), systemImage: "tag") {
+            ForEach(AccountType.allCases, id: \.self) { type in
+                Button {
+                    Task { try? await budgetStore.setAccountType(account, type: type) }
+                } label: {
+                    if account.type == type {
+                        Label(type.title, systemImage: "checkmark")
+                    } else {
+                        Text(type.title)
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier("accountRow.type.\(account.id)")
     }
 
     @ViewBuilder
