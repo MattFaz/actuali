@@ -749,6 +749,29 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    func setAccountClosed(accountId: String, closed: Bool) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "UPDATE accounts SET closed = ? WHERE id = ?", arguments: [closed ? 1 : 0, accountId])
+        }
+    }
+
+    func tombstoneAccount(accountId: String) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "UPDATE accounts SET tombstone = 1 WHERE id = ?", arguments: [accountId])
+        }
+    }
+
+    /// Whether the account has any non-deleted transaction. Unlike
+    /// `hasAnyTransactionRow`, deleted rows don't count: upstream's close
+    /// only deletes an account outright when `v_transactions` is empty for it.
+    func hasLiveTransactions(accountId: String) async throws -> Bool {
+        try await dbQueue.read { db in
+            try Bool.fetchOne(db, sql: """
+            SELECT EXISTS (SELECT 1 FROM transactions WHERE acct = ? AND tombstone = 0)
+            """, arguments: [accountId]) ?? false
+        }
+    }
+
     struct AccountGroupMoveResult: Equatable {
         let id: String
         let sortOrder: Double

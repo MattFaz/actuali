@@ -1533,6 +1533,7 @@ struct AccountRow: View {
     @State private var isRenamingAccount = false
     @State private var newGroupName = ""
     @State private var renameName = ""
+    @State private var isClosing = false
 
     /// Share of payoff or term completed (0...1), or nil when the account has no tracking.
     /// Pure so tests can exercise all combinations of loan, deposit, and credit card configs.
@@ -1567,19 +1568,24 @@ struct AccountRow: View {
     }
 
     var body: some View {
-        row.contextMenu {
-            Button {
-                renameName = account.name
-                isRenamingAccount = true
-            } label: {
-                Label(String(localized: "Rename Account"), systemImage: "pencil")
-            }
-            .accessibilityIdentifier("accountRename.action")
+        row
+            .contextMenu {
+                Button {
+                    renameName = account.name
+                    isRenamingAccount = true
+                } label: {
+                    Label(String(localized: "Rename Account"), systemImage: "pencil")
+                }
+                .accessibilityIdentifier("accountRename.action")
 
-            if budgetStore.accountGroupWritesEnabled {
-                groupMenu
+                if budgetStore.accountGroupWritesEnabled {
+                    groupMenu
+                }
+                closeMenu
             }
-        }
+            .sheet(isPresented: $isClosing) {
+                CloseAccountSheet(account: account)
+            }
     }
 
     private func commitRename() {
@@ -1591,6 +1597,25 @@ struct AccountRow: View {
             } catch {
                 budgetStore.error = error.localizedDescription
             }
+        }
+    }
+
+    @ViewBuilder
+    private var closeMenu: some View {
+        if account.closed {
+            Button {
+                Task { try? await budgetStore.reopenAccount(account) }
+            } label: {
+                Label(String(localized: "Reopen Account"), systemImage: "arrow.uturn.backward")
+            }
+            .accessibilityIdentifier("accountRow.reopen.\(account.id)")
+        } else {
+            Button(role: .destructive) {
+                isClosing = true
+            } label: {
+                Label(String(localized: "Close Account"), systemImage: "xmark.circle")
+            }
+            .accessibilityIdentifier("accountRow.close.\(account.id)")
         }
     }
 
@@ -1764,4 +1789,97 @@ private struct AccountGroupsSheet: View {
 #Preview {
     AccountsListView()
         .environmentObject(BudgetStore.previewInstance())
+}
+
+/// Close flow for one account (upstream `closeAccount`): a non-zero balance
+/// needs a destination account, plus a category when the money leaves the
+/// budget for an off-budget account.
+private struct CloseAccountSheet: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+    let account: Account
+    @State private var transferAccountId: String?
+    @State private var categoryId: String?
+    @State private var errorMessage: String?
+
+    private var destinations: [Account] {
+        budgetStore.accounts.filter { !$0.closed && $0.id != account.id }
+    }
+
+    private var needsCategory: Bool {
+        BudgetStore.transferLegTakesCategory(
+            leg: account.id,
+            partner: transferAccountId,
+            offBudgetAccountIds: budgetStore.offBudgetAccountIds
+        ) || BudgetStore.transferLegTakesCategory(
+            leg: transferAccountId,
+            partner: account.id,
+            offBudgetAccountIds: budgetStore.offBudgetAccountIds
+        )
+    }
+
+    private var canClose: Bool {
+        account.balance == 0 || transferAccountId != nil
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if account.balance != 0 {
+                    Section {
+                        Picker(String(localized: "Move Balance To"), selection: $transferAccountId) {
+                            Text(String(localized: "Select Account")).tag(String?.none)
+                            ForEach(destinations) { Text($0.name).tag(String?.some($0.id)) }
+                        }
+                        .accessibilityIdentifier("closeAccount.destination")
+                        if needsCategory {
+                            Picker(String(localized: "Category"), selection: $categoryId) {
+                                Text(String(localized: "None")).tag(String?.none)
+                                ForEach(budgetStore.categoryGroups.filter { !$0.isIncome }) { group in
+                                    ForEach(group.categories) { Text($0.name).tag(String?.some($0.id)) }
+                                }
+                            }
+                            .accessibilityIdentifier("closeAccount.category")
+                        }
+                    } footer: {
+                        Text(String(
+                            localized: "The remaining balance of \(budgetStore.displayBalance(account.balance)) moves to the selected account."
+                        ))
+                    }
+                } else {
+                    Section {
+                        Text(String(localized: "Closed accounts stay in your history but no longer accept new transactions."))
+                    }
+                }
+                if let errorMessage {
+                    Section { Text(errorMessage).foregroundStyle(.red) }
+                }
+            }
+            .navigationTitle(String(localized: "Close Account"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "Cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "Close Account")) {
+                        Task {
+                            do {
+                                try await budgetStore.closeAccount(
+                                    account,
+                                    transferAccountId: transferAccountId,
+                                    categoryId: needsCategory ? categoryId : nil
+                                )
+                                dismiss()
+                            } catch {
+                                errorMessage = error.localizedDescription
+                            }
+                        }
+                    }
+                    .disabled(!canClose)
+                    .accessibilityIdentifier("closeAccount.confirm")
+                }
+            }
+        }
+    }
 }
