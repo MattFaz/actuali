@@ -69,4 +69,34 @@ struct CategoryPickerTests {
         #expect(CategoryPickerView.incomeLast(groups).map(\.id) == ["bills", "food"])
         #expect(CategoryPickerView.incomeLast([]).isEmpty)
     }
+
+    private func category(_ id: String, available: Int) -> CategoryBudget {
+        CategoryBudget(
+            month: "2026-11",
+            categoryId: id,
+            categoryName: id,
+            groupId: "group",
+            groupName: "Group",
+            groupSortOrder: 0,
+            categorySortOrder: 0,
+            budgeted: 0,
+            spent: 0,
+            available: available,
+            carryover: 0,
+            goal: nil
+        )
+    }
+
+    @Test func balancesComeFromTheLoadedBudgetMonthByCategory() {
+        let budget = BudgetMonth(
+            month: "2026-11",
+            categoryBudgets: [category("food", available: 51250), category("fun", available: -3000)]
+        )
+
+        #expect(CategoryPickerView.availableBalances(in: budget) == ["food": 51250, "fun": -3000])
+    }
+
+    @Test func noLoadedBudgetMeansNoBalances() {
+        #expect(CategoryPickerView.availableBalances(in: nil).isEmpty)
+    }
 }
