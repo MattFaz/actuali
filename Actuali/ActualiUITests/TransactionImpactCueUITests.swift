@@ -14,14 +14,16 @@ final class TransactionImpactCueUITests: XCTestCase {
         XCTAssertTrue(selectionMode.waitForExistence(timeout: 10))
         selectionMode.tap()
 
-        let row = app.buttons.matching(
+        let row = app.descendants(matching: .any).matching(
             NSPredicate(format: "identifier BEGINSWITH 'transactionRow.' AND label CONTAINS 'Chipotle'")
         ).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "the demo budget has a Chipotle transaction")
+        scrollUntilHittable(row, in: app, maxSwipes: 30, velocity: .slow)
+        XCTAssertTrue(row.exists && row.isHittable,
+                      "the demo budget has a visible Chipotle transaction")
         row.tap()
 
         if includeGroceries {
-            let groceries = app.buttons.matching(
+            let groceries = app.descendants(matching: .any).matching(
                 NSPredicate(format: "identifier BEGINSWITH 'transactionRow.' AND label CONTAINS 'Whole Foods'")
             ).firstMatch
             // The register only materializes the rows it draws, and the
@@ -61,8 +63,23 @@ final class TransactionImpactCueUITests: XCTestCase {
     @MainActor
     func testTheSettingTurnsThePopupOff() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-resetStatusFilterState", "-transactionDisplayMode", "flat", "-showTransactionImpactCue", "NO"]
+        app.launchArguments = [
+            "-loadDemoData",
+            "-initialTab", "1",
+            "-resetStatusFilterState",
+            "-transactionDisplayMode", "flat",
+            "-showTransactionImpactCue", "YES",
+        ]
         app.launch()
+        app.tabBars.buttons["Budget"].tap()
+        app.buttons["Budget options"].tap()
+        app.buttons["Budget View"].tap()
+
+        let impactToggle = app.buttons["budgetOptions.showBalanceImpact"]
+        XCTAssertTrue(impactToggle.waitForExistence(timeout: 5))
+        XCTAssertTrue(impactToggle.isSelected)
+        impactToggle.tap()
+
         duplicateChipotle(app)
 
         let cue = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'transactionImpactCue.'")).firstMatch

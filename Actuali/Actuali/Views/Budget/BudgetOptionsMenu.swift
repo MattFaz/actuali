@@ -30,6 +30,7 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
 /// The ellipsis menu groups display preferences and budget actions.
 struct BudgetOptionsMenu: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @State private var showingCategoryStatusColors = false
 
     var onCopyPreviousMonthBudget: (() -> Void)?
     var onSetBudgetsToZero: (() -> Void)?
@@ -84,6 +85,43 @@ struct BudgetOptionsMenu: View {
                         Label("Hide Spent", systemImage: "line.3.horizontal.decrease")
                     }
                     .accessibilityLabel("Hide Spent Categories")
+                }
+
+                Section {
+                    Toggle(isOn: $budgetStore.showCategoryStatusDots) {
+                        Label("Category Status Dots", systemImage: "circle.fill")
+                    }
+                    .accessibilityIdentifier("budgetOptions.showCategoryStatusDots")
+                    Toggle(isOn: $budgetStore.showBudgetProgressBars) {
+                        Label("Budget Progress Bars", systemImage: "chart.bar.fill")
+                    }
+                    .accessibilityIdentifier("budgetOptions.showBudgetProgressBars")
+                    Toggle(isOn: $budgetStore.showInverseBudgetProgressBars) {
+                        Label("Inverse Progress Bars", systemImage: "arrow.left.arrow.right")
+                    }
+                    .accessibilityIdentifier("budgetOptions.showInverseBudgetProgressBars")
+                    .disabled(!budgetStore.showBudgetProgressBars)
+                    Toggle(isOn: $budgetStore.showOverspentBadge) {
+                        Label("Overspent Badge", systemImage: "exclamationmark.circle")
+                    }
+                    .accessibilityIdentifier("budgetOptions.showOverspentBadge")
+                    Toggle(isOn: $budgetStore.hideIncomeGroup) {
+                        Label("Hide Income Group", systemImage: "eye.slash")
+                    }
+                    .accessibilityIdentifier("budgetOptions.hideIncomeGroup")
+                }
+
+                Section {
+                    Toggle(isOn: $budgetStore.showTransactionImpactCue) {
+                        Label("Show Balance Impact", systemImage: "arrow.left.arrow.right")
+                    }
+                    .accessibilityIdentifier("budgetOptions.showBalanceImpact")
+                    Button {
+                        showingCategoryStatusColors = true
+                    } label: {
+                        Label("Color picker", systemImage: "paintpalette")
+                    }
+                    .accessibilityIdentifier("budgetOptions.colorPicker")
                 }
             }
 
@@ -142,6 +180,9 @@ struct BudgetOptionsMenu: View {
             }
         } label: {
             Image(systemName: "ellipsis.circle")
+        }
+        .sheet(isPresented: $showingCategoryStatusColors) {
+            CategoryStatusColorPickerSheet()
         }
         .accessibilityLabel("Budget options")
     }

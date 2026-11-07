@@ -25,6 +25,7 @@ enum DemoDataSeeder {
         tracking: Bool = false,
         seedUncategorized: Bool = false,
         seedUnsupportedBankSync: Bool = false,
+        goalTemplatesEnabled: Bool = false,
         now: Date = Date()
     ) throws {
         let fileManager = BudgetFileManager.shared
@@ -55,7 +56,13 @@ enum DemoDataSeeder {
 
         try dbQueue.write { db in
             try createSchema(db, tracking: tracking)
-            try insertSeedData(db, tracking: tracking, seedUncategorized: seedUncategorized, now: now)
+            try insertSeedData(
+                db,
+                tracking: tracking,
+                seedUncategorized: seedUncategorized,
+                goalTemplatesEnabled: goalTemplatesEnabled,
+                now: now
+            )
             if seedUnsupportedBankSync {
                 try db.execute(sql: """
                 UPDATE accounts SET account_id = 'demo-' || id,
@@ -345,6 +352,7 @@ enum DemoDataSeeder {
         _ db: Database,
         tracking: Bool,
         seedUncategorized: Bool,
+        goalTemplatesEnabled: Bool,
         now: Date
     ) throws {
         let cal = Calendar(identifier: .gregorian)
@@ -846,6 +854,11 @@ enum DemoDataSeeder {
         try db.execute(sql: """
         INSERT INTO preferences (id, value) VALUES ('defaultCurrencyCode', 'USD'), ('flags.currency', 'true')
         """)
+        if goalTemplatesEnabled {
+            try db.execute(sql: """
+            INSERT INTO preferences (id, value) VALUES ('flags.goalTemplatesEnabled', 'true')
+            """)
+        }
         // Mirror a real tracking file: budgetType drives which budget table is
         // live when both exist (harmless here where only one does).
         if tracking {

@@ -7,10 +7,12 @@ final class SettingsNavigationUITests: XCTestCase {
         switch destination {
         case "Connection & Data":
             content = app.textFields["Server URL"]
-        case "Budget View":
-            content = app.switches["Category Status Dots"]
         case "Transactions & Automation":
-            content = app.switches["Conventional Amount Entry"]
+            let conventionalAmountEntry = app.switches["Conventional Amount Entry"]
+            XCTAssertTrue(conventionalAmountEntry.waitForExistence(timeout: 5),
+                          "Conventional Amount Entry should remain in Transactions & Automation")
+            let toggles = experimentalToggles(in: app)
+            content = toggles.goalTemplates
         case "Display":
             content = app.buttons.matching(
                 NSPredicate(format: "label BEGINSWITH 'Currency'")
@@ -60,9 +62,11 @@ final class SettingsNavigationUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
 
+        XCTAssertFalse(app.buttons["Budget View"].exists,
+                       "Budget View settings should be removed from the More hub")
+
         for destination in [
             "Connection & Data",
-            "Budget View",
             "Transactions & Automation",
             "Display",
             "Privacy",
@@ -119,6 +123,59 @@ final class SettingsNavigationUITests: XCTestCase {
             swipes += 1
         }
         return button.exists ? button : link
+    }
+
+    /// The demo budget is offline, so seed the synced flag in its SQLite
+    /// preferences rather than tapping a switch that requires a SyncClient.
+    @MainActor
+    private func experimentalToggles(in app: XCUIApplication) -> (
+        goalTemplates: XCUIElement,
+        automationsEditor: XCUIElement
+    ) {
+        let goalTemplates = app.descendants(matching: .any)["transactionAutomation.goalTemplates"]
+        let automationsEditor = app.descendants(matching: .any)["transactionAutomation.automationsEditor"]
+        var swipes = 0
+        while (!goalTemplates.exists || !automationsEditor.exists) && swipes < 30 {
+            app.swipeUp(velocity: .slow)
+            swipes += 1
+        }
+        XCTAssertTrue(goalTemplates.waitForExistence(timeout: 5),
+                      "Budget Goal Templates should live in Transactions & Automation")
+        XCTAssertTrue(automationsEditor.waitForExistence(timeout: 5),
+                      "Automations Editor should live in Transactions & Automation")
+        return (goalTemplates, automationsEditor)
+    }
+
+    @MainActor
+    func testAutomationsEditorToggleDependencyInSettings() {
+        let disabledApp = XCUIApplication()
+        disabledApp.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        disabledApp.launch()
+
+        let disabledRow = rowOnHub("Transactions & Automation", in: disabledApp)
+        XCTAssertTrue(disabledRow.waitForExistence(timeout: 5))
+        disabledRow.tap()
+        let disabledToggles = experimentalToggles(in: disabledApp)
+        XCTAssertEqual(disabledToggles.goalTemplates.value as? String, "0",
+                       "Goal Templates should start disabled in the default demo budget")
+        XCTAssertFalse(disabledToggles.automationsEditor.isEnabled,
+                       "Automations Editor requires Goal Templates")
+        disabledApp.terminate()
+
+        let enabledApp = XCUIApplication()
+        enabledApp.launchArguments = [
+            "-loadDemoData", "-demoGoalTemplatesEnabled", "-initialTab", "4",
+        ]
+        enabledApp.launch()
+
+        let enabledRow = rowOnHub("Transactions & Automation", in: enabledApp)
+        XCTAssertTrue(enabledRow.waitForExistence(timeout: 5))
+        enabledRow.tap()
+        let enabledToggles = experimentalToggles(in: enabledApp)
+        XCTAssertEqual(enabledToggles.goalTemplates.value as? String, "1",
+                       "The fixture should load the synced Goal Templates preference")
+        XCTAssertTrue(enabledToggles.automationsEditor.isEnabled,
+                      "Automations Editor should be enabled when Goal Templates is enabled")
     }
 
     @MainActor

@@ -204,6 +204,31 @@ struct TransactionAutomationSettingsView: View {
                     Text(String(localized: "Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet."))
                 }
             }
+
+            // Mirrors the web's Settings → Experimental features toggle. These
+            // are synced preferences shared with the web app.
+            Section {
+                Toggle(String(localized: "Budget Goal Templates"), isOn: Binding(
+                    get: { budgetStore.goalTemplatesEnabled },
+                    set: { enabled in
+                        Task { await budgetStore.setGoalTemplatesEnabled(enabled) }
+                    }
+                ))
+                .accessibilityIdentifier("transactionAutomation.goalTemplates")
+                .disabled(budgetStore.currentBudgetId == nil)
+                Toggle(String(localized: "Automations Editor"), isOn: Binding(
+                    get: { budgetStore.goalTemplatesUIEnabled },
+                    set: { enabled in
+                        Task { await budgetStore.setGoalTemplatesUIEnabled(enabled) }
+                    }
+                ))
+                .accessibilityIdentifier("transactionAutomation.automationsEditor")
+                .disabled(budgetStore.currentBudgetId == nil || !budgetStore.goalTemplatesEnabled)
+            } header: {
+                Text(String(localized: "Experimental"))
+            } footer: {
+                Text(String(localized: "Set budgeting goals per category with #template and #goal lines in category notes, or with the visual automations editor, then apply them from the Budget tab's options menu. Synced with the web app's Goal Templates experimental features."))
+            }
         }
         .readableWidth()
         .navigationTitle(String(localized: "Transactions & Automation"))
