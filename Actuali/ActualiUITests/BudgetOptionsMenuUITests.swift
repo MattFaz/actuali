@@ -65,6 +65,13 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         (toggle.value as? String) == "1"
     }
 
+    @MainActor private func tapSwitch(_ toggle: XCUIElement) {
+        let previousValue = toggle.value as? String
+        tapControl(toggle) {
+            (toggle.value as? String) != previousValue
+        }
+    }
+
     @MainActor private func openStyleMenu(_ app: XCUIApplication) {
         app.buttons["Budget options"].tap()
         app.buttons["Style"].tap()
