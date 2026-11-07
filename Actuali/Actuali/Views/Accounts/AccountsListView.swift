@@ -1828,7 +1828,7 @@ private struct CloseAccountSheet: View {
                     Button(String(localized: "Cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "Close Account")) {
+                    Button(String(localized: "Close")) {
                         Task {
                             do {
                                 try await budgetStore.closeAccount(
