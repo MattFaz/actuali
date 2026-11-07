@@ -332,9 +332,11 @@ struct AccountsListView: View {
     private func accountCell(_ account: Account, linked: Bool) -> some View {
         if linked {
             NavigationLink(value: AccountsRoute.account(account)) { AccountRow(account: account) }
+                .accessibilityIdentifier("accountRow.\(account.id)")
         } else {
             AccountRow(account: account)
                 .tag(AccountSelection.account(account.id))
+                .accessibilityIdentifier("accountRow.\(account.id)")
         }
     }
 
@@ -1528,8 +1530,15 @@ struct AccountRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let account: Account
     @AppStorage("showAccountTypeIcons") private var showAccountTypeIcons = true
-    @State private var isCreatingGroup = false
+
+    private enum Prompt: Equatable {
+        case renameAccount
+        case createGroup
+    }
+
+    @State private var prompt: Prompt?
     @State private var newGroupName = ""
+    @State private var renameName = ""
 
     /// Share of payoff or term completed (0...1), or nil when the account has no tracking.
     /// Pure so tests can exercise all combinations of loan, deposit, and credit card configs.
@@ -1564,12 +1573,60 @@ struct AccountRow: View {
     }
 
     var body: some View {
-        // The group menu is the only context-menu item, so without it there
-        // is no menu at all rather than an empty one.
-        if budgetStore.accountGroupWritesEnabled {
-            row.contextMenu { groupMenu }
-        } else {
-            row
+        row
+            .contextMenu {
+                Button {
+                    renameName = account.name
+                    prompt = .renameAccount
+                } label: {
+                    Label(String(localized: "Rename Account"), systemImage: "pencil")
+                }
+                .accessibilityIdentifier("accountRename.action")
+
+                if budgetStore.accountGroupWritesEnabled {
+                    groupMenu
+                }
+            }
+            .alert(promptTitle, isPresented: Binding(
+                get: { prompt != nil },
+                set: { if !$0 { prompt = nil } }
+            )) {
+                if prompt == .renameAccount {
+                    TextField(String(localized: "Account Name"), text: $renameName)
+                    Button(String(localized: "Cancel"), role: .cancel) {}
+                    Button(String(localized: "Save")) {
+                        commitRename()
+                    }
+                    .disabled(trimmedRenameName.isEmpty)
+                } else {
+                    TextField(String(localized: "Group Name"), text: $newGroupName)
+                    Button(String(localized: "Add")) {
+                        let groupName = newGroupName
+                        Task { try? await budgetStore.createAccountGroup(name: groupName, assignTo: account) }
+                    }
+                    .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button(String(localized: "Cancel"), role: .cancel) {}
+                }
+            }
+    }
+
+    private var promptTitle: String {
+        prompt == .renameAccount ? String(localized: "Rename Account") : String(localized: "Create Group")
+    }
+
+    private var trimmedRenameName: String {
+        renameName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func commitRename() {
+        let name = trimmedRenameName
+        guard !name.isEmpty, name != account.name else { return }
+        Task {
+            do {
+                try await budgetStore.renameAccount(id: account.id, name: name)
+            } catch {
+                budgetStore.error = error.localizedDescription
+            }
         }
     }
 
@@ -1613,15 +1670,6 @@ struct AccountRow: View {
                 }
             }
         }
-        .alert(String(localized: "Create Group"), isPresented: $isCreatingGroup) {
-            TextField(String(localized: "Group Name"), text: $newGroupName)
-            Button(String(localized: "Add")) {
-                let groupName = newGroupName
-                Task { try? await budgetStore.createAccountGroup(name: groupName, assignTo: account) }
-            }
-            .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            Button(String(localized: "Cancel"), role: .cancel) {}
-        }
     }
 
     private var groupMenu: some View {
@@ -1633,7 +1681,7 @@ struct AccountRow: View {
             Divider()
             Button {
                 newGroupName = ""
-                isCreatingGroup = true
+                prompt = .createGroup
             } label: {
                 Label(String(localized: "Add New"), systemImage: "plus")
             }

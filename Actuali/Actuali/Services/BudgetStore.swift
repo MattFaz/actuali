@@ -3677,6 +3677,20 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
+    /// Rename an account by changing only its synced name field.
+    func renameAccount(id: String, name: String) async throws {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw BudgetStoreError.invalidAccountName
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        try await syncClient.renameAccount(id: id, name: trimmedName)
+        await refreshDataOnly()
+    }
+
     /// Create a new local (manually-added) account, matching the PWA's own
     /// "Create local account" flow (loot-core `createAccount`): an accounts
     /// row, the account's transfer payee (the empty-named payee carrying

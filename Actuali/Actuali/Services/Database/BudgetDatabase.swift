@@ -631,6 +631,17 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Accounts
 
+    /// Refuse to emit a CRDT update for an account that has been deleted locally.
+    func validateAccountRename(id: String) throws {
+        try dbQueue.read { db in
+            let exists = try Bool.fetchOne(db, sql: """
+            SELECT 1 FROM accounts
+            WHERE id = ? AND tombstone IS NOT 1
+            """, arguments: [id]) ?? false
+            guard exists else { throw AccountWriteError.accountNotFound }
+        }
+    }
+
     func fetchAccounts() async throws -> [Account] {
         try await dbQueue.read { db in
             let records = try AccountRecord
@@ -1728,6 +1739,14 @@ final class BudgetDatabase: Sendable {
     struct CategoryInsertion: Equatable {
         let category: Category
         let movedSiblings: [SortOrder.Position]
+    }
+
+    enum AccountWriteError: LocalizedError, Equatable {
+        case accountNotFound
+
+        var errorDescription: String? {
+            String(localized: "That account no longer exists")
+        }
     }
 
     /// Refusals that come from the budget's own contents rather than SQLite,
