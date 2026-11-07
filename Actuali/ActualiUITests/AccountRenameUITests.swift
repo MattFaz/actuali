@@ -18,49 +18,16 @@ final class AccountRenameUITests: XCTestCase {
 
     @MainActor
     private func promptTextField(in app: XCUIApplication) -> XCUIElement {
-        // SwiftUI text fields inside native alerts aren't consistently
-        // discoverable through app.alerts.textFields across iOS runtimes.
-        let field = app.textFields.firstMatch
+        let field = app.alerts.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5), "Prompt text field not found")
         return field
     }
 
     @MainActor
     private func longPressAccount(named name: String, in app: XCUIApplication) {
-        let matches = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", name)
-        )
-        XCTAssertTrue(
-            matches.firstMatch.waitForExistence(timeout: 10),
-            "\(name) account not found in the accessibility hierarchy"
-        )
-
-        // Prefer the visible name label when SwiftUI exposes it separately.
-        // Otherwise use the one combined row element. This handles both a
-        // NavigationLink with a merged label and a row with exposed children.
-        let hittableMatches = (0..<matches.count)
-            .map { matches.element(boundBy: $0) }
-            .filter { $0.isHittable }
-        let exactTextMatches = hittableMatches.filter {
-            $0.elementType == .staticText && $0.label == name
-        }
-        let exactLabelMatches = hittableMatches.filter { $0.label == name }
-
-        let account: XCUIElement
-        if exactTextMatches.count == 1 {
-            account = exactTextMatches[0]
-        } else if exactLabelMatches.count == 1 {
-            account = exactLabelMatches[0]
-        } else if hittableMatches.count == 1 {
-            account = hittableMatches[0]
-        } else {
-            XCTFail(
-                "Expected one hittable accessibility element for \(name), found \(hittableMatches.count)"
-            )
-            return
-        }
-
-        account.press(forDuration: 1.2)
+        let row = app.staticTexts[name].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "\(name) account row not found")
+        row.press(forDuration: 1.2)
     }
 
     @MainActor

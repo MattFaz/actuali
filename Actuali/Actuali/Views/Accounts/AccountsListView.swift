@@ -332,11 +332,9 @@ struct AccountsListView: View {
     private func accountCell(_ account: Account, linked: Bool) -> some View {
         if linked {
             NavigationLink(value: AccountsRoute.account(account)) { AccountRow(account: account) }
-                .accessibilityIdentifier("accountRow.\(account.id)")
         } else {
             AccountRow(account: account)
                 .tag(AccountSelection.account(account.id))
-                .accessibilityIdentifier("accountRow.\(account.id)")
         }
     }
 
@@ -1531,12 +1529,8 @@ struct AccountRow: View {
     let account: Account
     @AppStorage("showAccountTypeIcons") private var showAccountTypeIcons = true
 
-    private enum Prompt: Equatable {
-        case renameAccount
-        case createGroup
-    }
-
-    @State private var prompt: Prompt?
+    @State private var isCreatingGroup = false
+    @State private var isRenamingAccount = false
     @State private var newGroupName = ""
     @State private var renameName = ""
 
@@ -1573,53 +1567,23 @@ struct AccountRow: View {
     }
 
     var body: some View {
-        row
-            .contextMenu {
-                Button {
-                    renameName = account.name
-                    prompt = .renameAccount
-                } label: {
-                    Label(String(localized: "Rename Account"), systemImage: "pencil")
-                }
-                .accessibilityIdentifier("accountRename.action")
-
-                if budgetStore.accountGroupWritesEnabled {
-                    groupMenu
-                }
+        row.contextMenu {
+            Button {
+                renameName = account.name
+                isRenamingAccount = true
+            } label: {
+                Label(String(localized: "Rename Account"), systemImage: "pencil")
             }
-            .alert(promptTitle, isPresented: Binding(
-                get: { prompt != nil },
-                set: { if !$0 { prompt = nil } }
-            )) {
-                if prompt == .renameAccount {
-                    TextField(String(localized: "Account Name"), text: $renameName)
-                    Button(String(localized: "Cancel"), role: .cancel) {}
-                    Button(String(localized: "Save")) {
-                        commitRename()
-                    }
-                    .disabled(trimmedRenameName.isEmpty)
-                } else {
-                    TextField(String(localized: "Group Name"), text: $newGroupName)
-                    Button(String(localized: "Add")) {
-                        let groupName = newGroupName
-                        Task { try? await budgetStore.createAccountGroup(name: groupName, assignTo: account) }
-                    }
-                    .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Button(String(localized: "Cancel"), role: .cancel) {}
-                }
+            .accessibilityIdentifier("accountRename.action")
+
+            if budgetStore.accountGroupWritesEnabled {
+                groupMenu
             }
-    }
-
-    private var promptTitle: String {
-        prompt == .renameAccount ? String(localized: "Rename Account") : String(localized: "Create Group")
-    }
-
-    private var trimmedRenameName: String {
-        renameName.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
     }
 
     private func commitRename() {
-        let name = trimmedRenameName
+        let name = renameName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != account.name else { return }
         Task {
             do {
@@ -1670,6 +1634,23 @@ struct AccountRow: View {
                 }
             }
         }
+        .alert(String(localized: "Create Group"), isPresented: $isCreatingGroup) {
+            TextField(String(localized: "Group Name"), text: $newGroupName)
+            Button(String(localized: "Add")) {
+                let groupName = newGroupName
+                Task { try? await budgetStore.createAccountGroup(name: groupName, assignTo: account) }
+            }
+            .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        }
+        .alert(String(localized: "Rename Account"), isPresented: $isRenamingAccount) {
+            TextField(String(localized: "Account Name"), text: $renameName)
+            Button(String(localized: "Cancel"), role: .cancel) {}
+            Button(String(localized: "Save")) {
+                commitRename()
+            }
+            .disabled(renameName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
     }
 
     private var groupMenu: some View {
@@ -1681,7 +1662,7 @@ struct AccountRow: View {
             Divider()
             Button {
                 newGroupName = ""
-                prompt = .createGroup
+                isCreatingGroup = true
             } label: {
                 Label(String(localized: "Add New"), systemImage: "plus")
             }
