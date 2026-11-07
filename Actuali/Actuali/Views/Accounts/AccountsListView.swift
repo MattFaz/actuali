@@ -1767,6 +1767,7 @@ private struct CloseAccountSheet: View {
     @State private var transferAccountId: String?
     @State private var categoryId: String?
     @State private var errorMessage: String?
+    @State private var isConfirmingForceClose = false
 
     private var destinations: [Account] {
         budgetStore.accounts.filter { !$0.closed && $0.id != account.id }
@@ -1817,8 +1818,32 @@ private struct CloseAccountSheet: View {
                         Text(String(localized: "Closed accounts stay in your history but no longer accept new transactions."))
                     }
                 }
+                Section {
+                    Button(String(localized: "Delete Account and Transactions"), role: .destructive) {
+                        isConfirmingForceClose = true
+                    }
+                    .accessibilityIdentifier("closeAccount.forceClose")
+                } footer: {
+                    Text(String(localized: "Removes the account and every transaction in it. Transfers in other accounts stay but lose their link. This can't be undone."))
+                }
                 if let errorMessage {
                     Section { Text(errorMessage).foregroundStyle(.red) }
+                }
+            }
+            .confirmationDialog(
+                String(localized: "Delete this account and all its transactions?"),
+                isPresented: $isConfirmingForceClose,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "Delete Account and Transactions"), role: .destructive) {
+                    Task {
+                        do {
+                            try await budgetStore.forceCloseAccount(account)
+                            dismiss()
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
+                    }
                 }
             }
             .navigationTitle(String(localized: "Close Account"))
