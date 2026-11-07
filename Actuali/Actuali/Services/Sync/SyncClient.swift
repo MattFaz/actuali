@@ -1305,6 +1305,14 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    /// Matches upstream's `api/account-update` / `db.updateAccount`: only the
+    /// account's `name` field is sent through Actual's CRDT mutation path.
+    func renameAccount(id: String, name: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        try database.validateAccountRename(id: id)
+        try await rename(database: database, dataset: Account.datasetName, id: id, name: name)
+    }
+
     /// Rename a category through the normal CRDT path so the local optimistic
     /// edit and every synced client converge on the same name.
     func renameCategory(id: String, name: String) async throws {
