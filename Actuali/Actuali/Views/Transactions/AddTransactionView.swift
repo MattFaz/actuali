@@ -819,7 +819,8 @@ struct AddTransactionView: View {
             .navigationDestination(isPresented: $showCategoryPicker) {
                 CategoryPickerView(
                     selectedCategoryId: $selectedCategoryId,
-                    autofocusSearch: true
+                    autofocusSearch: true,
+                    showsBalances: true
                 ) {
                     userPickedCategory = true
                 }
@@ -1423,7 +1424,8 @@ private struct SplitLineRow: View {
             NavigationStack {
                 CategoryPickerView(
                     selectedCategoryId: $line.categoryId,
-                    autofocusSearch: true
+                    autofocusSearch: true,
+                    showsBalances: true
                 )
             }
         }
@@ -2086,9 +2088,26 @@ struct CategoryPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedCategoryId: String?
     var autofocusSearch = false
+    /// Shows each category's available balance beside its name, as Actua's
+    /// picker does. Off by default: the quick-categorize flows share this view.
+    var showsBalances = false
     var onPick: (() -> Void)?
     @State private var searchText = ""
     @State private var searchFocused = false
+
+    /// Available balance per category for the budget month already loaded
+    /// (the one the Budget tab shows). Income categories have no envelope
+    /// balance, so they get none.
+    nonisolated static func availableBalances(in budget: BudgetMonth?) -> [String: Int] {
+        Dictionary(
+            (budget?.categoryBudgets ?? []).map { ($0.categoryId, $0.available) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    private var balances: [String: Int] {
+        showsBalances ? Self.availableBalances(in: budgetStore.currentBudgetMonth) : [:]
+    }
 
     var body: some View {
         List {
@@ -2122,6 +2141,12 @@ struct CategoryPickerView: View {
                                 Text(category.name)
                                     .foregroundStyle(.primary)
                                 Spacer()
+                                if let balance = balances[category.id] {
+                                    Text(budgetStore.displayBalance(balance))
+                                        .font(.subheadline)
+                                        .foregroundStyle(balanceColor(for: balance))
+                                        .accessibilityIdentifier("categoryPicker.balance.\(category.id)")
+                                }
                                 if selectedCategoryId == category.id {
                                     Image(systemName: "checkmark")
                                         .foregroundStyle(.tint)
