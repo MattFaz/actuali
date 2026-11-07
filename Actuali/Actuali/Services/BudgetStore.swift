@@ -3640,6 +3640,72 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
+    /// Close an account the way upstream `closeAccount` does (loot-core
+    /// `server/accounts/app.ts`): unlink bank sync first, delete the account
+    /// outright when it has no transactions, otherwise mark it closed and, for
+    /// a non-zero balance, move that balance to `transferAccountId` with a
+    /// "Closing account" transfer dated today. Force-closing an account that
+    /// still has transactions is not supported.
+    func closeAccount(_ account: Account, transferAccountId: String?, categoryId: String? = nil) async throws {
+        guard let syncClient, let database else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard !account.closed else { return }
+        let balance = account.balance
+        if balance != 0 {
+            guard let transferAccountId else { throw BudgetStoreError.missingTransferDestination }
+            guard transferAccountId != account.id else { throw BudgetStoreError.transferAccountsMatch }
+        }
+
+        try await unlinkBankAccount(accountId: account.id)
+
+        guard try await database.hasLiveTransactions(accountId: account.id) else {
+            try await syncClient.deleteAccount(id: account.id)
+            await refreshDataOnly()
+            return
+        }
+
+        try await syncClient.setAccountClosed(accountId: account.id, closed: true)
+        if balance != 0, let transferAccountId {
+            // A negative balance (credit card, loan) is cleared by money
+            // arriving, so the transfer runs the other way.
+            try await createTransfer(
+                fromAccountId: balance > 0 ? account.id : transferAccountId,
+                toAccountId: balance > 0 ? transferAccountId : account.id,
+                amountCents: abs(balance),
+                date: Transaction.yyyymmdd(from: Date()),
+                notes: String(localized: "Closing account"),
+                cleared: false,
+                categoryId: categoryId
+            )
+        }
+        await refreshDataOnly()
+    }
+
+    /// Delete an account together with all its transactions (upstream
+    /// `closeAccount(forced: true)`). Transfer partners in other accounts
+    /// stay, minus their payee and link. Not undoable.
+    func forceCloseAccount(_ account: Account) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        guard !account.closed else { return }
+        try await unlinkBankAccount(accountId: account.id)
+        try await syncClient.forceCloseAccount(id: account.id)
+        await refreshDataOnly()
+    }
+
+    func setAccountType(_ account: Account, type: AccountType) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        guard account.type != type else { return }
+        try await syncClient.setAccountType(accountId: account.id, type: type)
+        await refreshDataOnly()
+    }
+
+    func reopenAccount(_ account: Account) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setAccountClosed(accountId: account.id, closed: false)
+        await refreshDataOnly()
+    }
+
     func moveAccountGroup(id: String, before targetId: String?) async throws {
         guard canReorderAccountGroups else { return }
         if currentBudgetId == DemoDataSeeder.budgetId {
@@ -3687,7 +3753,12 @@ final class BudgetStore: ObservableObject {
     /// is always the sum of its transactions, so this transaction IS the
     /// starting balance, not a display shortcut).
     @discardableResult
-    func createAccount(name: String, offBudget: Bool, startingBalanceCents: Int) async throws -> Account {
+    func createAccount(
+        name: String,
+        offBudget: Bool,
+        startingBalanceCents: Int,
+        type: AccountType = .checking
+    ) async throws -> Account {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
             throw BudgetStoreError.invalidAccountName
@@ -3704,7 +3775,7 @@ final class BudgetStore: ObservableObject {
         let account = Account(
             id: UUID().uuidString,
             name: trimmedName,
-            type: .checking,
+            type: type,
             offBudget: offBudget,
             closed: false,
             sortOrder: sortOrder,

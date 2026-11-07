@@ -34,7 +34,7 @@ struct AddAccountView: View {
     }
 }
 
-/// The account creation form: name, on/off-budget, and starting balance.
+/// The account creation form: name, type, on/off-budget, and starting balance.
 /// Submitting creates a real Actual account (synced via the normal CRDT
 /// path, same as every other write in the app) plus, for a nonzero amount,
 /// a "Starting Balance" transaction — Actual has no separate stored
@@ -48,6 +48,7 @@ struct CreateLocalAccountView: View {
 
     @State private var name = ""
     @State private var onBudget = true
+    @State private var type = AccountType.checking
     @State private var balanceText = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -70,6 +71,10 @@ struct CreateLocalAccountView: View {
             }
 
             Section {
+                Picker(String(localized: "accounts.type.title"), selection: $type) {
+                    ForEach(AccountType.allCases, id: \.self) { Text($0.title) }
+                }
+                .accessibilityIdentifier("createAccount.type")
                 Toggle(String(localized: "accounts.create.onBudget"), isOn: $onBudget)
             } footer: {
                 Text(String(localized: "accounts.create.offBudgetHelp"))
@@ -132,7 +137,8 @@ struct CreateLocalAccountView: View {
             try await budgetStore.createAccount(
                 name: trimmedName,
                 offBudget: !onBudget,
-                startingBalanceCents: cents
+                startingBalanceCents: cents,
+                type: type
             )
             onCreated()
         } catch {
