@@ -175,28 +175,11 @@ final class BudgetActionsMenuUITests: XCTestCase {
 
     @MainActor private func assertTemplateActions(tracking: Bool) {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        app.launchArguments = ["-loadDemoData", "-demoGoalTemplatesEnabled", "-initialTab", "4"]
         if tracking {
             app.launchArguments.append("-loadTrackingDemoData")
         }
         app.launch()
-
-        let budgetSettings = app.buttons["Budget View"]
-        XCTAssertTrue(budgetSettings.waitForExistence(timeout: 10))
-        budgetSettings.tap()
-        XCTAssertTrue(app.navigationBars["Budget View"].waitForExistence(timeout: 5))
-        let templates = app.descendants(matching: .any)["budgetViewSettings.goalTemplates"]
-        for _ in 0..<5 where !templates.isHittable {
-            app.swipeUp()
-        }
-        XCTAssertTrue(templates.isHittable)
-        let toggle = templates.switches.firstMatch
-        let control = toggle.exists ? toggle : templates
-        control.tap()
-        let enabled = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value == %@", "1"), object: control
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed)
 
         app.tabBars.buttons["Budget"].tap()
         let optionsMenu = app.buttons["Budget options"]

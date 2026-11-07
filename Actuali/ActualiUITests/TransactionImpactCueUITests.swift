@@ -17,9 +17,10 @@ final class TransactionImpactCueUITests: XCTestCase {
         let row = app.descendants(matching: .any).matching(
             NSPredicate(format: "identifier BEGINSWITH 'transactionRow.' AND label CONTAINS 'Chipotle'")
         ).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10),
+                      "the demo budget has a Chipotle transaction")
         scrollUntilHittable(row, in: app, maxSwipes: 30, velocity: .slow)
-        XCTAssertTrue(row.exists && row.isHittable,
-                      "the demo budget has a visible Chipotle transaction")
+        XCTAssertTrue(row.isHittable, "the Chipotle transaction should be in reach")
         row.tap()
 
         if includeGroceries {
@@ -28,11 +29,12 @@ final class TransactionImpactCueUITests: XCTestCase {
             ).firstMatch
             // The register only materializes the rows it draws, and the
             // expanded Upcoming Scheduled Transactions section (non-empty
-            // around month end) pushes Whole Foods below the fold. Swipe
-            // slowly so the long register can't glide the row past unseen —
-            // a slow swipe covers less ground, so allow more of them.
+            // around month end) pushes Whole Foods below the fold. Wait for
+            // the row to materialize before scrolling it into reach.
+            XCTAssertTrue(groceries.waitForExistence(timeout: 10),
+                          "the demo budget has a Whole Foods transaction")
             scrollUntilHittable(groceries, in: app, maxSwipes: 30, velocity: .slow)
-            XCTAssertTrue(groceries.isHittable, "the demo budget has a Whole Foods row in reach")
+            XCTAssertTrue(groceries.isHittable, "the Whole Foods transaction should be in reach")
             groceries.tap()
         }
         // Duplicate lives in the bulk bar's More menu (#648).

@@ -17,19 +17,20 @@ extension XCTestCase {
         XCTFail("Control did not update after tapping \(control.label)")
     }
 
-    /// Open Settings > Budget View whether Settings last showed its hub or
-    /// retained the destination from an earlier tab visit.
+    /// Open the Budget View submenu from the Budget tab's ellipsis menu.
     @MainActor
-    func openBudgetViewSettings(in app: XCUIApplication) {
-        app.tabBars.buttons["More"].tap()
-        if app.navigationBars["Budget View"].waitForExistence(timeout: 2) {
-            return
-        }
+    func openBudgetViewMenu(in app: XCUIApplication) {
+        app.tabBars.buttons["Budget"].tap()
 
-        let row = app.buttons["Budget View"]
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "Budget View settings row not found")
-        row.tap()
-        XCTAssertTrue(app.navigationBars["Budget View"].waitForExistence(timeout: 5))
+        let optionsMenu = app.buttons["Budget options"]
+        XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10),
+                      "the Budget tab should show its options menu")
+        optionsMenu.tap()
+
+        let budgetViewMenu = app.buttons["Budget View"]
+        XCTAssertTrue(budgetViewMenu.waitForExistence(timeout: 5),
+                      "the Budget View submenu should be available")
+        budgetViewMenu.tap()
     }
 
     /// Tap a status chip in the Budget tab's check-in strip.

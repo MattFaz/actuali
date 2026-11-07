@@ -30,14 +30,13 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
 /// The ellipsis menu groups display preferences and budget actions.
 struct BudgetOptionsMenu: View {
     @EnvironmentObject private var budgetStore: BudgetStore
-    @State private var showingCategoryStatusColors = false
-
     var onCopyPreviousMonthBudget: (() -> Void)?
     var onSetBudgetsToZero: (() -> Void)?
     var onTemplateAction: ((BudgetStore.GoalTemplateAction) -> Void)?
     var onCleanup: (() -> Void)?
     var monthNote: EntityNote = .unsupported
     var onEditMonthNote: (() -> Void)?
+    var onEditCategoryStatusColors: (() -> Void)?
 
     private var hasAnyActions: Bool {
         let hasBudgetActions = onCopyPreviousMonthBudget != nil && onSetBudgetsToZero != nil
@@ -116,12 +115,12 @@ struct BudgetOptionsMenu: View {
                         Label("Show Balance Impact", systemImage: "arrow.left.arrow.right")
                     }
                     .accessibilityIdentifier("budgetOptions.showBalanceImpact")
-                    Button {
-                        showingCategoryStatusColors = true
-                    } label: {
-                        Label("Color picker", systemImage: "paintpalette")
+                    if let onEditCategoryStatusColors {
+                        Button(action: onEditCategoryStatusColors) {
+                            Label("Color picker", systemImage: "paintpalette")
+                        }
+                        .accessibilityIdentifier("budgetOptions.colorPicker")
                     }
-                    .accessibilityIdentifier("budgetOptions.colorPicker")
                 }
             }
 
@@ -181,9 +180,6 @@ struct BudgetOptionsMenu: View {
         } label: {
             Image(systemName: "ellipsis.circle")
         }
-        .sheet(isPresented: $showingCategoryStatusColors) {
-            CategoryStatusColorPickerSheet()
-        }
         .accessibilityLabel("Budget options")
     }
 }
@@ -197,7 +193,8 @@ struct BudgetOptionsMenu: View {
                         onCopyPreviousMonthBudget: {},
                         onSetBudgetsToZero: {},
                         onTemplateAction: { _ in },
-                        onCleanup: {}
+                        onCleanup: {},
+                        onEditCategoryStatusColors: {}
                     )
                 }
             }

@@ -15,15 +15,6 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    private func scrollToSettingsControl(_ control: XCUIElement, in app: XCUIApplication) {
-        var swipesLeft = 8
-        while !control.exists, swipesLeft > 0 {
-            app.swipeUp()
-            swipesLeft -= 1
-        }
-    }
-
-    @MainActor
     func testCleanStyleShowsCaptions() {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -298,9 +289,8 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertFalse(progressBar.exists,
                        "disabled progress mode displays no progress bar")
 
-        openBudgetViewSettings(in: app)
-        let sharedProgressBars = app.switches["Budget Progress Bars"]
-        scrollToSettingsControl(sharedProgressBars, in: app)
+        openBudgetViewMenu(in: app)
+        let sharedProgressBars = app.buttons["budgetOptions.showBudgetProgressBars"]
         XCTAssertTrue(sharedProgressBars.waitForExistence(timeout: 5))
         tapSwitch(sharedProgressBars)
         app.tabBars.buttons["Budget"].tap()
@@ -311,7 +301,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             "progress mode adds a bar for an active category"
         )
 
-        openBudgetViewSettings(in: app)
+        openBudgetViewMenu(in: app)
         tapSwitch(sharedProgressBars)
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(progressBar.waitForNonExistence(timeout: 5))

@@ -165,9 +165,8 @@ final class CompactBudgetParityUITests: XCTestCase {
         XCTAssertFalse(emptyBar.exists,
                        "a category with no budget or activity has no progress to visualize")
 
-        openBudgetViewSettings(in: app)
-        let sharedProgressBars = app.switches["Budget Progress Bars"]
-        scrollUntilHittable(sharedProgressBars, in: app)
+        openBudgetViewMenu(in: app)
+        let sharedProgressBars = app.buttons["budgetOptions.showBudgetProgressBars"]
         XCTAssertTrue(sharedProgressBars.waitForExistence(timeout: 5))
         tapSwitch(sharedProgressBars)
         app.tabBars.buttons["Budget"].tap()
@@ -175,10 +174,9 @@ final class CompactBudgetParityUITests: XCTestCase {
                       "turning off progress bars leaves status dots alone")
         XCTAssertFalse(emptyBar.exists)
 
-        openBudgetViewSettings(in: app)
+        openBudgetViewMenu(in: app)
         tapSwitch(sharedProgressBars)
-        let statusDots = app.switches["Category Status Dots"]
-        scrollUntilHittable(statusDots, in: app)
+        let statusDots = app.buttons["budgetOptions.showCategoryStatusDots"]
         XCTAssertTrue(statusDots.waitForExistence(timeout: 5))
         tapSwitch(statusDots)
         app.tabBars.buttons["Budget"].tap()
@@ -186,7 +184,7 @@ final class CompactBudgetParityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Details for Parking"].exists)
         XCTAssertFalse(emptyBar.exists)
 
-        openBudgetViewSettings(in: app)
+        openBudgetViewMenu(in: app)
         tapSwitch(statusDots)
     }
 
