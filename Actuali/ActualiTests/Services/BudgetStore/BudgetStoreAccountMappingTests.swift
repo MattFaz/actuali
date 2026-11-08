@@ -339,4 +339,25 @@ struct BudgetStoreAccountMappingTests {
         )
         #expect(resolved == nil)
     }
+
+    @Test func isCreditCardDetectsCardsFromTypeConfigMappingOrGroup() async {
+        await withMappingStore { store in
+            let cardAcct = Account(id: "c1", name: "Card Type", type: .credit, offBudget: false, closed: false, sortOrder: 0, balance: 0)
+            let checkingAcct = Account(id: "chk", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0)
+            let cycleAcct = Account(id: "cyc", name: "Cycle Tracked", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0)
+            let mappedAcct = Account(id: "map", name: "Mapped Card", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0)
+            let groupAcct = Account(id: "grp", name: "In CC Group", type: .checking, offBudget: false, closed: false, sortOrder: 0, groupId: "cc_group", balance: 0)
+
+            store.accounts = [cardAcct, checkingAcct, cycleAcct, mappedAcct, groupAcct]
+            store.creditCardConfigs = ["cyc": CreditCardConfig(statementDay: 15, dueOffsetDays: 25, dueDay: nil, limit: nil)]
+            store.cardAccountMappings = ["1234": "map"]
+            store.accountGroups = [AccountGroup(id: "cc_group", name: "Vaibhav CC", sortOrder: 0)]
+
+            #expect(store.isCreditCard(account: cardAcct) == true)
+            #expect(store.isCreditCard(account: cycleAcct) == true)
+            #expect(store.isCreditCard(account: mappedAcct) == true)
+            #expect(store.isCreditCard(account: groupAcct) == true)
+            #expect(store.isCreditCard(account: checkingAcct) == false)
+        }
+    }
 }

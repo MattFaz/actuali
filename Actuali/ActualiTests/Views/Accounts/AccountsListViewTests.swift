@@ -389,6 +389,9 @@ struct AccountsListViewTests {
 
         // Loan config overrides type to house.fill
         #expect(AccountTypeAvatar.icon(for: .other, hasLoan: true) == "house.fill")
+
+        // Credit card config overrides type to creditcard.fill
+        #expect(AccountTypeAvatar.icon(for: .checking, hasCreditCard: true) == "creditcard.fill")
     }
 
     @Test func avatarColorsMatchAccountTypeAndClosedStatus() {
@@ -400,6 +403,7 @@ struct AccountsListViewTests {
 
         // Credit uses orange (adaptive in light/dark mode)
         #expect(AccountTypeAvatar.iconColor(for: .credit) == .orange)
+        #expect(AccountTypeAvatar.iconColor(for: .checking, hasCreditCard: true) == .orange)
 
         // Deposits and investments use green
         #expect(AccountTypeAvatar.iconColor(for: .investment) == .green)
@@ -411,6 +415,7 @@ struct AccountsListViewTests {
         // Closed accounts use secondary
         #expect(AccountTypeAvatar.iconColor(for: .checking, closed: true) == .secondary)
         #expect(AccountTypeAvatar.iconColor(for: .credit, closed: true) == .secondary)
+        #expect(AccountTypeAvatar.iconColor(for: .checking, hasCreditCard: true, closed: true) == .secondary)
     }
 
     @Test func progressBarColorFollowsInstrumentNotAccountType() {
