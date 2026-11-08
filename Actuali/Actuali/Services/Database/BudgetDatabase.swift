@@ -631,14 +631,25 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Accounts
 
-    /// Refuse to emit a CRDT update for an account that has been deleted locally.
-    func validateAccountRename(id: String) throws {
+    /// Refuse to emit a CRDT update for an account that has been deleted
+    /// locally, or whose new name another account already uses. The name check
+    /// mirrors the web app's `validateAccountName` (exact match, closed
+    /// accounts included).
+    func validateAccountRename(id: String, name: String) throws {
         try dbQueue.read { db in
             let exists = try Bool.fetchOne(db, sql: """
             SELECT 1 FROM accounts
             WHERE id = ? AND tombstone IS NOT 1
             """, arguments: [id]) ?? false
             guard exists else { throw AccountWriteError.accountNotFound }
+
+            let taken = try Bool.fetchOne(db, sql: """
+            SELECT 1 FROM accounts
+            WHERE name = ? AND id != ? AND tombstone IS NOT 1
+            """, arguments: [name, id]) ?? false
+            if taken {
+                throw AccountWriteError.duplicateAccountName(name)
+            }
         }
     }
 
@@ -1743,9 +1754,15 @@ final class BudgetDatabase: Sendable {
 
     enum AccountWriteError: LocalizedError, Equatable {
         case accountNotFound
+        case duplicateAccountName(String)
 
         var errorDescription: String? {
-            String(localized: "That account no longer exists")
+            switch self {
+            case .accountNotFound:
+                String(localized: "That account no longer exists")
+            case .duplicateAccountName(let name):
+                String(localized: "An account named \"\(name)\" already exists")
+            }
         }
     }
 

@@ -366,4 +366,28 @@ struct BudgetStoreCreateAccountTests {
         ) == 0)
         #expect(try count(path: url, sql: "SELECT COUNT(*) FROM accounts") == 0)
     }
+
+    @Test func renameRejectsANameAnotherAccountUses() async throws {
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        _ = try await store.createAccount(name: "Savings", offBudget: false, startingBalanceCents: 0)
+        let account = try await store.createAccount(
+            name: "Checking", offBudget: false, startingBalanceCents: 0
+        )
+        let messagesBefore = try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt")
+
+        await #expect(throws: BudgetDatabase.AccountWriteError.duplicateAccountName("Savings")) {
+            try await store.renameAccount(id: account.id, name: " Savings ")
+        }
+
+        #expect(try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt") == messagesBefore)
+        #expect(try rows(
+            path: url, sql: "SELECT name FROM accounts WHERE id = '\(account.id)'"
+        ).first?["name"] == "Checking")
+
+        // Upstream's check is case-sensitive, so a case-only change still saves.
+        try await store.renameAccount(id: account.id, name: "savings")
+        #expect(store.accounts.first(where: { $0.id == account.id })?.name == "savings")
+    }
 }

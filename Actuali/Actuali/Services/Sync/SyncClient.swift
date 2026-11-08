@@ -1309,7 +1309,7 @@ actor SyncClient {
     /// account's `name` field is sent through Actual's CRDT mutation path.
     func renameAccount(id: String, name: String) async throws {
         guard let database else { throw SyncError.notConfigured }
-        try database.validateAccountRename(id: id)
+        try database.validateAccountRename(id: id, name: name)
         try await rename(database: database, dataset: Account.datasetName, id: id, name: name)
     }
 
