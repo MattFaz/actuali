@@ -764,10 +764,14 @@ final class BudgetDatabase: Sendable {
     /// Whether the account has any non-deleted transaction. Unlike
     /// `hasAnyTransactionRow`, deleted rows don't count: upstream's close
     /// only deletes an account outright when `v_transactions` is empty for it.
+    /// A NULL tombstone counts as alive, as in every other query here.
     func hasLiveTransactions(accountId: String) async throws -> Bool {
         try await dbQueue.read { db in
             try Bool.fetchOne(db, sql: """
-            SELECT EXISTS (SELECT 1 FROM transactions WHERE acct = ? AND tombstone = 0)
+            SELECT EXISTS (
+                SELECT 1 FROM transactions
+                WHERE acct = ? AND (tombstone = 0 OR tombstone IS NULL)
+            )
             """, arguments: [accountId]) ?? false
         }
     }

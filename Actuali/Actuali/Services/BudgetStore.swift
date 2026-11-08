@@ -3665,20 +3665,24 @@ final class BudgetStore: ObservableObject {
             return
         }
 
-        try await syncClient.setAccountClosed(accountId: account.id, closed: true)
         if balance != 0, let transferAccountId {
             // A negative balance (credit card, loan) is cleared by money
-            // arriving, so the transfer runs the other way.
+            // arriving, so the transfer runs the other way. The transfer goes
+            // first: if it throws (e.g. a missing transfer payee) the account
+            // stays open, and if the close then fails, a retry sees balance 0.
             try await createTransfer(
                 fromAccountId: balance > 0 ? account.id : transferAccountId,
                 toAccountId: balance > 0 ? transferAccountId : account.id,
                 amountCents: abs(balance),
                 date: Transaction.yyyymmdd(from: Date()),
-                notes: String(localized: "Closing account"),
+                // Upstream's literal: notes are synced data, so a translated
+                // value would fork per device language.
+                notes: "Closing account",
                 cleared: false,
                 categoryId: categoryId
             )
         }
+        try await syncClient.setAccountClosed(accountId: account.id, closed: true)
         await refreshDataOnly()
     }
 

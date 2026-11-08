@@ -1806,20 +1806,18 @@ private struct CloseAccountSheet: View {
         budgetStore.accounts.filter { !$0.closed && $0.id != account.id }
     }
 
+    /// Upstream asks only when an on-budget account empties into an
+    /// off-budget one, and won't close until a category is picked.
     private var needsCategory: Bool {
         BudgetStore.transferLegTakesCategory(
             leg: account.id,
             partner: transferAccountId,
             offBudgetAccountIds: budgetStore.offBudgetAccountIds
-        ) || BudgetStore.transferLegTakesCategory(
-            leg: transferAccountId,
-            partner: account.id,
-            offBudgetAccountIds: budgetStore.offBudgetAccountIds
         )
     }
 
     private var canClose: Bool {
-        account.balance == 0 || transferAccountId != nil
+        account.balance == 0 || (transferAccountId != nil && (!needsCategory || categoryId != nil))
     }
 
     var body: some View {
@@ -1834,7 +1832,7 @@ private struct CloseAccountSheet: View {
                         .accessibilityIdentifier("closeAccount.destination")
                         if needsCategory {
                             Picker(String(localized: "Category"), selection: $categoryId) {
-                                Text(String(localized: "None")).tag(String?.none)
+                                Text(String(localized: "Select a category")).tag(String?.none)
                                 ForEach(budgetStore.categoryGroups.filter { !$0.isIncome }) { group in
                                     ForEach(group.categories) { Text($0.name).tag(String?.some($0.id)) }
                                 }

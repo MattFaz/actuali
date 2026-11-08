@@ -94,6 +94,39 @@ struct BudgetStoreCloseAccountTests {
         #expect(store.accounts.contains { $0.id == account.id } == false)
     }
 
+    @Test func onBudgetIntoOffBudgetCategorizesTheClosingLeg() async throws {
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        let checking = try await store.createAccount(name: "Checking", offBudget: false, startingBalanceCents: 2500)
+        let brokerage = try await store.createAccount(name: "Brokerage", offBudget: true, startingBalanceCents: 0)
+
+        try await store.closeAccount(current(store, checking.id), transferAccountId: brokerage.id, categoryId: "cat-x")
+
+        let legs = try rows(path: url, sql: "SELECT acct, category FROM transactions WHERE notes = 'Closing account'")
+        #expect(legs.count == 2)
+        let checkingLeg = try #require(legs.first { $0["acct"] == checking.id })
+        let brokerageLeg = try #require(legs.first { $0["acct"] == brokerage.id })
+        #expect(checkingLeg["category"] as String? == "cat-x")
+        #expect(brokerageLeg["category"] as String? == nil)
+    }
+
+    /// The transfer runs before the close, so a refused transfer leaves the
+    /// account open with its balance rather than closed with money stranded.
+    @Test func aRefusedTransferLeavesTheAccountOpen() async throws {
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        let account = try await store.createAccount(name: "Old", offBudget: true, startingBalanceCents: 2500)
+        let target = try await store.createAccount(name: "New", offBudget: true, startingBalanceCents: 0)
+        store.payees.removeAll { $0.transferAccountId == target.id }
+
+        await #expect(throws: BudgetStoreError.transferPayeeMissing) {
+            try await store.closeAccount(current(store, account.id), transferAccountId: target.id)
+        }
+        #expect(try rows(path: url, sql: "SELECT closed FROM accounts WHERE id = '\(account.id)'")[0]["closed"] == 0)
+    }
+
     @Test func reopenClearsClosedFlag() async throws {
         let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
