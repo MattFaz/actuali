@@ -1527,6 +1527,7 @@ struct AccountTypeAvatar: View {
 struct AccountRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let account: Account
+    @AppStorage("showAccountTypeIcons") private var showAccountTypeIcons = true
     @State private var isCreatingGroup = false
     @State private var newGroupName = ""
 
@@ -1586,12 +1587,14 @@ struct AccountRow: View {
         )
 
         return HStack(alignment: .center, spacing: 12) {
-            AccountTypeAvatar(
-                account: account,
-                hasLoan: hasLoan,
-                hasDeposit: hasDeposit
-            )
-            .accessibilityHidden(true)
+            if showAccountTypeIcons {
+                AccountTypeAvatar(
+                    account: account,
+                    hasLoan: hasLoan,
+                    hasDeposit: hasDeposit
+                )
+                .accessibilityHidden(true)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {

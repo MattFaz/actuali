@@ -80,6 +80,7 @@ struct DisplaySettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     @State private var dashboardPages: [DashboardPage] = []
+    @AppStorage("showAccountTypeIcons") private var showAccountTypeIcons = true
 
     /// Routes the picker's selection through `setCurrencyCode`, which
     /// persists the choice into the budget's own `preferences` table (not
@@ -146,6 +147,8 @@ struct DisplaySettingsView: View {
                         Text(mode.label(locale: locale)).tag(mode)
                     }
                 }
+
+                Toggle("Show Account Icons", isOn: $showAccountTypeIcons)
             }
 
             Section {
