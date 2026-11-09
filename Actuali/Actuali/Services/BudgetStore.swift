@@ -3174,6 +3174,7 @@ final class BudgetStore: ObservableObject {
         tracking: Bool = false,
         seedUncategorized: Bool = false,
         seedUnsupportedBankSync: Bool = false,
+        goalTemplatesEnabled: Bool = false,
         pendingImports: PendingImportStore = .shared
     ) async {
         // Log out any active session so sync doesn't try to fire against a
@@ -3184,7 +3185,8 @@ final class BudgetStore: ObservableObject {
             try DemoDataSeeder.seed(
                 tracking: tracking,
                 seedUncategorized: seedUncategorized,
-                seedUnsupportedBankSync: seedUnsupportedBankSync
+                seedUnsupportedBankSync: seedUnsupportedBankSync,
+                goalTemplatesEnabled: goalTemplatesEnabled
             )
             currentBudgetId = DemoDataSeeder.budgetId
             // Reseeding rebuilds the budget directory, but history and the

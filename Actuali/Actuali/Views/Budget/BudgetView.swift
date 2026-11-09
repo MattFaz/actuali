@@ -91,6 +91,7 @@ struct BudgetView: View {
     /// open budget file.
     @State private var monthNoteMonth: String?
     @State private var editingMonthNote = false
+    @State private var editingBudgetViewOptions = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
@@ -215,6 +216,9 @@ struct BudgetView: View {
                     title: MonthPicker.title(for: selectedMonth, locale: locale),
                     note: displayedMonthNote.text
                 )
+            }
+            .sheet(isPresented: $editingBudgetViewOptions) {
+                BudgetViewSheet()
             }
             .sheet(item: $editingBudgetAmount) { target in
                 EditBudgetAmountSheet(target: target)
@@ -452,12 +456,13 @@ struct BudgetView: View {
                 onCopyPreviousMonthBudget: hasBudget ? { copyPreviousMonthBudget() } : nil,
                 onSetBudgetsToZero: hasBudget ? { setBudgetsToZero() } : nil,
                 // Keep template actions visible in the ellipsis, but disabled until
-                // the synced Goal Templates feature is enabled in Budget View Settings.
+                // the synced Goal Templates feature is enabled in More → Transactions & Automation.
                 onTemplateAction: hasBudget ? { runTemplates($0) } : nil,
                 onCleanup: hasBudget && budgetStore.currentBudgetMonth?.isTrackingBudget == false
                     ? { runCleanup() } : nil,
                 monthNote: displayedMonthNote,
-                onEditMonthNote: hasBudget ? { editingMonthNote = true } : nil
+                onEditMonthNote: hasBudget ? { editingMonthNote = true } : nil,
+                onEditBudgetViewOptions: { editingBudgetViewOptions = true }
             )
             .tint(.primary)
             .accessibilityIdentifier("budget.optionsMenu")
@@ -970,6 +975,7 @@ struct BudgetView: View {
                     toggleCollapsed(Self.incomeGroupCollapseID)
                 }
             )
+            .accessibilityIdentifier("budget.incomeGroupHeader")
         }
     }
 

@@ -15,15 +15,6 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    private func scrollToSettingsControl(_ control: XCUIElement, in app: XCUIApplication) {
-        var swipesLeft = 8
-        while !control.exists, swipesLeft > 0 {
-            app.swipeUp()
-            swipesLeft -= 1
-        }
-    }
-
-    @MainActor
     func testCleanStyleShowsCaptions() {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -170,16 +161,12 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertFalse(groceriesSpent.exists,
                        "the launch argument seeds the Spent column off, so it is absent rather than an empty placeholder")
 
-        let optionsMenu = app.buttons["Budget options"]
-        optionsMenu.tap()
-        app.buttons["Budget View"].tap()
-        // The menu item's accessibility label varies by OS: "Show Spent" in
-        // the rendered menu, "Show Spent Column" from the toggle's modifier.
-        let spentToggle = app.buttons.matching(
-            NSPredicate(format: "label IN %@", ["Show Spent", "Show Spent Column"])
-        ).firstMatch
+        openBudgetViewMenu(in: app)
+        let spentToggle = app.switches["budgetView.showCompactSpentColumn"]
+        scrollUntilHittable(spentToggle, in: app)
         XCTAssertTrue(spentToggle.waitForExistence(timeout: 5))
-        spentToggle.tap()
+        tapSwitch(spentToggle)
+        app.buttons["budgetView.done"].tap()
 
         XCTAssertTrue(groceriesSpent.waitForExistence(timeout: 5),
                       "turning on Spent should add the existing month-transactions action live")
@@ -298,12 +285,12 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertFalse(progressBar.exists,
                        "disabled progress mode displays no progress bar")
 
-        openBudgetViewSettings(in: app)
-        let sharedProgressBars = app.switches["Budget Progress Bars"]
-        scrollToSettingsControl(sharedProgressBars, in: app)
+        openBudgetViewMenu(in: app)
+        let sharedProgressBars = app.switches["budgetView.showBudgetProgressBars"]
+        scrollUntilHittable(sharedProgressBars, in: app)
         XCTAssertTrue(sharedProgressBars.waitForExistence(timeout: 5))
         tapSwitch(sharedProgressBars)
-        app.tabBars.buttons["Budget"].tap()
+        app.buttons["budgetView.done"].tap()
         XCTAssertEqual(groceries.label, "Details for Groceries",
                        "progress bars do not turn on the independent status-dot setting")
         XCTAssertTrue(
@@ -311,9 +298,12 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             "progress mode adds a bar for an active category"
         )
 
-        openBudgetViewSettings(in: app)
-        tapSwitch(sharedProgressBars)
-        app.tabBars.buttons["Budget"].tap()
+        openBudgetViewMenu(in: app)
+        let restoredProgressBars = app.switches["budgetView.showBudgetProgressBars"]
+        scrollUntilHittable(restoredProgressBars, in: app)
+        XCTAssertTrue(restoredProgressBars.waitForExistence(timeout: 5))
+        tapSwitch(restoredProgressBars)
+        app.buttons["budgetView.done"].tap()
         XCTAssertTrue(progressBar.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Details for Groceries"].exists)
     }

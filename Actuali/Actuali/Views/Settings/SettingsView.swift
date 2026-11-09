@@ -36,7 +36,6 @@ struct SettingsView: View {
 
     static var preferencesItems: [SettingsItem] {
         [
-            SettingsItem(title: String(localized: "Budget View"), systemImage: "wallet.bifold", destination: { AnyView(BudgetViewSettingsView()) }),
             SettingsItem(title: String(localized: "Display"), systemImage: "iphone", destination: { AnyView(DisplaySettingsView()) }),
             SettingsItem(title: String(localized: "Privacy"), systemImage: "hand.raised", destination: { AnyView(PrivacySettingsView()) }),
             SettingsItem(title: String(localized: "Transactions & Automation"), systemImage: "arrow.left.arrow.right", destination: { AnyView(TransactionAutomationSettingsView()) }),

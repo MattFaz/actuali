@@ -37,6 +37,7 @@ struct BudgetOptionsMenu: View {
     var onCleanup: (() -> Void)?
     var monthNote: EntityNote = .unsupported
     var onEditMonthNote: (() -> Void)?
+    var onEditBudgetViewOptions: () -> Void
 
     private var hasAnyActions: Bool {
         let hasBudgetActions = onCopyPreviousMonthBudget != nil && onSetBudgetsToZero != nil
@@ -55,37 +56,10 @@ struct BudgetOptionsMenu: View {
                 .pickerStyle(.inline)
             }
 
-            Menu("Budget View") {
-                Section {
-                    Toggle(isOn: budgetStore.budgetDisplayStyle == .clean
-                        ? $budgetStore.showCleanBudgetOverview
-                        : $budgetStore.showCompactBudgetOverview) {
-                            Label("Show Overview", systemImage: "rectangle.topthird.inset.filled")
-                        }
-                        .accessibilityIdentifier("budgetOptions.showOverview")
-                    Toggle(isOn: $budgetStore.showBudgetedAmounts) {
-                        Label("Show Budgeted", systemImage: "banknote")
-                    }
-                    .accessibilityLabel("Budgeted Amounts")
-                    .accessibilityIdentifier("budgetOptions.showBudgetedAmounts")
-                    Toggle(isOn: $budgetStore.showCompactSpentColumn) {
-                        Label("Show Spent", systemImage: "tablecells.badge.ellipsis")
-                    }
-                    .accessibilityLabel("Show Spent Column")
-                    .disabled(budgetStore.budgetDisplayStyle != .compact)
-                    Toggle(isOn: $budgetStore.showGroupTotals) {
-                        Label("Group Totals", systemImage: "sum")
-                    }
-                    .disabled(budgetStore.budgetDisplayStyle == .clean)
-                    Toggle(isOn: $budgetStore.showBudgetCheckInStrip) {
-                        Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
-                    }
-                    Toggle(isOn: $budgetStore.hideZeroBudgetCategories) {
-                        Label("Hide Spent", systemImage: "line.3.horizontal.decrease")
-                    }
-                    .accessibilityLabel("Hide Spent Categories")
-                }
+            Button(action: onEditBudgetViewOptions) {
+                Label("Budget View", systemImage: "wallet.bifold")
             }
+            .accessibilityIdentifier("budgetOptions.budgetView")
 
             if hasAnyActions {
                 Menu("Actions") {
@@ -156,7 +130,8 @@ struct BudgetOptionsMenu: View {
                         onCopyPreviousMonthBudget: {},
                         onSetBudgetsToZero: {},
                         onTemplateAction: { _ in },
-                        onCleanup: {}
+                        onCleanup: {},
+                        onEditBudgetViewOptions: {}
                     )
                 }
             }

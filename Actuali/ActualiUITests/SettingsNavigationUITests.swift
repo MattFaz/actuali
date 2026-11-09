@@ -7,8 +7,6 @@ final class SettingsNavigationUITests: XCTestCase {
         switch destination {
         case "Connection & Data":
             content = app.textFields["Server URL"]
-        case "Budget View":
-            content = app.switches["Category Status Dots"]
         case "Transactions & Automation":
             content = app.switches["Conventional Amount Entry"]
         case "Display":
@@ -60,9 +58,11 @@ final class SettingsNavigationUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
 
+        XCTAssertFalse(app.buttons["Budget View"].exists,
+                       "Budget View settings should be removed from the More hub")
+
         for destination in [
             "Connection & Data",
-            "Budget View",
             "Transactions & Automation",
             "Display",
             "Privacy",
@@ -119,6 +119,76 @@ final class SettingsNavigationUITests: XCTestCase {
             swipes += 1
         }
         return button.exists ? button : link
+    }
+
+    /// Scroll Transactions & Automation down to its Experimental section.
+    @MainActor
+    private func experimentalToggles(in app: XCUIApplication) -> (
+        goalTemplates: XCUIElement,
+        automationsEditor: XCUIElement
+    ) {
+        let goalTemplates = app.descendants(matching: .any)["transactionAutomation.goalTemplates"]
+        let automationsEditor = app.descendants(matching: .any)["transactionAutomation.automationsEditor"]
+        var swipes = 0
+        while !goalTemplates.exists || !automationsEditor.exists, swipes < 30 {
+            app.swipeUp(velocity: .slow)
+            swipes += 1
+        }
+        XCTAssertTrue(goalTemplates.waitForExistence(timeout: 5),
+                      "Budget Goal Templates should live in Transactions & Automation")
+        XCTAssertTrue(automationsEditor.waitForExistence(timeout: 5),
+                      "Automations Editor should live in Transactions & Automation")
+        return (goalTemplates, automationsEditor)
+    }
+
+    @MainActor
+    func testAutomationsEditorToggleDependencyInSettings() {
+        let disabledApp = XCUIApplication()
+        disabledApp.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        disabledApp.launch()
+
+        let disabledRow = rowOnHub("Transactions & Automation", in: disabledApp)
+        XCTAssertTrue(disabledRow.waitForExistence(timeout: 5))
+        disabledRow.tap()
+        let disabledToggles = experimentalToggles(in: disabledApp)
+        XCTAssertEqual(disabledToggles.goalTemplates.value as? String, "0",
+                       "Goal Templates should start disabled in the default demo budget")
+        XCTAssertFalse(disabledToggles.automationsEditor.isEnabled,
+                       "Automations Editor requires Goal Templates")
+        disabledApp.terminate()
+
+        let enabledApp = XCUIApplication()
+        enabledApp.launchArguments = [
+            "-loadDemoData", "-demoGoalTemplatesEnabled", "-initialTab", "4",
+        ]
+        enabledApp.launch()
+
+        let enabledRow = rowOnHub("Transactions & Automation", in: enabledApp)
+        XCTAssertTrue(enabledRow.waitForExistence(timeout: 5))
+        enabledRow.tap()
+        let enabledToggles = experimentalToggles(in: enabledApp)
+        XCTAssertEqual(enabledToggles.goalTemplates.value as? String, "1",
+                       "The fixture should load the synced Goal Templates preference")
+        XCTAssertTrue(enabledToggles.automationsEditor.isEnabled,
+                      "Automations Editor should be enabled when Goal Templates is enabled")
+    }
+
+    @MainActor
+    func testShowBalanceImpactLivesInTransactionsAndAutomation() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4", "-showTransactionImpactCue", "YES"]
+        app.launch()
+
+        let row = rowOnHub("Transactions & Automation", in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        let toggle = app.switches["transactionAutomation.showBalanceImpact"]
+        for _ in 0..<8 where !toggle.exists {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "1", "launch argument seeds Show Balance Impact on")
+        tapControl(toggle) { toggle.value as? String == "0" }
     }
 
     @MainActor

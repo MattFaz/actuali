@@ -5,7 +5,7 @@ import Testing
 struct SettingsViewTests {
     @Test @MainActor func sectionsAreSortedAndRulesAreConditional() {
         #expect(SettingsView.preferencesItems.map(\.title) == [
-            "Budget View", "Display", "Privacy", "Transactions & Automation",
+            "Display", "Privacy", "Transactions & Automation",
         ])
         #expect(SettingsView.manageItems(includeRules: false).map(\.title) == [
             "Bank Sync", "Bills & Calendar", "History", "Scheduled Transactions", "Tags",
