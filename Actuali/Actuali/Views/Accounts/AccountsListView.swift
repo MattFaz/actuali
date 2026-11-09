@@ -1482,22 +1482,31 @@ private struct AccountGroupTotal: View {
     }
 }
 
-/// Circular badge with an SF Symbol for the account type, or for the loan or
-/// deposit it tracks. Symbols follow `AccountBalanceWidget.iconName`.
+/// Circular badge with an SF Symbol for the account type, or for the loan,
+/// deposit or credit card it tracks. Symbols follow `AccountBalanceWidget.iconName`.
 struct AccountTypeAvatar: View {
     let account: Account
     var hasLoan: Bool = false
     var hasDeposit: Bool = false
+    var hasCreditCard: Bool = false
 
     // ponytail: icon derived from account.type and active configs only.
     // Ceiling: no vehicle/personal split for loans. Upgrade path: store
     // the loan instrument kind on LoanConfig when the loan editor gains the field.
-    nonisolated static func icon(for type: AccountType, hasDeposit: Bool = false, hasLoan: Bool = false) -> String {
+    nonisolated static func icon(
+        for type: AccountType,
+        hasDeposit: Bool = false,
+        hasLoan: Bool = false,
+        hasCreditCard: Bool = false
+    ) -> String {
         if hasDeposit {
             return "lock.fill"
         }
         if hasLoan {
             return "house.fill"
+        }
+        if hasCreditCard {
+            return "creditcard.fill"
         }
         return defaultTypeIcon(for: type)
     }
@@ -1519,6 +1528,7 @@ struct AccountTypeAvatar: View {
         for type: AccountType,
         hasDeposit: Bool = false,
         hasLoan: Bool = false,
+        hasCreditCard: Bool = false,
         closed: Bool = false
     ) -> Color {
         if closed {
@@ -1530,6 +1540,9 @@ struct AccountTypeAvatar: View {
         if hasLoan {
             return .blue
         }
+        if hasCreditCard {
+            return .orange
+        }
         switch type {
         case .checking, .mortgage, .debt: return .blue
         case .savings: return .purple
@@ -1540,12 +1553,23 @@ struct AccountTypeAvatar: View {
     }
 
     var body: some View {
-        let color = Self.iconColor(for: account.type, hasDeposit: hasDeposit, hasLoan: hasLoan, closed: account.closed)
+        let color = Self.iconColor(
+            for: account.type,
+            hasDeposit: hasDeposit,
+            hasLoan: hasLoan,
+            hasCreditCard: hasCreditCard,
+            closed: account.closed
+        )
         ZStack {
             Circle().fill(color.opacity(0.18))
-            Image(systemName: Self.icon(for: account.type, hasDeposit: hasDeposit, hasLoan: hasLoan))
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(color)
+            Image(systemName: Self.icon(
+                for: account.type,
+                hasDeposit: hasDeposit,
+                hasLoan: hasLoan,
+                hasCreditCard: hasCreditCard
+            ))
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(color)
         }
         .frame(width: 36, height: 36)
     }
@@ -1676,6 +1700,7 @@ struct AccountRow: View {
         let depositConfig = budgetStore.activeDepositConfig(for: account.id)
         let hasLoan = loanConfig != nil
         let hasDeposit = depositConfig != nil
+        let hasCreditCard = budgetStore.activeCreditCardCycle(for: account.id) != nil
         let progress = Self.progress(
             for: account,
             loanConfig: loanConfig,
@@ -1688,7 +1713,8 @@ struct AccountRow: View {
                 AccountTypeAvatar(
                     account: account,
                     hasLoan: hasLoan,
-                    hasDeposit: hasDeposit
+                    hasDeposit: hasDeposit,
+                    hasCreditCard: hasCreditCard
                 )
                 .accessibilityHidden(true)
             }
