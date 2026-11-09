@@ -136,18 +136,17 @@ final class SettingsNavigationUITests: XCTestCase {
     ) {
         let goalTemplates = app.descendants(matching: .any)["transactionAutomation.goalTemplates"]
         let automationsEditor = app.descendants(matching: .any)["transactionAutomation.automationsEditor"]
-        let transactionAlerts = app.switches["New Transaction Alerts"]
-        let creditCardReminders = app.switches["Credit Card Due Reminders"]
+        // The toggles moved to Preferences → Notifications; a Form only
+        // materializes on-screen rows, so check on every page scrolled past.
+        let assertNoNotificationToggles = {
+            for toggle in ["New Transaction Alerts", "Credit Card Due Reminders"] {
+                XCTAssertFalse(app.switches[toggle].exists,
+                               "\(toggle) appeared in Transactions & Automation")
+            }
+        }
         var swipes = 0
         while !goalTemplates.exists || !automationsEditor.exists, swipes < 30 {
-            XCTAssertFalse(
-                transactionAlerts.exists,
-                "New Transaction Alerts appeared in Transactions & Automation"
-            )
-            XCTAssertFalse(
-                creditCardReminders.exists,
-                "Credit Card Due Reminders appeared in Transactions & Automation"
-            )
+            assertNoNotificationToggles()
             app.swipeUp(velocity: .slow)
             swipes += 1
         }
@@ -155,14 +154,7 @@ final class SettingsNavigationUITests: XCTestCase {
                       "Budget Goal Templates should live in Transactions & Automation")
         XCTAssertTrue(automationsEditor.waitForExistence(timeout: 5),
                       "Automations Editor should live in Transactions & Automation")
-        XCTAssertFalse(
-            transactionAlerts.exists,
-            "New Transaction Alerts appeared in Transactions & Automation"
-        )
-        XCTAssertFalse(
-            creditCardReminders.exists,
-            "Credit Card Due Reminders appeared in Transactions & Automation"
-        )
+        assertNoNotificationToggles()
         return (goalTemplates, automationsEditor)
     }
 

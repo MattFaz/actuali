@@ -31,10 +31,11 @@ jobs:
   # own job (not folded into the test jobs) so branch protection can require
   # "SwiftFormat" by name. ci-noop.yml reports the same check for PRs that
   # don't touch app code.
-  # Built from the pinned tag because the release-asset endpoint has returned
-  # invalid archives on hosted runners. Upgrading is deliberate: bump the
-  # version here, build that same tag locally, and land the mechanical reformat
-  # in the same PR.
+  # Pinned release artifact: brew's rolling latest once added default-on rules
+  # (0.64.0 did) and reddened every open PR. Upgrading is now deliberate:
+  # bump the version here, `brew upgrade swiftformat && swiftformat Actuali`
+  # locally (brew pin swiftformat holds local to the same release), and land
+  # the mechanical reformat in the same PR.
   swiftformat:
     name: SwiftFormat
     runs-on: macos-26
@@ -43,23 +44,10 @@ jobs:
       SWIFTFORMAT_VERSION: 0.64.0
     steps:
       - uses: actions/checkout@v7
-      # Build the pinned tag from source instead of downloading its release ZIP.
-      # The release-asset endpoint has repeatedly returned an invalid archive on
-      # hosted runners; SwiftPM keeps the exact formatter version reproducible.
-      - name: Build pinned SwiftFormat
-        run: |
-          git clone --quiet --depth 1 --branch "${SWIFTFORMAT_VERSION}" \
-            https://github.com/nicklockwood/SwiftFormat.git \
-            "$RUNNER_TEMP/SwiftFormat"
-          swift build --package-path "$RUNNER_TEMP/SwiftFormat" \
-            --configuration release --product swiftformat
-          BIN_PATH=$(swift build --package-path "$RUNNER_TEMP/SwiftFormat" \
-            --configuration release --show-bin-path)
-          test -x "$BIN_PATH/swiftformat"
-          "$BIN_PATH/swiftformat" --version
-          echo "$BIN_PATH" >> "$GITHUB_PATH"
-      - name: Lint Swift sources
-        run: swiftformat --lint --strict Actuali
+      - run: |
+          curl -sL -o swiftformat.zip "https://github.com/nicklockwood/SwiftFormat/releases/download/${SWIFTFORMAT_VERSION}/swiftformat.zip"
+          unzip -o swiftformat.zip
+      - run: ./swiftformat --lint --strict Actuali
 
   test-ios26:
     name: Unit Tests (iOS 26)
