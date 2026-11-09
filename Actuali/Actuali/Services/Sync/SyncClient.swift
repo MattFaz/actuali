@@ -1175,10 +1175,8 @@ actor SyncClient {
     func deleteAccount(id: String) async throws {
         guard let database else { throw SyncError.notConfigured }
         try database.tombstoneAccount(accountId: id)
-        let message = try await messageGenerator.messageForDelete(
-            Account(id: id, name: "", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0)
-        )
-        for msg in try database.insertMessages([message]) {
+        let messages = try await messageGenerator.messages(dataset: "accounts", row: id, fields: [("tombstone", 1)])
+        for msg in try database.insertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1191,9 +1189,11 @@ actor SyncClient {
     /// and its transfer payee.
     func forceCloseAccount(id: String) async throws {
         guard let database else { throw SyncError.notConfigured }
-        let targets = try database.forceCloseTargets(accountId: id)
         // Upstream throws rather than leave a transfer payee behind.
-        guard let payeeId = targets.transferPayeeId else { throw SyncError.notConfigured }
+        guard let payeeId = try database.transferPayeeId(forAccountId: id) else {
+            throw BudgetStoreError.transferPayeeMissing
+        }
+        let targets = try database.forceCloseTargets(accountId: id)
 
         var messages: [CRDTMessage] = []
         for partnerId in targets.partnerIds {
@@ -1208,7 +1208,9 @@ actor SyncClient {
         messages += try await messageGenerator.messages(dataset: "accounts", row: id, fields: [("tombstone", 1)])
         messages += try await messageGenerator.messages(dataset: "payees", row: payeeId, fields: [("tombstone", 1)])
 
-        for msg in try database.forceCloseAccount(accountId: id, targets: targets, messages: messages) {
+        for msg in try database.forceCloseAccount(
+            accountId: id, targets: targets, transferPayeeId: payeeId, messages: messages
+        ) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
