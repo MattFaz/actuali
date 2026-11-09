@@ -31,11 +31,10 @@ jobs:
   # own job (not folded into the test jobs) so branch protection can require
   # "SwiftFormat" by name. ci-noop.yml reports the same check for PRs that
   # don't touch app code.
-  # Pinned release artifact: brew's rolling latest once added default-on rules
-  # (0.64.0 did) and reddened every open PR. Upgrading is now deliberate:
-  # bump the version here, `brew upgrade swiftformat && swiftformat Actuali`
-  # locally (brew pin swiftformat holds local to the same release), and land
-  # the mechanical reformat in the same PR.
+  # Built from the pinned tag because the release-asset endpoint has returned
+  # invalid archives on hosted runners. Upgrading is deliberate: bump the
+  # version here, build that same tag locally, and land the mechanical reformat
+  # in the same PR.
   swiftformat:
     name: SwiftFormat
     runs-on: macos-26
