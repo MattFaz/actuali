@@ -2,6 +2,18 @@ import XCTest
 
 final class CreditCardDueRemindersUITests: XCTestCase {
     @MainActor
+    private func openNotifications(in app: XCUIApplication) -> Bool {
+        let more = app.tabBars.buttons["More"]
+        guard more.waitForExistence(timeout: 5) else { return false }
+        more.tap()
+
+        let notifications = app.buttons["Notifications"]
+        guard notifications.waitForExistence(timeout: 10) else { return false }
+        notifications.tap()
+        return app.navigationBars["Notifications"].waitForExistence(timeout: 5)
+    }
+
+    @MainActor
     func testEnablingRemindersSurvivesRelaunch() {
         let app = XCUIApplication()
         addTeardownBlock { @MainActor in
@@ -11,16 +23,16 @@ final class CreditCardDueRemindersUITests: XCTestCase {
             if allow.exists {
                 allow.tap()
             }
-            if app.state != .runningForeground {
-                app.launchArguments = ["-initialTab", "4"]
-                app.launch()
+            if app.state != .notRunning {
+                app.terminate()
             }
-            app.tabBars.buttons["More"].tap()
-            let automation = app.buttons["Transactions & Automation"]
-            if automation.waitForExistence(timeout: 5) {
-                automation.tap()
+            app.launchArguments = ["-initialTab", "4"]
+            app.launch()
+            if allow.waitForExistence(timeout: 2) {
+                allow.tap()
             }
-            let toggle = app.switches["Credit Card Due Reminders"]
+            guard self.openNotifications(in: app) else { return }
+            let toggle = app.switches["notifications.creditCardDueReminders"]
             guard toggle.waitForExistence(timeout: 5) else { return }
             self.scrollUntilHittable(toggle, in: app, maxSwipes: 5)
             if toggle.value as? String == "1" {
@@ -29,13 +41,10 @@ final class CreditCardDueRemindersUITests: XCTestCase {
         }
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
-        app.tabBars.buttons["More"].tap()
+        XCTAssertTrue(openNotifications(in: app), "Notifications settings should open from More")
 
-        let automation = app.buttons["Transactions & Automation"]
-        XCTAssertTrue(automation.waitForExistence(timeout: 10))
-        automation.tap()
-
-        let toggle = app.switches["Credit Card Due Reminders"]
+        let toggle = app.switches["notifications.creditCardDueReminders"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         scrollUntilHittable(toggle, in: app, maxSwipes: 5)
         XCTAssertTrue(toggle.isHittable)
         if toggle.value as? String == "1" {
@@ -55,11 +64,10 @@ final class CreditCardDueRemindersUITests: XCTestCase {
         app.terminate()
         app.launchArguments = ["-initialTab", "4"]
         app.launch()
-        app.tabBars.buttons["More"].tap()
-        XCTAssertTrue(automation.waitForExistence(timeout: 10), "App must launch with reminders enabled")
-        automation.tap()
-        scrollUntilHittable(toggle, in: app, maxSwipes: 5)
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-        XCTAssertEqual(toggle.value as? String, "1")
+        XCTAssertTrue(openNotifications(in: app), "Notifications settings should reopen after relaunch")
+        let persistedToggle = app.switches["notifications.creditCardDueReminders"]
+        XCTAssertTrue(persistedToggle.waitForExistence(timeout: 5))
+        scrollUntilHittable(persistedToggle, in: app, maxSwipes: 5)
+        XCTAssertEqual(persistedToggle.value as? String, "1")
     }
 }

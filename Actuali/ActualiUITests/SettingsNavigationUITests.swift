@@ -9,6 +9,12 @@ final class SettingsNavigationUITests: XCTestCase {
             content = app.textFields["Server URL"]
         case "Transactions & Automation":
             content = app.switches["Conventional Amount Entry"]
+        case "Notifications":
+            content = app.switches["notifications.newTransactionAlerts"]
+            XCTAssertTrue(
+                app.switches["notifications.creditCardDueReminders"].waitForExistence(timeout: 5),
+                "Credit Card Due Reminders should be available alongside transaction alerts"
+            )
         case "Display":
             content = app.buttons.matching(
                 NSPredicate(format: "label BEGINSWITH 'Currency'")
@@ -65,6 +71,7 @@ final class SettingsNavigationUITests: XCTestCase {
             "Connection & Data",
             "Transactions & Automation",
             "Display",
+            "Notifications",
             "Privacy",
             "Scheduled Transactions",
             "Rules",
@@ -129,8 +136,17 @@ final class SettingsNavigationUITests: XCTestCase {
     ) {
         let goalTemplates = app.descendants(matching: .any)["transactionAutomation.goalTemplates"]
         let automationsEditor = app.descendants(matching: .any)["transactionAutomation.automationsEditor"]
+        // The toggles moved to Preferences → Notifications; a Form only
+        // materializes on-screen rows, so check on every page scrolled past.
+        let assertNoNotificationToggles = {
+            for toggle in ["New Transaction Alerts", "Credit Card Due Reminders"] {
+                XCTAssertFalse(app.switches[toggle].exists,
+                               "\(toggle) appeared in Transactions & Automation")
+            }
+        }
         var swipes = 0
         while !goalTemplates.exists || !automationsEditor.exists, swipes < 30 {
+            assertNoNotificationToggles()
             app.swipeUp(velocity: .slow)
             swipes += 1
         }
@@ -138,6 +154,7 @@ final class SettingsNavigationUITests: XCTestCase {
                       "Budget Goal Templates should live in Transactions & Automation")
         XCTAssertTrue(automationsEditor.waitForExistence(timeout: 5),
                       "Automations Editor should live in Transactions & Automation")
+        assertNoNotificationToggles()
         return (goalTemplates, automationsEditor)
     }
 
