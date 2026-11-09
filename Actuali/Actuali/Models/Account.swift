@@ -38,6 +38,10 @@ struct AccountBalanceBreakdown: Equatable {
     let reconciled: Int
 }
 
+/// Account kinds, stored as plain strings in Actual's nullable `accounts.type`
+/// column. Actual's own app never reads or shows that column, so only Actuali
+/// and Actua (which write these same seven values) use it. A missing or
+/// unknown value reads as checking, as in Actua.
 enum AccountType: String, CaseIterable {
     case checking
     case savings
@@ -46,6 +50,18 @@ enum AccountType: String, CaseIterable {
     case mortgage
     case debt
     case other
+
+    var title: String {
+        switch self {
+        case .checking: String(localized: "accounts.type.checking")
+        case .savings: String(localized: "accounts.type.savings")
+        case .credit: String(localized: "accounts.type.credit")
+        case .investment: String(localized: "accounts.type.investment")
+        case .mortgage: String(localized: "accounts.type.mortgage")
+        case .debt: String(localized: "accounts.type.debt")
+        case .other: String(localized: "accounts.type.other")
+        }
+    }
 }
 
 // MARK: - CRDTSyncable
