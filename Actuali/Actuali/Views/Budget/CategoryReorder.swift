@@ -513,6 +513,7 @@ struct CategoryStackOriginKey: PreferenceKey {
 /// drag handle. One flat list, so a row keeps its identity when it crosses
 /// into another group and the move animates instead of being rebuilt.
 struct CategoryReorderTable: View {
+    @Environment(\.sideMargin) private var sideMargin
     @State private var controller = CategoryReorderController()
     @State private var scrollPosition = ScrollPosition()
 
@@ -562,7 +563,7 @@ struct CategoryReorderTable: View {
                     }
                 }
             }
-            .padding(.horizontal, TopBoxLayout.horizontalContentMargin)
+            .padding(.horizontal, sideMargin)
             .padding(.bottom, 24)
             .coordinateSpace(name: CategoryReorderController.tableSpace)
             .background(
@@ -584,6 +585,8 @@ struct CategoryReorderTable: View {
                 controller.stackOriginY = origin
             }
         }
+        // Lays out its own edges, so it opts out of the root side margin.
+        .contentMargins(.horizontal, 0, for: .scrollContent)
         .scrollPosition($scrollPosition)
         .scrollDisabled(controller.isDragging)
         .onScrollGeometryChange(for: ReorderScrollMetrics.self) { geometry in

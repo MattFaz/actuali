@@ -8,6 +8,7 @@ struct ReportsLoadRequest: Equatable {
 struct ReportsTabView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
+    @Environment(\.sideMargin) private var sideMargin
     @State private var pages: [DashboardPage] = []
     @State private var selectedPageId: String?
     @State private var widgets: [DashboardWidget] = []
@@ -42,7 +43,7 @@ struct ReportsTabView: View {
                     VStack(spacing: 0) {
                         dashboardPicker
                             // Lined up with the dashboard cards below.
-                            .padding(.horizontal, TopBoxLayout.horizontalContentMargin)
+                            .padding(.horizontal, sideMargin)
                             .padding(.top, 8)
                         // Recreate cards when the page or widget definitions change,
                         // so their inputs and computed state belong to that dashboard.

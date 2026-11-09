@@ -49,6 +49,7 @@ struct ActualiApp: App {
             }
             .environmentObject(budgetStore)
             .preferredColorScheme(budgetStore.appearanceMode.colorScheme)
+            .sideMarginRoot()
             .task {
                 #if DEBUG
                 if CommandLine.arguments.contains("-loadDemoData") {

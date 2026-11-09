@@ -168,6 +168,8 @@ struct BillsCalendarView: View {
             }
             .padding(.vertical, 8)
         }
+        // Lays out its own edges, so it opts out of the root side margin.
+        .contentMargins(.horizontal, 0, for: .scrollContent)
         .navigationTitle("Bills")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

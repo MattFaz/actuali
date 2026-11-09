@@ -71,6 +71,8 @@ struct HistoryView: View {
             }
         }
         .listStyle(.plain)
+        // Full-width rows, not cards: no root side margin.
+        .contentMargins(.horizontal, 0, for: .scrollContent)
         .navigationTitle(String(localized: "History"))
         .task(id: budgetStore.currentBudgetId) { load() }
         .refreshable { load() }

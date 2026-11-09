@@ -88,6 +88,8 @@ struct TagSuggestionBar: View {
                 .padding(.horizontal, 2)
                 .padding(.vertical, 4)
             }
+            // Lays out its own edges, so it opts out of the root side margin.
+            .contentMargins(.horizontal, 0, for: .scrollContent)
         }
     }
 }
