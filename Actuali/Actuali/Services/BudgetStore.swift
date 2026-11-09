@@ -7961,6 +7961,12 @@ final class BudgetStore: ObservableObject {
 
     // MARK: - Budget Amounts
 
+    /// One month's budget read without moving the Budget tab's
+    /// `currentBudgetMonth`; nil when there is no database or the read fails.
+    func budgetMonth(_ month: String) async -> BudgetMonth? {
+        try? await database?.fetchBudgetMonth(month: month)
+    }
+
     /// Prior category-month rows used for Quick Assign suggestions. Reading
     /// history never changes the displayed month or introduces new storage.
     func budgetHistory(for category: CategoryBudget, monthCount: Int = 3) async -> [CategoryBudget] {

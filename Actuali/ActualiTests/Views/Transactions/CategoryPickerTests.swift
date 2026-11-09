@@ -87,7 +87,7 @@ struct CategoryPickerTests {
         )
     }
 
-    @Test func balancesComeFromTheLoadedBudgetMonthByCategory() {
+    @Test func balancesComeFromTheBudgetMonthByCategory() {
         let budget = BudgetMonth(
             month: "2026-11",
             categoryBudgets: [category("food", available: 51250), category("fun", available: -3000)]
@@ -96,7 +96,17 @@ struct CategoryPickerTests {
         #expect(CategoryPickerView.availableBalances(in: budget) == ["food": 51250, "fun": -3000])
     }
 
-    @Test func noLoadedBudgetMeansNoBalances() {
+    @Test func hiddenCategoriesKeepTheirBalance() {
+        let budget = BudgetMonth(
+            month: "2026-11",
+            categoryBudgets: [category("food", available: 100)],
+            hiddenCategoryBudgets: [category("old", available: -200)]
+        )
+
+        #expect(CategoryPickerView.availableBalances(in: budget) == ["food": 100, "old": -200])
+    }
+
+    @Test func noBudgetMeansNoBalances() {
         #expect(CategoryPickerView.availableBalances(in: nil).isEmpty)
     }
 }
