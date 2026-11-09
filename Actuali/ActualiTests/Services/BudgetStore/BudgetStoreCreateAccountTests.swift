@@ -262,4 +262,132 @@ struct BudgetStoreCreateAccountTests {
         #expect(try count(path: url, sql: "SELECT COUNT(*) FROM payees") == 0)
         #expect(try count(path: url, sql: "SELECT COUNT(*) FROM payee_mapping") == 0)
     }
+
+    @Test func renameChangesOnlyTheAccountNameAndEmitsOneCRDTUpdate() async throws {
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        let account = try await store.createAccount(
+            name: "Checking", offBudget: true, startingBalanceCents: 4321
+        )
+
+        let accountMessagesBefore = try count(
+            path: url,
+            sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = '\(account.id)'"
+        )
+        let nameMessagesBefore = try count(
+            path: url,
+            sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = '\(account.id)' AND column = 'name'"
+        )
+        let transactionsBefore = try count(path: url, sql: "SELECT COUNT(*) FROM transactions")
+
+        try await store.renameAccount(id: account.id, name: "  Everyday Checking  ")
+
+        let accountRows = try rows(
+            path: url,
+            sql: "SELECT name, offbudget, closed FROM accounts WHERE id = '\(account.id)'"
+        )
+        #expect(accountRows.count == 1)
+        #expect(accountRows[0]["name"] == "Everyday Checking")
+        #expect(accountRows[0]["offbudget"] == 1)
+        #expect(accountRows[0]["closed"] == 0)
+        #expect(store.accounts.first(where: { $0.id == account.id })?.name == "Everyday Checking")
+        #expect(try count(
+            path: url,
+            sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = '\(account.id)'"
+        ) == accountMessagesBefore + 1)
+        #expect(try count(
+            path: url,
+            sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = '\(account.id)' AND column = 'name'"
+        ) == nameMessagesBefore + 1)
+        #expect(try count(path: url, sql: "SELECT COUNT(*) FROM transactions") == transactionsBefore)
+    }
+
+    @Test func renameRejectsBlankNamesWithoutWriting() async throws {
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        let account = try await store.createAccount(
+            name: "Checking", offBudget: false, startingBalanceCents: 0
+        )
+        let messagesBefore = try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt")
+
+        await #expect(throws: BudgetStoreError.invalidAccountName) {
+            try await store.renameAccount(id: account.id, name: " \n ")
+        }
+
+        let unchangedAccount = try rows(
+            path: url,
+            sql: "SELECT name FROM accounts WHERE id = '\(account.id)'"
+        )
+        #expect(unchangedAccount.first?["name"] == "Checking")
+        #expect(try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt") == messagesBefore)
+    }
+
+    @Test func renameRejectsATombstonedAccountWithoutWriting() async throws {
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        let account = try await store.createAccount(
+            name: "Checking", offBudget: false, startingBalanceCents: 0
+        )
+        let queue = try DatabaseQueue(path: url.path)
+        try await queue.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET tombstone = 1 WHERE id = ?",
+                arguments: [account.id]
+            )
+        }
+        let messagesBefore = try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt")
+
+        await #expect(throws: BudgetDatabase.AccountWriteError.accountNotFound) {
+            try await store.renameAccount(id: account.id, name: "Renamed")
+        }
+
+        #expect(try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt") == messagesBefore)
+        let tombstone: Int? = try rows(
+            path: url, sql: "SELECT tombstone FROM accounts WHERE id = '\(account.id)'"
+        ).first?["tombstone"]
+        #expect(tombstone == 1)
+    }
+
+    @Test func renameRejectsAnAccountThatNoLongerExists() async throws {
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+
+        await #expect(throws: BudgetDatabase.AccountWriteError.accountNotFound) {
+            try await store.renameAccount(id: "missing-account", name: "Ghost")
+        }
+
+        #expect(try count(
+            path: url,
+            sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = 'missing-account'"
+        ) == 0)
+        #expect(try count(path: url, sql: "SELECT COUNT(*) FROM accounts") == 0)
+    }
+
+    @Test func renameRejectsANameAnotherAccountUses() async throws {
+        let (database, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        _ = try await store.createAccount(name: "Savings", offBudget: false, startingBalanceCents: 0)
+        let account = try await store.createAccount(
+            name: "Checking", offBudget: false, startingBalanceCents: 0
+        )
+        let messagesBefore = try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt")
+
+        await #expect(throws: BudgetDatabase.AccountWriteError.duplicateAccountName("Savings")) {
+            try await store.renameAccount(id: account.id, name: " Savings ")
+        }
+
+        #expect(try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt") == messagesBefore)
+        #expect(try rows(
+            path: url, sql: "SELECT name FROM accounts WHERE id = '\(account.id)'"
+        ).first?["name"] == "Checking")
+
+        // Upstream's check is case-sensitive, so a case-only change still saves.
+        try await store.renameAccount(id: account.id, name: "savings")
+        #expect(store.accounts.first(where: { $0.id == account.id })?.name == "savings")
+    }
 }

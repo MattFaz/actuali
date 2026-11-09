@@ -1528,8 +1528,11 @@ struct AccountRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let account: Account
     @AppStorage("showAccountTypeIcons") private var showAccountTypeIcons = true
+
     @State private var isCreatingGroup = false
+    @State private var isRenamingAccount = false
     @State private var newGroupName = ""
+    @State private var renameName = ""
 
     /// Share of payoff or term completed (0...1), or nil when the account has no tracking.
     /// Pure so tests can exercise all combinations of loan, deposit, and credit card configs.
@@ -1564,12 +1567,30 @@ struct AccountRow: View {
     }
 
     var body: some View {
-        // The group menu is the only context-menu item, so without it there
-        // is no menu at all rather than an empty one.
-        if budgetStore.accountGroupWritesEnabled {
-            row.contextMenu { groupMenu }
-        } else {
-            row
+        row.contextMenu {
+            Button {
+                renameName = account.name
+                isRenamingAccount = true
+            } label: {
+                Label(String(localized: "Rename Account"), systemImage: "pencil")
+            }
+            .accessibilityIdentifier("accountRename.action")
+
+            if budgetStore.accountGroupWritesEnabled {
+                groupMenu
+            }
+        }
+    }
+
+    private func commitRename() {
+        let name = renameName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != account.name else { return }
+        Task {
+            do {
+                try await budgetStore.renameAccount(id: account.id, name: name)
+            } catch {
+                budgetStore.error = error.localizedDescription
+            }
         }
     }
 
@@ -1621,6 +1642,14 @@ struct AccountRow: View {
             }
             .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button(String(localized: "Cancel"), role: .cancel) {}
+        }
+        .alert(String(localized: "Rename Account"), isPresented: $isRenamingAccount) {
+            TextField(String(localized: "Account Name"), text: $renameName)
+            Button(String(localized: "Cancel"), role: .cancel) {}
+            Button(String(localized: "Save")) {
+                commitRename()
+            }
+            .disabled(renameName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
 
