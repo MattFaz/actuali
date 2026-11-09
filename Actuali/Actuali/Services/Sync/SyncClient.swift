@@ -1159,6 +1159,33 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    func setAccountClosed(accountId: String, closed: Bool) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        try database.setAccountClosed(accountId: accountId, closed: closed)
+        let messages = try await messageGenerator.messages(dataset: "accounts", row: accountId, fields: [("closed", closed ? 1 : 0)])
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
+    /// Soft-delete the account row only, like upstream `db.deleteAccount`.
+    func deleteAccount(id: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        try database.tombstoneAccount(accountId: id)
+        let message = try await messageGenerator.messageForDelete(
+            Account(id: id, name: "", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0)
+        )
+        for msg in try database.insertMessages([message]) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     func moveAccount(accountId: String, toGroupId: String?, beforeAccountId: String?) async throws {
         guard let database else { throw SyncError.notConfigured }
         let result = try database.moveAccount(
