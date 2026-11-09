@@ -7798,8 +7798,7 @@ final class BudgetStore: ObservableObject {
                 requests.append((account.id, statement.end, statement.dueDate, account.balance))
             }
             if !recentStatements.contains(where: { today <= $0.dueDate }) {
-                let statementDate = cycle.cycleRange(for: today).end
-                requests.append((account.id, statementDate, cycle.dueDate(forStatement: statementDate), account.balance))
+                requests.append((account.id, cycle.cycleRange(for: today).end, cycle.openCycleDueDate(for: today), account.balance))
             }
         }
         guard !requests.isEmpty else {
