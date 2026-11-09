@@ -1295,6 +1295,98 @@
         }
       }
     },
+    "Delete Account and Transactions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konto und Buchungen löschen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Account and Transactions"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar cuenta y transacciones"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer le compte et ses transactions"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina conto e transazioni"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rekening en transacties verwijderen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Excluir conta e transações"
+          }
+        }
+      }
+    },
+    "Delete this account and all its transactions?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Konto und alle Buchungen löschen?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete this account and all its transactions?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar esta cuenta y todas sus transacciones?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer ce compte et toutes ses transactions ?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminare questo conto e tutte le sue transazioni?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze rekening en alle transacties verwijderen?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Excluir esta conta e todas as suas transações?"
+          }
+        }
+      }
+    },
     "Deposit Details" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4390,6 +4482,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Renomear conta"
+          }
+        }
+      }
+    },
+    "Removes the account and every transaction in it. Transfers in other accounts stay but lose their link. This can't be undone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernt das Konto und alle seine Buchungen. Überweisungen auf anderen Konten bleiben erhalten, verlieren aber ihre Verknüpfung. Das kann nicht rückgängig gemacht werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Removes the account and every transaction in it. Transfers in other accounts stay but lose their link. This can't be undone."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina la cuenta y todas sus transacciones. Las transferencias en otras cuentas permanecen pero pierden su vínculo. No se puede deshacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprime le compte et toutes ses transactions. Les virements dans les autres comptes restent mais perdent leur lien. Cette action est irréversible."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rimuove il conto e tutte le sue transazioni. I trasferimenti in altri conti restano ma perdono il collegamento. L'operazione non può essere annullata."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwijdert de rekening en alle transacties erin. Overboekingen op andere rekeningen blijven staan maar verliezen hun koppeling. Dit kan niet ongedaan worden gemaakt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove a conta e todas as suas transações. As transferências em outras contas permanecem, mas perdem o vínculo. Isso não pode ser desfeito."
           }
         }
       }
