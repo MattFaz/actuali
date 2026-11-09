@@ -121,7 +121,6 @@ struct BudgetViewSheet: View {
                 }
             }
         }
-        .presentationDetents([.large])
         .alert(
             String(localized: "Color picker"),
             isPresented: $showingCategoryStatusColorInfo

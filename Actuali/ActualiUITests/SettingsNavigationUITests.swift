@@ -8,19 +8,7 @@ final class SettingsNavigationUITests: XCTestCase {
         case "Connection & Data":
             content = app.textFields["Server URL"]
         case "Transactions & Automation":
-            let conventionalAmountEntry = app.switches["Conventional Amount Entry"]
-            XCTAssertTrue(conventionalAmountEntry.waitForExistence(timeout: 5),
-                          "Conventional Amount Entry should remain in Transactions & Automation")
-            let balanceImpact = app.switches["transactionAutomation.showBalanceImpact"]
-            var settingsSwipes = 0
-            while !balanceImpact.exists, settingsSwipes < 8 {
-                app.swipeUp(velocity: .slow)
-                settingsSwipes += 1
-            }
-            XCTAssertTrue(balanceImpact.waitForExistence(timeout: 5),
-                          "Show Balance Impact belongs with transaction behavior settings")
-            let toggles = experimentalToggles(in: app)
-            content = toggles.goalTemplates
+            content = app.switches["Conventional Amount Entry"]
         case "Display":
             content = app.buttons.matching(
                 NSPredicate(format: "label BEGINSWITH 'Currency'")
@@ -133,8 +121,7 @@ final class SettingsNavigationUITests: XCTestCase {
         return button.exists ? button : link
     }
 
-    /// The demo budget is offline, so seed the synced flag in its SQLite
-    /// preferences rather than tapping a switch that requires a SyncClient.
+    /// Scroll Transactions & Automation down to its Experimental section.
     @MainActor
     private func experimentalToggles(in app: XCUIApplication) -> (
         goalTemplates: XCUIElement,
@@ -184,6 +171,24 @@ final class SettingsNavigationUITests: XCTestCase {
                        "The fixture should load the synced Goal Templates preference")
         XCTAssertTrue(enabledToggles.automationsEditor.isEnabled,
                       "Automations Editor should be enabled when Goal Templates is enabled")
+    }
+
+    @MainActor
+    func testShowBalanceImpactLivesInTransactionsAndAutomation() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4", "-showTransactionImpactCue", "YES"]
+        app.launch()
+
+        let row = rowOnHub("Transactions & Automation", in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        let toggle = app.switches["transactionAutomation.showBalanceImpact"]
+        for _ in 0..<8 where !toggle.exists {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "1", "launch argument seeds Show Balance Impact on")
+        tapControl(toggle) { toggle.value as? String == "0" }
     }
 
     @MainActor

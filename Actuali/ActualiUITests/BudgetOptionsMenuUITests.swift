@@ -13,7 +13,6 @@ final class BudgetOptionsMenuUITests: XCTestCase {
             "-showBudgetedAmounts", "YES",
             "-showCompactSpentColumn", "NO",
             "-showBudgetProgressBars", "NO",
-            "-showTransactionImpactCue", "YES",
             "-showCategoryStatusDots", "YES",
             "-showInverseBudgetProgressBars", "NO",
             "-showOverspentBadge", "YES",
@@ -241,36 +240,6 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         scrollUntilHittable(incomeHeader, in: app, maxSwipes: 20, velocity: .slow)
         XCTAssertTrue(incomeHeader.exists && incomeHeader.isHittable,
                       "Turning Hide Income Group off should restore the Income group")
-    }
-
-    @MainActor
-    func testShowBalanceImpactToggleCanBeChangedFromTransactionsAndAutomation() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "4", "-showTransactionImpactCue", "YES"]
-        app.launch()
-
-        let settingsButton = app.buttons["Transactions & Automation"]
-        let settingsLink = app.links["Transactions & Automation"]
-        var swipes = 0
-        while !settingsButton.exists && !settingsLink.exists && swipes < 8 {
-            app.swipeUp()
-            swipes += 1
-        }
-        let settingsRow = settingsButton.exists ? settingsButton : settingsLink
-        XCTAssertTrue(settingsRow.waitForExistence(timeout: 5))
-        settingsRow.tap()
-        XCTAssertTrue(app.navigationBars["Transactions & Automation"].waitForExistence(timeout: 5))
-
-        let toggle = app.switches["transactionAutomation.showBalanceImpact"]
-        for _ in 0..<8 where !toggle.exists {
-            app.swipeUp(velocity: .slow)
-        }
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-        XCTAssertTrue(isOn(toggle), "Show Balance Impact defaults on")
-        tapSwitch(toggle)
-        XCTAssertFalse(isOn(toggle), "Show Balance Impact should be off")
-        tapSwitch(toggle)
-        XCTAssertTrue(isOn(toggle), "Show Balance Impact should be restored")
     }
 
     @MainActor

@@ -30,6 +30,7 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
 /// The ellipsis menu groups display preferences and budget actions.
 struct BudgetOptionsMenu: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+
     var onCopyPreviousMonthBudget: (() -> Void)?
     var onSetBudgetsToZero: (() -> Void)?
     var onTemplateAction: ((BudgetStore.GoalTemplateAction) -> Void)?

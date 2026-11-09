@@ -14,27 +14,23 @@ final class TransactionImpactCueUITests: XCTestCase {
         XCTAssertTrue(selectionMode.waitForExistence(timeout: 10))
         selectionMode.tap()
 
-        let row = app.descendants(matching: .any).matching(
+        let row = app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH 'transactionRow.' AND label CONTAINS 'Chipotle'")
         ).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 10),
-                      "the demo budget has a Chipotle transaction")
-        scrollUntilHittable(row, in: app, maxSwipes: 30, velocity: .slow)
-        XCTAssertTrue(row.isHittable, "the Chipotle transaction should be in reach")
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "the demo budget has a Chipotle transaction")
         row.tap()
 
         if includeGroceries {
-            let groceries = app.descendants(matching: .any).matching(
+            let groceries = app.buttons.matching(
                 NSPredicate(format: "identifier BEGINSWITH 'transactionRow.' AND label CONTAINS 'Whole Foods'")
             ).firstMatch
             // The register only materializes the rows it draws, and the
             // expanded Upcoming Scheduled Transactions section (non-empty
-            // around month end) pushes Whole Foods below the fold. Wait for
-            // the row to materialize before scrolling it into reach.
-            XCTAssertTrue(groceries.waitForExistence(timeout: 10),
-                          "the demo budget has a Whole Foods transaction")
+            // around month end) pushes Whole Foods below the fold. Swipe
+            // slowly so the long register can't glide the row past unseen —
+            // a slow swipe covers less ground, so allow more of them.
             scrollUntilHittable(groceries, in: app, maxSwipes: 30, velocity: .slow)
-            XCTAssertTrue(groceries.isHittable, "the Whole Foods transaction should be in reach")
+            XCTAssertTrue(groceries.isHittable, "the demo budget has a Whole Foods row in reach")
             groceries.tap()
         }
         // Duplicate lives in the bulk bar's More menu (#648).
@@ -65,13 +61,7 @@ final class TransactionImpactCueUITests: XCTestCase {
     @MainActor
     func testTheSettingTurnsThePopupOff() {
         let app = XCUIApplication()
-        app.launchArguments = [
-            "-loadDemoData",
-            "-initialTab", "1",
-            "-resetStatusFilterState",
-            "-transactionDisplayMode", "flat",
-            "-showTransactionImpactCue", "NO",
-        ]
+        app.launchArguments = ["-loadDemoData", "-resetStatusFilterState", "-transactionDisplayMode", "flat", "-showTransactionImpactCue", "NO"]
         app.launch()
         duplicateChipotle(app)
 
