@@ -100,7 +100,6 @@ struct DashboardView: View {
                         widgetCards
                     }
                 }
-                .padding(.horizontal, 6)
                 .padding(.vertical)
             }
             // Keyed to dataVersion so widgets recompute when transactions

@@ -25,7 +25,6 @@ struct ConnectionDataSettingsView: View {
         .readableWidth()
         .navigationTitle(String(localized: "Connection & Data"))
         .navigationBarTitleDisplayMode(.inline)
-        .contentMargins(.horizontal, 6, for: .scrollContent)
     }
 }
 
@@ -488,6 +487,8 @@ private struct BudgetSelectionSettingsSection: View {
                     }
                 }
             }
+            // Lays out its own edges, so it opts out of the root side margin.
+            .contentMargins(.horizontal, 0, for: .scrollContent)
             .frame(minWidth: 240, maxHeight: 320)
             .padding(.vertical, 8)
             .presentationCompactAdaptation(.popover)

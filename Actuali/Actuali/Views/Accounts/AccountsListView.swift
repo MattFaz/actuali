@@ -82,6 +82,7 @@ struct AccountsListView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.sideMargin) private var sideMargin
     @State private var path: [AccountsRoute] = []
     @State private var showingAddAccount = false
     @State private var showingAccountGroups = false
@@ -737,7 +738,7 @@ struct AccountsListView: View {
             link()
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("accounts.topBox")
-                .padding(.horizontal, TopBoxLayout.horizontalContentMargin)
+                .padding(.horizontal, sideMargin)
                 .padding(.top, TopBoxLayout.verticalContentMargin)
                 // Twice the top gutter: the room the later section bars get
                 // from the gap between sections, so On Budget isn't squat.
@@ -781,11 +782,6 @@ struct AccountsListView: View {
             .animation(
                 AppAnimation.disclosure,
                 value: [isOnBudgetExpanded, isOffBudgetExpanded, isClosedExpanded]
-            )
-            .contentMargins(
-                .horizontal,
-                TopBoxLayout.horizontalContentMargin,
-                for: .scrollContent
             )
             .contentMargins(
                 .top,

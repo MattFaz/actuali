@@ -81,6 +81,7 @@ struct DisplaySettingsView: View {
     @Environment(\.locale) private var locale
     @State private var dashboardPages: [DashboardPage] = []
     @AppStorage("showAccountTypeIcons") private var showAccountTypeIcons = true
+    @AppStorage(SideMargin.storageKey) private var sideMargin = SideMargin.standard
 
     /// Routes the picker's selection through `setCurrencyCode`, which
     /// persists the choice into the budget's own `preferences` table (not
@@ -149,6 +150,17 @@ struct DisplaySettingsView: View {
                 }
 
                 Toggle("Show Account Icons", isOn: $showAccountTypeIcons)
+
+                // This list moves as the slider does, which is the preview.
+                VStack(alignment: .leading) {
+                    Text("Side Margins")
+                        .accessibilityHidden(true)
+                    Slider(value: $sideMargin, in: SideMargin.range, step: 2) {
+                        Text("Side Margins")
+                    }
+                    .accessibilityValue(Text(sideMargin, format: .number))
+                    .accessibilityIdentifier("displaySettings.sideMargin")
+                }
             }
 
             Section {
@@ -178,7 +190,6 @@ struct DisplaySettingsView: View {
         .readableWidth()
         .navigationTitle("Display")
         .navigationBarTitleDisplayMode(.inline)
-        .contentMargins(.horizontal, 6, for: .scrollContent)
         .task(id: currentLoadRequest) { [request = currentLoadRequest] in
             await reloadDashboardPages(request: request)
         }

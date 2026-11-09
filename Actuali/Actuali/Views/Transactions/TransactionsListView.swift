@@ -237,7 +237,6 @@ struct TransactionsListView: View {
                 Color.clear
             }
         }
-        .contentMargins(.horizontal, 6, for: .scrollContent)
         .readableWidth()
         .navigationTitle(scope?.title ?? String(localized: "All Accounts"))
         .onDemandSearch(

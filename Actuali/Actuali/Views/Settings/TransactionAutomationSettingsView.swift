@@ -235,7 +235,6 @@ struct TransactionAutomationSettingsView: View {
         .readableWidth()
         .navigationTitle(String(localized: "Transactions & Automation"))
         .navigationBarTitleDisplayMode(.inline)
-        .contentMargins(.horizontal, 6, for: .scrollContent)
         .task { await refreshNotificationPermissionState() }
         .sheet(isPresented: $showingWalletImport) {
             WalletImportView()

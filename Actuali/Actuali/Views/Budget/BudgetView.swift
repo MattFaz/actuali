@@ -48,7 +48,6 @@ enum BudgetCategoryAccessibility {
 /// Insets applied to the two top summary surfaces. UI coverage checks their
 /// rendered frames because List adds its own row and section insets.
 enum TopBoxLayout {
-    static let horizontalContentMargin: CGFloat = 4
     static let verticalContentMargin: CGFloat = 8
 }
 
@@ -70,6 +69,7 @@ struct BudgetView: View {
 
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
+    @Environment(\.sideMargin) private var sideMargin
     @State private var selectedMonth = currentMonthString()
     @State private var editingBudgetAmount: EditBudgetAmountTarget?
     @State private var editingCategoryGroup: CategoryGroup?
@@ -720,7 +720,7 @@ struct BudgetView: View {
                 // the summary's own padding supplies the gap below it. Compact
                 // rows stay edge-to-edge.
                 .padding(.top, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
-                .padding(.horizontal, isCompact ? 0 : 4)
+                .padding(.horizontal, isCompact ? 0 : sideMargin)
                 .padding(.bottom, isCompact ? 8 : 0)
             }
 
@@ -754,7 +754,7 @@ struct BudgetView: View {
                 }
                 .padding(
                     .horizontal,
-                    isCompact ? 0 : TopBoxLayout.horizontalContentMargin
+                    isCompact ? 0 : sideMargin
                 )
                 .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
                 .background(Color(.systemGroupedBackground).ignoresSafeArea())
@@ -762,7 +762,7 @@ struct BudgetView: View {
                 // With the Clean overview hidden, what's left to budget stays
                 // in view as a single filled row, as in Actua's plan view.
                 ReadyToBudgetRow(budget: budget)
-                    .padding(.horizontal, TopBoxLayout.horizontalContentMargin)
+                    .padding(.horizontal, sideMargin)
                     .padding(.vertical, TopBoxLayout.verticalContentMargin)
                     .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }
@@ -891,6 +891,8 @@ struct BudgetView: View {
         }
         // A little air under the last row once scrolling ends.
         .contentMargins(.bottom, 8, for: .scrollContent)
+        // The cards pad themselves so the pinned group headers stay full width.
+        .contentMargins(.horizontal, 0, for: .scrollContent)
         // Pull-to-refresh belongs to the table alone, not the check-in strip.
         .refreshable {
             await budgetStore.sync()
@@ -1016,7 +1018,7 @@ struct BudgetView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .padding(.horizontal, TopBoxLayout.horizontalContentMargin)
+        .padding(.horizontal, sideMargin)
         .padding(.bottom, 4)
     }
 
@@ -1342,7 +1344,6 @@ struct BudgetCheckInStrip: View {
             }
         }
         .scrollIndicators(.hidden)
-        .contentMargins(.horizontal, 4, for: .scrollContent)
     }
 
     private func count(for filter: BudgetCategoryFilter) -> Int {

@@ -163,7 +163,6 @@ struct SettingsView: View {
             }
             .readableWidth()
             .toolbar(.hidden, for: .navigationBar)
-            .contentMargins(.horizontal, 6, for: .scrollContent)
         }
         // Keep the store-wide loading indicator above the navigation stack so
         // operations started from any destination remain covered, not only
