@@ -319,7 +319,7 @@ struct AccountsListView: View {
                     .moveDisabled(!isReordering)
             } else {
                 accountCell(account, linked: linked)
-                    .listRowBackground(groupRowBackground(
+                    .listRowBackground(AccountGroupRowBackground(
                         position: AccountGroupRowLayout.position(
                             roundsTop: offset == 0,
                             roundsBottom: offset == bucket.accounts.count - 1
@@ -406,8 +406,8 @@ struct AccountsListView: View {
         )
     }
 
-    private func closedRowBackground(at index: Int) -> AnyView? {
-        groupRowBackground(position: AccountGroupRowLayout.position(
+    private func closedRowBackground(at index: Int) -> AccountGroupRowBackground {
+        AccountGroupRowBackground(position: AccountGroupRowLayout.position(
             roundsTop: index == 0,
             roundsBottom: index == filteredClosedAccounts.count - 1
         ))
@@ -1467,10 +1467,6 @@ private struct AccountGroupRowBackground: View {
     }
 }
 
-private func groupRowBackground(position: AccountGroupRowPosition?) -> AnyView? {
-    position.map { AnyView(AccountGroupRowBackground(position: $0)) }
-}
-
 private struct AccountGroupTotal: View {
     let totalText: String
     let total: Int
@@ -1636,7 +1632,13 @@ struct AccountRow: View {
         Menu(String(localized: "accounts.type.title"), systemImage: "tag") {
             ForEach(AccountType.allCases, id: \.self) { type in
                 Button {
-                    Task { try? await budgetStore.setAccountType(account, type: type) }
+                    Task {
+                        do {
+                            try await budgetStore.setAccountType(account, type: type)
+                        } catch {
+                            budgetStore.error = error.localizedDescription
+                        }
+                    }
                 } label: {
                     if account.type == type {
                         Label(type.title, systemImage: "checkmark")
