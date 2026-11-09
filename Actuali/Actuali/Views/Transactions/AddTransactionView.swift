@@ -287,6 +287,12 @@ struct AddTransactionView: View {
         !isTransfer && (!isEditingSplitParent || unsplitRequested)
     }
 
+    /// The budget month the transaction lands in, whose balances the
+    /// category picker shows.
+    private var balanceMonth: String {
+        TransactionImpact.month(forDate: Transaction.yyyymmdd(from: date))
+    }
+
     /// Cents still unassigned across the split lines, nil while the total
     /// doesn't parse yet. Blank lines count as zero so the remainder stays
     /// visible while the user is still filling lines in.
@@ -819,7 +825,8 @@ struct AddTransactionView: View {
             .navigationDestination(isPresented: $showCategoryPicker) {
                 CategoryPickerView(
                     selectedCategoryId: $selectedCategoryId,
-                    autofocusSearch: true
+                    autofocusSearch: true,
+                    balanceMonth: balanceMonth
                 ) {
                     userPickedCategory = true
                 }
@@ -913,6 +920,7 @@ struct AddTransactionView: View {
                 line: $line,
                 accountId: selectedAccountId,
                 txType: txType,
+                balanceMonth: balanceMonth,
                 remainingCents: splitRemainingCents,
                 nearbyPayees: $nearbyPayees,
                 onOpenPayeePicker: loadNearbyPayees,
@@ -1290,6 +1298,7 @@ private struct SplitLineRow: View {
     /// The transaction's direction, so the line's sign glyph can show its
     /// effective direction relative to it.
     var txType: TransactionType
+    var balanceMonth: String
     /// The section-wide unassigned remainder; a positive value on a line with
     /// no amount yet offers one-tap fill instead of mental arithmetic.
     var remainingCents: Int?
@@ -1423,7 +1432,8 @@ private struct SplitLineRow: View {
             NavigationStack {
                 CategoryPickerView(
                     selectedCategoryId: $line.categoryId,
-                    autofocusSearch: true
+                    autofocusSearch: true,
+                    balanceMonth: balanceMonth
                 )
             }
         }
@@ -2086,9 +2096,24 @@ struct CategoryPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedCategoryId: String?
     var autofocusSearch = false
+    /// The "yyyy-MM" month whose available balances show beside each
+    /// category. Upstream's picker uses the transaction date's month, not the
+    /// month the Budget tab browses. nil (the quick-categorize flows) shows none.
+    var balanceMonth: String?
     var onPick: (() -> Void)?
     @State private var searchText = ""
     @State private var searchFocused = false
+    @State private var balances: [String: Int] = [:]
+
+    /// Available balance per category, hidden ones included because the
+    /// browse list shows hidden categories in visible groups. Income
+    /// categories have no envelope balance, so they get none.
+    nonisolated static func availableBalances(in budget: BudgetMonth?) -> [String: Int] {
+        Dictionary(
+            (budget?.allCategoryBudgets ?? []).map { ($0.categoryId, $0.available) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
 
     var body: some View {
         List {
@@ -2122,6 +2147,12 @@ struct CategoryPickerView: View {
                                 Text(category.name)
                                     .foregroundStyle(.primary)
                                 Spacer()
+                                if let balance = balances[category.id] {
+                                    Text(budgetStore.displayBalance(balance))
+                                        .font(.subheadline)
+                                        .foregroundStyle(balanceColor(for: balance))
+                                        .accessibilityIdentifier("categoryPicker.balance.\(category.id)")
+                                }
                                 if selectedCategoryId == category.id {
                                     Image(systemName: "checkmark")
                                         .foregroundStyle(.tint)
@@ -2143,6 +2174,10 @@ struct CategoryPickerView: View {
         }
         // The navigation transition must settle before UIKit can claim the
         // first responder for this destination.
+        .task(id: balanceMonth) {
+            guard let balanceMonth else { return }
+            balances = await Self.availableBalances(in: budgetStore.budgetMonth(balanceMonth))
+        }
         .task {
             guard autofocusSearch else { return }
             try? await Task.sleep(for: .milliseconds(250))
