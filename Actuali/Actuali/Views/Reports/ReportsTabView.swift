@@ -41,9 +41,8 @@ struct ReportsTabView: View {
                 } else {
                     VStack(spacing: 0) {
                         dashboardPicker
-                            // Lined up with the dashboard cards below, which
-                            // carry 6 pt of horizontal padding of their own.
-                            .padding(.horizontal, 6)
+                            // Lined up with the dashboard cards below.
+                            .padding(.horizontal, TopBoxLayout.horizontalContentMargin)
                             .padding(.top, 8)
                         // Recreate cards when the page or widget definitions change,
                         // so their inputs and computed state belong to that dashboard.

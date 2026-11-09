@@ -178,7 +178,6 @@ struct DisplaySettingsView: View {
         .readableWidth()
         .navigationTitle("Display")
         .navigationBarTitleDisplayMode(.inline)
-        .contentMargins(.horizontal, 6, for: .scrollContent)
         .task(id: currentLoadRequest) { [request = currentLoadRequest] in
             await reloadDashboardPages(request: request)
         }

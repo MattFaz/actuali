@@ -25,7 +25,7 @@ struct TransactionFilterStrip: View {
                     .accessibilityAddTraits(selection == filter ? .isSelected : [])
                 }
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, TopBoxLayout.horizontalContentMargin)
             .padding(.vertical, 8)
         }
         .scrollIndicators(.hidden)

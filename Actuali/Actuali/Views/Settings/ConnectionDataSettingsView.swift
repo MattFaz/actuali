@@ -25,7 +25,6 @@ struct ConnectionDataSettingsView: View {
         .readableWidth()
         .navigationTitle(String(localized: "Connection & Data"))
         .navigationBarTitleDisplayMode(.inline)
-        .contentMargins(.horizontal, 6, for: .scrollContent)
     }
 }
 

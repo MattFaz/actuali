@@ -994,7 +994,6 @@ struct AccountDetailView: View {
             notesSection.animation(AppAnimation.disclosure, value: hideNotes)
             transactionSection
         }
-        .contentMargins(.horizontal, 6, for: .scrollContent)
         // The header sections (balance, billing cycle, note) are one or two rows
         // each, so the stock inset-grouped gaps pushed the transactions off
         // screen. Tighter spacing top and between.

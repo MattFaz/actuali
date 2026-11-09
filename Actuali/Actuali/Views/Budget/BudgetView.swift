@@ -48,7 +48,9 @@ enum BudgetCategoryAccessibility {
 /// Insets applied to the two top summary surfaces. UI coverage checks their
 /// rendered frames because List adds its own row and section insets.
 enum TopBoxLayout {
-    static let horizontalContentMargin: CGFloat = 4
+    /// The side margin iOS gives an inset-grouped List (Add Transaction,
+    /// settings), so custom card surfaces line up with stock ones (GH #748).
+    static let horizontalContentMargin: CGFloat = 20
     static let verticalContentMargin: CGFloat = 8
 }
 
@@ -720,7 +722,7 @@ struct BudgetView: View {
                 // the summary's own padding supplies the gap below it. Compact
                 // rows stay edge-to-edge.
                 .padding(.top, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
-                .padding(.horizontal, isCompact ? 0 : 4)
+                .padding(.horizontal, isCompact ? 0 : TopBoxLayout.horizontalContentMargin)
                 .padding(.bottom, isCompact ? 8 : 0)
             }
 
@@ -1342,7 +1344,7 @@ struct BudgetCheckInStrip: View {
             }
         }
         .scrollIndicators(.hidden)
-        .contentMargins(.horizontal, 4, for: .scrollContent)
+        .contentMargins(.horizontal, TopBoxLayout.horizontalContentMargin, for: .scrollContent)
     }
 
     private func count(for filter: BudgetCategoryFilter) -> Int {
