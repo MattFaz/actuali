@@ -9,6 +9,12 @@ final class SettingsNavigationUITests: XCTestCase {
             content = app.textFields["Server URL"]
         case "Transactions & Automation":
             content = app.switches["Conventional Amount Entry"]
+        case "Notifications":
+            content = app.switches["notifications.newTransactionAlerts"]
+            XCTAssertTrue(
+                app.switches["notifications.creditCardDueReminders"].waitForExistence(timeout: 5),
+                "Credit Card Due Reminders should be available alongside transaction alerts"
+            )
         case "Display":
             content = app.buttons.matching(
                 NSPredicate(format: "label BEGINSWITH 'Currency'")
@@ -65,6 +71,7 @@ final class SettingsNavigationUITests: XCTestCase {
             "Connection & Data",
             "Transactions & Automation",
             "Display",
+            "Notifications",
             "Privacy",
             "Scheduled Transactions",
             "Rules",
@@ -141,6 +148,28 @@ final class SettingsNavigationUITests: XCTestCase {
         return (goalTemplates, automationsEditor)
     }
 
+    /// The old Notifications section sat immediately before Automations.
+    /// Scan that part of the form so lazy off-screen rows cannot make the
+    /// regression check pass just because they have not been materialized.
+    @MainActor
+    private func assertNotificationControlsAreOutsideTransactionsAndAutomation(in app: XCUIApplication) {
+        let transactionAlerts = app.switches["New Transaction Alerts"]
+        let creditCardReminders = app.switches["Credit Card Due Reminders"]
+        let goalTemplates = app.descendants(matching: .any)["transactionAutomation.goalTemplates"]
+        var swipes = 0
+
+        while !goalTemplates.exists, swipes < 30 {
+            XCTAssertFalse(transactionAlerts.exists, "New Transaction Alerts appeared in Transactions & Automation")
+            XCTAssertFalse(creditCardReminders.exists, "Credit Card Due Reminders appeared in Transactions & Automation")
+            app.swipeUp(velocity: .slow)
+            swipes += 1
+        }
+
+        XCTAssertTrue(goalTemplates.waitForExistence(timeout: 5), "The scan should reach the Experimental section")
+        XCTAssertFalse(transactionAlerts.exists, "New Transaction Alerts appeared in Transactions & Automation")
+        XCTAssertFalse(creditCardReminders.exists, "Credit Card Due Reminders appeared in Transactions & Automation")
+    }
+
     @MainActor
     func testAutomationsEditorToggleDependencyInSettings() {
         let disabledApp = XCUIApplication()
@@ -189,6 +218,7 @@ final class SettingsNavigationUITests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         XCTAssertEqual(toggle.value as? String, "1", "launch argument seeds Show Balance Impact on")
         tapControl(toggle) { toggle.value as? String == "0" }
+        assertNotificationControlsAreOutsideTransactionsAndAutomation(in: app)
     }
 
     @MainActor
