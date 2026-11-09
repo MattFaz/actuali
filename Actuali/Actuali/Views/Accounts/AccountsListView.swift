@@ -1589,6 +1589,7 @@ struct AccountRow: View {
         loanConfig: LoanConfig?,
         depositConfig: DepositConfig?,
         creditCardDues: [CreditCardCycle.StatementDue]?,
+        creditCardCycle: CreditCardCycle?,
         today: DayDate = .today()
     ) -> Double? {
         guard !account.closed else { return nil }
@@ -1598,10 +1599,18 @@ struct AccountRow: View {
         if let depositConfig {
             return depositConfig.fractionElapsed(on: today)
         }
+        guard let dues = creditCardDues, let cycle = creditCardCycle else { return nil }
+        // The dues include the still-open cycle once every closed statement is
+        // past due. Nothing is paid against an open cycle, so it always read 0%.
+        // Track closed statements only, falling back to the newest one.
+        let openDue = cycle.openCycleDueDate(for: today)
+        let closed = dues.filter { $0.dueDate != openDue }
         // remainingDue never exceeds statementBalance (calculateStatementDue), so this stays in 0...1.
-        guard let dues = creditCardDues,
-              let due = CreditCardCycle.pendingStatementDue(in: dues, today: today),
-              due.statementBalance > 0 else { return nil }
+        // A settled statement past its due date is no longer actionable, so hide
+        // the bar rather than show it full against new spend on the open cycle.
+        guard let due = CreditCardCycle.pendingStatementDue(in: closed, today: today) ?? closed.last,
+              due.statementBalance > 0,
+              today <= due.dueDate || due.remainingDue > 0 else { return nil }
         return Double(due.statementBalance - due.remainingDue) / Double(due.statementBalance)
     }
 
@@ -1696,12 +1705,14 @@ struct AccountRow: View {
         let depositConfig = budgetStore.activeDepositConfig(for: account.id)
         let hasLoan = loanConfig != nil
         let hasDeposit = depositConfig != nil
-        let hasCreditCard = budgetStore.activeCreditCardCycle(for: account.id) != nil
+        let creditCardCycle = budgetStore.activeCreditCardCycle(for: account.id)
+        let hasCreditCard = creditCardCycle != nil
         let progress = Self.progress(
             for: account,
             loanConfig: loanConfig,
             depositConfig: depositConfig,
-            creditCardDues: budgetStore.creditCardStatementDues[account.id]
+            creditCardDues: budgetStore.creditCardStatementDues[account.id],
+            creditCardCycle: creditCardCycle
         )
 
         return HStack(alignment: .center, spacing: 12) {

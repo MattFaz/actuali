@@ -219,7 +219,8 @@ struct AccountsListViewTests {
             for: account,
             loanConfig: nil,
             depositConfig: nil,
-            creditCardDues: nil
+            creditCardDues: nil,
+            creditCardCycle: nil
         )
         #expect(progress == nil)
     }
@@ -237,7 +238,8 @@ struct AccountsListViewTests {
             for: account,
             loanConfig: loan,
             depositConfig: nil,
-            creditCardDues: nil
+            creditCardDues: nil,
+            creditCardCycle: nil
         )
         #expect(progress == nil)
     }
@@ -255,7 +257,8 @@ struct AccountsListViewTests {
             for: account,
             loanConfig: loan,
             depositConfig: nil,
-            creditCardDues: nil
+            creditCardDues: nil,
+            creditCardCycle: nil
         )
         // 2,200,000 original, 1,981,000 owed -> 219,000 paid (9.95%)
         let value = try #require(progress)
@@ -263,11 +266,11 @@ struct AccountsListViewTests {
 
         // Cleared loan -> 1.0 (100%)
         account.balance = 0
-        #expect(AccountRow.progress(for: account, loanConfig: loan, depositConfig: nil, creditCardDues: nil) == 1.0)
+        #expect(AccountRow.progress(for: account, loanConfig: loan, depositConfig: nil, creditCardDues: nil, creditCardCycle: nil) == 1.0)
 
         // Grew past original -> 0.0
         account.balance = -2_500_000
-        #expect(AccountRow.progress(for: account, loanConfig: loan, depositConfig: nil, creditCardDues: nil) == 0.0)
+        #expect(AccountRow.progress(for: account, loanConfig: loan, depositConfig: nil, creditCardDues: nil, creditCardCycle: nil) == 0.0)
     }
 
     @Test func progressCalculatesDepositTermElapsed() {
@@ -287,6 +290,7 @@ struct AccountsListViewTests {
             loanConfig: nil,
             depositConfig: deposit,
             creditCardDues: nil,
+            creditCardCycle: nil,
             today: midDate
         )
         #expect(midProgress == 0.5)
@@ -298,6 +302,7 @@ struct AccountsListViewTests {
             loanConfig: nil,
             depositConfig: deposit,
             creditCardDues: nil,
+            creditCardCycle: nil,
             today: matureDate
         )
         #expect(matureProgress == 1.0)
@@ -305,6 +310,8 @@ struct AccountsListViewTests {
 
     @Test func progressCalculatesCreditCardStatementPayoff() {
         let account = makeAccount("Apple Card")
+        // Feb 28 statement is due Mar 15; the open cycle closes Mar 28.
+        let cycle = CreditCardCycle(statementDay: 28)
         let dueDate = DayDate(year: 2026, month: 3, day: 15)
         let today = DayDate(year: 2026, month: 3, day: 1)
 
@@ -320,6 +327,7 @@ struct AccountsListViewTests {
             loanConfig: nil,
             depositConfig: nil,
             creditCardDues: [partialDue],
+            creditCardCycle: cycle,
             today: today
         )
         #expect(partialProgress == 0.7)
@@ -336,6 +344,7 @@ struct AccountsListViewTests {
             loanConfig: nil,
             depositConfig: nil,
             creditCardDues: [unpaidDue],
+            creditCardCycle: cycle,
             today: today
         )
         #expect(unpaidProgress == 0.0)
@@ -352,6 +361,7 @@ struct AccountsListViewTests {
             loanConfig: nil,
             depositConfig: nil,
             creditCardDues: [paidDue],
+            creditCardCycle: cycle,
             today: today
         )
         #expect(paidProgress == 1.0)
@@ -368,9 +378,46 @@ struct AccountsListViewTests {
             loanConfig: nil,
             depositConfig: nil,
             creditCardDues: [zeroDue],
+            creditCardCycle: cycle,
             today: today
         )
         #expect(zeroProgress == nil)
+    }
+
+    /// Once the last statement is past due, the dues end with the open cycle,
+    /// which has no payments against it. The bar tracks the newest closed
+    /// statement while it is still owed, and hides once it is settled.
+    @Test func progressIgnoresOpenCreditCardCycle() {
+        let account = makeAccount("Revolut")
+        // Statements closed Dec 28, Jan 28, Feb 28; the open cycle closes Mar 28.
+        let cycle = CreditCardCycle(statementDay: 28)
+        let today = DayDate(year: 2026, month: 3, day: 20)
+        func due(_ balance: Int, remaining: Int, month: Int, day: Int) -> CreditCardCycle.StatementDue {
+            CreditCardCycle.StatementDue(
+                statementBalance: balance,
+                paymentsSince: balance - remaining,
+                remainingDue: remaining,
+                dueDate: DayDate(year: 2026, month: month, day: day)
+            )
+        }
+        let oldest = due(100_000, remaining: 50000, month: 1, day: 12)
+        let middle = due(100_000, remaining: 0, month: 2, day: 12)
+        let openCycle = due(80000, remaining: 80000, month: 4, day: 12)
+        func progress(newestClosed: CreditCardCycle.StatementDue) -> Double? {
+            AccountRow.progress(
+                for: account,
+                loanConfig: nil,
+                depositConfig: nil,
+                creditCardDues: [oldest, middle, newestClosed, openCycle],
+                creditCardCycle: cycle,
+                today: today
+            )
+        }
+
+        // Past due and still owed: tracks the Feb 28 statement, not the open cycle or `middle`.
+        #expect(progress(newestClosed: due(100_000, remaining: 75000, month: 3, day: 15)) == 0.25)
+        // Past due and settled: nothing to act on until the next statement closes.
+        #expect(progress(newestClosed: due(100_000, remaining: 0, month: 3, day: 15)) == nil)
     }
 
     // MARK: - Avatar icons and color tints
