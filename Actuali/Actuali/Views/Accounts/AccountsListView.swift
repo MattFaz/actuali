@@ -319,12 +319,7 @@ struct AccountsListView: View {
                     .moveDisabled(!isReordering)
             } else {
                 accountCell(account, linked: linked)
-                    .listRowBackground(groupRowBackground(
-                        position: AccountGroupRowLayout.position(
-                            roundsTop: offset == 0,
-                            roundsBottom: offset == bucket.accounts.count - 1
-                        )
-                    ))
+                    .listRowBackground(groupedAccountRowBackground(at: offset, in: bucket, among: buckets))
                     .moveDisabled(!isReordering)
             }
         }
@@ -661,6 +656,14 @@ struct AccountsListView: View {
                     .safeAreaInset(edge: .top, spacing: 0) {
                         pinnedSummary {
                             Button { selection = .allAccounts } label: { allAccountsCard }
+                                // Outside the List, so it no longer gets the
+                                // sidebar's selection highlight for free.
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 24)
+                                        .strokeBorder(Color.accentColor, lineWidth: 2)
+                                        .opacity(selection == .allAccounts ? 1 : 0)
+                                }
+                                .accessibilityAddTraits(selection == .allAccounts ? .isSelected : [])
                         }
                     }
                 }

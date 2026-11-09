@@ -16,6 +16,11 @@ final class AccountsSummaryPinUITests: XCTestCase {
             .firstMatch
         XCTAssertTrue(summary.waitForExistence(timeout: 10),
                       "the accounts summary should be visible")
+        // The demo list can fit on a tall phone, so a swipe alone may move
+        // nothing: also make sure the summary is no longer a row of the list.
+        XCTAssertFalse(app.collectionViews.firstMatch.descendants(matching: .any)
+            .matching(identifier: "accounts.topBox").firstMatch.exists,
+            "the summary should sit outside the scrolling list")
         let restingY = summary.frame.minY
 
         app.swipeUp()
