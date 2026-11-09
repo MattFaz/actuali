@@ -305,6 +305,8 @@ struct AccountsListViewTests {
 
     @Test func progressCalculatesCreditCardStatementPayoff() {
         let account = makeAccount("Apple Card")
+        // Feb 28 statement is due Mar 15; the open cycle closes Mar 28.
+        let cycle = CreditCardCycle(statementDay: 28)
         let dueDate = DayDate(year: 2026, month: 3, day: 15)
         let today = DayDate(year: 2026, month: 3, day: 1)
 
@@ -320,6 +322,7 @@ struct AccountsListViewTests {
             loanConfig: nil,
             depositConfig: nil,
             creditCardDues: [partialDue],
+            creditCardCycle: cycle,
             today: today
         )
         #expect(partialProgress == 0.7)
@@ -336,6 +339,7 @@ struct AccountsListViewTests {
             loanConfig: nil,
             depositConfig: nil,
             creditCardDues: [unpaidDue],
+            creditCardCycle: cycle,
             today: today
         )
         #expect(unpaidProgress == 0.0)
@@ -352,6 +356,7 @@ struct AccountsListViewTests {
             loanConfig: nil,
             depositConfig: nil,
             creditCardDues: [paidDue],
+            creditCardCycle: cycle,
             today: today
         )
         #expect(paidProgress == 1.0)
@@ -368,9 +373,39 @@ struct AccountsListViewTests {
             loanConfig: nil,
             depositConfig: nil,
             creditCardDues: [zeroDue],
+            creditCardCycle: cycle,
             today: today
         )
         #expect(zeroProgress == nil)
+    }
+
+    /// Once the last statement is past due, the dues end with the open cycle,
+    /// which has no payments against it. The bar tracks the closed statement.
+    @Test func progressIgnoresOpenCreditCardCycle() {
+        let account = makeAccount("Revolut")
+        let cycle = CreditCardCycle(statementDay: 28)
+        let today = DayDate(year: 2026, month: 3, day: 20)
+        let closedStatement = CreditCardCycle.StatementDue(
+            statementBalance: 100_000,
+            paymentsSince: 100_000,
+            remainingDue: 0,
+            dueDate: DayDate(year: 2026, month: 3, day: 15)
+        )
+        let openCycle = CreditCardCycle.StatementDue(
+            statementBalance: 80000,
+            paymentsSince: 0,
+            remainingDue: 80000,
+            dueDate: DayDate(year: 2026, month: 4, day: 12)
+        )
+        let progress = AccountRow.progress(
+            for: account,
+            loanConfig: nil,
+            depositConfig: nil,
+            creditCardDues: [closedStatement, openCycle],
+            creditCardCycle: cycle,
+            today: today
+        )
+        #expect(progress == 1.0)
     }
 
     // MARK: - Avatar icons and color tints
