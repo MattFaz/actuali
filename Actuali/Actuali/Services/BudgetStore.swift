@@ -1501,6 +1501,9 @@ final class BudgetStore: ObservableObject {
 
     /// Shared provider — one position cache for the whole app.
     static let locationProvider = LocationProvider()
+    private var payeeLocationProvider = BudgetStore.locationProvider
+    /// The latest fire-and-forget location write, so tests can await it.
+    private(set) var payeeLocationTask: Task<Void, Never>?
 
     /// Nearby payees for the add-transaction form. Every failure path
     /// (no database, query error) degrades to "no suggestions".
@@ -1869,6 +1872,16 @@ final class BudgetStore: ObservableObject {
     /// Test-only: stand in for a `GET /info` probe of a server >= 26.9.0.
     func setAccountGroupWritesEnabledForTesting(_ enabled: Bool) {
         accountGroupWritesEnabled = enabled
+    }
+
+    /// Test-only: stand in for a `GET /info` probe of a server >= 26.4.0.
+    func setPayeeLocationWritesEnabledForTesting(_ enabled: Bool) {
+        payeeLocationWritesEnabled = enabled
+    }
+
+    /// Test-only: replace CoreLocation for the save-time location recorder.
+    func setLocationProviderForTesting(_ provider: LocationProvider) {
+        payeeLocationProvider = provider
     }
 
     /// Test-only: install an already-completed load task that produced no
@@ -6351,7 +6364,9 @@ final class BudgetStore: ObservableObject {
         /// for the add flow or plain transactions).
         var collapseSplit: Bool = false
         /// Per-save opt-out for payee location recording (GH #24). Defaults
-        /// on so Shortcuts and existing callers keep recording.
+        /// on so Shortcuts and existing callers keep recording. Only new
+        /// transactions record: an edit happens wherever the phone is now,
+        /// not where the transaction did (GH #794).
         var recordLocation: Bool = true
         var reviewConfirmations: Set<PendingImportReviewRequirement> = []
         /// True for a picker choice or prefill; false for payee-history suggestions.
@@ -7107,9 +7122,6 @@ final class BudgetStore: ObservableObject {
         }
 
         await refreshDataOnly()
-        if form.recordLocation, let payeeId {
-            recordPayeeLocationIfAppropriate(payeeId: payeeId)
-        }
     }
 
     /// Convert an ordinary transaction into one leg of a transfer (GH #259):
@@ -7299,9 +7311,6 @@ final class BudgetStore: ObservableObject {
         }
 
         await refreshDataOnly()
-        if form.recordLocation, let payeeId {
-            recordPayeeLocationIfAppropriate(payeeId: payeeId)
-        }
     }
 
     /// Collapse a split parent back into a single transaction (the edit
@@ -7362,9 +7371,6 @@ final class BudgetStore: ObservableObject {
         }
 
         await refreshDataOnly()
-        if form.recordLocation, let payeeId {
-            recordPayeeLocationIfAppropriate(payeeId: payeeId)
-        }
     }
 
     /// Payee id for a standard (non-transfer) save: an empty name clears the
@@ -7400,9 +7406,9 @@ final class BudgetStore: ObservableObject {
     /// never affect the save that triggered it.
     func recordPayeeLocationIfAppropriate(payeeId: String) {
         guard payeeLocationWritesEnabled, recordPayeeLocations else { return }
-        Task { [weak self] in
+        payeeLocationTask = Task { [weak self] in
             guard let self else { return }
-            let provider = Self.locationProvider
+            let provider = self.payeeLocationProvider
             guard await provider.authorizationStatus() == .granted,
                   let position = try? await provider.currentPosition(),
                   LocationUtils.isValidCoordinate(
