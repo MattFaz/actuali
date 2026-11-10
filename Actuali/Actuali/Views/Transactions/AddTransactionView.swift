@@ -679,10 +679,9 @@ struct AddTransactionView: View {
                     Toggle(isOn: $cleared) {
                         Label("Cleared", systemImage: "checkmark.circle")
                     }
-                    // Only the paths that record locations (adds and split
-                    // edits) get the per-save opt-out; standard edits never
-                    // record, so the toggle would be a no-op there.
-                    if !isEditing || isEditingSplitParent, !isTransfer,
+                    // Only adds record locations (GH #794), so the per-save
+                    // opt-out would be a no-op on an edit.
+                    if !isEditing, !isTransfer,
                        budgetStore.payeeLocationWritesEnabled,
                        budgetStore.recordPayeeLocations {
                         Toggle(isOn: $saveLocation) {
