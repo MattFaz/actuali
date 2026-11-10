@@ -226,4 +226,52 @@ struct BudgetDatabaseTagTests {
         let emptyTxs = try await database.fetchTransactions(taggedWith: "nonexistent")
         #expect(emptyTxs.isEmpty)
     }
+
+    /// GH #785: a tag on one split line counts that line (not the whole
+    /// parent); a tag on the parent counts the parent once, even when its
+    /// lines repeat the tag.
+    private static let splitSeed = """
+    INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking');
+    INSERT INTO payees (id, name) VALUES ('p-shop', 'Shop');
+    INSERT INTO payee_mapping (id, targetId) VALUES ('p-shop', 'p-shop');
+    INSERT INTO tags (id, tag) VALUES ('t-gift', 'gift'), ('t-trip', 'trip');
+    INSERT INTO transactions (id, acct, amount, description, notes, date, isParent, isChild, parent_id, sort_order, tombstone) VALUES
+    ('split-1', 'acct-1', -5000, 'p-shop', 'Weekly shop', 20260110, 1, 0, NULL, 1, 0),
+    ('split-1-a', 'acct-1', -3000, NULL, NULL, 20260110, 0, 1, 'split-1', 2, 0),
+    ('split-1-b', 'acct-1', -2000, NULL, 'Present #gift', 20260110, 0, 1, 'split-1', 3, 0),
+    ('split-2', 'acct-1', -9000, 'p-shop', 'Holiday #trip', 20260111, 1, 0, NULL, 4, 0),
+    ('split-2-a', 'acct-1', -6000, NULL, 'Hotel #trip', 20260111, 0, 1, 'split-2', 5, 0),
+    ('split-2-b', 'acct-1', -3000, NULL, NULL, 20260111, 0, 1, 'split-2', 6, 0),
+    ('dead', 'acct-1', -1000, 'p-shop', NULL, 20260112, 1, 0, NULL, 7, 1),
+    ('dead-a', 'acct-1', -1000, NULL, '#gift', 20260112, 0, 1, 'dead', 8, 0);
+    """
+
+    @Test func fetchTransactionsTaggedWithIncludesTaggedSplitLines() async throws {
+        let (database, path) = try await makeDatabase(seedSQL: Self.splitSeed)
+        defer { cleanup(path) }
+
+        let gift = try await database.fetchTransactions(taggedWith: "gift")
+        #expect(gift.map(\.id) == ["split-1-b"])
+        #expect(gift.first?.amount == -2000)
+        #expect(gift.first?.parentId == "split-1")
+        #expect(gift.first?.payeeName == "Shop")
+
+        let trip = try await database.fetchTransactions(taggedWith: "trip")
+        #expect(trip.map(\.id) == ["split-2"])
+    }
+
+    @Test func tagSummariesCountTaggedSplitLines() async throws {
+        let (database, path) = try await makeDatabase(seedSQL: Self.splitSeed)
+        defer { cleanup(path) }
+
+        let summaries = try await database.fetchTagSummaries()
+        let gift = try #require(summaries.first { $0.id == "t-gift" })
+        #expect(gift.transactionCount == 1)
+        #expect(gift.totalSpent == 2000)
+        #expect(gift.netAmount == -2000)
+
+        let trip = try #require(summaries.first { $0.id == "t-trip" })
+        #expect(trip.transactionCount == 1)
+        #expect(trip.totalSpent == 9000)
+    }
 }
