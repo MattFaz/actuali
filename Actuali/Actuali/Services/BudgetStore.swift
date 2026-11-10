@@ -7743,7 +7743,8 @@ final class BudgetStore: ObservableObject {
             statuses: scheduleStatuses,
             accountId: accountId,
             activeAccountIds: Set(accounts.filter { !$0.closed }.map(\.id)),
-            startingBalance: accountId.flatMap { id in accounts.first { $0.id == id }?.balance }
+            startingBalance: accountId.flatMap { id in accounts.first { $0.id == id }?.balance },
+            upcomingLength: upcomingScheduledTransactionLength
         )
     }
 

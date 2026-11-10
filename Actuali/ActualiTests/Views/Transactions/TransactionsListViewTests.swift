@@ -72,11 +72,11 @@ struct TransactionsListViewTests {
         ]
 
         #expect(
-            AccountTransactionsScope.onBudget.scoped(entries, accounts: accounts).map(\.id)
+            AccountTransactionsScope.onBudget.scoped(entries, accounts: accounts).map(\.schedule.id)
                 == ["on-entry"]
         )
         #expect(
-            AccountTransactionsScope.offBudget.scoped(entries, accounts: accounts).map(\.id)
+            AccountTransactionsScope.offBudget.scoped(entries, accounts: accounts).map(\.schedule.id)
                 == ["off-entry"]
         )
     }

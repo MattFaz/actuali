@@ -371,7 +371,7 @@ struct UpcomingScheduleSections: View {
     var showRunningBalance = false
     @AppStorage("upcomingScheduledTransactionsExpanded") private var isExpanded = true
     @State private var actionError: String?
-    @State private var actionSchedule: ScheduleSummary?
+    @State private var actionEntryId: String?
     @State private var editingSchedule: ScheduleSummary?
 
     private func run(_ operation: @escaping () async throws -> Void) {
@@ -460,8 +460,8 @@ struct UpcomingScheduleSections: View {
                 Text(actionError ?? "")
             }
             .onChange(of: entries.map(\.id)) { _, ids in
-                if Self.hasStaleAction(actionSchedule?.id, visibleIds: ids) {
-                    actionSchedule = nil
+                if Self.hasStaleAction(actionEntryId, visibleIds: ids) {
+                    actionEntryId = nil
                 }
             }
             .textCase(nil)
@@ -472,11 +472,11 @@ struct UpcomingScheduleSections: View {
                     ForEach(group.value) { entry in
                         let schedule = entry.schedule
                         Button {
-                            actionSchedule = schedule
+                            actionEntryId = entry.id
                         } label: {
                             ScheduleRow(
                                 schedule: schedule,
-                                status: budgetStore.scheduleStatuses[schedule.id] ?? .scheduled,
+                                status: entry.status(in: budgetStore.scheduleStatuses),
                                 accountName: schedule.accountId.flatMap { id in
                                     budgetStore.accounts.first { $0.id == id }?.name
                                 },
@@ -492,10 +492,10 @@ struct UpcomingScheduleSections: View {
                         .confirmationDialog(
                             String(localized: "Scheduled Transactions"),
                             isPresented: Binding(
-                                get: { actionSchedule?.id == schedule.id },
+                                get: { actionEntryId == entry.id },
                                 set: {
                                     if !$0 {
-                                        actionSchedule = nil
+                                        actionEntryId = nil
                                     }
                                 }
                             ),
