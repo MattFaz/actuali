@@ -12,15 +12,17 @@ struct ScheduleRegisterProjectionTests {
         amount: Int,
         completed: Bool = false,
         postsTransaction: Bool = true,
-        sortOrder: Double? = nil
+        sortOrder: Double? = nil,
+        repeats: RecurConfig? = nil,
+        customUpcomingLength: String? = nil
     ) -> ScheduleSummary {
         ScheduleSummary(
             id: id, name: id, ruleId: nil,
             nextDate: date, nextDateRowId: nil, baseNextDateTs: nil,
             accountId: accountId, payeeId: nil,
             amount: .fixed(amount), amountOp: .isExactly, dateOp: nil,
-            dateCondition: nil, postsTransaction: postsTransaction, completed: completed,
-            customUpcomingLength: nil, sortOrder: sortOrder, isCustom: false,
+            dateCondition: repeats.map { .recurring($0) }, postsTransaction: postsTransaction, completed: completed,
+            customUpcomingLength: customUpcomingLength, sortOrder: sortOrder, isCustom: false,
             conditionsJSON: nil, actionsJSON: nil
         )
     }
@@ -138,5 +140,62 @@ struct ScheduleRegisterProjectionTests {
 
         #expect(entries.map(\.schedule.id) == ["account-1", "account-2"])
         #expect(entries.allSatisfy { $0.runningBalance == nil })
+    }
+
+    @Test func recurringSchedulesRepeatAcrossTheUpcomingWindow() {
+        let daily = schedule("daily", date: today, amount: -100, repeats: RecurConfig(frequency: .daily, start: today))
+
+        let entries = ScheduleRegisterProjection.upcomingEntries(
+            schedules: [daily],
+            statuses: ["daily": .due],
+            accountId: "account-1",
+            activeAccountIds: ["account-1"],
+            startingBalance: 1000,
+            upcomingLength: "3",
+            today: today
+        )
+
+        #expect(entries.map(\.date) == (0...3).reversed().map { today.adding(days: $0) })
+        #expect(Set(entries.map(\.id)).count == 4)
+        #expect(entries.compactMap(\.runningBalance) == [600, 700, 800, 900])
+        // Only the schedule's own next date carries its status; later ones are upcoming, as upstream's forceUpcoming.
+        #expect(entries.map { $0.status(in: ["daily": .due]) } == [.upcoming, .upcoming, .upcoming, .due])
+    }
+
+    @Test func customUpcomingLengthOverridesTheBudgetWindowForRepeats() {
+        let wednesday = today.adding(days: 1)
+        let weekly = schedule(
+            "weekly", date: wednesday, amount: 500,
+            repeats: RecurConfig(frequency: .weekly, start: wednesday), customUpcomingLength: "oneMonth"
+        )
+
+        let entries = ScheduleRegisterProjection.upcomingEntries(
+            schedules: [weekly],
+            statuses: ["weekly": .upcoming],
+            activeAccountIds: ["account-1"],
+            upcomingLength: "7",
+            today: today
+        )
+
+        #expect(entries.map(\.date) == [28, 21, 14, 7, 0].map { wednesday.adding(days: $0) })
+    }
+
+    @Test func weekendSolvedRepeatsListEachOccurrenceOnce() {
+        let saturday = DayDate(year: 2026, month: 10, day: 10)
+        let weekly = schedule(
+            "weekly", date: DayDate(year: 2026, month: 10, day: 9), amount: -100,
+            repeats: RecurConfig(frequency: .weekly, start: saturday, skipWeekend: true, weekendSolveMode: "before")
+        )
+
+        let entries = ScheduleRegisterProjection.upcomingEntries(
+            schedules: [weekly],
+            statuses: ["weekly": .upcoming],
+            activeAccountIds: ["account-1"],
+            upcomingLength: "21",
+            today: today
+        )
+
+        // Each Saturday solves back to the Friday already listed; the loop steps past it.
+        #expect(entries.map(\.date) == [23, 16, 9].map { DayDate(year: 2026, month: 10, day: $0) })
     }
 }

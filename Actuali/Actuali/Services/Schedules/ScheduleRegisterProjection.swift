@@ -5,8 +5,16 @@ struct UpcomingScheduleEntry: Identifiable {
     let date: DayDate
     let runningBalance: Int?
 
+    /// A recurring schedule shows once per occurrence, so the date keeps rows
+    /// apart (upstream's `preview/<schedule>/<date>`).
     var id: String {
-        schedule.id
+        "\(schedule.id)/\(date.iso)"
+    }
+
+    /// Only the schedule's own next date carries its status; later occurrences
+    /// are always upcoming (upstream `forceUpcoming`).
+    func status(in statuses: [String: ScheduleStatus]) -> ScheduleStatus {
+        date == schedule.nextDate ? statuses[schedule.id] ?? .scheduled : .upcoming
     }
 }
 
@@ -17,9 +25,10 @@ enum ScheduleRegisterProjection {
         accountId: String? = nil,
         activeAccountIds: Set<String>,
         startingBalance: Int? = nil,
+        upcomingLength: String? = nil,
         today: DayDate = .today()
     ) -> [UpcomingScheduleEntry] {
-        let upcoming = schedules.compactMap { schedule -> (schedule: ScheduleSummary, date: DayDate)? in
+        let upcoming = schedules.flatMap { schedule -> [(schedule: ScheduleSummary, date: DayDate)] in
             guard let date = schedule.nextDate,
                   let scheduleAccountId = schedule.accountId,
                   date >= today,
@@ -27,9 +36,10 @@ enum ScheduleRegisterProjection {
                   activeAccountIds.contains(scheduleAccountId),
                   statuses[schedule.id] == .upcoming || statuses[schedule.id] == .due,
                   accountId == nil || scheduleAccountId == accountId
-            else { return nil }
+            else { return [] }
 
-            return (schedule, date)
+            return occurrences(of: schedule, from: date, upcomingLength: upcomingLength, today: today)
+                .map { (schedule, $0) }
         }.sorted { first, second in
             if first.date != second.date {
                 return first.date < second.date
@@ -49,5 +59,20 @@ enum ScheduleRegisterProjection {
                 runningBalance: balance
             )
         }.reversed()
+    }
+
+    /// Every occurrence from `nextDate` to the end of the schedule's upcoming
+    /// window, as upstream `computeSchedulePreviewTransactions`.
+    private static func occurrences(
+        of schedule: ScheduleSummary,
+        from nextDate: DayDate,
+        upcomingLength: String?,
+        today: DayDate
+    ) -> [DayDate] {
+        guard case .recurring(let config) = schedule.dateCondition else { return [nextDate] }
+        let end = today.adding(days: ScheduleUpcomingLength.days(
+            for: schedule.customUpcomingLength ?? upcomingLength, today: today
+        ))
+        return ScheduleRecurrence.occurrences(of: config, from: nextDate, through: end)
     }
 }

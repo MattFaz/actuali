@@ -242,33 +242,14 @@ enum BalanceForecastEngine {
     private static func occurrenceDates(for schedule: Schedule, endDate: DayDate) -> [DayDate] {
         switch schedule.dateCondition {
         case .fixed(let date):
-            return date <= endDate ? [date] : []
+            date <= endDate ? [date] : []
         case .unsupported:
             // Recurrence shape the port can't expand; the stored next_date is
             // still a real upcoming occurrence, so project that one (mirrors
             // the poster's post-once-without-advancing behavior).
-            return schedule.nextDate <= endDate ? [schedule.nextDate] : []
+            schedule.nextDate <= endDate ? [schedule.nextDate] : []
         case .recurring(let config):
-            var dates = [schedule.nextDate]
-            var seen: Set<DayDate> = [schedule.nextDate]
-            var day = schedule.nextDate
-            var iterations = 0
-            while day <= endDate, iterations < 10000 {
-                iterations += 1
-                guard let next = ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: day),
-                      next <= endDate
-                else { break }
-                // getNextDate can return an already-seen date (ended schedule
-                // fallback, weekend solve); step a day forward like upstream.
-                if seen.contains(next) {
-                    day = day.adding(days: 1)
-                    continue
-                }
-                dates.append(next)
-                seen.insert(next)
-                day = next.adding(days: 1)
-            }
-            return dates
+            ScheduleRecurrence.occurrences(of: config, from: schedule.nextDate, through: endDate)
         }
     }
 
