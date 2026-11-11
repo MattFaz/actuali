@@ -2,10 +2,10 @@ import SwiftUI
 import Testing
 @testable import Actuali
 
-/// A `Form` takes its row inset from the content margin it is given, and a window
-/// with a side bar reserves 84 pt of its trailing edge — so the margin has to
-/// carry that inset or the rows draw under the bar. Measured on the closed Duo:
-/// 20 pt from the edge before the fix, 104 pt after.
+/// A side bar reserves 84 pt of the window's trailing edge, and the containers
+/// that draw to that edge — a `Form`, a row's card — take their inset from the
+/// margin they are given, so that margin has to carry the inset — 104 pt on the
+/// closed Duo, where the bar takes 84.
 @Suite("Side margins")
 struct SideMarginTests {
     @Test("A side bar's inset is added to the margin, not replaced by it")
@@ -24,5 +24,24 @@ struct SideMarginTests {
 
         #expect(insets.leading == 104)
         #expect(insets.trailing == 20)
+    }
+
+    @Test("A compact window with a side bar loses the margin")
+    func compactWithSideBar() {
+        // iPhone Duo, closed.
+        #expect(SideMargin.losesSideMargin(sizeClass: .compact, safeArea: WindowInsets(trailing: 84)))
+        #expect(SideMargin.losesSideMargin(sizeClass: .compact, safeArea: WindowInsets(leading: 84)))
+    }
+
+    @Test("A phone keeps it — there is no bar to take it")
+    func compactWithoutSideBar() {
+        #expect(!SideMargin.losesSideMargin(sizeClass: .compact, safeArea: WindowInsets()))
+    }
+
+    @Test("A wide window keeps it — readableWidth already insets the column")
+    func regularWithSideBar() {
+        // iPhone Duo, unfolded: the bar is there, but the content sits in a capped
+        // column that is already clear of it.
+        #expect(!SideMargin.losesSideMargin(sizeClass: .regular, safeArea: WindowInsets(trailing: 84)))
     }
 }

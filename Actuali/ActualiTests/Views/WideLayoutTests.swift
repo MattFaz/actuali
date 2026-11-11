@@ -29,10 +29,10 @@ struct WideLayoutTests {
         #expect(WideLayout.isWide(sizeClass: .regular, width: 1024))
     }
 
-    /// The Duo's inner display is 890 pt wide on the hardware and 951 pt in the
-    /// simulator, both regular. Below the threshold the split view turns into an
-    /// overlay whose sidebar draws over the detail column and clips its leading
-    /// text, so the device keeps the single-column layout at both widths.
+    /// Both the width Apple publishes for the inner display (890 pt) and the one
+    /// the simulator measures (951 pt) report a regular size class. Below the
+    /// threshold the split view turns into an overlay whose sidebar draws over the
+    /// detail column and clips its leading text, so both stay single-column.
     @Test("iPhone Duo's inner display stays single-column")
     func duoInnerDisplayStaysSingleColumn() {
         #expect(!WideLayout.isWide(sizeClass: .regular, width: 890))

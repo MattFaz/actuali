@@ -11,7 +11,7 @@ import UIKit
 struct ContentView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @StateObject private var notificationRouter = NotificationRouter.shared
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     /// What the window measures, read once per layout pass: width and horizontal
     /// insets together, so a fold resizes the layout in one go.
@@ -64,7 +64,7 @@ struct ContentView: View {
             } action: { metrics = $0 }
             .environment(\.windowHorizontalInsets, metrics.insets)
             .environment(\.isWideLayout, WideLayout.isWide(
-                sizeClass: horizontalSizeClass,
+                sizeClass: sizeClass,
                 width: metrics.width
             ))
             .background(ShakeResponder(

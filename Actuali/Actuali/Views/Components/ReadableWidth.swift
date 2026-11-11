@@ -9,10 +9,9 @@ enum WideLayout {
     /// columns instead of collapsing its sidebar into an overlay drawer. 834 pt
     /// (11-inch iPad portrait) is too narrow, 1024 pt (13-inch portrait) works.
     ///
-    /// iPhone Duo's inner display lands under it — 951 pt in the simulator,
-    /// narrower on the device — where the split view collapses into that same
-    /// overlay, drawing the sidebar over the detail column and clipping its
-    /// leading text.
+    /// iPhone Duo's inner display lands under it — 951 pt measured in the
+    /// simulator — where the split view collapses into that same overlay, drawing
+    /// the sidebar over the detail column and clipping its leading text.
     static let minimumWidth: CGFloat = 1000
 
     nonisolated static func isWide(
