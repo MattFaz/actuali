@@ -978,6 +978,27 @@ final class BudgetDatabase: Sendable {
         "(t.isChild = 0 OR t.isChild IS NULL OR (\(parent).id IS NOT NULL AND (\(parent).tombstone = 0 OR \(parent).tombstone IS NULL)))"
     }
 
+    /// FROM + display-name joins for queries that list split children:
+    /// a child with no payee of its own shows its parent's. `par` is the
+    /// parent row `aliveChildPredicate(parent: "par")` checks.
+    private static let splitAwareJoins = """
+    FROM transactions t
+    LEFT JOIN payee_mapping pm ON pm.id = t.description
+    LEFT JOIN payees p ON p.id = pm.targetId
+    -- Transfer payees carry no name; their display name is the
+    -- linked account's name (matches Actual's v_payees view).
+    LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+        AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+    -- Parent's payee, as the fallback for split children.
+    LEFT JOIN transactions par ON par.id = t.parent_id
+    LEFT JOIN payee_mapping ppm ON ppm.id = par.description
+    LEFT JOIN payees pp ON pp.id = ppm.targetId
+    LEFT JOIN accounts ppa ON ppa.id = pp.transfer_acct
+        AND (ppa.tombstone = 0 OR ppa.tombstone IS NULL)
+    LEFT JOIN category_mapping cm ON cm.id = t.category
+    LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+    """
+
     /// SELECT + display-name joins + liveness filter shared by the
     /// creation-detection and single-id transaction queries. The list query
     /// (fetchTransactions) carries additional split-aware joins of its own.
@@ -1712,22 +1733,8 @@ final class BudgetDatabase: Sendable {
                 t.tombstone, t.parent_id,
                 COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name,
                 c.name as category_name
-            FROM transactions t
+            \(Self.splitAwareJoins)
             JOIN accounts a ON a.id = t.acct
-            LEFT JOIN payee_mapping pm ON pm.id = t.description
-            LEFT JOIN payees p ON p.id = pm.targetId
-            -- Transfer payees carry no name; their display name is the
-            -- linked account's name (matches Actual's v_payees view).
-            LEFT JOIN accounts pa ON pa.id = p.transfer_acct
-                AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
-            -- Parent's payee, as the fallback for split children.
-            LEFT JOIN transactions par ON par.id = t.parent_id
-            LEFT JOIN payee_mapping ppm ON ppm.id = par.description
-            LEFT JOIN payees pp ON pp.id = ppm.targetId
-            LEFT JOIN accounts ppa ON ppa.id = pp.transfer_acct
-                AND (ppa.tombstone = 0 OR ppa.tombstone IS NULL)
-            LEFT JOIN category_mapping cm ON cm.id = t.category
-            LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
             WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
               AND t.date IS NOT NULL
               AND \(Self.aliveChildPredicate(parent: "par"))
@@ -6131,21 +6138,7 @@ final class BudgetDatabase: Sendable {
                 c.name as category_name,
                 p.transfer_acct as transfer_acct,
                 par.notes AS parent_notes
-            FROM transactions t
-            LEFT JOIN payee_mapping pm ON pm.id = t.description
-            LEFT JOIN payees p ON p.id = pm.targetId
-            -- Transfer payees carry no name; their display name is the
-            -- linked account's name (matches Actual's v_payees view).
-            LEFT JOIN accounts pa ON pa.id = p.transfer_acct
-                AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
-            -- Parent's payee, as the fallback for split children.
-            LEFT JOIN transactions par ON par.id = t.parent_id
-            LEFT JOIN payee_mapping ppm ON ppm.id = par.description
-            LEFT JOIN payees pp ON pp.id = ppm.targetId
-            LEFT JOIN accounts ppa ON ppa.id = pp.transfer_acct
-                AND (ppa.tombstone = 0 OR ppa.tombstone IS NULL)
-            LEFT JOIN category_mapping cm ON cm.id = t.category
-            LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+            \(Self.splitAwareJoins)
             WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
               AND \(Self.aliveChildPredicate(parent: "par"))
               AND t.date IS NOT NULL
