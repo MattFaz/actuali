@@ -487,7 +487,7 @@ struct UpcomingScheduleSections: View {
                                 showsNextDate: false
                             )
                         }
-                        .accessibilityIdentifier("scheduleRegister.row.\(schedule.id)")
+                        .accessibilityIdentifier("scheduleRegister.row.\(schedule.id).\(entry.date.iso)")
                         // Per row, so the iOS 26 popover anchors to the tapped row (GH #675).
                         .confirmationDialog(
                             String(localized: "Scheduled Transactions"),
@@ -502,6 +502,12 @@ struct UpcomingScheduleSections: View {
                             titleVisibility: .visible
                         ) {
                             scheduleActions(schedule)
+                        } message: {
+                            // Every row acts on the schedule's next date, which
+                            // the menu names like upstream ScheduledTransactionMenuModal.
+                            if let nextDate = schedule.nextDate {
+                                Text(Transaction.formattedDate(from: nextDate.yyyymmdd, style: .long))
+                            }
                         }
                     }
                 }
@@ -532,7 +538,7 @@ struct ScheduleRowUITestFixture: View {
                 List {
                     if showUpcomingSchedules {
                         UpcomingScheduleSections(entries: [
-                            UpcomingScheduleEntry(schedule: schedule, date: .today(), runningBalance: nil),
+                            UpcomingScheduleEntry(schedule: schedule, date: DayDate(year: 2026, month: 10, day: 1), runningBalance: nil),
                         ])
                     }
                 }

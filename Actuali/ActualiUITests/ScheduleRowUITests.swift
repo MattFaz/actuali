@@ -19,11 +19,15 @@ final class ScheduleRowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-showScheduleRowFixture", "-showUpcomingScheduleFixture", "-resetScheduleRegisterPreferences"]
         app.launch()
-        let row = app.buttons["scheduleRegister.row.fixture"]
+        let row = app.buttons["scheduleRegister.row.fixture.2026-10-01"]
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
         XCTAssertTrue(app.buttons["scheduleRegister.post.fixture"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["scheduleRegister.skip.fixture"].exists)
+        // Actions run against the schedule's next date, so the menu names it.
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS 'October' AND label CONTAINS '2026'")
+        ).firstMatch.exists)
         // GH #675: the menu anchors to the tapped row, so it sits beside the row instead of over it.
         XCTAssertFalse(app.buttons["scheduleRegister.post.fixture"].firstMatch.frame.intersects(row.frame))
         app.buttons["scheduleRegister.postToday.fixture"].firstMatch.tap()
@@ -42,7 +46,7 @@ final class ScheduleRowUITests: XCTestCase {
         let fixtureArguments = ["-showScheduleRowFixture", "-showUpcomingScheduleFixture"]
         app.launchArguments = fixtureArguments + ["-resetScheduleRegisterPreferences"]
         app.launch()
-        let row = app.buttons["scheduleRegister.row.fixture"]
+        let row = app.buttons["scheduleRegister.row.fixture.2026-10-01"]
         let header = app.buttons["scheduleRegister.expansion"]
         let visibility = app.descendants(matching: .any)["scheduleRegister.visibility"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))

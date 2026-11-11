@@ -62,8 +62,7 @@ enum ScheduleRegisterProjection {
     }
 
     /// Every occurrence from `nextDate` to the end of the schedule's upcoming
-    /// window. Port of the date loop in loot-core
-    /// `computeSchedulePreviewTransactions`.
+    /// window, as upstream `computeSchedulePreviewTransactions`.
     private static func occurrences(
         of schedule: ScheduleSummary,
         from nextDate: DayDate,
@@ -74,21 +73,6 @@ enum ScheduleRegisterProjection {
         let end = today.adding(days: ScheduleUpcomingLength.days(
             for: schedule.customUpcomingLength ?? upcomingLength, today: today
         ))
-        var dates = [nextDate]
-        var day = nextDate
-        while day <= end {
-            guard let next = ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: day),
-                  next <= end
-            else { break }
-            // A weekend solve can land on a date already listed, and an ended
-            // schedule falls back to its last one; step a day past either.
-            if next <= dates[dates.count - 1] {
-                day = day.adding(days: 1)
-                continue
-            }
-            dates.append(next)
-            day = next.adding(days: 1)
-        }
-        return dates
+        return ScheduleRecurrence.occurrences(of: config, from: nextDate, through: end)
     }
 }

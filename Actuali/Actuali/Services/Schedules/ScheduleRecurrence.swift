@@ -349,4 +349,28 @@ extension ScheduleRecurrence {
         }
         return dates
     }
+
+    /// `start`, then every occurrence after it through `end`. Port of the date
+    /// loop in loot-core `computeSchedulePreviewTransactions` and
+    /// `getFutureOccurrenceDates` (forecast-schedules.ts).
+    static func occurrences(of config: RecurConfig, from start: DayDate, through end: DayDate) -> [DayDate] {
+        var dates = [start]
+        var seen: Set<DayDate> = [start]
+        var day = start
+        var iterations = 0
+        while day <= end, iterations < 10000 {
+            iterations += 1
+            guard let next = nextOccurrence(config: config, onOrAfter: day), next <= end else { break }
+            // getNextDate can return an already-seen date (ended schedule
+            // fallback, weekend solve); step a day forward like upstream.
+            if seen.contains(next) {
+                day = day.adding(days: 1)
+                continue
+            }
+            dates.append(next)
+            seen.insert(next)
+            day = next.adding(days: 1)
+        }
+        return dates
+    }
 }

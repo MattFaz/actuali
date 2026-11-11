@@ -179,4 +179,23 @@ struct ScheduleRegisterProjectionTests {
 
         #expect(entries.map(\.date) == [28, 21, 14, 7, 0].map { wednesday.adding(days: $0) })
     }
+
+    @Test func weekendSolvedRepeatsListEachOccurrenceOnce() {
+        let saturday = DayDate(year: 2026, month: 10, day: 10)
+        let weekly = schedule(
+            "weekly", date: DayDate(year: 2026, month: 10, day: 9), amount: -100,
+            repeats: RecurConfig(frequency: .weekly, start: saturday, skipWeekend: true, weekendSolveMode: "before")
+        )
+
+        let entries = ScheduleRegisterProjection.upcomingEntries(
+            schedules: [weekly],
+            statuses: ["weekly": .upcoming],
+            activeAccountIds: ["account-1"],
+            upcomingLength: "21",
+            today: today
+        )
+
+        // Each Saturday solves back to the Friday already listed; the loop steps past it.
+        #expect(entries.map(\.date) == [23, 16, 9].map { DayDate(year: 2026, month: 10, day: $0) })
+    }
 }
