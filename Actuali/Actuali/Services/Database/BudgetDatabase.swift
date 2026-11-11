@@ -978,6 +978,27 @@ final class BudgetDatabase: Sendable {
         "(t.isChild = 0 OR t.isChild IS NULL OR (\(parent).id IS NOT NULL AND (\(parent).tombstone = 0 OR \(parent).tombstone IS NULL)))"
     }
 
+    /// FROM + display-name joins for queries that list split children:
+    /// a child with no payee of its own shows its parent's. `par` is the
+    /// parent row `aliveChildPredicate(parent: "par")` checks.
+    private static let splitAwareJoins = """
+    FROM transactions t
+    LEFT JOIN payee_mapping pm ON pm.id = t.description
+    LEFT JOIN payees p ON p.id = pm.targetId
+    -- Transfer payees carry no name; their display name is the
+    -- linked account's name (matches Actual's v_payees view).
+    LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+        AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+    -- Parent's payee, as the fallback for split children.
+    LEFT JOIN transactions par ON par.id = t.parent_id
+    LEFT JOIN payee_mapping ppm ON ppm.id = par.description
+    LEFT JOIN payees pp ON pp.id = ppm.targetId
+    LEFT JOIN accounts ppa ON ppa.id = pp.transfer_acct
+        AND (ppa.tombstone = 0 OR ppa.tombstone IS NULL)
+    LEFT JOIN category_mapping cm ON cm.id = t.category
+    LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+    """
+
     /// SELECT + display-name joins + liveness filter shared by the
     /// creation-detection and single-id transaction queries. The list query
     /// (fetchTransactions) carries additional split-aware joins of its own.
@@ -1712,22 +1733,8 @@ final class BudgetDatabase: Sendable {
                 t.tombstone, t.parent_id,
                 COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name,
                 c.name as category_name
-            FROM transactions t
+            \(Self.splitAwareJoins)
             JOIN accounts a ON a.id = t.acct
-            LEFT JOIN payee_mapping pm ON pm.id = t.description
-            LEFT JOIN payees p ON p.id = pm.targetId
-            -- Transfer payees carry no name; their display name is the
-            -- linked account's name (matches Actual's v_payees view).
-            LEFT JOIN accounts pa ON pa.id = p.transfer_acct
-                AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
-            -- Parent's payee, as the fallback for split children.
-            LEFT JOIN transactions par ON par.id = t.parent_id
-            LEFT JOIN payee_mapping ppm ON ppm.id = par.description
-            LEFT JOIN payees pp ON pp.id = ppm.targetId
-            LEFT JOIN accounts ppa ON ppa.id = pp.transfer_acct
-                AND (ppa.tombstone = 0 OR ppa.tombstone IS NULL)
-            LEFT JOIN category_mapping cm ON cm.id = t.category
-            LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
             WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
               AND t.date IS NOT NULL
               AND \(Self.aliveChildPredicate(parent: "par"))
@@ -6075,11 +6082,12 @@ final class BudgetDatabase: Sendable {
 
         return try await dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: """
-            SELECT id, amount, notes
-            FROM transactions
-            WHERE notes IS NOT NULL AND notes != ''
-              AND (tombstone = 0 OR tombstone IS NULL)
-              AND (isChild = 0 OR isChild IS NULL)
+            SELECT t.amount, t.notes, par.notes AS parent_notes
+            FROM transactions t
+            LEFT JOIN transactions par ON par.id = t.parent_id
+            WHERE t.notes IS NOT NULL AND t.notes != ''
+              AND (t.tombstone = 0 OR t.tombstone IS NULL)
+              AND \(Self.aliveChildPredicate(parent: "par"))
             """)
 
             let requestedTags = Set(allTags.map { "#\($0.tag)".lowercased() })
@@ -6087,7 +6095,8 @@ final class BudgetDatabase: Sendable {
             for row in rows {
                 guard let notes: String = row["notes"], !notes.isEmpty else { continue }
                 let amount: Int = row["amount"] ?? 0
-                let hashtags = Set(TagFilter.extractHashtags(from: notes).map { $0.lowercased() })
+                let hashtags = Self.lowercasedHashtags(notes)
+                    .subtracting(Self.lowercasedHashtags(row["parent_notes"]))
                 for needle in hashtags where requestedTags.contains(needle) {
                     var aggregate = aggregates[needle] ?? (count: 0, spent: 0, net: 0)
                     aggregate.count += 1
@@ -6113,18 +6122,41 @@ final class BudgetDatabase: Sendable {
     }
 
     /// Transactions carrying the given tag in their notes, newest first.
+    /// Tagged split lines count on their own (GH #785), unless their parent
+    /// carries the same tag and already covers their amount.
     func fetchTransactions(taggedWith tag: String) async throws -> [Transaction] {
         let needle = "#\(tag)"
         return try await dbQueue.read { db in
-            let sql = Self.transactionSelect + """
-             AND t.notes LIKE ?
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT
+                t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+                t.description, t.notes, t.date, t.imported_description,
+                t.schedule,
+                t.transferred_id, t.cleared, t.reconciled, t.sort_order,
+                t.tombstone, t.parent_id,
+                COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name,
+                c.name as category_name,
+                p.transfer_acct as transfer_acct,
+                par.notes AS parent_notes
+            \(Self.splitAwareJoins)
+            WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+              AND \(Self.aliveChildPredicate(parent: "par"))
+              AND t.date IS NOT NULL
+              AND t.acct IS NOT NULL
+              AND t.notes LIKE ?
             ORDER BY t.date DESC, t.sort_order DESC
-            """
-            let rows = try Row.fetchAll(db, sql: sql, arguments: ["%#\(tag)%"])
-            return rows.map(Self.mapTransaction).filter { tx in
-                guard let notes = tx.notes, !notes.isEmpty else { return false }
-                return TagFilter.notesContainTag(notes, tag: needle, caseSensitive: false)
-            }
+            """, arguments: ["%#\(tag)%"])
+            return rows.filter { row in
+                guard let notes: String = row["notes"], !notes.isEmpty,
+                      TagFilter.notesContainTag(notes, tag: needle, caseSensitive: false)
+                else { return false }
+                guard let parentNotes: String = row["parent_notes"] else { return true }
+                return !TagFilter.notesContainTag(parentNotes, tag: needle, caseSensitive: false)
+            }.map(Self.mapTransaction)
         }
+    }
+
+    private static func lowercasedHashtags(_ notes: String?) -> Set<String> {
+        Set(TagFilter.extractHashtags(from: notes ?? "").map { $0.lowercased() })
     }
 }
