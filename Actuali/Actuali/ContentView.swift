@@ -11,14 +11,18 @@ import UIKit
 struct ContentView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @StateObject private var notificationRouter = NotificationRouter.shared
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// What the window measures, read once per layout pass: width and horizontal
+    /// insets together, so a fold resizes the layout in one go.
+    private struct WindowMetrics: Equatable {
+        var width: CGFloat = 0
+        var insets = WindowInsets()
+    }
 
     /// Window width, measured here rather than deeper in the hierarchy so it
     /// doesn't move when a sidebar expands. Feeds `\.isWideLayout`.
-    @State private var windowWidth: CGFloat = 0
-
-    /// Below this the iPad's split views can't lay out real columns and the
-    /// sidebar becomes an overlay drawer instead; see `\.isWideLayout`.
-    private static let wideLayoutThreshold: CGFloat = 1000
+    @State private var metrics = WindowMetrics()
 
     nonisolated static func tab(forDeepLink url: URL) -> Int? {
         let host = url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -49,8 +53,20 @@ struct ContentView: View {
 
     var body: some View {
         MainTabView()
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
-            .environment(\.isWideLayout, windowWidth >= Self.wideLayoutThreshold)
+            .onGeometryChange(for: WindowMetrics.self) { proxy in
+                WindowMetrics(
+                    width: proxy.size.width,
+                    insets: WindowInsets(
+                        leading: proxy.safeAreaInsets.leading,
+                        trailing: proxy.safeAreaInsets.trailing
+                    )
+                )
+            } action: { metrics = $0 }
+            .environment(\.windowHorizontalInsets, metrics.insets)
+            .environment(\.isWideLayout, WideLayout.isWide(
+                sizeClass: horizontalSizeClass,
+                width: metrics.width
+            ))
             .background(ShakeResponder(
                 isEnabled: budgetStore.shakeToHideBalances,
                 onShake: budgetStore.handleDeviceShake

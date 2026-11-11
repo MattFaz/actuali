@@ -4,7 +4,6 @@ struct MainTabView: View {
     @State private var selectedTab = initialTab()
     @StateObject private var notificationRouter = NotificationRouter.shared
     @EnvironmentObject private var budgetStore: BudgetStore
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
 
     private static func initialTab() -> Int {
@@ -33,13 +32,14 @@ struct MainTabView: View {
 
     var body: some View {
         Group {
-            // A wide iPad window (never iPhone) offers the sidebar as an
-            // alternative to the floating tab bar. Gated on width, not just on
-            // regular size class: in an 11-inch portrait window the sidebar
-            // has no room to sit beside the content, so the toggle only ever
-            // swaps the tab bar for a drawer over the top of it. Narrower
-            // windows — and every phone — keep the plain tab bar.
-            if horizontalSizeClass == .regular, isWideLayout {
+            // A wide window offers the sidebar as an alternative to the
+            // floating tab bar. Gated on the measured width AND size class —
+            // `WideLayout` owns both — not on width alone: in an 11-inch
+            // portrait window the sidebar has no room to sit beside the
+            // content, so the toggle only ever swaps the tab bar for a drawer
+            // over the top of it. Narrower windows — and every phone, iPhone
+            // Duo's inner display included — keep the plain tab bar.
+            if isWideLayout {
                 tabs.tabViewStyle(.sidebarAdaptable)
             } else {
                 tabs
@@ -138,6 +138,10 @@ struct AddTransactionTabView: View {
                 autofocusAmount: isSelected,
                 onSaved: handleManualTransactionSaved
             )
+            // A tab-root Form carries the side bar's inset itself. The same view
+            // presented as a sheet must not: a sheet stops short of the bar but
+            // would inherit it.
+            .clearOfSideBar()
             .onAppear {
                 if configuredId != nil, validDefaultAccount == nil {
                     budgetStore.defaultAccountId = nil

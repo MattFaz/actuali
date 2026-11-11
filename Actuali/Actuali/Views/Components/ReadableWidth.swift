@@ -1,21 +1,43 @@
 import SwiftUI
 
-/// iPad width adaptations. Every one of these is gated on the horizontal size
-/// class being `.regular`, which is never true on iPhone — the app is
-/// portrait-locked there, so the phone layout is the reference and must not
-/// shift by a pixel. A narrow iPad window (Slide Over, a thin Split View
-/// pane) reports `.compact` too, and correctly gets the phone layout.
+/// How much window the two-pane layouts (`NavigationSplitView`, the budget
+/// inspector, the sidebar tab bar) need before they earn their space.
+///
+/// `ContentView` measures once; the tabs read the answer off `\.isWideLayout`.
+enum WideLayout {
+    /// How wide a window has to be before `NavigationSplitView` lays out real
+    /// columns instead of collapsing its sidebar into an overlay drawer. 834 pt
+    /// (11-inch iPad portrait) is too narrow, 1024 pt (13-inch portrait) works.
+    ///
+    /// iPhone Duo's inner display lands under it — 951 pt in the simulator,
+    /// narrower on the device — where the split view collapses into that same
+    /// overlay, drawing the sidebar over the detail column and clipping its
+    /// leading text.
+    static let minimumWidth: CGFloat = 1000
+
+    nonisolated static func isWide(
+        sizeClass: UserInterfaceSizeClass?,
+        width: CGFloat
+    ) -> Bool {
+        guard sizeClass == .regular else { return false }
+        return width >= minimumWidth
+    }
+}
+
+/// iPad and iPhone Duo width adaptations. Every one of these is gated on the
+/// horizontal size class being `.regular`, which a phone-width window never
+/// reports — the app is portrait-locked on iPhone, so the phone layout is the
+/// reference and must not shift by a pixel. A narrow iPad window (Slide Over, a
+/// thin Split View pane) reports `.compact` too, and correctly gets the phone
+/// layout.
 extension EnvironmentValues {
     /// Whether the window is wide enough for genuine side-by-side columns.
     ///
-    /// Regular width isn't enough on its own: an 11-inch iPad in portrait
-    /// (834 pt) is regular, but a `NavigationSplitView` there collapses its
-    /// sidebar into an overlay drawer that slides out under the floating tab
-    /// bar — the header ends up behind it, and the tab-sidebar toggle has
-    /// nowhere useful to go. At 1024 pt (13-inch portrait) and up the columns
-    /// are real and both behave. Set once from the window in `ContentView`,
-    /// never from tab content, whose width shrinks when a sidebar expands —
-    /// measuring that would let the layout oscillate.
+    /// Regular width alone isn't enough: an 11-inch iPad in portrait (834 pt) is
+    /// regular, but a `NavigationSplitView` there collapses its sidebar into an
+    /// overlay drawer. See `WideLayout`. Set once from the window in
+    /// `ContentView`, never from tab content, whose width shrinks when a sidebar
+    /// expands — measuring that would let the layout oscillate.
     @Entry var isWideLayout = false
 }
 

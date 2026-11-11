@@ -163,6 +163,10 @@ struct SettingsView: View {
                 }
             }
             .readableWidth()
+            // The only tab whose root is a Form: rows would otherwise run under
+            // iPhone Duo's side bar. Pushed screens are ScrollView-backed and
+            // already clear it.
+            .clearOfSideBar()
             .toolbar(.hidden, for: .navigationBar)
         }
         // Keep the store-wide loading indicator above the navigation stack so

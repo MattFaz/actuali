@@ -79,7 +79,6 @@ private struct MonthSummaryInputs: Equatable {
 struct AccountsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @StateObject private var notificationRouter = NotificationRouter.shared
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.sideMargin) private var sideMargin
@@ -118,12 +117,11 @@ struct AccountsListView: View {
     @AppStorage("accountsOffBudgetExpanded") private var isOffBudgetExpanded = true
     @AppStorage("accountsClosedExpanded") private var isClosedExpanded = true
 
-    /// Two real columns, or tap-and-push? Width, not just size class: in a
-    /// window too narrow for a second column the split view hides the sidebar
-    /// behind a drawer that opens over the content and under the floating tab
-    /// bar, which is worse than the phone's push navigation.
+    /// Two real columns, or tap-and-push? `WideLayout` decides: a window too
+    /// narrow for a second column would only get the sidebar as a drawer over
+    /// the content, which is worse than the phone's push navigation.
     private var usesSplitLayout: Bool {
-        horizontalSizeClass == .regular && isWideLayout
+        isWideLayout
     }
 
     var totalBalance: Int {
