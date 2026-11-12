@@ -114,9 +114,10 @@ struct SimpleFINDirectProvider: BankSyncProvider {
 /// which it already exposes to any authenticated client at `/simplefin/*`.
 struct ActualServerBankSyncProvider: BankSyncProvider {
     let client: ActualServerClient
+    let fileId: String?
 
     func accounts() async throws -> [SimpleFINAccount] {
-        try await client.simpleFINAccounts()
+        try await client.simpleFINAccounts(fileId: fileId)
     }
 
     func download(_ targets: [BankSyncTarget]) async throws -> BankSyncDownloadSet {
@@ -124,7 +125,8 @@ struct ActualServerBankSyncProvider: BankSyncProvider {
 
         let downloaded = try await client.simpleFINTransactions(
             accountIds: targets.map(\.externalId),
-            startDates: targets.map { DayDate(yyyymmdd: $0.startDay)?.iso ?? "" }
+            startDates: targets.map { DayDate(yyyymmdd: $0.startDay)?.iso ?? "" },
+            fileId: fileId
         )
 
         var set = BankSyncDownloadSet()

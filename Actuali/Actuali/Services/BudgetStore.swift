@@ -4566,7 +4566,7 @@ final class BudgetStore: ObservableObject {
     /// which half of itself to show. Failures leave the flag alone: an
     /// unreachable server isn't evidence either way.
     func refreshBankSyncSource() async {
-        if let configured = try? await serverClient.simpleFINStatus() {
+        if let configured = try? await serverClient.simpleFINStatus(fileId: currentCloudFileId()) {
             serverProvidesBankSync = configured == true
         }
     }
@@ -4584,9 +4584,10 @@ final class BudgetStore: ObservableObject {
         do {
             // nil means the route isn't served here — an older server, or a
             // proxy that strips it. Not a failure, just not an option.
-            if try await serverClient.simpleFINStatus() == true {
+            let fileId = currentCloudFileId()
+            if try await serverClient.simpleFINStatus(fileId: fileId) == true {
                 serverProvidesBankSync = true
-                return ActualServerBankSyncProvider(client: serverClient)
+                return ActualServerBankSyncProvider(client: serverClient, fileId: fileId)
             }
             serverProvidesBankSync = false
         } catch {
