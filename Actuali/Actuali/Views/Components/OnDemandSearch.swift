@@ -46,15 +46,23 @@ struct CapsuleSearchField: View {
 
 /// Uses the system's minimized Liquid Glass search control on iOS 26+, with
 /// `CapsuleSearchField` as a fallback on older supported OS versions.
-private struct OnDemandSearchModifier: ViewModifier {
+struct OnDemandSearchModifier: ViewModifier {
     @Binding var text: String
     @Binding var isPresented: Bool
     @FocusState.Binding var isFocused: Bool
     let prompt: LocalizedStringKey
     let accessibilityPrefix: String
 
+    /// iOS 27.0–27.2 break a minimized toolbar search inside a `TabView`: once
+    /// opened it cannot be dismissed (developer.apple.com/forums/thread/845737).
+    /// Fixed in 27.3, so those releases get the fallback.
+    nonisolated static func usesNativeSearch(_ os: OperatingSystemVersion) -> Bool {
+        let version = (os.majorVersion, os.minorVersion)
+        return version >= (26, 0) && (version < (27, 0) || version >= (27, 3))
+    }
+
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), Self.usesNativeSearch(ProcessInfo.processInfo.operatingSystemVersion) {
             content
                 .searchable(
                     text: $text,

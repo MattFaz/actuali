@@ -20,20 +20,23 @@ extension XCTestCase {
     }
 
     func activeSearchField(in app: XCUIApplication, customFieldIdentifier: String) -> XCUIElement {
-        if ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 {
+        // Mirrors OnDemandSearchModifier.usesNativeSearch: iOS 27.0–27.2 use the fallback.
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        let version = (os.majorVersion, os.minorVersion)
+        if version >= (26, 0), version < (27, 0) || version >= (27, 3) {
             let nativeField = app.searchFields.firstMatch
             XCTAssertTrue(nativeField.waitForExistence(timeout: 5),
-                          "iOS 26+ should present the native search field")
+                          "iOS 26 and 27.3+ should present the native search field")
             XCTAssertFalse(app.textFields[customFieldIdentifier].exists,
-                           "iOS 26+ should not use the fallback search field")
+                           "iOS 26 and 27.3+ should not use the fallback search field")
             return nativeField
         }
 
         let customField = app.textFields[customFieldIdentifier]
         XCTAssertTrue(customField.waitForExistence(timeout: 5),
-                      "pre-iOS 26 should insert the fallback search field")
+                      "pre-iOS 26 and iOS 27.0–27.2 should insert the fallback search field")
         XCTAssertFalse(app.searchFields.firstMatch.exists,
-                       "pre-iOS 26 should use the fallback, not the native search field")
+                       "pre-iOS 26 and iOS 27.0–27.2 should use the fallback, not the native search field")
         return customField
     }
 
