@@ -306,9 +306,9 @@ struct AccountsListView: View {
 
     /// The margin a row's card has to supply itself. Row backgrounds are drawn
     /// from edge to edge and take no notice of the content margins the root sets,
-    /// so in a compact window with a side bar the card reaches the bar while every
-    /// other screen's card stops at the margin. Zero everywhere else: a plain
-    /// phone has no bar, and a wide window's capped column is already inset.
+    /// so in a compact window with a side bar the card reaches the bar while a
+    /// Form-backed screen's card stops at the margin. Zero everywhere else: a
+    /// plain phone has no bar, and a wide window's capped column is already inset.
     private var cardMargin: CGFloat {
         SideMargin.losesSideMargin(sizeClass: sizeClass, safeArea: windowInsets) ? sideMargin : 0
     }

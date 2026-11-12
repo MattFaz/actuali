@@ -4,8 +4,8 @@ import Testing
 
 /// A side bar reserves 84 pt of the window's trailing edge, and the containers
 /// that draw to that edge — a `Form`, a row's card — take their inset from the
-/// margin they are given, so that margin has to carry the inset — 104 pt on the
-/// closed Duo, where the bar takes 84.
+/// margin they are given, so that margin has to carry the inset. On the closed
+/// Duo that puts them 104 pt from the edge: the bar's 84 plus the 20 pt margin.
 @Suite("Side margins")
 struct SideMarginTests {
     @Test("A side bar's inset is added to the margin, not replaced by it")

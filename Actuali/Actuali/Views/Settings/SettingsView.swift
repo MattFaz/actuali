@@ -163,9 +163,9 @@ struct SettingsView: View {
                 }
             }
             .readableWidth()
-            // The only tab whose root is a Form: rows would otherwise run under
-            // iPhone Duo's side bar. Pushed screens are ScrollView-backed and
-            // already clear it.
+            // This hub's root is a Form, and a Form's rows would otherwise run
+            // under iPhone Duo's side bar. The Add tab applies the same modifier
+            // at its call site, because that Form also opens as a sheet.
             .clearOfSideBar()
             .toolbar(.hidden, for: .navigationBar)
         }
