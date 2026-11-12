@@ -1141,18 +1141,18 @@ actor ActualServerClient {
     /// server can't do bank sync" and fall back to the device's own key —
     /// which is why a route that isn't there and a server that can't be
     /// reached must not look the same: the latter throws.
-    func simpleFINStatus() async throws -> Bool? {
+    func simpleFINStatus(fileId: String?) async throws -> Bool? {
         let response: SimpleFINStatusResponse? = try await postBankSync(
-            path: "/simplefin/status", body: EmptyBody()
+            path: "/simplefin/status", body: EmptyBody(), fileId: fileId
         )
         return response?.data?.configured
     }
 
     /// Every account the server's SimpleFIN connection covers, in the raw
     /// bridge shape (the route passes it through untouched).
-    func simpleFINAccounts() async throws -> [SimpleFINAccount] {
+    func simpleFINAccounts(fileId: String?) async throws -> [SimpleFINAccount] {
         guard let response: SimpleFINServerAccountsResponse = try await postBankSync(
-            path: "/simplefin/accounts", body: EmptyBody()
+            path: "/simplefin/accounts", body: EmptyBody(), fileId: fileId
         ) else {
             throw ActualServerError.invalidResponse
         }
@@ -1171,7 +1171,8 @@ actor ActualServerClient {
     ///     the route rejects a mismatch.
     func simpleFINTransactions(
         accountIds: [String],
-        startDates: [String]
+        startDates: [String],
+        fileId: String?
     ) async throws -> ServerBankSyncDownloads {
         guard accountIds.count == startDates.count else {
             throw ActualServerError.invalidResponse
@@ -1181,7 +1182,7 @@ actor ActualServerClient {
         // the account's data would be.
         let body = SimpleFINTransactionsRequest(accountId: accountIds, startDate: startDates)
         guard let response: SimpleFINTransactionsResponse = try await postBankSync(
-            path: "/simplefin/transactions", body: body
+            path: "/simplefin/transactions", body: body, fileId: fileId
         ), let data = response.data else { throw ActualServerError.invalidResponse }
         return data
     }
@@ -1221,10 +1222,13 @@ actor ActualServerClient {
     }
 
     /// Shared plumbing for the `/simplefin` routes. Returns nil when the route
-    /// isn't there; throws for everything else.
+    /// isn't there; throws for everything else. `fileId` is the budget's cloud
+    /// file id: since Actual 26.11 the server uses it to pick that budget's own
+    /// SimpleFIN credentials over the global ones (upstream `app-simplefin.js`).
     private func postBankSync<Response: Decodable>(
         path: String,
-        body: some Encodable
+        body: some Encodable,
+        fileId: String?
     ) async throws -> Response? {
         guard let serverURL else { throw ActualServerError.invalidURL }
         guard let token else { throw ActualServerError.unauthorized }
@@ -1233,6 +1237,7 @@ actor ActualServerClient {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
+        request.setValue(fileId, forHTTPHeaderField: "X-ACTUAL-FILE-ID")
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await send(
