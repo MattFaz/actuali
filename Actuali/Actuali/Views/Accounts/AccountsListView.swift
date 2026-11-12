@@ -295,22 +295,40 @@ struct AccountsListView: View {
         }
     }
 
+    /// The margin the rows' card has to supply itself, per edge — see
+    /// `SideMargin.cardMargins`.
+    private var cardMargins: (leading: CGFloat, trailing: CGFloat) {
+        SideMargin.cardMargins(sizeClass: sizeClass, safeArea: windowInsets, margin: sideMargin)
+    }
+
     /// The padding account rows keep inside their card. Set explicitly because the
     /// list's automatic insets follow the window rather than the capped column —
     /// on a wide window they shrink to nothing, leaving the chevron on the card
-    /// edge. The trailing side carries `cardMargin` too, so the content stays
-    /// inside the card that `cardMargin` pulls away from the bar.
+    /// edge.
     private var accountRowInsets: EdgeInsets {
-        EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16 + cardMargin)
+        Self.rowInsets(cardMargins: cardMargins)
     }
 
-    /// The margin a row's card has to supply itself. Row backgrounds are drawn
-    /// from edge to edge and take no notice of the content margins the root sets,
-    /// so in a compact window with a side bar the card reaches the bar while a
-    /// Form-backed screen's card stops at the margin. Zero everywhere else: a
-    /// plain phone has no bar, and a wide window's capped column is already inset.
-    private var cardMargin: CGFloat {
-        SideMargin.losesSideMargin(sizeClass: sizeClass, safeArea: windowInsets) ? sideMargin : 0
+    /// Where a row's content sits once its card has taken the margin.
+    nonisolated static func rowInsets(
+        cardMargins: (leading: CGFloat, trailing: CGFloat)
+    ) -> EdgeInsets {
+        EdgeInsets(
+            top: 0,
+            leading: 16 + cardMargins.leading,
+            bottom: 0,
+            trailing: 16 + cardMargins.trailing
+        )
+    }
+
+    /// The same margin, as padding for a row's drawn background.
+    private var cardPadding: EdgeInsets {
+        EdgeInsets(
+            top: 0,
+            leading: cardMargins.leading,
+            bottom: 0,
+            trailing: cardMargins.trailing
+        )
     }
 
     @ViewBuilder
@@ -326,6 +344,7 @@ struct AccountsListView: View {
                     isBackgroundClear: accountGroupBackgroundIsClear(group.id),
                     allowsCollapse: !isSearchingAccounts && !isReordering,
                     totalTrailingPadding: linked ? 24 : 0,
+                    cardMargins: cardMargins,
                     action: { toggleAccountGroup(group.id) }
                 )
                 .moveDisabled(!isReordering || !budgetStore.canReorderAccountGroups)
@@ -337,7 +356,7 @@ struct AccountsListView: View {
                     .listRowSeparator(offset == bucket.accounts.count - 1 ? .hidden : .visible)
                     .listRowBackground(
                         groupedAccountRowBackground(at: offset, in: bucket, among: buckets)
-                            .padding(.trailing, cardMargin)
+                            .padding(cardPadding)
                     )
                     .moveDisabled(!isReordering)
             } else {
@@ -350,7 +369,7 @@ struct AccountsListView: View {
                                 roundsBottom: offset == bucket.accounts.count - 1
                             )
                         )
-                        .padding(.trailing, cardMargin)
+                        .padding(cardPadding)
                     )
                     .moveDisabled(!isReordering)
             }
@@ -581,7 +600,7 @@ struct AccountsListView: View {
                         accessibilityPrefix: "accounts"
                     )
                     .environment(\.editMode, .constant(isReordering ? .active : .inactive))
-                    .pinnedSectionHeaders(sideMargin: sideMargin)
+                    .pinnedSectionHeaders()
                     .safeAreaInset(edge: .top, spacing: 0) {
                         pinnedSummary {
                             NavigationLink(value: AccountsRoute.allAccounts) { allAccountsCard }
@@ -684,7 +703,7 @@ struct AccountsListView: View {
                         accessibilityPrefix: "accounts"
                     )
                     .environment(\.editMode, .constant(isReordering ? .active : .inactive))
-                    .pinnedSectionHeaders(sideMargin: sideMargin)
+                    .pinnedSectionHeaders()
                     .safeAreaInset(edge: .top, spacing: 0) {
                         pinnedSummary {
                             Button { selection = .allAccounts } label: { allAccountsCard }
@@ -1406,6 +1425,8 @@ private struct AccountGroupListHeader: View {
     /// Sidebar rows have no NavigationLink chevron, so they pass zero to keep
     /// group totals aligned with the account balances below.
     var totalTrailingPadding: CGFloat = 24
+    /// The margin the header's card supplies itself, matching the rows under it.
+    var cardMargins: (leading: CGFloat, trailing: CGFloat) = (0, 0)
     let action: () -> Void
 
     var body: some View {
@@ -1432,8 +1453,20 @@ private struct AccountGroupListHeader: View {
             }
         }
         .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets(top: 0, leading: 28, bottom: 0, trailing: 16))
-        .listRowBackground(rowBackground)
+        .listRowInsets(EdgeInsets(
+            top: 0,
+            leading: 28 + cardMargins.leading,
+            bottom: 0,
+            trailing: 16 + cardMargins.trailing
+        ))
+        .listRowBackground(
+            rowBackground.padding(EdgeInsets(
+                top: 0,
+                leading: cardMargins.leading,
+                bottom: 0,
+                trailing: cardMargins.trailing
+            ))
+        )
         .listRowSeparator(isBackgroundClear ? .hidden : .visible, edges: .top)
         .listRowSeparator(.hidden, edges: .bottom)
         .accessibilityAddTraits(.isHeader)
@@ -2021,7 +2054,7 @@ private extension View {
     /// Grouped List headers scroll away; the plain style pins them (as
     /// Budget's group headers are, GH #610). The grouped look is put back
     /// by hand: no default background, the grouped canvas colour behind.
-    func pinnedSectionHeaders(sideMargin: CGFloat) -> some View {
+    func pinnedSectionHeaders() -> some View {
         listStyle(.plain)
             // The plain style's stock minimum is taller than the 44 pt header
             // rows, which would leave group rows taller than the section bars.

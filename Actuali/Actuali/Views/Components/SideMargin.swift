@@ -23,6 +23,23 @@ enum SideMargin {
         sizeClass == .compact && (safeArea.leading > 0 || safeArea.trailing > 0)
     }
 
+    /// The margin a card has to supply itself, on whichever edge the bar takes.
+    /// A row background is drawn edge to edge and ignores the content margins the
+    /// root sets, so the margin it is given has to be carried by the card. Zero
+    /// on a phone, which has no bar, and on a wide window, whose capped column is
+    /// already inset.
+    nonisolated static func cardMargins(
+        sizeClass: UserInterfaceSizeClass?,
+        safeArea: WindowInsets,
+        margin: CGFloat
+    ) -> (leading: CGFloat, trailing: CGFloat) {
+        guard losesSideMargin(sizeClass: sizeClass, safeArea: safeArea) else { return (0, 0) }
+        return (
+            leading: safeArea.leading > 0 ? margin : 0,
+            trailing: safeArea.trailing > 0 ? margin : 0
+        )
+    }
+
     /// The content margin a `Form` needs: the window's insets plus the user's
     /// margin, per edge — the bar can sit on either side.
     nonisolated static func horizontalMargin(
@@ -70,14 +87,15 @@ private struct ClearOfSideBar: ViewModifier {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     func body(content: Content) -> some View {
-        if SideMargin.losesSideMargin(sizeClass: sizeClass, safeArea: windowInsets) {
-            let insets = SideMargin.horizontalMargin(safeArea: windowInsets, margin: margin)
-            content
-                .contentMargins(.leading, insets.leading, for: .scrollContent)
-                .contentMargins(.trailing, insets.trailing, for: .scrollContent)
-        } else {
-            content
-        }
+        // One tree, always. An `if` here changes view identity, so folding the
+        // phone would rebuild everything inside — an Add form would come back
+        // empty. Without a bar both edges are the margin the root applies anyway.
+        let insets = SideMargin.losesSideMargin(sizeClass: sizeClass, safeArea: windowInsets)
+            ? SideMargin.horizontalMargin(safeArea: windowInsets, margin: margin)
+            : (leading: margin, trailing: margin)
+        return content
+            .contentMargins(.leading, insets.leading, for: .scrollContent)
+            .contentMargins(.trailing, insets.trailing, for: .scrollContent)
     }
 }
 

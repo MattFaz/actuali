@@ -33,6 +33,33 @@ struct SideMarginTests {
         #expect(SideMargin.losesSideMargin(sizeClass: .compact, safeArea: WindowInsets(leading: 84)))
     }
 
+    @Test("A card takes the margin only on the edge the bar is on")
+    func cardMarginsFollowTheBar() {
+        let trailing = SideMargin.cardMargins(
+            sizeClass: .compact, safeArea: WindowInsets(trailing: 84), margin: 20
+        )
+        #expect(trailing.leading == 0)
+        #expect(trailing.trailing == 20)
+
+        // In a right-to-left locale the bar moves to the leading edge, and the
+        // card has to follow it there.
+        let leading = SideMargin.cardMargins(
+            sizeClass: .compact, safeArea: WindowInsets(leading: 84), margin: 20
+        )
+        #expect(leading.leading == 20)
+        #expect(leading.trailing == 0)
+    }
+
+    @Test("A card takes no margin where the root's margins still apply")
+    func cardMarginsStandDown() {
+        #expect(SideMargin.cardMargins(
+            sizeClass: .compact, safeArea: WindowInsets(), margin: 20
+        ) == (0, 0))
+        #expect(SideMargin.cardMargins(
+            sizeClass: .regular, safeArea: WindowInsets(trailing: 84), margin: 20
+        ) == (0, 0))
+    }
+
     @Test("A phone keeps it — there is no bar to take it")
     func compactWithoutSideBar() {
         #expect(!SideMargin.losesSideMargin(sizeClass: .compact, safeArea: WindowInsets()))
