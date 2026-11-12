@@ -79,10 +79,11 @@ private struct MonthSummaryInputs: Equatable {
 struct AccountsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @StateObject private var notificationRouter = NotificationRouter.shared
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.sideMargin) private var sideMargin
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.windowHorizontalInsets) private var windowInsets
     @State private var path: [AccountsRoute] = []
     @State private var showingAddAccount = false
     @State private var showingAccountGroups = false
@@ -118,12 +119,11 @@ struct AccountsListView: View {
     @AppStorage("accountsOffBudgetExpanded") private var isOffBudgetExpanded = true
     @AppStorage("accountsClosedExpanded") private var isClosedExpanded = true
 
-    /// Two real columns, or tap-and-push? Width, not just size class: in a
-    /// window too narrow for a second column the split view hides the sidebar
-    /// behind a drawer that opens over the content and under the floating tab
-    /// bar, which is worse than the phone's push navigation.
+    /// Two real columns, or tap-and-push? `WideLayout` decides: a window too
+    /// narrow for a second column would only get the sidebar as a drawer over
+    /// the content, which is worse than the phone's push navigation.
     private var usesSplitLayout: Bool {
-        horizontalSizeClass == .regular && isWideLayout
+        isWideLayout
     }
 
     var totalBalance: Int {
@@ -295,6 +295,42 @@ struct AccountsListView: View {
         }
     }
 
+    /// The margin the rows' card has to supply itself, per edge — see
+    /// `SideMargin.cardMargins`.
+    private var cardMargins: (leading: CGFloat, trailing: CGFloat) {
+        SideMargin.cardMargins(sizeClass: sizeClass, safeArea: windowInsets, margin: sideMargin)
+    }
+
+    /// The padding account rows keep inside their card. Set explicitly because the
+    /// list's automatic insets follow the window rather than the capped column —
+    /// on a wide window they shrink to nothing, leaving the chevron on the card
+    /// edge.
+    private var accountRowInsets: EdgeInsets {
+        Self.rowInsets(cardMargins: cardMargins)
+    }
+
+    /// Where a row's content sits once its card has taken the margin.
+    nonisolated static func rowInsets(
+        cardMargins: (leading: CGFloat, trailing: CGFloat)
+    ) -> EdgeInsets {
+        EdgeInsets(
+            top: 0,
+            leading: 16 + cardMargins.leading,
+            bottom: 0,
+            trailing: 16 + cardMargins.trailing
+        )
+    }
+
+    /// The same margin, as padding for a row's drawn background.
+    private var cardPadding: EdgeInsets {
+        EdgeInsets(
+            top: 0,
+            leading: cardMargins.leading,
+            bottom: 0,
+            trailing: cardMargins.trailing
+        )
+    }
+
     @ViewBuilder
     private func accountListRow(_ row: AccountListRow, among buckets: [AccountListBucket], linked: Bool) -> some View {
         switch row {
@@ -308,6 +344,7 @@ struct AccountsListView: View {
                     isBackgroundClear: accountGroupBackgroundIsClear(group.id),
                     allowsCollapse: !isSearchingAccounts && !isReordering,
                     totalTrailingPadding: linked ? 24 : 0,
+                    cardMargins: cardMargins,
                     action: { toggleAccountGroup(group.id) }
                 )
                 .moveDisabled(!isReordering || !budgetStore.canReorderAccountGroups)
@@ -315,17 +352,25 @@ struct AccountsListView: View {
         case .account(let account, let offset, let bucket):
             if bucket.group != nil {
                 accountCell(account, linked: linked)
+                    .listRowInsets(accountRowInsets)
                     .listRowSeparator(offset == bucket.accounts.count - 1 ? .hidden : .visible)
-                    .listRowBackground(groupedAccountRowBackground(at: offset, in: bucket, among: buckets))
+                    .listRowBackground(
+                        groupedAccountRowBackground(at: offset, in: bucket, among: buckets)
+                            .padding(cardPadding)
+                    )
                     .moveDisabled(!isReordering)
             } else {
                 accountCell(account, linked: linked)
-                    .listRowBackground(AccountGroupRowBackground(
-                        position: AccountGroupRowLayout.position(
-                            roundsTop: offset == 0,
-                            roundsBottom: offset == bucket.accounts.count - 1
+                    .listRowInsets(accountRowInsets)
+                    .listRowBackground(
+                        AccountGroupRowBackground(
+                            position: AccountGroupRowLayout.position(
+                                roundsTop: offset == 0,
+                                roundsBottom: offset == bucket.accounts.count - 1
+                            )
                         )
-                    ))
+                        .padding(cardPadding)
+                    )
                     .moveDisabled(!isReordering)
             }
         }
@@ -1380,6 +1425,8 @@ private struct AccountGroupListHeader: View {
     /// Sidebar rows have no NavigationLink chevron, so they pass zero to keep
     /// group totals aligned with the account balances below.
     var totalTrailingPadding: CGFloat = 24
+    /// The margin the header's card supplies itself, matching the rows under it.
+    var cardMargins: (leading: CGFloat, trailing: CGFloat) = (0, 0)
     let action: () -> Void
 
     var body: some View {
@@ -1406,8 +1453,20 @@ private struct AccountGroupListHeader: View {
             }
         }
         .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets(top: 0, leading: 28, bottom: 0, trailing: 16))
-        .listRowBackground(rowBackground)
+        .listRowInsets(EdgeInsets(
+            top: 0,
+            leading: 28 + cardMargins.leading,
+            bottom: 0,
+            trailing: 16 + cardMargins.trailing
+        ))
+        .listRowBackground(
+            rowBackground.padding(EdgeInsets(
+                top: 0,
+                leading: cardMargins.leading,
+                bottom: 0,
+                trailing: cardMargins.trailing
+            ))
+        )
         .listRowSeparator(isBackgroundClear ? .hidden : .visible, edges: .top)
         .listRowSeparator(.hidden, edges: .bottom)
         .accessibilityAddTraits(.isHeader)
