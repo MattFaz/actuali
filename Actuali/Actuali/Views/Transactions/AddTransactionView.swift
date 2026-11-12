@@ -896,9 +896,7 @@ struct AddTransactionView: View {
                 childId: child.id,
                 categoryId: child.categoryId,
                 amount: SplitEntryMath.amountString(fromCents: abs(child.amount)),
-                // A child running against the parent's direction — a refund
-                // inside a spend split — keeps its flip on reload (GH #216).
-                isOpposite: (child.amount < 0) != (editing.amount < 0),
+                isOpposite: SplitEntryMath.isOpposite(childCents: child.amount, parentCents: editing.amount),
                 notes: child.notes ?? "",
                 payeeName: overridesParentPayee
                     ? budgetStore.payees.first(where: { $0.id == child.payeeId }).map {
@@ -1112,8 +1110,9 @@ struct AddTransactionView: View {
         if isTransfer, transferToAccountId == nil {
             return true
         }
-        // A blank line reads as zero for the remainder display, but the store
-        // rejects zero-amount children — keep save blocked until it's filled.
+        // A blank line reads as zero for the remainder display, but an
+        // unfilled line isn't an intentional 0 — keep save blocked until it's
+        // filled in or removed.
         if showsSplitEntry,
            splitRemainingCents != 0 || hasBlankSplitLine {
             return true
@@ -1279,6 +1278,13 @@ enum SplitEntryMath {
             assigned += cents
         }
         return totalCents - assigned
+    }
+
+    /// Whether a child runs against the parent's direction — a refund inside
+    /// a spend split keeps its flip on reload (GH #216). A 0 child has no
+    /// sign, so it follows the parent (GH #815).
+    static func isOpposite(childCents: Int, parentCents: Int) -> Bool {
+        childCents != 0 && (childCents < 0) != (parentCents < 0)
     }
 
     /// Plain dot-decimal string for non-negative cents, the format
