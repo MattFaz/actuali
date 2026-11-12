@@ -47041,6 +47041,53 @@
         }
       }
     },
+    "Include Off-Budget Accounts" : {
+      "comment" : "Settings toggle: whether new transaction alerts include off-budget account transactions",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konten außerhalb des Budgets einbeziehen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Include Off-Budget Accounts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Incluir cuentas fuera del presupuesto"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inclure les comptes hors budget"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Includi conti fuori budget"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rekeningen buiten budget meenemen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Incluir contas fora do orçamento"
+          }
+        }
+      }
+    },
     "Income" : {
       "comment" : "Income section heading or transaction type",
       "extractionState" : "stale",
