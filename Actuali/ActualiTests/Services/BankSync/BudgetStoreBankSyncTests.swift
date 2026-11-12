@@ -1581,6 +1581,44 @@ struct BudgetStoreBankSyncTests {
         #expect(accounts[0].balanceCents == 10000)
     }
 
+    /// Actual Server 26.11 keeps per-budget SimpleFIN credentials, chosen by
+    /// the `X-Actual-File-Id` header; a request without it only sees the
+    /// global ones (upstream `app-simplefin.js`).
+    @Test func perBudgetServerCredentialsAreFoundByTheBudgetsFileId() async throws {
+        let (store, manager, root) = makeFileBackedStore()
+        defer {
+            store.currentBudgetId = nil
+            try? FileManager.default.removeItem(at: root)
+        }
+        try seedBudget(id: "per-file", in: manager)
+        store.currentBudgetId = "per-file"
+
+        let fileIds = Mutex<[String?]>([])
+        let serverClient = ActualServerClient(session: StubTransport.session { request in
+            let fileId = request.value(forHTTPHeaderField: "X-Actual-File-Id")
+            fileIds.withLock { $0.append(fileId) }
+            let body = switch (request.url?.path, fileId == "cf-1") {
+            case ("/simplefin/status", let perFile):
+                #"{"status":"ok","data":{"configured":\#(perFile)}}"#
+            case ("/simplefin/accounts", true):
+                #"{"status":"ok","data":{"accounts":[{"org":{"domain":"mybank.com","name":"My Bank"},"id":"sf-acct-1","name":"Checking","balance":"100.00"}]}}"#
+            default:
+                #"{"status":"ok","data":{"error_type":"INVALID_ACCESS_TOKEN","error_code":"INVALID_ACCESS_TOKEN","reason":"Invalid SimpleFIN access token."}}"#
+            }
+            return StubTransport.Response(body: Data(body.utf8))
+        })
+        try await serverClient.configure(serverURL: "https://budget.example.com")
+        await serverClient.setToken("session-token")
+        store.setServerClientForTesting(serverClient)
+        store.setSimpleFINAccessKeyForTesting(nil)
+
+        let accounts = try await store.fetchBankAccounts()
+
+        #expect(accounts.map(\.id) == ["sf-acct-1"])
+        #expect(store.serverProvidesBankSync)
+        #expect(fileIds.withLock { $0 } == ["cf-1", "cf-1"])
+    }
+
     // MARK: - Mixed sources (SimpleFIN + Apple Wallet)
 
     @Test func mixedSourcesSyncInOneRun() async throws {
