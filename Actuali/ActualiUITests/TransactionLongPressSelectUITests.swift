@@ -104,6 +104,33 @@ final class TransactionLongPressSelectUITests: XCTestCase {
     }
 
     @MainActor
+    func testLinkScheduleLinksTheSelectionAndOffersUnlink() {
+        let app = XCUIApplication()
+        let rows = openAllAccountsSelecting(app)
+        rows[0].tap()
+
+        let more = app.buttons["transactionBulkBar.more"]
+        more.tap()
+        app.buttons["Link Schedule"].tap()
+        let schedule = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'scheduleLinkPicker.'")
+        ).firstMatch
+        XCTAssertTrue(schedule.waitForExistence(timeout: 5), "the picker lists the demo schedules")
+        schedule.tap()
+        XCTAssertTrue(app.navigationBars["Link Schedule"].waitForNonExistence(timeout: 5),
+                      "picking a schedule closes the picker")
+
+        more.tap()
+        XCTAssertTrue(app.buttons["Unlink Schedule"].waitForExistence(timeout: 5),
+                      "a linked selection offers Unlink instead of Link")
+        app.buttons["Unlink Schedule"].tap()
+
+        more.tap()
+        XCTAssertTrue(app.buttons["Link Schedule"].waitForExistence(timeout: 5),
+                      "unlinking puts Link back")
+    }
+
+    @MainActor
     func testCategorizeOpensThePickerForTheSelection() {
         let app = XCUIApplication()
         let rows = openAllAccountsSelecting(app)
