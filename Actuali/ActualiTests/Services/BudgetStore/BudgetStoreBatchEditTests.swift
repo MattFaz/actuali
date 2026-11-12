@@ -99,6 +99,28 @@ struct BudgetStoreBatchEditTests {
         try await store.linkTransactions([linked], to: nil)
         #expect(try await stored(database, "tx-a")?.schedule == nil)
         #expect(try await stored(database, "tx-b")?.schedule == "sched-1")
+        let cleared = try await database.dbQueueForTesting.read { db in
+            try String.fetchAll(db, sql: """
+            SELECT value FROM messages_crdt WHERE row = 'tx-a' AND column = 'schedule' ORDER BY id
+            """)
+        }
+        #expect(cleared.last == "0:", "unlink syncs a null, not only a local clear")
+    }
+
+    @Test
+    func linkTransactionsLeavesReconciledRowsAlone() async throws {
+        let (store, database, tempURL) = try await makeStore()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let open = transaction("tx-open")
+        let locked = transaction("tx-locked", reconciled: true)
+        try await store.createTransaction(open)
+        try await store.createTransaction(locked)
+
+        try await store.linkTransactions([open, locked], to: "sched-1")
+
+        #expect(try await stored(database, "tx-open")?.schedule == "sched-1")
+        #expect(try await stored(database, "tx-locked")?.schedule == nil)
+        #expect(store.error?.isEmpty == false, "the locked row is reported")
     }
 
     @Test

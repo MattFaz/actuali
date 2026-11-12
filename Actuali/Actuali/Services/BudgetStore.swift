@@ -7915,16 +7915,18 @@ final class BudgetStore: ObservableObject {
 
     /// Link transactions to a schedule, or unlink them by passing nil.
     /// `transactions.schedule` is already a syncable field, so this needs no
-    /// new write path.
+    /// new write path. Reconciled rows stay locked, as in the other bulk edits.
     func linkTransactions(_ transactions: [Transaction], to scheduleId: String?) async throws {
         guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
-        guard !transactions.isEmpty else { return }
+        let editable = transactions.filter { !$0.reconciled }
+        reportSkipped(locked: transactions.count - editable.count, unsupported: 0)
+        guard !editable.isEmpty else { return }
 
         try database.setTransactionSchedule(
-            transactionIds: transactions.map(\.id), scheduleId: scheduleId
+            transactionIds: editable.map(\.id), scheduleId: scheduleId
         )
 
-        let updated = transactions.map { transaction -> Transaction in
+        let updated = editable.map { transaction -> Transaction in
             var copy = transaction
             copy.schedule = scheduleId
             return copy
