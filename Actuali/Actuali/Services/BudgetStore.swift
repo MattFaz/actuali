@@ -13,6 +13,12 @@ enum TransactionBulkEdit {
         transactions.reduce(0) { $0 + $1.amount }
     }
 
+    /// Whether the selection's schedule action should unlink rather than link,
+    /// as upstream's selection menu decides it.
+    nonisolated static func allLinkedToSchedule(_ transactions: [Transaction]) -> Bool {
+        !transactions.isEmpty && transactions.allSatisfy { $0.schedule != nil }
+    }
+
     /// Whether two transactions can be merged, following Actual's rules
     /// (loot-core `validForMerge`): same account and amount. Transfers are
     /// left out for now.
