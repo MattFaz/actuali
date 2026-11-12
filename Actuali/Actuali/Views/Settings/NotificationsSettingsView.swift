@@ -5,6 +5,7 @@ import UserNotifications
 struct NotificationsSettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
+    @State private var offBudgetNotificationsIncluded = TransactionNotificationSettings().includesOffBudget
     @State private var creditCardDueNotificationsEnabled = CreditCardNotificationSettings().isEnabled
     @State private var notificationPermissionDenied = false
 
@@ -47,6 +48,13 @@ struct NotificationsSettingsView: View {
             Section {
                 Toggle(String(localized: "New Transaction Alerts"), isOn: transactionNotificationsBinding)
                     .accessibilityIdentifier("notifications.newTransactionAlerts")
+                if transactionNotificationsEnabled {
+                    Toggle(String(localized: "Include Off-Budget Accounts"), isOn: $offBudgetNotificationsIncluded)
+                        .accessibilityIdentifier("notifications.includeOffBudget")
+                        .onChange(of: offBudgetNotificationsIncluded) { _, included in
+                            TransactionNotificationSettings().includesOffBudget = included
+                        }
+                }
                 Toggle(String(localized: "Credit Card Due Reminders"), isOn: creditCardDueRemindersBinding)
                     .accessibilityIdentifier("notifications.creditCardDueReminders")
 

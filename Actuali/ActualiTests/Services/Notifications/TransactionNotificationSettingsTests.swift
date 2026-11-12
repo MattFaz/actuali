@@ -23,4 +23,20 @@ struct TransactionNotificationSettingsTests {
 
         #expect(TransactionNotificationSettings(defaults: defaults).isEnabled == true)
     }
+
+    /// Off-budget alerts stay on until the user mutes them, so existing
+    /// opted-in users see no change (GH #755).
+    @Test func includesOffBudgetByDefault() {
+        let settings = TransactionNotificationSettings(defaults: makeDefaults())
+
+        #expect(settings.includesOffBudget == true)
+    }
+
+    @Test func offBudgetExclusionPersistsAcrossInstances() {
+        let defaults = makeDefaults()
+
+        TransactionNotificationSettings(defaults: defaults).includesOffBudget = false
+
+        #expect(TransactionNotificationSettings(defaults: defaults).includesOffBudget == false)
+    }
 }
