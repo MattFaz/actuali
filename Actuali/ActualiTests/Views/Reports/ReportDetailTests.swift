@@ -132,8 +132,10 @@ struct ReportDetailTests {
         #expect(monthly.axisLabels == ["Dec", "Jan"])
         // The report's own caption still leads the page.
         #expect(monthly.rangeCaption == "Last 2 months")
-        // Other intervals keep their labels.
-        #expect(try detail(["26-11-01", "26-11-02"]).axisLabels == nil)
+        // Daily and weekly labels are dates too: a month where one starts.
+        #expect(try detail(["26-11-30", "26-12-01", "26-12-02"]).axisLabels == ["Nov", "Dec", ""])
+        // Years are already short.
+        #expect(try detail(["2025", "2026"]).axisLabels == nil)
     }
 
     @Test func axisTicksAreThinnedFromTheFirst() {
@@ -142,6 +144,11 @@ struct ReportDetailTests {
         // Twelve months: every other one.
         #expect(ReportDetailChart.ticks((1...12).map { "m\($0)" }) == [0, 2, 4, 6, 8, 10])
         #expect(ReportDetailChart.ticks((1...56).map { "\($0)" }).count <= 6)
+    }
+
+    @Test func selectionDotsStopWhenLinesCrowd() {
+        #expect(ReportDetailChart.dotsSelection(series: 3))
+        #expect(!ReportDetailChart.dotsSelection(series: 13))
     }
 
     @Test func sparseLinesGetADotOnEveryPoint() {
@@ -350,12 +357,16 @@ struct ReportDetailTests {
     }
 
     @Test func ageOfMoneyIsMeasuredInDays() throws {
-        let data = AgeOfMoneyData(currentAge: 42, points: [.init(monthLabel: "Oct 2026", age: 41), .init(monthLabel: "Nov 2026", age: 42)],
+        let data = AgeOfMoneyData(currentAge: 42, points: [.init(month: utc(2026, 10), monthLabel: "Oct 2026", age: 41),
+                                                           .init(month: utc(2026, 11), monthLabel: "Nov 2026", age: 42)],
                                   trend: .up, insufficientData: false)
-        let detail = try #require(data.chartDetail(name: "Age of Money"))
+        let detail = try #require(data.chartDetail(name: "Age of Money", locale: locale))
         #expect(detail.unit == .days)
+        // Dated like the other widgets, not with the card's "Oct 2026".
+        #expect(detail.intervals == ["Oct '26", "Nov '26"])
+        #expect(detail.axisLabels == ["Oct", "Nov"])
         #expect(detail.series.map(\.values) == [[41, 42]])
-        #expect(AgeOfMoneyData.empty.chartDetail(name: "") == nil)
+        #expect(AgeOfMoneyData.empty.chartDetail(name: "", locale: locale) == nil)
     }
 
     @Test func budgetAnalysisComparesBudgetedWithSpendingAsMagnitudes() throws {

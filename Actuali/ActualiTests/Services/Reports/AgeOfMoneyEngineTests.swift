@@ -10,6 +10,10 @@ struct AgeOfMoneyEngineTests {
         return c.date(from: DateComponents(year: 2026, month: 7, day: 11))!
     }()
 
+    private func month(_ yearMonth: Int) -> Date {
+        ReportDetailLabels.monthDates([yearMonth])[0]
+    }
+
     private func tx(_ id: String, date: Int, amount: Int,
                     account: String = "a1", transferAcct: String? = nil) -> Transaction {
         var t = Transaction(id: id, accountId: account, date: date, amount: amount,
@@ -172,7 +176,7 @@ struct AgeOfMoneyEngineTests {
         #expect(data.insufficientData == false)
         // Headline = avg of ages (9 + 19 + 29) / 3 = 19; single Jan point.
         #expect(data.currentAge == 19)
-        #expect(data.points == [.init(monthLabel: "Jan 2024", age: 19)])
+        #expect(data.points == [.init(month: month(202_401), monthLabel: "Jan 2024", age: 19)])
     }
 
     // Upstream: "round-trip: money leaves to off-budget and returns later"
@@ -196,9 +200,9 @@ struct AgeOfMoneyEngineTests {
         )
         #expect(data.insufficientData == false)
         // Jan point = 9; Feb carries 9; Mar point = round((9 + 14) / 2) = 12.
-        #expect(data.points == [.init(monthLabel: "Jan 2024", age: 9),
-                                .init(monthLabel: "Feb 2024", age: 9),
-                                .init(monthLabel: "Mar 2024", age: 12)])
+        #expect(data.points == [.init(month: month(202_401), monthLabel: "Jan 2024", age: 9),
+                                .init(month: month(202_402), monthLabel: "Feb 2024", age: 9),
+                                .init(month: month(202_403), monthLabel: "Mar 2024", age: 12)])
         #expect(data.currentAge == 12)
 
         // Narrow the display range to March only: full history still feeds

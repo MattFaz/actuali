@@ -383,13 +383,13 @@ struct DashboardView: View {
             } card: { data in
                 // The glance card when there is something to chart; the
                 // widget's own card (and its empty state) when there isn't.
-                if let detail = data.chartDetail(name: widget.displayName) {
+                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
                     ReportGlanceCard(detail: detail)
                 } else {
                     AgeOfMoneyWidgetView(displayName: widget.displayName, data: data)
                 }
             } detail: { data in
-                data.chartDetail(name: widget.displayName).map { ReportChartDetailView(detail: $0) }
+                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
         case .formula(_, let meta):
             WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 100) { transactions in

@@ -31,6 +31,12 @@ struct ReportDetailChart: View {
         intervals <= 12 && series <= 4
     }
 
+    /// Past this many lines the selection dots pile into a blob; the rule
+    /// and the list under the chart carry the selection instead.
+    nonisolated static func dotsSelection(series: Int) -> Bool {
+        series <= 6
+    }
+
     /// The interval nearest a position on a line chart's index axis.
     nonisolated static func interval(at position: Double, in intervals: [String]) -> String? {
         intervals.isEmpty ? nil : intervals[min(max(Int(position.rounded()), 0), intervals.count - 1)]
@@ -75,13 +81,14 @@ struct ReportDetailChart: View {
                     .foregroundStyle(.secondary)
                     .lineStyle(StrokeStyle(lineWidth: 1))
             }
-            ForEach(selectedLinePoints.prefix(1)) { point in
-                RuleMark(x: index(point))
+            ForEach(isLine ? selected.flatMap { detail.intervals.firstIndex(of: $0) }.map { [$0] } ?? [] : [], id: \.self) { index in
+                RuleMark(x: .value(ReportStrings.text("Interval", locale: locale), Double(index)))
                     .foregroundStyle(.secondary)
                     .lineStyle(StrokeStyle(lineWidth: 1))
             }
-            // Lines mark the selected interval with a dot on each series;
-            // bars dim the others instead (see `mark`).
+            // Lines mark the selected interval with a dot on each series,
+            // while there are few enough to tell apart; bars dim the others
+            // instead (see `mark`).
             ForEach(selectedLinePoints) { point in
                 PointMark(x: index(point), y: y(point))
                     .symbol {
@@ -120,7 +127,8 @@ struct ReportDetailChart: View {
                                 if index != 0, index != last {
                                     AxisGridLine(stroke: Self.intervalRule)
                                 }
-                                AxisValueLabel(anchor: .top) {
+                                // The end labels grow inward, to stay inside the frame.
+                                AxisValueLabel(anchor: index == 0 ? .topLeading : index == last ? .topTrailing : .top) {
                                     Text(verbatim: labels[index])
                                 }
                             }
@@ -133,8 +141,9 @@ struct ReportDetailChart: View {
                         let shown = Dictionary(uniqueKeysWithValues: Self.ticks(labels).map { (detail.intervals[$0], labels[$0]) })
                         AxisMarks { value in
                             if let label = value.as(String.self).flatMap({ shown[$0] }) {
+                                // Rules between the bars, each label under its own.
                                 AxisGridLine(centered: false, stroke: Self.intervalRule)
-                                AxisValueLabel(centered: false, anchor: .topLeading) {
+                                AxisValueLabel {
                                     Text(verbatim: label)
                                 }
                             }
@@ -218,7 +227,7 @@ struct ReportDetailChart: View {
     }
 
     private var selectedLinePoints: [Point] {
-        guard detail.style == .lines || detail.style == .area, let selected else { return [] }
+        guard isLine, let selected, Self.dotsSelection(series: detail.series.count - hidden.count) else { return [] }
         // A line that turns dashed has its turning point twice; one dot is enough.
         var seen = Set<Int>()
         return points.filter { $0.interval == selected && seen.insert($0.series).inserted }
