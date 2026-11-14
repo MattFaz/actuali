@@ -70,6 +70,13 @@ struct ReportChartDetailView: View {
                     .interpolationMethod(.monotone)
                     .foregroundStyle(point.color)
             }
+            // Upstream draws each series' trend dashed, in the series colour.
+            ForEach(trendPoints) { point in
+                LineMark(x: x(point), y: y(point),
+                         series: .value(ReportStrings.text("Series", locale: locale), "trend|\(point.series)"))
+                    .foregroundStyle(point.color)
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            }
             ForEach(selected.map { [$0] } ?? [], id: \.self) { interval in
                 RuleMark(x: .value(ReportStrings.text("Interval", locale: locale), interval))
                     .foregroundStyle(.secondary)
@@ -178,6 +185,16 @@ struct ReportChartDetailView: View {
             }
             return series.values.indices.filter { $0 < turn }.map { point($0, dashed: false) }
                 + series.values.indices.filter { $0 >= max(turn - 1, 0) && turn < series.values.count }.map { point($0, dashed: true) }
+        }
+    }
+
+    private var trendPoints: [Point] {
+        guard detail.style == .lines, let first = detail.intervals.first, let last = detail.intervals.last else { return [] }
+        return detail.series.indices.filter { !hidden.contains($0) }.flatMap { index -> [Point] in
+            guard let trend = detail.series[index].trend else { return [] }
+            let color = detail.series[index].color
+            return [Point(series: index, interval: first, value: trend.startUnits, color: color, dashed: true),
+                    Point(series: index, interval: last, value: trend.endUnits, color: color, dashed: true)]
         }
     }
 

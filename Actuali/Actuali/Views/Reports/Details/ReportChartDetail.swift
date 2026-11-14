@@ -17,6 +17,8 @@ struct ReportChartDetail: Equatable {
         var values: [Double]
         /// Line charts: the index the line turns dashed at (forecast, projection).
         var dashedFrom: Int?
+        /// Line charts: a least-squares trend from the first interval to the last.
+        var trend: CustomReportData.Trend?
     }
 
     var name: String
@@ -83,14 +85,18 @@ enum ReportDetailLabels {
 extension CustomReportData {
     /// Donut and table cards already list everything, so they have no detail.
     var chartDetail: ReportChartDetail? {
-        func detail(_ table: Stacked, _ style: ReportChartDetail.Style, signed: Bool = false) -> ReportChartDetail? {
+        func detail(
+            _ table: Stacked, _ style: ReportChartDetail.Style, signed: Bool = false, trends: [Trend] = []
+        ) -> ReportChartDetail? {
             let palette = CustomReportWidgetView.palette
             let single = table.seriesNames.count == 1
             return ReportChartDetail(
                 name: name, caption: rangeLabel, intervals: table.intervalLabels,
                 series: table.seriesNames.indices.map {
                     .init(name: table.seriesNames[$0], color: single ? .accentColor : palette[$0 % palette.count],
-                          values: table.values[$0])
+                          values: table.values[$0],
+                          // Empty unless the report has trend lines switched on.
+                          trend: trends.indices.contains($0) ? trends[$0] : nil)
                 },
                 style: style, signed: signed
             ).chartable
@@ -100,11 +106,23 @@ extension CustomReportData {
         }
         return switch kind {
         case .stacked(let stacked): detail(stacked, .stackedBars)
-        case .lines(let stacked, _): detail(stacked, .lines)
+        case .lines(let stacked, let trends): detail(stacked, .lines, trends: trends)
         case .bars(let bars, let signed): detail(single(bars), .stackedBars, signed: signed)
         case .area(let bars): detail(single(bars), .area)
         case .donut, .table, .unsupported: nil
         }
+    }
+}
+
+extension CustomReportData.Stacked {
+    /// The series a card has room to name: the largest by magnitude in the
+    /// latest interval, in legend order.
+    func leadingSeries(limit: Int = 3) -> [Int] {
+        guard let latest = intervalLabels.indices.last else { return [] }
+        return seriesNames.indices
+            .sorted { abs(values[$0][latest]) > abs(values[$1][latest]) }
+            .prefix(limit)
+            .sorted()
     }
 }
 
