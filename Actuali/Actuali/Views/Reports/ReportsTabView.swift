@@ -52,7 +52,11 @@ struct ReportsTabView: View {
                                 // Lined up with the dashboard cards below.
                                 .padding(.horizontal, sideMargin)
                                 .padding(.vertical, 8)
-                                .background(.bar)
+                                // The navigation bar is hidden here, so the bar
+                                // covers the status bar strip as well.
+                                .background {
+                                    Rectangle().fill(.bar).ignoresSafeArea(.container, edges: .top)
+                                }
                         }
                 }
             }

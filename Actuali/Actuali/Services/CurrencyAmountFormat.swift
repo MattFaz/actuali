@@ -27,6 +27,19 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    var groupingSeparator: String {
+        switch self {
+        case .commaDot, .commaDotIn:
+            ","
+        case .dotComma:
+            "."
+        case .spaceComma:
+            "\u{202F}"
+        case .apostropheDot:
+            "\u{2019}"
+        }
+    }
+
     var decimalSeparator: String {
         switch self {
         case .commaDot, .apostropheDot, .commaDotIn:
@@ -220,9 +233,22 @@ enum CurrencyAmountFormat {
         guard let first = formatted.firstIndex(where: \.isWholeNumber),
               let last = formatted.lastIndex(where: \.isWholeNumber)
         else { return formatted }
-        return formatted.replacingOccurrences(
-            of: locale.decimalSeparator ?? ".", with: numberFormat.decimalSeparator, range: first..<formatted.index(after: last)
-        )
+        // Both separators, in one pass so a swapped pair can't apply twice:
+        // a language with no short form for thousands (German) writes
+        // "100.000", and that "." is grouping.
+        // ponytail: a separator swap, so comma-dot-in keeps western 3-digit
+        // groups here rather than lakh/crore. Format the mantissa with
+        // numberFormat and re-attach the suffix if that matters.
+        let localeDecimal = locale.decimalSeparator ?? "."
+        let localeGrouping = locale.groupingSeparator ?? ","
+        let digits = formatted[first...last].map { character -> String in
+            switch String(character) {
+            case localeDecimal: numberFormat.decimalSeparator
+            case localeGrouping: numberFormat.groupingSeparator
+            default: String(character)
+            }
+        }.joined()
+        return formatted.replacingCharacters(in: first...last, with: digits)
     }
 
     private static func replacingNumericPart(

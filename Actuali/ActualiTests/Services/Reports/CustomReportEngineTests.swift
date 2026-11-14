@@ -696,6 +696,16 @@ struct CustomReportEngineTests {
         #expect(label(1_250_000, .spaceComma) == "$1,25M")
         // No currency set: a plain abbreviated number.
         #expect(label(400_000, code: "") == "400K")
+        // German has no short form for thousands, so the label keeps its
+        // grouping, and that follows Actual's number format too.
+        func german(_ format: ActualNumberFormat) -> String {
+            ReportCurrencyAxisFormatting.label(
+                units: 100_000, numberFormat: format, currencyCode: "", narrowSymbol: true,
+                locale: Locale(identifier: "de_DE")
+            )
+        }
+        #expect(german(.dotComma) == "100.000")
+        #expect(german(.commaDot) == "100,000")
     }
 
     @Test func intervalAxisLabelsAreThinnedToFitAPhone() {
