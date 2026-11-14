@@ -619,6 +619,24 @@ struct ReportDetailTests {
             .sizeThatFits(in: CGSize(width: 390, height: 844)).height
     }
 
+    /// Every card that opens a page says so with the chevron; Spending
+    /// always opens one.
+    @Test func spendingCardShowsItOpensAPage() throws {
+        func png(linksToDetail: Bool) -> Data? {
+            let renderer = ImageRenderer(content: SpendingWidgetView(
+                displayName: "Spending", data: SpendingData(currentSpentCents: 100, comparisonCents: 150), comparisonLabel: "vs prior"
+            )
+            .environment(\.reportCardLinksToDetail, linksToDetail)
+            .environmentObject(BudgetStore.previewInstance())
+            .environment(\.colorScheme, .light)
+            .frame(width: 390))
+            renderer.scale = 1
+            return renderer.uiImage?.pngData()
+        }
+        let plain = try #require(png(linksToDetail: false))
+        #expect(try #require(png(linksToDetail: true)) != plain)
+    }
+
     @Test func detailPagesLayOut() throws {
         let chart = try #require(report(.stacked(stacked)).chartDetail())
         #expect(height(ReportChartDetailView(detail: chart)) > 0)

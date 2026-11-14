@@ -23,7 +23,7 @@ struct SpendingWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(displayName).font(.headline)
+            ReportCardTitle(displayName)
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(ReportStrings.text("This month", locale: locale))
