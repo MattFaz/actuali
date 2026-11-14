@@ -205,8 +205,15 @@ extension CustomReportData {
         ) -> ReportChartDetail? {
             let palette = CustomReportWidgetView.palette
             let single = table.seriesNames.count == 1
+            // ponytail: the engine keeps only each interval's label, so a
+            // monthly report's dates are read back from "Sep '26". Other
+            // intervals don't parse and keep their labels on the axis; carry
+            // the dates on Stacked if those need short labels too.
+            let formatter = CustomReportEngine.monthFormatter(locale: locale)
+            let months = table.intervalLabels.compactMap(formatter.date(from:))
             return ReportChartDetail(
                 name: name, caption: rangeLabel, intervals: table.intervalLabels,
+                axisLabels: months.count == table.intervalLabels.count ? ReportDetailLabels.axis(months, locale: locale) : nil,
                 series: table.seriesNames.indices.map {
                     .init(name: table.seriesNames[$0], color: single ? .accentColor : palette[$0 % palette.count],
                           values: table.values[$0],

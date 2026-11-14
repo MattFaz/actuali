@@ -122,6 +122,20 @@ struct ReportDetailTests {
         #expect(labels[12] == "2027")
     }
 
+    @Test func monthlyCustomReportsNameMonthsOnTheAxisLikeTheOtherWidgets() throws {
+        func detail(_ labels: [String]) throws -> ReportChartDetail {
+            let stacked = CustomReportData.Stacked(intervalLabels: labels, seriesNames: ["A"], values: [labels.map { _ in 1 }])
+            return try #require(CustomReportData(name: "R", rangeLabel: "Last 2 months", kind: .stacked(stacked))
+                .chartDetail(locale: Locale(identifier: "en_US")))
+        }
+        let monthly = try detail(["Dec '26", "Jan '27"])
+        #expect(monthly.axisLabels == ["Dec", "Jan"])
+        // The report's own caption still leads the page.
+        #expect(monthly.rangeCaption == "Last 2 months")
+        // Other intervals keep their labels.
+        #expect(try detail(["26-11-01", "26-11-02"]).axisLabels == nil)
+    }
+
     @Test func axisTicksAreThinnedFromTheFirst() {
         #expect(ReportDetailChart.ticks([]) == [])
         #expect(ReportDetailChart.ticks(["Jan", "", "Feb", ""]) == [0, 2])
