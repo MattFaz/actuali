@@ -128,6 +128,15 @@ struct ReportDetailTests {
         // Twelve months: every other one.
         #expect(ReportDetailChart.ticks((1...12).map { "m\($0)" }) == [0, 2, 4, 6, 8, 10])
         #expect(ReportDetailChart.ticks((1...56).map { "\($0)" }).count <= 6)
+        // A line's label sits right of its rule: none at the very end.
+        #expect(ReportDetailChart.lineTicks(["Jun", "Jul", "Aug"]) == [0, 1])
+        #expect(ReportDetailChart.lineTicks((1...12).map { "m\($0)" }) == [0, 2, 4, 6, 8, 10])
+    }
+
+    @Test func sparseLinesGetADotOnEveryPoint() {
+        #expect(ReportDetailChart.marksEveryPoint(intervals: 12, series: 1))
+        #expect(!ReportDetailChart.marksEveryPoint(intervals: 90, series: 1))
+        #expect(!ReportDetailChart.marksEveryPoint(intervals: 6, series: 13))
     }
 
     @Test func scrubbingALineSnapsToTheNearestInterval() {
@@ -222,7 +231,7 @@ struct ReportDetailTests {
         let forecastCard = try #require(forecast.chartDetail(name: "Forecast", locale: locale)).card
         // The lowest forecast point, not the lower one already in the past.
         #expect(forecastCard.value == 2400)
-        #expect(forecastCard.context == "Low · Nov 22, 26")
+        #expect(forecastCard.context == "Low · Nov 22, 2026")
 
         // A balance: its change across the range.
         let netWorth = NetWorthData(points: [.init(date: utc(2026, 10), balanceCents: 1), .init(date: utc(2026, 11), balanceCents: 2)])
@@ -293,16 +302,19 @@ struct ReportDetailTests {
     }
 
     @Test func dateLabelsShowTheDayOnlyWhenSomeDateNeedsIt() {
-        #expect(ReportDetailLabels.dates([utc(2026, 10), utc(2026, 11)], locale: locale) == ["Oct 26", "Nov 26"])
-        #expect(ReportDetailLabels.dates([utc(2026, 11, 1), utc(2026, 11, 13)], locale: locale) == ["Nov 1, 26", "Nov 13, 26"])
-        #expect(ReportDetailLabels.dates(ReportDetailLabels.monthDates([202_512, 202_601]), locale: locale) == ["Dec 25", "Jan 26"])
+        #expect(ReportDetailLabels.dates([utc(2026, 10), utc(2026, 11)], locale: locale) == ["Oct '26", "Nov '26"])
+        #expect(ReportDetailLabels.dates([utc(2026, 11, 1), utc(2026, 11, 13)], locale: locale) == ["Nov 1, 2026", "Nov 13, 2026"])
+        #expect(ReportDetailLabels.dates(ReportDetailLabels.monthDates([202_512, 202_601]), locale: locale) == ["Dec '25", "Jan '26"])
     }
 
     @Test func netWorthIsOneAreaSeries() throws {
         let data = NetWorthData(points: [.init(date: utc(2026, 10), balanceCents: 100_000), .init(date: utc(2026, 11), balanceCents: 125_050)])
         let detail = try #require(data.chartDetail(name: "Net Worth", locale: locale))
         #expect(detail.style == .area)
-        #expect(detail.intervals == ["Oct 26", "Nov 26"])
+        #expect(detail.intervals == ["Oct '26", "Nov '26"])
+        // The axis names the months; the dates they span lead the page.
+        #expect(detail.axisLabels == ["Oct", "Nov"])
+        #expect(detail.rangeCaption == "Oct '26 – Nov '26")
         #expect(detail.series.map(\.values) == [[1000, 1250.5]])
         #expect(detail.readoutValue(at: 1) == 1250.5)
         // A balance is a level, so the range is summed up as change, high and low.
@@ -344,7 +356,7 @@ struct ReportDetailTests {
             )
         }
         let detail = try #require(data(balanceOnly: false).chartDetail(name: "Budget", locale: locale))
-        #expect(detail.intervals == ["Oct 26"])
+        #expect(detail.intervals == ["Oct '26"])
         #expect(detail.series.map(\.values) == [[5600], [5650]])
         // Budgeted less spent: over budget is negative.
         #expect(detail.readoutValue(at: 0) == -50)
@@ -397,7 +409,7 @@ struct ReportDetailTests {
         // A schedule's name, else its payee, else just "Schedule".
         #expect(detail.events.prefix(3).map(\.name) == ["Rent", "Netflix", "Schedule"])
         // The day shows even when an occurrence falls on the 1st.
-        #expect(detail.events.prefix(2).map(\.date) == ["Dec 1, 26", "Dec 11, 26"])
+        #expect(detail.events.prefix(2).map(\.date) == ["Dec 1, 2026", "Dec 11, 2026"])
         #expect(detail.events[0].amount == -1850)
     }
 

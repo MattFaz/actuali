@@ -26,6 +26,18 @@ struct ReportDetailChart: View {
         return step > 1 ? marked.indices.filter { $0.isMultiple(of: step) }.map { marked[$0] } : marked
     }
 
+    /// A line's ticks: a label sits to the right of its rule, so one too near
+    /// the end of the plot to fit there is left to the frame.
+    nonisolated static func lineTicks(_ labels: [String]) -> [Int] {
+        let last = labels.count - 1
+        return ticks(labels).filter { Double(last - $0) >= 0.08 * Double(last) }
+    }
+
+    /// Whether a line has room for a dot on every point, as on a Health chart.
+    nonisolated static func marksEveryPoint(intervals: Int, series: Int) -> Bool {
+        intervals <= 12 && series <= 4
+    }
+
     /// The interval nearest a position on a line chart's index axis.
     nonisolated static func interval(at position: Double, in intervals: [String]) -> String? {
         intervals.isEmpty ? nil : intervals[min(max(Int(position.rounded()), 0), intervals.count - 1)]
@@ -55,6 +67,15 @@ struct ReportDetailChart: View {
                          series: .value(ReportStrings.text("Series", locale: locale), "trend|" + String(point.series)))
                     .foregroundStyle(point.color)
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            }
+            ForEach(everyPoint) { point in
+                PointMark(x: index(point), y: y(point))
+                    .symbol {
+                        Circle()
+                            .fill(Color(.systemBackground))
+                            .frame(width: 6, height: 6)
+                            .overlay(Circle().stroke(point.color, lineWidth: 1.5))
+                    }
             }
             ForEach(isLine ? [] : selected.map { [$0] } ?? [], id: \.self) { interval in
                 RuleMark(x: .value(ReportStrings.text("Interval", locale: locale), interval))
@@ -97,15 +118,13 @@ struct ReportDetailChart: View {
                         }
                     ))
                     .chartXAxis {
-                        let last = detail.intervals.count - 1
-                        AxisMarks(values: Self.ticks(labels).map(Double.init)) { value in
+                        AxisMarks(values: Self.lineTicks(labels).map(Double.init)) { value in
                             if let index = value.as(Double.self).map({ Int($0) }), labels.indices.contains(index) {
-                                // The frame already marks the ends.
-                                if index != 0, index != last {
+                                // The frame already marks the start.
+                                if index != 0 {
                                     AxisGridLine(stroke: Self.intervalRule)
                                 }
-                                // Each label sits beside its line; the last point has no room there.
-                                AxisValueLabel(anchor: index == last ? .topTrailing : .topLeading) {
+                                AxisValueLabel(anchor: .topLeading) {
                                     Text(verbatim: labels[index])
                                 }
                             }
@@ -193,6 +212,13 @@ struct ReportDetailChart: View {
             Point(series: -1, index: $0, interval: detail.intervals[$0], value: band.lower[$0],
                   color: band.color, dashed: false, upper: band.upper[$0])
         }
+    }
+
+    /// Page only: a card's sketch is too small for dots.
+    private var everyPoint: [Point] {
+        let visible = detail.series.count - hidden.count
+        guard isLine, selection != nil, Self.marksEveryPoint(intervals: detail.intervals.count, series: visible) else { return [] }
+        return points
     }
 
     private var selectedLinePoints: [Point] {

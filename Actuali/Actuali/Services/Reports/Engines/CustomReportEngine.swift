@@ -578,7 +578,7 @@ enum CustomReportEngine {
         return f
     }
 
-    private static func monthFormatter(locale: Locale) -> DateFormatter {
+    static func monthFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "MMM ''yy"
         f.timeZone = TimeZone(identifier: "UTC")
