@@ -91,6 +91,13 @@ struct ReportChartDetail: Equatable {
             && (band.map { $0.lower.count == intervals.count && $0.upper.count == intervals.count } ?? true)
     }
 
+    /// What the page says above the headline: the report's own caption, or
+    /// the dates the chart spans where the axis only names months.
+    var rangeCaption: String {
+        guard caption.isEmpty, axisLabels != nil, let first = intervals.first, let last = intervals.last else { return caption }
+        return first + " – " + last
+    }
+
     /// Two or three series that can't be switched off read better beside the
     /// headline than as a list under the chart.
     var showsInlineLegend: Bool {
@@ -147,14 +154,18 @@ extension ReportChartDetail {
 enum ReportDetailLabels {
     private static let utc = TimeZone(identifier: "UTC")!
 
-    /// "Nov 26" when every date starts a month, otherwise "Nov 13, 26". UTC,
-    /// like the engines that produced the dates.
+    /// "Nov '26" when every date starts a month, written the way custom
+    /// reports write their months; otherwise "Nov 13, 2026". UTC, like the
+    /// engines that produced the dates.
     static func dates(_ dates: [Date], locale: Locale, alwaysDay: Bool = false) -> [String] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = utc
-        let monthly = !alwaysDay && dates.allSatisfy { calendar.component(.day, from: $0) == 1 }
-        let base = Date.FormatStyle(locale: locale, timeZone: utc).month(.abbreviated).year(.twoDigits)
-        return dates.map { $0.formatted(monthly ? base : base.day()) }
+        if !alwaysDay, dates.allSatisfy({ calendar.component(.day, from: $0) == 1 }) {
+            let formatter = CustomReportEngine.monthFormatter(locale: locale)
+            return dates.map(formatter.string)
+        }
+        let style = Date.FormatStyle(locale: locale, timeZone: utc).month(.abbreviated).day().year()
+        return dates.map { $0.formatted(style) }
     }
 
     /// The short form for the axis: "Nov" where a month starts, or "2027"

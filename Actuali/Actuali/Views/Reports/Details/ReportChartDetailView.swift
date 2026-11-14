@@ -94,8 +94,8 @@ struct ReportChartDetailView: View {
 
     private var readout: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if !detail.caption.isEmpty {
-                Text(detail.caption)
+            if !detail.rangeCaption.isEmpty {
+                Text(detail.rangeCaption)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 8)
@@ -121,13 +121,6 @@ struct ReportChartDetailView: View {
             } else {
                 Text(detail.intervals[shownInterval])
                     .font(.title2.weight(.bold))
-            }
-            // The axis only names months, so the dates it spans go here,
-            // unless the report's own caption already says.
-            if detail.axisLabels != nil, detail.caption.isEmpty, let first = detail.intervals.first, let last = detail.intervals.last {
-                Text(verbatim: first + " – " + last)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
             }
             if !inlineLegend.isEmpty {
                 // Side by side when they fit, stacked when they don't.
