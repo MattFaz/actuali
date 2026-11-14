@@ -182,7 +182,10 @@ struct CustomReportWidgetView: View {
                     .foregroundStyle(by: .value(ReportStrings.text("Group", locale: locale), point.series))
                 }
                 .chartLegend(.visible)
-                .frame(height: 200)
+                // Size the plot, not the chart: the legend sits inside the
+                // chart's frame, so a fixed chart height let a long legend
+                // squeeze the plot to nothing and spill past the card.
+                .chartPlotStyle { $0.frame(height: 160) }
                 .modifier(ReportCurrencyYAxis(
                     numberFormat: budgetStore.numberFormat,
                     currencyCode: budgetStore.currencyCode,
@@ -229,7 +232,7 @@ struct CustomReportWidgetView: View {
                     }
                 }
                 .chartLegend(.visible)
-                .frame(height: 200)
+                .chartPlotStyle { $0.frame(height: 160) }
                 .modifier(ReportCurrencyYAxis(
                     numberFormat: budgetStore.numberFormat,
                     currencyCode: budgetStore.currencyCode,
