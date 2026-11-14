@@ -18,12 +18,12 @@ struct ReportDetailChart: View {
         detail.style == .lines || detail.style == .area
     }
 
-    /// The intervals a line chart labels: always the first and the last, with
-    /// two between when they space evenly and one when they don't.
-    nonisolated static func labelledIntervals(of count: Int) -> [Int] {
-        guard count > 4 else { return Array(0..<count) }
-        let last = count - 1
-        return last.isMultiple(of: 3) ? [0, last / 3, 2 * last / 3, last] : [0, last / 2, last]
+    /// The intervals the axis rules and labels: those with something to
+    /// write, evenly thinned from the first until they fit a phone.
+    nonisolated static func ticks(_ labels: [String], limit: Int = 6) -> [Int] {
+        let marked = labels.indices.filter { !labels[$0].isEmpty }
+        let step = (marked.count + limit - 1) / limit
+        return step > 1 ? marked.indices.filter { $0.isMultiple(of: step) }.map { marked[$0] } : marked
     }
 
     /// The interval nearest a position on a line chart's index axis.
@@ -82,6 +82,7 @@ struct ReportDetailChart: View {
         .modifier(IndexScale(count: isLine ? detail.intervals.count : nil))
 
         if let selection {
+            let labels = detail.axisLabels ?? detail.intervals
             let page = chart
                 // Framed like a Health chart, so the room the axis labels
                 // take reads as part of the chart.
@@ -97,15 +98,15 @@ struct ReportDetailChart: View {
                     ))
                     .chartXAxis {
                         let last = detail.intervals.count - 1
-                        AxisMarks(values: Self.labelledIntervals(of: detail.intervals.count).map(Double.init)) { value in
-                            if let index = value.as(Double.self).map({ Int($0) }), detail.intervals.indices.contains(index) {
+                        AxisMarks(values: Self.ticks(labels).map(Double.init)) { value in
+                            if let index = value.as(Double.self).map({ Int($0) }), labels.indices.contains(index) {
                                 // The frame already marks the ends.
                                 if index != 0, index != last {
                                     AxisGridLine(stroke: Self.intervalRule)
                                 }
-                                // Each label sits beside its line; the last has no room there.
+                                // Each label sits beside its line; the last point has no room there.
                                 AxisValueLabel(anchor: index == last ? .topTrailing : .topLeading) {
-                                    Text(verbatim: detail.intervals[index])
+                                    Text(verbatim: labels[index])
                                 }
                             }
                         }
@@ -114,12 +115,13 @@ struct ReportDetailChart: View {
                 page
                     .chartXSelection(value: selection)
                     .chartXAxis {
-                        // Beside its line a label has the whole band, so more fit than on a card.
-                        let shown = Set(ReportAxisLabels.thinned(detail.intervals, limit: 6))
+                        let shown = Dictionary(uniqueKeysWithValues: Self.ticks(labels).map { (detail.intervals[$0], labels[$0]) })
                         AxisMarks { value in
-                            if let label = value.as(String.self), shown.contains(label) {
+                            if let label = value.as(String.self).flatMap({ shown[$0] }) {
                                 AxisGridLine(centered: false, stroke: Self.intervalRule)
-                                AxisValueLabel(centered: false, anchor: .topLeading)
+                                AxisValueLabel(centered: false, anchor: .topLeading) {
+                                    Text(verbatim: label)
+                                }
                             }
                         }
                     }
@@ -137,8 +139,7 @@ struct ReportDetailChart: View {
 
     // MARK: - Marks
 
-    /// Spans the plot with the line, stopping short so the selection dot at
-    /// either end still fits.
+    /// Spans the plot with the line, edge to edge.
     private struct IndexScale: ViewModifier {
         /// nil for bars, which keep the string axis and its bands.
         let count: Int?
@@ -146,8 +147,7 @@ struct ReportDetailChart: View {
         func body(content: Content) -> some View {
             if let count {
                 // One point has no span; centre it.
-                content.chartXScale(domain: count > 1 ? 0...Double(count - 1) : -1...1,
-                                    range: .plotDimension(padding: 6))
+                content.chartXScale(domain: count > 1 ? 0...Double(count - 1) : -1...1)
             } else {
                 content
             }
