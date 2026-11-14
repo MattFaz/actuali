@@ -186,7 +186,7 @@ struct SpendingMeta: Codable, Equatable {
     let compare: String?
     let compareTo: String?
     let isLive: Bool?
-    let mode: Mode?
+    var mode: Mode?
     let averageRange: SpendingAverageRange?
 
     enum Mode: String, Codable {

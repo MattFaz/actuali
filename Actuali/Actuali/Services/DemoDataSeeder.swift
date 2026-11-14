@@ -305,6 +305,32 @@ enum DemoDataSeeder {
         )
         """)
 
+        // Same columns as BudgetDatabase's custom_reports migration, which the
+        // custom-report widgets on the "All Reports" dashboard point into.
+        try db.execute(sql: """
+        CREATE TABLE custom_reports (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            start_date TEXT,
+            end_date TEXT,
+            date_range TEXT,
+            mode TEXT,
+            group_by TEXT,
+            interval TEXT,
+            balance_type TEXT,
+            show_empty INTEGER DEFAULT 0,
+            show_offbudget INTEGER DEFAULT 0,
+            show_hidden INTEGER DEFAULT 0,
+            show_uncategorized INTEGER DEFAULT 0,
+            selected_categories TEXT,
+            graph_type TEXT,
+            conditions TEXT,
+            conditions_op TEXT,
+            metadata TEXT,
+            tombstone INTEGER NOT NULL DEFAULT 0
+        )
+        """)
+
         try db.execute(sql: """
         CREATE TABLE messages_crdt (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -888,10 +914,11 @@ enum DemoDataSeeder {
         // "Main" is inserted first so it's the default dashboard on open.
         let mainPageId = UUID().uuidString
         let trendsPageId = UUID().uuidString
+        let allReportsPageId = UUID().uuidString
         try db.execute(sql: """
         INSERT INTO dashboard_pages (id, name, tombstone)
-        VALUES (?, 'Main', 0), (?, 'Trends', 0)
-        """, arguments: [mainPageId, trendsPageId])
+        VALUES (?, 'Main', 0), (?, 'Trends', 0), (?, 'All Reports', 0)
+        """, arguments: [mainPageId, trendsPageId, allReportsPageId])
 
         // A curated set of widgets so the Reports tab is populated in the demo.
         // Sliding-window time frames slide their stored range forward to end at
@@ -929,6 +956,47 @@ enum DemoDataSeeder {
         try insertWidget(db, pageId: trendsPageId, type: "summary-card", y: 2, width: 12, height: 2, meta: """
         {"name":"Income This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"gt","value":0}],"conditionsOp":"and"}
         """)
+
+        // The third dashboard: one of every other widget type, so each card
+        // and its detail page can be opened without a server. Last, so the
+        // first two stay the demo's opening view.
+        let sixMonths = #"{"start":"2024-01","end":"2024-06","mode":"sliding-window"}"#
+        try insertWidget(db, pageId: allReportsPageId, type: "markdown-card", y: 0, width: 12, height: 2, meta: """
+        {"content":"**Every report type** 🧪\\n\\nOne of each widget this app can show. Tap a card with a chevron to open its detail page."}
+        """)
+        try insertWidget(db, pageId: allReportsPageId, type: "summary-card", y: 1, width: 6, height: 2, meta: """
+        {"name":"Spent This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"lt","value":0}],"conditionsOp":"and"}
+        """)
+        try insertWidget(db, pageId: allReportsPageId, type: "summary-card", y: 2, width: 6, height: 2, meta: """
+        {"name":"Income This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"gt","value":0}],"conditionsOp":"and"}
+        """)
+        let customReports: [(name: String, mode: String, groupBy: String, balanceType: String, graphType: String)] = [
+            ("Spending by Category", "time", "Category", "Payment", "LineGraph"),
+            ("Spending by Group", "time", "Group", "Payment", "StackedBarGraph"),
+            ("Net by Month", "time", "Interval", "Net", "BarGraph"),
+            ("Spending Breakdown", "total", "Category", "Payment", "DonutGraph"),
+        ]
+        for (offset, report) in customReports.enumerated() {
+            let reportId = UUID().uuidString
+            try db.execute(sql: """
+            INSERT INTO custom_reports (id, name, date_range, mode, group_by, interval, balance_type, graph_type, tombstone)
+            VALUES (?, ?, 'Last 6 months', ?, ?, 'Monthly', ?, ?, 0)
+            """, arguments: [reportId, report.name, report.mode, report.groupBy, report.balanceType, report.graphType])
+            try insertWidget(db, pageId: allReportsPageId, type: "custom-report", y: 3 + offset, width: 12, height: 2,
+                             meta: #"{"id":"\#(reportId)"}"#)
+        }
+        try insertWidget(db, pageId: allReportsPageId, type: "calendar-card", y: 7, width: 12, height: 2,
+                         meta: #"{"name":"Calendar","timeFrame":{"start":"2024-05","end":"2024-06","mode":"sliding-window"}}"#)
+        try insertWidget(db, pageId: allReportsPageId, type: "sankey-card", y: 8, width: 12, height: 2,
+                         meta: #"{"name":"Money Flow","timeFrame":{"mode":"lastMonth"}}"#)
+        try insertWidget(db, pageId: allReportsPageId, type: "budget-analysis-card", y: 9, width: 12, height: 2,
+                         meta: #"{"name":"Budget Analysis","timeFrame":\#(sixMonths)}"#)
+        try insertWidget(db, pageId: allReportsPageId, type: "balance-forecast-card", y: 10, width: 12, height: 2,
+                         meta: #"{"name":"Balance Forecast"}"#)
+        try insertWidget(db, pageId: allReportsPageId, type: "crossover-card", y: 11, width: 12, height: 2,
+                         meta: #"{"name":"Crossover Point","incomeAccountIds":["\#(vanguardId)"]}"#)
+        try insertWidget(db, pageId: allReportsPageId, type: "monte-carlo-card", y: 12, width: 12, height: 2,
+                         meta: #"{"name":"Retirement Outlook","currentAge":35,"targetAge":90}"#)
 
         logger.info("Inserted \(transactions.count) demo transactions for month \(yyyymm)")
     }

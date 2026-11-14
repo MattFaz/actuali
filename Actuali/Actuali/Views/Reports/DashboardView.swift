@@ -97,7 +97,24 @@ struct DashboardView: View {
                             widgetCards
                         }
                     } else {
-                        widgetCards
+                        ForEach(Self.rows(visibleWidgets), id: \.first?.id) { row in
+                            if row.count == 1 {
+                                widgetView(for: row[0])
+                            } else {
+                                // Sized to the taller of the pair; the fill behind
+                                // each card is the card's own, so the shorter one
+                                // reads as the same height.
+                                HStack(spacing: 12) {
+                                    ForEach(row, id: \.id) { widget in
+                                        widgetView(for: widget)
+                                            .frame(maxHeight: .infinity, alignment: .top)
+                                            .background(Color(.secondarySystemBackground))
+                                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    }
+                                }
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
                 }
                 .padding(.vertical)
@@ -109,6 +126,28 @@ struct DashboardView: View {
                 await loadTransactions(request: currentLoadRequest)
             }
         }
+    }
+
+    /// iPhone rows: single-number widgets (Summary, Formula) sit two to a row
+    /// where they're neighbours, since one number doesn't need the full
+    /// width. Everything else gets a row of its own.
+    nonisolated static func rows(_ widgets: [DashboardWidget]) -> [[DashboardWidget]] {
+        var rows: [[DashboardWidget]] = []
+        var lastIsOpenPair = false
+        for widget in widgets {
+            let isTile = switch widget {
+            case .summary, .formula: true
+            default: false
+            }
+            if isTile, lastIsOpenPair {
+                rows[rows.count - 1].append(widget)
+                lastIsOpenPair = false
+            } else {
+                rows.append([widget])
+                lastIsOpenPair = isTile
+            }
+        }
+        return rows
     }
 
     private var currentLoadRequest: DashboardLoadRequest {
@@ -169,8 +208,9 @@ struct DashboardView: View {
 
             let needsBudgets = widgets.contains {
                 switch $0 {
-                case .budgetAnalysis, .sankey, .balanceForecast: true
-                case .spending(_, let meta): meta?.mode == .budget
+                // Spending's detail page compares against the budget
+                // whatever mode the card is in.
+                case .budgetAnalysis, .sankey, .balanceForecast, .spending: true
                 // Budgeted custom reports read budget cells instead of transactions.
                 case .customReport(_, let meta):
                     (meta?.id).flatMap { loadedConfigs[$0] }?.balanceType == "Budgeted"
@@ -295,17 +335,26 @@ struct DashboardView: View {
                 data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
         case .spending(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 120) { transactions in
-                SpendingEngine.compute(meta: meta, transactions: Self.spendingScope(transactions, offBudget: conditionsContext.offBudgetAccountIds, income: Set(categories.filter(\.isIncome).map(\.id))),
-                                       budgets: reportBudgets.entries,
-                                       categories: categories,
-                                       categoryGroups: categoryGroups,
-                                       today: today, context: conditionsContext)
-            } content: { data in
+            detailCard(widget, meta: meta, loadingHeight: 120) { meta, transactions in
+                let scoped = Self.spendingScope(transactions, offBudget: conditionsContext.offBudgetAccountIds, income: Set(categories.filter(\.isIncome).map(\.id)))
+                return SpendingComparisons.compute(meta: meta) { meta in
+                    SpendingEngine.compute(meta: meta, transactions: scoped,
+                                           budgets: reportBudgets.entries,
+                                           categories: categories,
+                                           categoryGroups: categoryGroups,
+                                           today: today, context: conditionsContext)
+                }
+            } card: { comparisons in
                 SpendingWidgetView(
                     displayName: widget.displayName,
-                    data: data,
+                    data: comparisons.card,
                     comparisonLabel: comparisonLabel(for: meta)
+                )
+            } detail: { comparisons in
+                SpendingDetailView(
+                    displayName: widget.displayName,
+                    comparisons: comparisons,
+                    labels: SpendingComparisons.modes.map { comparisonLabel(mode: $0, compareTo: meta?.compareTo) }
                 )
             }
         case .markdown(_, let meta):
@@ -541,10 +590,14 @@ struct DashboardView: View {
 
     private func comparisonLabel(for meta: SpendingMeta?) -> String {
         // nil mode defaults to single-month upstream (SpendingCard.tsx).
-        switch meta?.mode ?? .singleMonth {
+        comparisonLabel(mode: meta?.mode ?? .singleMonth, compareTo: meta?.compareTo)
+    }
+
+    private func comparisonLabel(mode: SpendingMeta.Mode, compareTo: String?) -> String {
+        switch mode {
         case .budget: ReportStrings.text("vs budget", locale: locale)
         case .singleMonth:
-            ReportStrings.format("vs %@", meta?.compareTo ?? "prior", locale: locale)
+            ReportStrings.format("vs %@", compareTo ?? "prior", locale: locale)
         case .average: ReportStrings.text("vs avg", locale: locale)
         }
     }

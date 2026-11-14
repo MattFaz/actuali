@@ -66,6 +66,86 @@ struct ReportDetailTests {
         #expect(none.readoutValue(at: 1) == nil)
     }
 
+    @Test func trendLinesCarryOverOnlyWhenTheReportHasThem() throws {
+        let trends = [CustomReportData.Trend(startUnits: 1, endUnits: 2), .init(startUnits: 3, endUnits: 4), .init(startUnits: 5, endUnits: 6)]
+        let with = try #require(report(.lines(stacked, trends: trends)).chartDetail)
+        #expect(with.series.map(\.trend) == trends)
+        let without = try #require(report(.lines(stacked, trends: [])).chartDetail)
+        #expect(without.series.allSatisfy { $0.trend == nil })
+    }
+
+    @Test func cardNamesTheLargestSeriesInLegendOrder() {
+        // Latest interval: 300, 30, 3, -900. Largest by magnitude, kept in legend order.
+        let table = CustomReportData.Stacked(
+            intervalLabels: ["Jan", "Feb"],
+            seriesNames: ["A", "B", "C", "D"],
+            values: [[0, 300], [0, 30], [0, 3], [0, -900]]
+        )
+        #expect(table.leadingSeries(limit: 3) == [0, 1, 3])
+        #expect(table.leadingSeries(limit: 1) == [3])
+        #expect(table.leadingSeries(limit: 10) == [0, 1, 2, 3])
+        #expect(CustomReportData.Stacked(intervalLabels: [], seriesNames: ["A"], values: [[]]).leadingSeries() == [])
+    }
+
+    @Test func linkedCardCapsALongLegend() {
+        let many = CustomReportData.Stacked(
+            intervalLabels: ["Jan", "Feb", "Mar"],
+            seriesNames: (0..<12).map { "Investment account number \($0)" },
+            values: Array(repeating: [100, 200, 300], count: 12)
+        )
+        func cardHeight(linked: Bool) -> CGFloat {
+            UIHostingController(rootView: CustomReportWidgetView(data: report(.stacked(many)))
+                .environment(\.reportCardLinksToDetail, linked)
+                .environmentObject(BudgetStore.previewInstance()))
+                .sizeThatFits(in: CGSize(width: 390, height: 4000)).height
+        }
+        // Three named series and a count, rather than twelve legend entries.
+        #expect(cardHeight(linked: true) < cardHeight(linked: false))
+    }
+
+    // MARK: - Spending
+
+    @Test func spendingComparisonsCoverEveryModeAndKeepTheConfiguredOneForTheCard() {
+        let meta = SpendingMeta(name: "Spending", conditions: nil, conditionsOp: "and", compare: nil, compareTo: "2026-10",
+                                isLive: true, mode: .budget, averageRange: nil)
+        var seen: [SpendingMeta] = []
+        let comparisons = SpendingComparisons.compute(meta: meta) { meta in
+            seen.append(meta)
+            return SpendingData(currentSpentCents: 100, comparisonCents: meta.mode == .budget ? 250 : 50)
+        }
+        #expect(seen.map(\.mode) == [.singleMonth, .budget, .average])
+        // Only the mode changes.
+        #expect(seen.allSatisfy { $0.compareTo == "2026-10" && $0.conditionsOp == "and" && $0.isLive == true })
+        #expect(comparisons.configured == .budget)
+        #expect(comparisons.card.comparisonCents == 250)
+
+        // No meta: upstream's default is single-month.
+        let fallback = SpendingComparisons.compute(meta: nil) { _ in SpendingData(currentSpentCents: 1, comparisonCents: 2) }
+        #expect(fallback.configured == .singleMonth)
+        #expect(fallback.byMode.count == 3)
+    }
+
+    // MARK: - Dashboard rows
+
+    @Test func singleNumberWidgetsPairUpOnlyWithANeighbour() {
+        let summary = DashboardWidget.summary(id: "s", meta: nil)
+        let formula = DashboardWidget.formula(id: "f", meta: nil)
+        let chart = DashboardWidget.netWorth(id: "n", meta: nil)
+        func shape(_ widgets: [DashboardWidget]) -> [Int] {
+            DashboardView.rows(widgets).map(\.count)
+        }
+        #expect(shape([summary, formula, chart]) == [2, 1])
+        // A third in a run starts a new row.
+        #expect(shape([summary, formula, summary, chart]) == [2, 1, 1])
+        #expect(shape([summary, summary, summary, summary]) == [2, 2])
+        // Split by a chart: no pairing across it.
+        #expect(shape([summary, chart, formula]) == [1, 1, 1])
+        #expect(shape([chart, chart]) == [1, 1])
+        #expect(shape([]) == [])
+        // Order is preserved.
+        #expect(DashboardView.rows([summary, formula, chart]).flatMap(\.self).map(\.id) == ["s", "f", "n"])
+    }
+
     // MARK: - Other chart widgets
 
     private let locale = Locale(identifier: "en_US")
@@ -293,6 +373,8 @@ struct ReportDetailTests {
             ReportChartDetailView(detail: $0)
         }) > 0)
         #expect(height(SankeyDetailView(displayName: "Flow", data: .empty)) > 0)
+        let spending = SpendingComparisons.compute(meta: nil) { _ in SpendingData(currentSpentCents: 100, comparisonCents: 150) }
+        #expect(height(SpendingDetailView(displayName: "Spending", comparisons: spending, labels: ["a", "b", "c"])) > 0)
         let calendar = CalendarData(months: [month(november, active: [2: (0, 500)])],
                                     totalIncomeCents: 0, totalExpenseCents: 500, firstDayOfWeekIdx: 0)
         #expect(height(CalendarDetailView(displayName: "Calendar", data: calendar)) > 0)
