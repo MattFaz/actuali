@@ -5,6 +5,7 @@ struct CalendarWidgetView: View {
     @Environment(\.locale) private var locale
     let displayName: String
     let data: CalendarData
+    var linksToDetail = false
 
     /// Upstream's card lays every month out horizontally with scrolling; on
     /// iPhone we show the most recent two so cells stay readable.
@@ -28,6 +29,9 @@ struct CalendarWidgetView: View {
                     incomeCents: data.totalIncomeCents,
                     expenseCents: data.totalExpenseCents
                 )
+                if linksToDetail {
+                    ReportDetailChevron()
+                }
             }
             if data.months.isEmpty {
                 Text(ReportStrings.text("No data", locale: locale))
@@ -79,10 +83,15 @@ private struct CalendarCompactLabelStyle: LabelStyle {
     }
 }
 
-private struct CalendarMonthGridView: View {
+/// `compact` is the card's thumbnail; the detail page passes false for
+/// full-width months whose days can be tapped.
+struct CalendarMonthGridView: View {
     let month: CalendarMonthData
     let weekdaySymbols: [String]
     let locale: Locale
+    var compact = true
+    var selectedCell: Int?
+    var onSelect: ((Int) -> Void)?
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 7)
 
@@ -101,11 +110,25 @@ private struct CalendarMonthGridView: View {
             LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(0..<7, id: \.self) { i in
                     Text(weekdaySymbols[i])
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: compact ? 9 : 12, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
-                ForEach(Array(month.days.enumerated()), id: \.offset) { _, cell in
-                    CalendarDayCellView(cell: cell)
+                ForEach(Array(month.days.enumerated()), id: \.offset) { index, cell in
+                    if let onSelect, let day = cell.dayOfMonth {
+                        Button {
+                            onSelect(index)
+                        } label: {
+                            CalendarDayCellView(cell: cell, compact: compact, isSelected: index == selectedCell)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(CalendarWidgetFormatting.dayTitle(
+                            monthStart: month.monthStart, day: day, locale: locale
+                        ))
+                        .accessibilityAddTraits(index == selectedCell ? .isSelected : [])
+                        .accessibilityIdentifier("reportDetail.calendar.day.\(day)")
+                    } else {
+                        CalendarDayCellView(cell: cell, compact: compact)
+                    }
                 }
             }
         }
@@ -128,10 +151,22 @@ enum CalendarWidgetFormatting {
     static func monthTitle(_ date: Date, locale: Locale) -> String {
         ReportMonthYearFormatting.string(from: date, locale: locale)
     }
+
+    /// "Friday, November 13, 2026" for a day of the month starting at
+    /// `monthStart`. UTC throughout, like the engine's month starts.
+    static func dayTitle(monthStart: Date, day: Int, locale: Locale) -> String {
+        let utc = TimeZone(identifier: "UTC")!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) ?? monthStart
+        return date.formatted(Date.FormatStyle(date: .complete, time: .omitted, locale: locale, timeZone: utc))
+    }
 }
 
 private struct CalendarDayCellView: View {
     let cell: CalendarDayCell
+    var compact = true
+    var isSelected = false
 
     var body: some View {
         ZStack {
@@ -151,12 +186,17 @@ private struct CalendarDayCellView: View {
                     .frame(maxHeight: .infinity, alignment: .bottom)
                 }
                 Text("\(day)")
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.system(size: compact ? 8 : 13, weight: .medium))
             } else {
                 Color.clear
             }
         }
         .aspectRatio(1, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 3))
+        .clipShape(RoundedRectangle(cornerRadius: compact ? 3 : 6))
+        .overlay {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary, lineWidth: 2)
+            }
+        }
     }
 }

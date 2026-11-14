@@ -171,22 +171,29 @@ struct CustomReportWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     let data: CustomReportData
+    var linksToDetail = false
 
     /// Fixed cycle standing in for upstream's qualitative colour scale. Only
     /// the donut assigns colours itself: a category can share a name with its
     /// group, and `foregroundStyle(by:)` would merge the two.
-    private static let palette: [Color] = [
+    static let palette: [Color] = [
         .blue, .green, .orange, .purple, .pink, .teal, .indigo, .yellow, .mint, .cyan, .brown, .red,
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(data.name).font(.headline)
-                if !data.rangeLabel.isEmpty {
-                    Text(data.rangeLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(data.name).font(.headline)
+                    if !data.rangeLabel.isEmpty {
+                        Text(data.rangeLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if linksToDetail {
+                    ReportDetailChevron()
                 }
             }
             content
