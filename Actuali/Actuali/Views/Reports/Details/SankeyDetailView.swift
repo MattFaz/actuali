@@ -59,6 +59,7 @@ struct SankeyDetailView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
+                ReportRangePicker()
                 SankeyWidgetView(displayName: displayName, data: data)
                 ForEach(data.detailSections, id: \.layer) { section in
                     self.section(section)

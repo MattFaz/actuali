@@ -175,41 +175,15 @@ struct ReportIntervalXAxis: ViewModifier {
 struct CustomReportWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
-    @Environment(\.reportCardLinksToDetail) private var linksToDetail
     let data: CustomReportData
 
-    /// A card that opens a detail page only names its leading series: the
-    /// page has the full list, and a long legend otherwise outgrows the chart.
-    private static let legendLimit = 3
-
-    private func capsLegend(_ stacked: CustomReportData.Stacked) -> Bool {
-        linksToDetail && stacked.seriesNames.count > Self.legendLimit
-    }
-
-    /// The same colours the detail page gives each series, so the two agree
-    /// and the capped legend below can be drawn by hand.
+    /// The same colours the detail page gives each series, so the two agree.
     private func seriesColors(_ stacked: CustomReportData.Stacked) -> (names: [String], colors: [Color]) {
         // ponytail: two series sharing a name share the first one's colour,
         // as they already shared one mark group. Key by index if that matters.
         var seen = Set<String>()
         let unique = stacked.seriesNames.enumerated().filter { seen.insert($0.element).inserted }
         return (unique.map(\.element), unique.map { Self.palette[$0.offset % Self.palette.count] })
-    }
-
-    @ViewBuilder
-    private func cappedLegend(_ stacked: CustomReportData.Stacked) -> some View {
-        if capsLegend(stacked), let latest = stacked.intervalLabels.indices.last {
-            let leading = stacked.leadingSeries(limit: Self.legendLimit)
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(leading, id: \.self) { series in
-                    legendRow(color: Self.palette[series % Self.palette.count],
-                              label: stacked.seriesNames[series], units: stacked.values[series][latest])
-                }
-                Text(ReportStrings.localized("…and \(stacked.seriesNames.count - leading.count) more", locale: locale))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
     }
 
     /// Fixed cycle standing in for upstream's qualitative colour scale. Only
@@ -258,7 +232,7 @@ struct CustomReportWidgetView: View {
                     .foregroundStyle(by: .value(ReportStrings.text("Group", locale: locale), point.series))
                 }
                 .chartForegroundStyleScale(domain: seriesColors(stacked).names, range: seriesColors(stacked).colors)
-                .chartLegend(capsLegend(stacked) ? .hidden : .visible)
+                .chartLegend(.visible)
                 // Size the plot, not the chart: the legend sits inside the
                 // chart's frame, so a fixed chart height let a long legend
                 // squeeze the plot to nothing and spill past the card.
@@ -275,7 +249,6 @@ struct CustomReportWidgetView: View {
                     rows: chartAccessibilityRows(for: .stacked(stacked)),
                     hidden: budgetStore.hideBalances
                 ))
-                cappedLegend(stacked)
             }
 
         case .lines(let stacked, let trends):
@@ -311,7 +284,7 @@ struct CustomReportWidgetView: View {
                     }
                 }
                 .chartForegroundStyleScale(domain: seriesColors(stacked).names, range: seriesColors(stacked).colors)
-                .chartLegend(capsLegend(stacked) ? .hidden : .visible)
+                .chartLegend(.visible)
                 .chartPlotStyle { $0.frame(height: 160) }
                 .modifier(ReportIntervalXAxis(labels: stacked.intervalLabels))
                 .modifier(ReportCurrencyYAxis(
@@ -325,7 +298,6 @@ struct CustomReportWidgetView: View {
                     rows: chartAccessibilityRows(for: .lines(stacked, trends: trends)),
                     hidden: budgetStore.hideBalances
                 ))
-                cappedLegend(stacked)
             }
 
         case .area(let bars):
