@@ -40,16 +40,20 @@ struct ReportsTabView: View {
                         description: Text("Open or sync a budget to see reports.")
                     )
                 } else {
-                    VStack(spacing: 0) {
-                        dashboardPicker
-                            // Lined up with the dashboard cards below.
-                            .padding(.horizontal, sideMargin)
-                            .padding(.top, 8)
-                        // Recreate cards when the page or widget definitions change,
-                        // so their inputs and computed state belong to that dashboard.
-                        DashboardView(widgets: widgets)
-                            .id(dashboardGeneration)
-                    }
+                    // Recreate cards when the page or widget definitions change,
+                    // so their inputs and computed state belong to that dashboard.
+                    DashboardView(widgets: widgets)
+                        .id(dashboardGeneration)
+                        // A bar the cards scroll under, rather than a sibling
+                        // above the scroll view that cut them off flush
+                        // against the picker.
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            dashboardPicker
+                                // Lined up with the dashboard cards below.
+                                .padding(.horizontal, sideMargin)
+                                .padding(.vertical, 8)
+                                .background(.bar)
+                        }
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
