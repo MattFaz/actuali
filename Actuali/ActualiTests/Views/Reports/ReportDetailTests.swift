@@ -38,13 +38,71 @@ struct ReportDetailTests {
         #expect(report(.area(bars)).chartDetail()?.style == .area)
     }
 
-    @Test func cardsThatAlreadyListEverythingHaveNoDetail() {
-        #expect(report(.donut(slices: [.init(label: "Rent", valueUnits: 1, group: nil)], groups: [])).chartDetail() == nil)
-        #expect(report(.table([.init(name: "Rent", totalUnits: 1)], totalUnits: 1)).chartDetail() == nil)
+    @Test func reportsWithoutIntervalsAreBreakdownsNotCharts() {
+        let donut = report(.donut(slices: [.init(label: "Rent", valueUnits: 1, group: nil)], groups: []))
+        #expect(donut.chartDetail() == nil)
+        #expect(donut.breakdown != nil)
+        let table = report(.table([.init(name: "Rent", totalUnits: 1)], totalUnits: 1))
+        #expect(table.chartDetail() == nil)
+        #expect(table.breakdown != nil)
         #expect(report(.unsupported("nope")).chartDetail() == nil)
+        #expect(report(.unsupported("nope")).breakdown == nil)
+        // Nothing to list, and a chart is not a breakdown.
+        #expect(report(.donut(slices: [], groups: [])).breakdown == nil)
+        #expect(report(.table([], totalUnits: 0)).breakdown == nil)
+        #expect(report(.stacked(stacked)).breakdown == nil)
         // Nothing to scrub through.
         #expect(report(.bars([], signed: false)).chartDetail() == nil)
         #expect(report(.stacked(.init(intervalLabels: ["Jan"], seriesNames: [], values: []))).chartDetail() == nil)
+    }
+
+    @Test func oneRingDonutListsEverySliceWithItsShare() throws {
+        let slices = [CustomReportData.Slice(label: "Rent", valueUnits: 300, group: nil), .init(label: "Food", valueUnits: 100, group: nil)]
+        let breakdown = try #require(report(.donut(slices: slices, groups: [])).breakdown)
+        #expect(breakdown.rows.map(\.name) == ["Rent", "Food"])
+        #expect(breakdown.total == 400)
+        #expect(breakdown.share(of: breakdown.rows[0]) == 0.75)
+        // The colours the donut draws them in.
+        #expect(breakdown.rows.map(\.color) == ReportDonutChart.sliceColors(slices, groups: []))
+        #expect(breakdown.rows.flatMap(\.children).isEmpty)
+        #expect(breakdown.donut == .init(slices: slices, groups: []))
+    }
+
+    @Test func twoRingDonutListsGroupsOverTheirCategories() throws {
+        let slices = [CustomReportData.Slice(label: "Rent", valueUnits: 300, group: 0), .init(label: "Food", valueUnits: 60, group: 1),
+                      .init(label: "Power", valueUnits: 40, group: 0)]
+        let groups = [CustomReportData.Bar(label: "Home", valueUnits: 340), .init(label: "Daily", valueUnits: 60)]
+        let breakdown = try #require(report(.donut(slices: slices, groups: groups)).breakdown)
+        #expect(breakdown.rows.map(\.name) == ["Home", "Daily"])
+        #expect(breakdown.rows.map { $0.children.map(\.name) } == [["Rent", "Power"], ["Food"]])
+        #expect(breakdown.total == 400)
+    }
+
+    @Test func tableIsRankedByMagnitudeAndKeepsTheReportsTotal() throws {
+        let rows = [CustomReportData.TableRow(name: "Small", totalUnits: 5), .init(name: "Refund", totalUnits: -40), .init(name: "Big", totalUnits: 20)]
+        let breakdown = try #require(report(.table(rows, totalUnits: -15)).breakdown)
+        #expect(breakdown.rows.map(\.name) == ["Refund", "Big", "Small"])
+        #expect(breakdown.total == -15)
+        #expect(breakdown.donut == nil)
+        // A card names the largest few, in the list's order.
+        #expect(breakdown.leadingRows(limit: 2) == [0, 1])
+        #expect(ReportBreakdown(name: "", rows: breakdown.rows, total: 0).share(of: breakdown.rows[0]) == nil)
+    }
+
+    @Test func stackedBarsCanBeReadAsOneTotalPerInterval() throws {
+        let detail = try #require(report(.stacked(stacked)).chartDetail())
+        #expect(detail.canShowTotal)
+        let total = detail.totalled()
+        #expect(total.series.map(\.values) == [[111, -178, 333]])
+        // It dips below zero, so the bars read by sign.
+        #expect(total.signed)
+        // Hidden series stay out of the sum.
+        let withoutFirst = detail.totalled(hiding: [0])
+        #expect(withoutFirst.series.map(\.values) == [[11, 22, 33]])
+        #expect(!withoutFirst.signed)
+        // Lines are levels, and one series is already its own total.
+        #expect(report(.lines(stacked, trends: [])).chartDetail()?.canShowTotal == false)
+        #expect(report(.bars([.init(label: "Jan", valueUnits: 5)], signed: false)).chartDetail()?.canShowTotal == false)
     }
 
     @Test func repeatedLabelsAreNotChartable() {
@@ -269,6 +327,7 @@ struct ReportDetailTests {
         let detail = try #require(forecast.chartDetail(name: "Forecast", locale: locale))
         #expect(detail.series[0].dashedFrom == 2)
         #expect(detail.readoutValue(at: 2) == 3500)
+        #expect(detail.events.isEmpty)
 
         func point(_ month: Int, income: Int, projected: Bool) -> CrossoverPoint {
             CrossoverPoint(month: utc(2026, month), investmentIncomeCents: income, expensesCents: 350_000, nestEggCents: 0,
@@ -286,6 +345,25 @@ struct ReportDetailTests {
         // Nothing projected to cross: no stats to show.
         #expect(lines.stats.isEmpty)
         #expect(CrossoverData.empty.chartDetail(name: "", locale: locale) == nil)
+    }
+
+    @Test func forecastListsTheNextScheduledOccurrences() throws {
+        var forecast = BalanceForecastData(points: [
+            .init(date: utc(2026, 11, 1), balanceCents: 500_000, isForecast: false),
+            .init(date: utc(2026, 12, 1), balanceCents: 300_000, isForecast: true),
+        ])
+        forecast.upcoming = [
+            .init(scheduleName: "Rent", payeeId: "p1", date: utc(2026, 12, 1), amountCents: -185_000),
+            .init(scheduleName: nil, payeeId: "p2", date: utc(2026, 12, 11), amountCents: -2299),
+            .init(scheduleName: nil, payeeId: nil, date: utc(2026, 12, 20), amountCents: 100),
+        ] + (1...10).map { .init(scheduleName: "Later", payeeId: nil, date: utc(2027, 1, $0), amountCents: -1) }
+        let detail = try #require(forecast.chartDetail(name: "Forecast", payeeNames: ["p2": "Netflix"], locale: locale))
+        #expect(detail.events.count == BalanceForecastData.upcomingLimit)
+        // A schedule's name, else its payee, else just "Schedule".
+        #expect(detail.events.prefix(3).map(\.name) == ["Rent", "Netflix", "Schedule"])
+        // The day shows even when an occurrence falls on the 1st.
+        #expect(detail.events.prefix(2).map(\.date) == ["Dec 1, 26", "Dec 11, 26"])
+        #expect(detail.events[0].amount == -1850)
     }
 
     @Test func monteCarloLeadsWithTheMedianByAge() throws {
@@ -431,6 +509,11 @@ struct ReportDetailTests {
             ReportChartDetailView(detail: $0)
         }) > 0)
         #expect(height(SankeyDetailView(displayName: "Flow", data: .empty)) > 0)
+        let donut = try #require(report(.donut(slices: [.init(label: "Rent", valueUnits: 300, group: 0)],
+                                               groups: [.init(label: "Home", valueUnits: 300)])).breakdown)
+        #expect(height(ReportBreakdownDetailView(breakdown: donut)) > 0)
+        let table = try #require(report(.table([.init(name: "Rent", totalUnits: 300)], totalUnits: 300)).breakdown)
+        #expect(height(ReportBreakdownDetailView(breakdown: table)) > 0)
         let spending = SpendingComparisons.compute(meta: nil) { _ in SpendingData(currentSpentCents: 100, comparisonCents: 150) }
         #expect(height(SpendingDetailView(displayName: "Spending", comparisons: spending, labels: ["a", "b", "c"])) > 0)
         let calendar = CalendarData(months: [month(november, active: [2: (0, 500)])],

@@ -10,6 +10,7 @@ struct ReportChartDetailView: View {
 
     @State private var selected: String?
     @State private var hidden: Set<Int> = []
+    @State private var showsTotal = true
 
     /// The interval the readout and the lists describe: the one under the
     /// finger, otherwise the latest.
@@ -32,6 +33,14 @@ struct ReportChartDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 ReportRangePicker()
+                if detail.canShowTotal {
+                    Picker(ReportStrings.text("Chart view", locale: locale), selection: $showsTotal) {
+                        Text(ReportStrings.text("Total", locale: locale)).tag(true)
+                        Text(ReportStrings.text("Breakdown", locale: locale)).tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("reportDetail.chartView")
+                }
                 readout
                 chart
                 Text(ReportStrings.text("Drag across the chart to inspect a point.", locale: locale))
@@ -45,6 +54,9 @@ struct ReportChartDetailView: View {
                 }
                 if !detail.stats.isEmpty {
                     statsList
+                }
+                if !detail.events.isEmpty {
+                    eventsList
                 }
             }
             .padding()
@@ -142,7 +154,10 @@ struct ReportChartDetailView: View {
     // MARK: - Chart
 
     private var chart: some View {
-        ReportDetailChart(detail: detail, hidden: hidden, selection: $selected)
+        // The total already leaves the hidden series out.
+        let total = showsTotal && detail.canShowTotal
+        return ReportDetailChart(detail: total ? detail.totalled(hiding: hidden) : detail,
+                                 hidden: total ? [] : hidden, selection: $selected)
             // Where a list below carries the same numbers as text, the chart
             // would only repeat them. Otherwise it is the only way to them, so
             // it stays reachable unless amounts are hidden.
@@ -223,6 +238,38 @@ struct ReportChartDetailView: View {
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityIdentifier("reportDetail.stats")
+    }
+
+    private var eventsList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(ReportStrings.text("Upcoming", locale: locale))
+                .font(.headline)
+                .padding([.horizontal, .top])
+                .padding(.bottom, 8)
+            ForEach(Array(detail.events.enumerated()), id: \.offset) { _, event in
+                Divider()
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(event.name)
+                            .lineLimit(1)
+                        Text(event.date)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(amount(event.amount))
+                        .monospacedDigit()
+                }
+                .font(.subheadline)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .frame(minHeight: 44)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityIdentifier("reportDetail.events")
     }
 
     private func row(_ label: String, _ value: String) -> some View {
