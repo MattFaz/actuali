@@ -156,10 +156,6 @@ struct ReportIntervalXAxis: ViewModifier {
     /// Detail pages leave the vertical lines out: the scrubbing rule is the
     /// only vertical line there.
     var gridLines = true
-    /// The first and last marks sit at the plot's edges, so their labels
-    /// grow inward instead of being centred half outside it.
-    var reachesEdges = false
-
     func body(content: Content) -> some View {
         let shown = Set(ReportAxisLabels.thinned(labels))
         content.chartXAxis {
@@ -168,8 +164,7 @@ struct ReportIntervalXAxis: ViewModifier {
                     if gridLines {
                         AxisGridLine()
                     }
-                    AxisValueLabel(anchor: !reachesEdges ? .top
-                        : label == labels.last ? .topTrailing : label == labels.first ? .topLeading : .top)
+                    AxisValueLabel()
                 }
             }
         }
