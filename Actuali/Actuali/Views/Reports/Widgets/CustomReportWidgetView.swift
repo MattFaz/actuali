@@ -87,12 +87,20 @@ enum ReportCurrencyAxisFormatting {
         narrowSymbol: Bool,
         locale: Locale
     ) -> String {
-        CustomReportChartAccessibility.amount(
-            units: units,
-            numberFormat: numberFormat,
-            currencyCode: currencyCode,
-            narrowSymbol: narrowSymbol,
-            locale: locale
+        // Thousands and up are abbreviated ("400K"): a full figure costs more
+        // width than a phone chart can spare.
+        if abs(units) >= 1000 {
+            return CurrencyAmountFormat.compactString(
+                units: units, currencyCode: currencyCode, narrowSymbol: narrowSymbol,
+                numberFormat: numberFormat, locale: locale
+            )
+        }
+        // Smaller ticks are nearly always whole numbers, where ".00" only
+        // widens the axis. A tick with a fraction keeps its cents.
+        return CurrencyAmountFormat.string(
+            cents: Int((units * 100).rounded()), currencyCode: currencyCode,
+            narrowSymbol: narrowSymbol, wholeUnits: units == units.rounded(),
+            numberFormat: numberFormat, locale: locale
         )
     }
 
@@ -125,6 +133,34 @@ struct ReportCurrencyYAxis: ViewModifier {
                             ))
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+enum ReportAxisLabels {
+    /// At most `limit` evenly spaced labels, always ending on the latest.
+    static func thinned(_ labels: [String], limit: Int = 4) -> [String] {
+        let step = (labels.count + limit - 1) / limit
+        guard step > 1 else { return labels }
+        return labels.indices.filter { (labels.count - 1 - $0) % step == 0 }.map { labels[$0] }
+    }
+}
+
+/// Charts can't thin a string axis itself: it draws every label and, at phone
+/// width, truncates them all ("M… Ap… Ju…"). Label a readable subset instead.
+/// `AxisMarks(values:)` is ignored on a string axis, hence the per-mark check.
+struct ReportIntervalXAxis: ViewModifier {
+    let labels: [String]
+
+    func body(content: Content) -> some View {
+        let shown = Set(ReportAxisLabels.thinned(labels))
+        content.chartXAxis {
+            AxisMarks { value in
+                if let label = value.as(String.self), shown.contains(label) {
+                    AxisGridLine()
+                    AxisValueLabel()
                 }
             }
         }
@@ -182,7 +218,11 @@ struct CustomReportWidgetView: View {
                     .foregroundStyle(by: .value(ReportStrings.text("Group", locale: locale), point.series))
                 }
                 .chartLegend(.visible)
-                .frame(height: 200)
+                // Size the plot, not the chart: the legend sits inside the
+                // chart's frame, so a fixed chart height let a long legend
+                // squeeze the plot to nothing and spill past the card.
+                .chartPlotStyle { $0.frame(height: 160) }
+                .modifier(ReportIntervalXAxis(labels: stacked.intervalLabels))
                 .modifier(ReportCurrencyYAxis(
                     numberFormat: budgetStore.numberFormat,
                     currencyCode: budgetStore.currencyCode,
@@ -229,7 +269,8 @@ struct CustomReportWidgetView: View {
                     }
                 }
                 .chartLegend(.visible)
-                .frame(height: 200)
+                .chartPlotStyle { $0.frame(height: 160) }
+                .modifier(ReportIntervalXAxis(labels: stacked.intervalLabels))
                 .modifier(ReportCurrencyYAxis(
                     numberFormat: budgetStore.numberFormat,
                     currencyCode: budgetStore.currencyCode,
@@ -269,6 +310,7 @@ struct CustomReportWidgetView: View {
                     .foregroundStyle(Color.accentColor)
                 }
                 .frame(height: 180)
+                .modifier(ReportIntervalXAxis(labels: bars.map(\.label)))
                 .modifier(ReportCurrencyYAxis(
                     numberFormat: budgetStore.numberFormat,
                     currencyCode: budgetStore.currencyCode,
