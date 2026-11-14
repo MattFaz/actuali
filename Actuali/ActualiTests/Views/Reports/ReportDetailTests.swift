@@ -216,11 +216,6 @@ struct ReportDetailTests {
         #expect(total.readoutValue(at: 1, hiding: [0]) == 22)
         #expect(total.readoutValue(at: 2, hiding: [0, 1, 2]) == 0)
 
-        var first = total
-        first.readout = .first
-        #expect(first.readoutValue(at: 1) == -200)
-        #expect(!first.canHideSeries)
-
         var none = total
         none.readout = .none
         #expect(none.readoutValue(at: 1) == nil)
@@ -403,7 +398,13 @@ struct ReportDetailTests {
         #expect(detail.intervals == ["Oct '26", "Nov '26"])
         #expect(detail.axisLabels == ["Oct", "Nov"])
         #expect(detail.series.map(\.values) == [[41, 42]])
+        #expect(detail.caption.isEmpty)
         #expect(AgeOfMoneyData.empty.chartDetail(name: "", locale: locale) == nil)
+        // Approximate ages keep the warning the widget's own card shows.
+        var approximate = data
+        approximate.insufficientData = true
+        #expect(try #require(approximate.chartDetail(name: "", locale: locale)).rangeCaption
+            == "Some expenses predate the income history; ages are approximate.")
     }
 
     @Test func budgetAnalysisComparesBudgetedWithSpendingAsMagnitudes() throws {
@@ -450,6 +451,9 @@ struct ReportDetailTests {
         #expect(lines.series.map(\.values) == [[2900, 3100, 3350], [3500, 3500, 3500]])
         // Nothing projected to cross: no stats to show.
         #expect(lines.stats.isEmpty)
+        // The card still says so, as the widget's own card does.
+        #expect(lines.card.text == "N/A")
+        #expect(lines.card.context == "Years to Retire")
         #expect(CrossoverData.empty.chartDetail(name: "", locale: locale) == nil)
     }
 

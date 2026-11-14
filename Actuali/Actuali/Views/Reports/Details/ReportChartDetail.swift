@@ -6,10 +6,10 @@ import SwiftUI
 struct ReportChartDetail: Equatable {
     enum Style: Equatable { case stackedBars, groupedBars, lines, area }
     enum Unit: Equatable { case currency, days }
-    /// The headline number: the sum of the visible series, the first series
-    /// (when the others are context for it), the first minus the second
-    /// (income less expenses), or none (when no single number leads).
-    enum Readout: Equatable { case total, first, difference, none }
+    /// The headline number: the sum of the visible series, the first minus
+    /// the second (income less expenses), or none (when no single number
+    /// leads).
+    enum Readout: Equatable { case total, difference, none }
 
     /// A shaded range behind the lines, such as a percentile spread.
     struct Band: Equatable {
@@ -135,7 +135,6 @@ struct ReportChartDetail: Equatable {
     func readoutValue(at interval: Int, hiding hidden: Set<Int> = []) -> Double? {
         switch readout {
         case .total: series.indices.filter { !hidden.contains($0) }.reduce(0) { $0 + series[$1].values[interval] }
-        case .first: series[0].values[interval]
         case .difference: series.count > 1 ? series[0].values[interval] - series[1].values[interval] : nil
         case .none: nil
         }
@@ -290,7 +289,12 @@ extension AgeOfMoneyData {
     func chartDetail(name: String, locale: Locale) -> ReportChartDetail? {
         guard points.count >= 2 else { return nil }
         return ReportChartDetail(
-            name: name, intervals: ReportDetailLabels.dates(points.map(\.month), locale: locale),
+            name: name,
+            // The widget's own card warns when the ages are approximate; the
+            // glance card and the page say so in the caption's place.
+            caption: insufficientData
+                ? ReportStrings.text("Some expenses predate the income history; ages are approximate.", locale: locale) : "",
+            intervals: ReportDetailLabels.dates(points.map(\.month), locale: locale),
             axisLabels: ReportDetailLabels.axis(points.map(\.month), locale: locale),
             series: [.init(name: name, color: .teal, values: points.map { Double($0.age) })],
             style: .area, unit: .days, card: .init(showsChange: true)
@@ -371,8 +375,10 @@ extension CrossoverData {
                                            value: .text(ReportDetailLabels.dates([$0], locale: locale)[0]))
                 },
             ].compactMap(\.self),
-            card: .init(text: yearsToRetire.map { ReportStrings.yearsToRetire($0, locale: locale) },
-                        context: ReportStrings.text("Years to Retire", locale: locale))
+            // Like the widget's own card: "N/A" rather than nothing when the lines never cross.
+            card: .init(text: yearsToRetire.map { ReportStrings.yearsToRetire($0, locale: locale) }
+                ?? ReportStrings.text("N/A", locale: locale),
+                context: ReportStrings.text("Years to Retire", locale: locale))
         ).chartable
     }
 }
@@ -397,14 +403,13 @@ extension MonteCarloData {
                         lower: percentileBands.map { Double($0.p10) / 100 },
                         upper: percentileBands.map { Double($0.p90) / 100 }, color: .purple),
             stats: [
-                // Upstream rounds the rate to a tenth of a percent.
                 .init(label: ReportStrings.text("Success rate", locale: locale),
-                      value: .text(MonteCarloWidgetFormatting.percentage((successRate * 1000).rounded() / 10, locale: locale))),
+                      value: .text(MonteCarloWidgetFormatting.percentage(successPercent, locale: locale))),
                 .init(label: ReportStrings.text("Simulations", locale: locale),
                       value: .text(simulationCount.formatted(.number.locale(locale)))),
             ],
             compact: true,
-            card: .init(text: MonteCarloWidgetFormatting.percentage((successRate * 1000).rounded() / 10, locale: locale),
+            card: .init(text: MonteCarloWidgetFormatting.percentage(successPercent, locale: locale),
                         context: ReportStrings.text("Success rate", locale: locale))
         ).chartable
     }

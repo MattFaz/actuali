@@ -18,11 +18,6 @@ struct MonteCarloWidgetView: View {
     let displayName: String
     let data: MonteCarloData
 
-    // Upstream: Math.round(successRate * 1000) / 10
-    private var successPercent: Double {
-        (data.successRate * 1000).rounded() / 10
-    }
-
     private var endAge: Double {
         data.currentAge + Double(data.horizonYears)
     }
@@ -33,7 +28,7 @@ struct MonteCarloWidgetView: View {
                 ReportCardTitle(displayName)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(MonteCarloWidgetFormatting.percentage(successPercent, locale: locale))
+                    Text(MonteCarloWidgetFormatting.percentage(data.successPercent, locale: locale))
                         .font(.subheadline.weight(.semibold))
                         .monospacedDigit()
                     Text(ReportStrings.format(

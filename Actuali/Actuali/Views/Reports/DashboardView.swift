@@ -539,46 +539,48 @@ struct DashboardView: View {
         }
     }
 
-    /// A card that opens a detail page. `ranged` recomputes the widget over a
-    /// range picked there; leave it nil when the widget has no range to move.
-    /// `model` is what both the card and the page draw from; a card with
-    /// nothing to show in detail (`model` returns nil) stays a plain card.
     /// What a custom report's page shows: a chart, or a donut or table in full.
     private enum CustomReportPage {
         case chart(ReportChartDetail)
         case breakdown(ReportBreakdown)
     }
 
-    private func detailCard<Meta: Sendable, Value: Sendable, Model>(
+    /// A card that opens a detail page. `ranged` recomputes the widget over a
+    /// range picked there; leave it nil when the widget has no range to move.
+    /// `model` is what both the card and the page draw from; a card with
+    /// nothing to show in detail (`model` returns nil) stays a plain card.
+    private func detailCard<Meta: Sendable, Value: Sendable, Model: Sendable>(
         _ widget: DashboardWidget,
         meta: Meta,
         loadingHeight: CGFloat,
         ranged: (@Sendable (Meta, ReportDetailRange) -> Meta)? = nil,
         compute: @escaping @Sendable (Meta, [Transaction]) -> Value,
-        model: @escaping (Value) -> Model?,
+        model: @escaping @Sendable (Value) -> Model?,
         @ViewBuilder card: @escaping (Value, Model?) -> some View,
         @ViewBuilder detail: @escaping (Model) -> some View
     ) -> some View {
         let transactions = reportTransactions
         let locale = locale
+        // The model is built with the data, off the main actor: formatting a
+        // year of daily labels in `body` would repeat on every redraw.
+        let computed: @Sendable (Meta, [Transaction]) -> ReportCardResult<Value, Model> = { meta, transactions in
+            let value = compute(meta, transactions)
+            return ReportCardResult(value: value, model: model(value))
+        }
         return WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: loadingHeight) {
-            compute(meta, $0)
-        } content: { value in
-            // Built once per pass, for both the card and the link.
-            let page = model(value)
-            if page == nil {
-                card(value, nil)
-            } else {
+            computed(meta, $0)
+        } content: { result in
+            if let page = result.model {
                 NavigationLink {
                     ReportRangedDetail(
-                        initial: value,
+                        initial: result,
                         transactions: transactions ?? [],
                         dataVersion: reportDataVersion,
                         recompute: ranged.map { ranged in
-                            { @Sendable range, transactions in compute(ranged(meta, range), transactions) }
+                            { @Sendable range, transactions in computed(ranged(meta, range), transactions) }
                         }
-                    ) { value in
-                        if let page = model(value) {
+                    ) { result in
+                        if let page = result.model {
                             detail(page)
                         } else {
                             ContentUnavailableView(
@@ -589,10 +591,12 @@ struct DashboardView: View {
                         }
                     }
                 } label: {
-                    card(value, page).environment(\.reportCardLinksToDetail, true)
+                    card(result.value, page).environment(\.reportCardLinksToDetail, true)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("reportCard.\(widget.id)")
+            } else {
+                card(result.value, nil)
             }
         }
     }
@@ -605,7 +609,7 @@ struct DashboardView: View {
         loadingHeight: CGFloat,
         ranged: (@Sendable (Meta, ReportDetailRange) -> Meta)? = nil,
         compute: @escaping @Sendable (Meta, [Transaction]) -> Value,
-        chartDetail: @escaping (Value) -> ReportChartDetail?,
+        chartDetail: @escaping @Sendable (Value) -> ReportChartDetail?,
         @ViewBuilder fallback: @escaping (Value) -> some View
     ) -> some View {
         detailCard(widget, meta: meta, loadingHeight: loadingHeight, ranged: ranged,
@@ -665,6 +669,12 @@ struct DashboardView: View {
 /// Shared chrome for report widgets: shows the standard loading card until
 /// the dashboard-wide transaction fetch lands, then computes the widget's
 /// data once per fetch and hands it to `content`.
+/// A card's data with the page model built from it, computed together.
+private struct ReportCardResult<Value: Sendable, Model: Sendable>: Sendable {
+    let value: Value
+    let model: Model?
+}
+
 private struct WidgetCard<Value: Sendable, Content: View>: View {
     @Environment(\.locale) private var locale
     let transactions: [Transaction]?
