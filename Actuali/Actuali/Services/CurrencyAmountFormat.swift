@@ -220,14 +220,18 @@ enum CurrencyAmountFormat {
         // Fraction digits on the abbreviated value, not significant digits:
         // three significant digits round 250.5K to "250K", so on a narrow
         // range neighbouring ticks would share a label.
+        // ponytail: three digits, fixed rather than derived from the tick step,
+        // which one axis label can't see. Ticks closer than 0.1% of the
+        // magnitude still collide; pass the chart's value range into
+        // ReportCurrencyYAxis if that shows up.
         let formatted = currencyCode.isEmpty
             ? units.formatted(
-                .number.locale(locale).notation(.compactName).precision(.fractionLength(0...2))
+                .number.locale(locale).notation(.compactName).precision(.fractionLength(0...3))
             )
             : units.formatted(
                 .currency(code: currencyCode).locale(locale)
                     .presentation(narrowSymbol ? .narrow : .standard)
-                    .notation(.compactName).precision(.fractionLength(0...2))
+                    .notation(.compactName).precision(.fractionLength(0...3))
             )
         // Only between the digits, so a "." inside a currency symbol survives.
         guard let first = formatted.firstIndex(where: \.isWholeNumber),

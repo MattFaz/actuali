@@ -691,6 +691,9 @@ struct CustomReportEngineTests {
         // Ticks $500 apart on a large balance keep distinct labels.
         #expect(label(250_500) == "$250.5K")
         #expect(label(250_000) == "$250K")
+        // So do ticks $5,000 apart on a million-scale balance.
+        #expect(label(1_195_000) == "$1.195M")
+        #expect(label(1_200_000) == "$1.2M")
         // The decimal mark follows Actual's number format, not the locale.
         #expect(label(12500, .dotComma) == "$12,5K")
         #expect(label(1_250_000, .spaceComma) == "$1,25M")
