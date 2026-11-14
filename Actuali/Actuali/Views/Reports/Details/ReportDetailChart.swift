@@ -83,7 +83,9 @@ struct ReportDetailChart: View {
 
         if let selection {
             let page = chart
-                .chartPlotStyle { $0.frame(height: 240) }
+                // Framed like a Health chart, so the room the axis labels
+                // take reads as part of the chart.
+                .chartPlotStyle { $0.frame(height: 240).border(Color(.separator), width: 0.5) }
                 .modifier(YAxis(unit: detail.unit))
             if isLine {
                 page
@@ -97,8 +99,12 @@ struct ReportDetailChart: View {
                         let last = detail.intervals.count - 1
                         AxisMarks(values: Self.labelledIntervals(of: detail.intervals.count).map(Double.init)) { value in
                             if let index = value.as(Double.self).map({ Int($0) }), detail.intervals.indices.contains(index) {
-                                // The ends sit at the plot's edges, so their labels grow inward.
-                                AxisValueLabel(anchor: index == 0 ? .topLeading : index == last ? .topTrailing : .top) {
+                                // The frame already marks the ends.
+                                if index != 0, index != last {
+                                    AxisGridLine(stroke: Self.intervalRule)
+                                }
+                                // Each label sits beside its line; the last has no room there.
+                                AxisValueLabel(anchor: index == last ? .topTrailing : .topLeading) {
                                     Text(verbatim: detail.intervals[index])
                                 }
                             }
@@ -107,7 +113,16 @@ struct ReportDetailChart: View {
             } else {
                 page
                     .chartXSelection(value: selection)
-                    .modifier(ReportIntervalXAxis(labels: detail.intervals, gridLines: false))
+                    .chartXAxis {
+                        // Beside its line a label has the whole band, so more fit than on a card.
+                        let shown = Set(ReportAxisLabels.thinned(detail.intervals, limit: 6))
+                        AxisMarks { value in
+                            if let label = value.as(String.self), shown.contains(label) {
+                                AxisGridLine(centered: false, stroke: Self.intervalRule)
+                                AxisValueLabel(centered: false, anchor: .topLeading)
+                            }
+                        }
+                    }
             }
         } else {
             chart
@@ -197,6 +212,8 @@ struct ReportDetailChart: View {
                           value: trend.endUnits, color: color, dashed: true)]
         }
     }
+
+    private static let intervalRule = StrokeStyle(lineWidth: 0.5, dash: [2, 2])
 
     private static func line(dashed: Bool = false) -> StrokeStyle {
         StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round, dash: dashed ? [5, 5] : [])
