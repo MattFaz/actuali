@@ -573,6 +573,7 @@ struct DashboardView: View {
                     ReportRangedDetail(
                         initial: value,
                         transactions: transactions ?? [],
+                        dataVersion: reportDataVersion,
                         recompute: ranged.map { ranged in
                             { @Sendable range, transactions in compute(ranged(meta, range), transactions) }
                         }

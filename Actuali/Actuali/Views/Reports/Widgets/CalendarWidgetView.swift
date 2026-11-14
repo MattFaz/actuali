@@ -121,7 +121,8 @@ struct CalendarMonthGridView: View {
                             monthStart: month.monthStart, day: day, locale: locale
                         ))
                         .accessibilityAddTraits(index == selectedCell ? .isSelected : [])
-                        .accessibilityIdentifier("reportDetail.calendar.day.\(day)")
+                        // Scoped by month: the detail page shows several at once.
+                        .accessibilityIdentifier("reportDetail.calendar.day.\(CalendarWidgetFormatting.monthKey(month.monthStart)).\(day)")
                     } else {
                         CalendarDayCellView(cell: cell, compact: compact)
                     }
@@ -133,6 +134,14 @@ struct CalendarMonthGridView: View {
 
 enum CalendarWidgetFormatting {
     private static let formatterCache = FormatterCache<DateFormatter>()
+
+    /// "2026-03": tells one month's day cells from another's in identifiers.
+    static func monthKey(_ monthStart: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let parts = calendar.dateComponents([.year, .month], from: monthStart)
+        return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)
+    }
 
     static func weekdaySymbols(locale: Locale, firstDayOfWeekIdx: Int) -> [String] {
         let formatter = formatterCache.value("CalendarWeekday|\(locale.identifier)") {

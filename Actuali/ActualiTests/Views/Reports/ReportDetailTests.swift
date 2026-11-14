@@ -78,14 +78,16 @@ struct ReportDetailTests {
         #expect(breakdown.total == 400)
     }
 
-    @Test func tableIsRankedByMagnitudeAndKeepsTheReportsTotal() throws {
+    @Test func tableKeepsTheReportsOrderAndTotal() throws {
         let rows = [CustomReportData.TableRow(name: "Small", totalUnits: 5), .init(name: "Refund", totalUnits: -40), .init(name: "Big", totalUnits: 20)]
         let breakdown = try #require(report(.table(rows, totalUnits: -15)).breakdown)
-        #expect(breakdown.rows.map(\.name) == ["Refund", "Big", "Small"])
+        // The engine sorted them as the report asks (by name, ascending...).
+        #expect(breakdown.rows.map(\.name) == ["Small", "Refund", "Big"])
         #expect(breakdown.total == -15)
         #expect(breakdown.donut == nil)
-        // A card names the largest few, in the list's order.
+        // A card names the first few of that order.
         #expect(breakdown.leadingRows(limit: 2) == [0, 1])
+        #expect(breakdown.leadingRows(limit: 9) == [0, 1, 2])
         #expect(ReportBreakdown(name: "", rows: breakdown.rows, total: 0).share(of: breakdown.rows[0]) == nil)
     }
 
@@ -145,6 +147,20 @@ struct ReportDetailTests {
         #expect(detail.figures(hiding: [0]).map { "\($0.series) \($0.interval)" } == ["Food Jan", "Food Feb"])
         // The total view reads as one series.
         #expect(detail.totalled().figures().map(\.value) == [4, 6])
+    }
+
+    @Test func aPickedRangeNeverShowsAnotherRangesNumbers() {
+        typealias Page = ReportRangedDetail<Int, EmptyView>
+        // Nothing picked: the card's own value.
+        #expect(Page.shown(initial: 1, ranged: nil, range: nil) == 1)
+        #expect(Page.shown(initial: 1, ranged: (.sixMonths, 6), range: nil) == 1)
+        #expect(Page.shown(initial: 1, ranged: (.sixMonths, 6), range: .sixMonths) == 6)
+        // The new range is still computing: not the old range's value.
+        #expect(Page.shown(initial: 1, ranged: (.sixMonths, 6), range: .year) == 1)
+    }
+
+    @Test func calendarDayIdentifiersNameTheirMonth() {
+        #expect(CalendarWidgetFormatting.monthKey(utc(2026, 3)) == "2026-03")
     }
 
     @Test func axisTicksAreThinnedFromTheFirst() {

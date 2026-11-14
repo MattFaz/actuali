@@ -69,29 +69,44 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
     /// What the card shows: the range configured on the web.
     let initial: Value
     let transactions: [Transaction]
+    /// Bumped when the budget data changes, so a picked range recomputes too.
+    var dataVersion = 0
     /// nil when the widget has no range to move (a forecast, a simulation).
     let recompute: (@Sendable (ReportDetailRange, [Transaction]) -> Value)?
     @ViewBuilder let content: (Value) -> Content
 
     @State private var range: ReportDetailRange?
-    @State private var ranged: Value?
+    @State private var ranged: (range: ReportDetailRange, value: Value)?
+
+    private struct Inputs: Hashable {
+        let range: ReportDetailRange?
+        let dataVersion: Int
+    }
+
+    /// Only a value computed for the picked range stands in for it; until
+    /// then the page keeps the card's own, not the previous range's.
+    nonisolated static func shown(
+        initial: Value, ranged: (range: ReportDetailRange, value: Value)?, range: ReportDetailRange?
+    ) -> Value {
+        ranged.flatMap { $0.range == range ? $0.value : nil } ?? initial
+    }
 
     var body: some View {
-        content(range == nil ? initial : ranged ?? initial)
+        content(Self.shown(initial: initial, ranged: ranged, range: range))
             // A new range is a new report: selection and hidden series from
             // the old one don't carry over.
             .id(range)
             // The page places the picker in its own content, under the
             // large title, with `ReportRangePicker`.
             .environment(\.reportDetailRange, recompute == nil ? nil : $range)
-            .task(id: range) {
+            .task(id: Inputs(range: range, dataVersion: dataVersion)) {
                 guard let range, let recompute else {
                     ranged = nil
                     return
                 }
                 let transactions = transactions
                 if let value = try? await ReportComputation.compute(transactions: transactions, using: { recompute(range, $0) }) {
-                    ranged = value
+                    ranged = (range, value)
                 }
             }
     }

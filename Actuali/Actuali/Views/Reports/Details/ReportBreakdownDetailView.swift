@@ -29,9 +29,10 @@ struct ReportBreakdown: Equatable {
         total == 0 ? nil : row.value / total
     }
 
-    /// The rows a card has room to name: the largest by magnitude, in order.
+    /// The rows a card has room to name: the first few, in the report's own
+    /// order (the engine has already applied its sort).
     func leadingRows(limit: Int) -> [Int] {
-        rows.indices.sorted { abs(rows[$0].value) > abs(rows[$1].value) }.prefix(limit).sorted()
+        Array(rows.indices.prefix(limit))
     }
 }
 
@@ -53,10 +54,10 @@ extension CustomReportData {
             return ReportBreakdown(name: name, caption: rangeLabel, rows: rows,
                                    total: rows.reduce(0) { $0 + $1.value }, donut: .init(slices: slices, groups: groups))
         case .table(let rows, let totalUnits) where !rows.isEmpty:
-            // Ranked: the card shows the report's own order.
+            // The engine already applied the report's sort; keep that order.
             return ReportBreakdown(
                 name: name, caption: rangeLabel,
-                rows: rows.map { .init(name: $0.name, value: $0.totalUnits) }.sorted { abs($0.value) > abs($1.value) },
+                rows: rows.map { .init(name: $0.name, value: $0.totalUnits) },
                 total: totalUnits
             )
         default:
