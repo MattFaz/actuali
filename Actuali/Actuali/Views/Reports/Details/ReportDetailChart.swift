@@ -11,19 +11,24 @@ struct ReportDetailChart: View {
     /// nil on a card: nothing to scrub.
     var selection: Binding<String?>?
 
-    @State private var plotWidth: CGFloat = 0
-
+    /// Lines plot against the interval's index, not its label: a string axis
+    /// gives each interval a band and centres the mark in it, which leaves
+    /// half a band empty at both ends of a line and can't label those ends.
     private var isLine: Bool {
         detail.style == .lines || detail.style == .area
     }
 
-    /// A string axis gives each interval a band and centres its mark there,
-    /// which leaves half a band empty at both ends of a line. This is how far
-    /// to stretch the scale past the plot so the line spans it, stopping
-    /// `inset` short so the selection dot at either end still fits.
-    nonisolated static func overhang(plotWidth: CGFloat, intervals: Int, inset: CGFloat = 6) -> CGFloat {
-        guard intervals > 1 else { return 0 }
-        return max(0, (plotWidth - 2 * CGFloat(intervals) * inset) / (2 * CGFloat(intervals - 1)))
+    /// The intervals a line chart labels: always the first and the last, with
+    /// two between when they space evenly and one when they don't.
+    nonisolated static func labelledIntervals(of count: Int) -> [Int] {
+        guard count > 4 else { return Array(0..<count) }
+        let last = count - 1
+        return last.isMultiple(of: 3) ? [0, last / 3, 2 * last / 3, last] : [0, last / 2, last]
+    }
+
+    /// The interval nearest a position on a line chart's index axis.
+    nonisolated static func interval(at position: Double, in intervals: [String]) -> String? {
+        intervals.isEmpty ? nil : intervals[min(max(Int(position.rounded()), 0), intervals.count - 1)]
     }
 
     private var selected: String? {
@@ -33,33 +38,38 @@ struct ReportDetailChart: View {
     var body: some View {
         let chart = Chart {
             ForEach(bandPoints) { point in
-                AreaMark(x: x(point), yStart: y(point), yEnd: .value(ReportStrings.text("Amount", locale: locale), point.upper))
+                AreaMark(x: index(point), yStart: y(point), yEnd: .value(ReportStrings.text("Amount", locale: locale), point.upper))
                     .foregroundStyle(point.color.opacity(0.18))
             }
             ForEach(points) { mark($0) }
             // Area charts draw a line along the top of the fill.
             ForEach(detail.style == .area ? points : []) { point in
-                LineMark(x: x(point), y: y(point))
+                LineMark(x: index(point), y: y(point))
                     .interpolationMethod(.monotone)
                     .foregroundStyle(point.color)
                     .lineStyle(Self.line())
             }
             // Upstream draws each series' trend dashed, in the series colour.
             ForEach(trendPoints) { point in
-                LineMark(x: x(point), y: y(point),
+                LineMark(x: index(point), y: y(point),
                          series: .value(ReportStrings.text("Series", locale: locale), "trend|" + String(point.series)))
                     .foregroundStyle(point.color)
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
             }
-            ForEach(selected.map { [$0] } ?? [], id: \.self) { interval in
+            ForEach(isLine ? [] : selected.map { [$0] } ?? [], id: \.self) { interval in
                 RuleMark(x: .value(ReportStrings.text("Interval", locale: locale), interval))
+                    .foregroundStyle(.secondary)
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+            }
+            ForEach(selectedLinePoints.prefix(1)) { point in
+                RuleMark(x: index(point))
                     .foregroundStyle(.secondary)
                     .lineStyle(StrokeStyle(lineWidth: 1))
             }
             // Lines mark the selected interval with a dot on each series;
             // bars dim the others instead (see `mark`).
             ForEach(selectedLinePoints) { point in
-                PointMark(x: x(point), y: y(point))
+                PointMark(x: index(point), y: y(point))
                     .symbol {
                         Circle()
                             .fill(point.color)
@@ -69,21 +79,36 @@ struct ReportDetailChart: View {
             }
         }
         .chartLegend(.hidden)
-        .chartXScale(range: .plotDimension(
-            padding: isLine ? -Self.overhang(plotWidth: plotWidth, intervals: detail.intervals.count) : 0
-        ))
-        .chartBackground { proxy in
-            Color.clear.onChange(of: proxy.plotSize.width, initial: true) { _, width in
-                plotWidth = width
-            }
-        }
+        .modifier(IndexScale(count: isLine ? detail.intervals.count : nil))
 
         if let selection {
-            chart
-                .chartXSelection(value: selection)
+            let page = chart
                 .chartPlotStyle { $0.frame(height: 240) }
-                .modifier(ReportIntervalXAxis(labels: detail.intervals, gridLines: false, reachesEdges: isLine))
                 .modifier(YAxis(unit: detail.unit))
+            if isLine {
+                page
+                    .chartXSelection(value: Binding<Double?>(
+                        get: { selection.wrappedValue.flatMap { detail.intervals.firstIndex(of: $0) }.map(Double.init) },
+                        set: { position in
+                            selection.wrappedValue = position.flatMap { Self.interval(at: $0, in: detail.intervals) }
+                        }
+                    ))
+                    .chartXAxis {
+                        let last = detail.intervals.count - 1
+                        AxisMarks(values: Self.labelledIntervals(of: detail.intervals.count).map(Double.init)) { value in
+                            if let index = value.as(Double.self).map({ Int($0) }), detail.intervals.indices.contains(index) {
+                                // The ends sit at the plot's edges, so their labels grow inward.
+                                AxisValueLabel(anchor: index == 0 ? .topLeading : index == last ? .topTrailing : .top) {
+                                    Text(verbatim: detail.intervals[index])
+                                }
+                            }
+                        }
+                    }
+            } else {
+                page
+                    .chartXSelection(value: selection)
+                    .modifier(ReportIntervalXAxis(labels: detail.intervals, gridLines: false))
+            }
         } else {
             chart
                 .chartXAxis(.hidden)
@@ -97,8 +122,26 @@ struct ReportDetailChart: View {
 
     // MARK: - Marks
 
+    /// Spans the plot with the line, stopping short so the selection dot at
+    /// either end still fits.
+    private struct IndexScale: ViewModifier {
+        /// nil for bars, which keep the string axis and its bands.
+        let count: Int?
+
+        func body(content: Content) -> some View {
+            if let count {
+                // One point has no span; centre it.
+                content.chartXScale(domain: count > 1 ? 0...Double(count - 1) : -1...1,
+                                    range: .plotDimension(padding: 6))
+            } else {
+                content
+            }
+        }
+    }
+
     private struct Point: Identifiable {
         let series: Int
+        let index: Int
         let interval: String
         let value: Double
         let color: Color
@@ -121,7 +164,8 @@ struct ReportDetailChart: View {
             func point(_ interval: Int, dashed: Bool) -> Point {
                 let value = series.values[interval]
                 let color: Color = detail.signed ? (value < 0 ? .red : .green) : series.color
-                return Point(series: index, interval: detail.intervals[interval], value: value, color: color, dashed: dashed)
+                return Point(series: index, index: interval, interval: detail.intervals[interval],
+                             value: value, color: color, dashed: dashed)
             }
             return series.values.indices.filter { $0 < turn }.map { point($0, dashed: false) }
                 + series.values.indices.filter { $0 >= max(turn - 1, 0) && turn < series.values.count }.map { point($0, dashed: true) }
@@ -131,7 +175,8 @@ struct ReportDetailChart: View {
     private var bandPoints: [Point] {
         guard let band = detail.band else { return [] }
         return detail.intervals.indices.map {
-            Point(series: -1, interval: detail.intervals[$0], value: band.lower[$0], color: band.color, dashed: false, upper: band.upper[$0])
+            Point(series: -1, index: $0, interval: detail.intervals[$0], value: band.lower[$0],
+                  color: band.color, dashed: false, upper: band.upper[$0])
         }
     }
 
@@ -147,8 +192,9 @@ struct ReportDetailChart: View {
         return detail.series.indices.filter { !hidden.contains($0) }.flatMap { index -> [Point] in
             guard let trend = detail.series[index].trend else { return [] }
             let color = detail.series[index].color
-            return [Point(series: index, interval: first, value: trend.startUnits, color: color, dashed: true),
-                    Point(series: index, interval: last, value: trend.endUnits, color: color, dashed: true)]
+            return [Point(series: index, index: 0, interval: first, value: trend.startUnits, color: color, dashed: true),
+                    Point(series: index, index: detail.intervals.count - 1, interval: last,
+                          value: trend.endUnits, color: color, dashed: true)]
         }
     }
 
@@ -165,6 +211,10 @@ struct ReportDetailChart: View {
         .value(ReportStrings.text("Interval", locale: locale), point.interval)
     }
 
+    private func index(_ point: Point) -> PlottableValue<Double> {
+        .value(ReportStrings.text("Interval", locale: locale), Double(point.index))
+    }
+
     private func y(_ point: Point) -> PlottableValue<Double> {
         .value(ReportStrings.text("Amount", locale: locale), point.value)
     }
@@ -176,13 +226,13 @@ struct ReportDetailChart: View {
         switch detail.style {
         case .lines:
             return AnyChartContent(
-                LineMark(x: x(point), y: y(point), series: seriesKey)
+                LineMark(x: index(point), y: y(point), series: seriesKey)
                     .foregroundStyle(point.color)
                     .lineStyle(Self.line(dashed: point.dashed))
             )
         case .area:
             return AnyChartContent(
-                AreaMark(x: x(point), y: y(point))
+                AreaMark(x: index(point), y: y(point))
                     .interpolationMethod(.monotone)
                     .foregroundStyle(point.color.opacity(0.16))
             )

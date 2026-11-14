@@ -105,15 +105,24 @@ struct ReportDetailTests {
         #expect(report(.bars([.init(label: "Jan", valueUnits: 5)], signed: false)).chartDetail()?.canShowTotal == false)
     }
 
-    @Test func linesStretchToThePlotEdgesLeavingRoomForTheDot() {
-        // Five points on 300 pt: bands of 72 pt put the first centre 6 pt in.
-        let overhang = ReportDetailChart.overhang(plotWidth: 300, intervals: 5)
-        #expect(overhang == 30)
-        #expect(-overhang + (300 + 2 * overhang) / 5 / 2 == 6)
-        // One point has no line to stretch; an unmeasured or crowded plot is left alone.
-        #expect(ReportDetailChart.overhang(plotWidth: 300, intervals: 1) == 0)
-        #expect(ReportDetailChart.overhang(plotWidth: 0, intervals: 5) == 0)
-        #expect(ReportDetailChart.overhang(plotWidth: 300, intervals: 400) == 0)
+    @Test func lineChartsLabelBothEndsOfTheRange() {
+        // Few enough to fit: every interval.
+        #expect(ReportDetailChart.labelledIntervals(of: 0) == [])
+        #expect(ReportDetailChart.labelledIntervals(of: 4) == [0, 1, 2, 3])
+        // Four labels only when they space evenly; otherwise the ends and the middle.
+        #expect(ReportDetailChart.labelledIntervals(of: 13) == [0, 4, 8, 12])
+        #expect(ReportDetailChart.labelledIntervals(of: 6) == [0, 2, 5])
+        #expect(ReportDetailChart.labelledIntervals(of: 365) == [0, 182, 364])
+    }
+
+    @Test func scrubbingALineSnapsToTheNearestInterval() {
+        let months = ["Jan", "Feb", "Mar"]
+        #expect(ReportDetailChart.interval(at: 0.4, in: months) == "Jan")
+        #expect(ReportDetailChart.interval(at: 1.6, in: months) == "Mar")
+        // The scale runs a little past both ends.
+        #expect(ReportDetailChart.interval(at: -0.2, in: months) == "Jan")
+        #expect(ReportDetailChart.interval(at: 2.3, in: months) == "Mar")
+        #expect(ReportDetailChart.interval(at: 0, in: []) == nil)
     }
 
     @Test func repeatedLabelsAreNotChartable() {
