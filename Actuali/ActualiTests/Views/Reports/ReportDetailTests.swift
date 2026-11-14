@@ -18,40 +18,43 @@ struct ReportDetailTests {
     // MARK: - Custom report
 
     @Test func customReportChartKindsMapToADetail() throws {
-        let stackedDetail = try #require(report(.stacked(stacked)).chartDetail)
+        let stackedDetail = try #require(report(.stacked(stacked)).chartDetail())
         #expect(stackedDetail.style == .stackedBars)
         #expect(stackedDetail.intervals == ["Jan", "Feb", "Mar"])
         #expect(stackedDetail.series.map(\.name) == ["Brokerage", "401(k)", "HSA"])
         #expect(stackedDetail.series.map(\.values) == stacked.values)
         #expect(stackedDetail.canHideSeries)
-        #expect(report(.lines(stacked, trends: [])).chartDetail?.style == .lines)
+        #expect(report(.lines(stacked, trends: [])).chartDetail()?.style == .lines)
 
         let bars = [CustomReportData.Bar(label: "Jan", valueUnits: 5), .init(label: "Feb", valueUnits: -7)]
-        let signed = try #require(report(.bars(bars, signed: true)).chartDetail)
+        let signed = try #require(report(.bars(bars, signed: true)).chartDetail())
         #expect(signed.signed)
         #expect(signed.series.map(\.values) == [[5, -7]])
         // One series: nothing to switch off.
         #expect(!signed.canHideSeries)
-        #expect(report(.area(bars)).chartDetail?.style == .area)
+        // Bars are amounts per interval, so the range has a total.
+        #expect(signed.stats == [.init(label: "Total", value: .amount(-2))])
+        #expect(stackedDetail.stats.isEmpty)
+        #expect(report(.area(bars)).chartDetail()?.style == .area)
     }
 
     @Test func cardsThatAlreadyListEverythingHaveNoDetail() {
-        #expect(report(.donut(slices: [.init(label: "Rent", valueUnits: 1, group: nil)], groups: [])).chartDetail == nil)
-        #expect(report(.table([.init(name: "Rent", totalUnits: 1)], totalUnits: 1)).chartDetail == nil)
-        #expect(report(.unsupported("nope")).chartDetail == nil)
+        #expect(report(.donut(slices: [.init(label: "Rent", valueUnits: 1, group: nil)], groups: [])).chartDetail() == nil)
+        #expect(report(.table([.init(name: "Rent", totalUnits: 1)], totalUnits: 1)).chartDetail() == nil)
+        #expect(report(.unsupported("nope")).chartDetail() == nil)
         // Nothing to scrub through.
-        #expect(report(.bars([], signed: false)).chartDetail == nil)
-        #expect(report(.stacked(.init(intervalLabels: ["Jan"], seriesNames: [], values: []))).chartDetail == nil)
+        #expect(report(.bars([], signed: false)).chartDetail() == nil)
+        #expect(report(.stacked(.init(intervalLabels: ["Jan"], seriesNames: [], values: []))).chartDetail() == nil)
     }
 
     @Test func repeatedLabelsAreNotChartable() {
         // A string axis merges equal labels into one position.
         let bars = [CustomReportData.Bar(label: "Rent", valueUnits: 5), .init(label: "Rent", valueUnits: 7)]
-        #expect(report(.bars(bars, signed: false)).chartDetail == nil)
+        #expect(report(.bars(bars, signed: false)).chartDetail() == nil)
     }
 
     @Test func readoutFollowsTheChartsMeaning() throws {
-        let total = try #require(report(.stacked(stacked)).chartDetail)
+        let total = try #require(report(.stacked(stacked)).chartDetail())
         #expect(total.readoutValue(at: 0) == 111)
         #expect(total.readoutValue(at: 1, hiding: [0]) == 22)
         #expect(total.readoutValue(at: 2, hiding: [0, 1, 2]) == 0)
@@ -64,13 +67,21 @@ struct ReportDetailTests {
         var none = total
         none.readout = .none
         #expect(none.readoutValue(at: 1) == nil)
+
+        var difference = total
+        difference.readout = .difference
+        #expect(difference.readoutValue(at: 1) == -220)
+        // Three series that can't be switched off sit beside the headline; four go in a list.
+        #expect(difference.showsInlineLegend)
+        difference.series.append(difference.series[0])
+        #expect(!difference.showsInlineLegend)
     }
 
     @Test func trendLinesCarryOverOnlyWhenTheReportHasThem() throws {
         let trends = [CustomReportData.Trend(startUnits: 1, endUnits: 2), .init(startUnits: 3, endUnits: 4), .init(startUnits: 5, endUnits: 6)]
-        let with = try #require(report(.lines(stacked, trends: trends)).chartDetail)
+        let with = try #require(report(.lines(stacked, trends: trends)).chartDetail())
         #expect(with.series.map(\.trend) == trends)
-        let without = try #require(report(.lines(stacked, trends: [])).chartDetail)
+        let without = try #require(report(.lines(stacked, trends: [])).chartDetail())
         #expect(without.series.allSatisfy { $0.trend == nil })
     }
 
@@ -169,6 +180,8 @@ struct ReportDetailTests {
         #expect(detail.intervals == ["Oct 26", "Nov 26"])
         #expect(detail.series.map(\.values) == [[1000, 1250.5]])
         #expect(detail.readoutValue(at: 1) == 1250.5)
+        // A balance is a level, so the range is summed up as change, high and low.
+        #expect(detail.stats.map(\.value) == [.amount(250.5), .amount(1250.5), .amount(1000)])
         // A single point has no trend to open.
         #expect(NetWorthData(points: [.init(date: utc(2026, 11), balanceCents: 1)]).chartDetail(name: "", locale: locale) == nil)
     }
@@ -178,9 +191,13 @@ struct ReportDetailTests {
         let detail = try #require(data.chartDetail(name: "Cash Flow", locale: locale))
         #expect(detail.style == .groupedBars)
         #expect(detail.series.map(\.values) == [[7400], [5650]])
-        // Income plus expenses isn't a number anyone wants.
-        #expect(detail.readoutValue(at: 0) == nil)
+        // The headline is what's left, not income plus expenses.
+        #expect(detail.readoutValue(at: 0) == 1750)
+        #expect(detail.readoutLabel == "Net")
         #expect(!detail.canHideSeries)
+        // Two series: their values sit beside the headline, not in a list.
+        #expect(detail.showsInlineLegend)
+        #expect(detail.stats.map(\.value) == [.amount(7400), .amount(5650), .amount(1750)])
         #expect(CashFlowData(points: []).chartDetail(name: "", locale: locale) == nil)
     }
 
@@ -204,7 +221,8 @@ struct ReportDetailTests {
         let detail = try #require(data(balanceOnly: false).chartDetail(name: "Budget", locale: locale))
         #expect(detail.intervals == ["Oct 26"])
         #expect(detail.series.map(\.values) == [[5600], [5650]])
-        #expect(detail.readoutValue(at: 0) == nil)
+        // Budgeted less spent: over budget is negative.
+        #expect(detail.readoutValue(at: 0) == -50)
 
         let balance = try #require(data(balanceOnly: true).chartDetail(name: "Budget", locale: locale))
         #expect(balance.series.map(\.values) == [[-50]])
@@ -233,6 +251,8 @@ struct ReportDetailTests {
         let lines = try #require(crossover.chartDetail(name: "Crossover", locale: locale))
         #expect(lines.series.map(\.dashedFrom) == [2, 2])
         #expect(lines.series.map(\.values) == [[2900, 3100, 3350], [3500, 3500, 3500]])
+        // Nothing projected to cross: no stats to show.
+        #expect(lines.stats.isEmpty)
         #expect(CrossoverData.empty.chartDetail(name: "", locale: locale) == nil)
     }
 
@@ -244,8 +264,14 @@ struct ReportDetailTests {
                                   percentileBands: [band(0, 100, 100, 100), band(1, 90, 120, 150)])
         let detail = try #require(data.chartDetail(name: "Outlook", locale: locale))
         #expect(detail.intervals == ["45", "46"])
-        #expect(detail.series.map(\.name) == ["Median", "p90", "p10"])
+        // The median is the line; p10 to p90 is a shaded band behind it.
+        #expect(detail.series.map(\.name) == ["Median"])
+        #expect(detail.band?.lower == [1, 0.9])
+        #expect(detail.band?.upper == [1, 1.5])
         #expect(detail.readoutValue(at: 1) == 1.2)
+        #expect(detail.readoutLabel == "Median")
+        #expect(detail.compact)
+        #expect(detail.stats.map(\.value) == [.text("87%"), .text("1,000")])
     }
 
     // MARK: - Time range
@@ -366,7 +392,7 @@ struct ReportDetailTests {
     }
 
     @Test func detailPagesLayOut() throws {
-        let chart = try #require(report(.stacked(stacked)).chartDetail)
+        let chart = try #require(report(.stacked(stacked)).chartDetail())
         #expect(height(ReportChartDetailView(detail: chart)) > 0)
         // With the range picker on top, as the dashboard hosts it.
         #expect(height(ReportRangedDetail(initial: chart, transactions: [], recompute: { _, _ in chart }) {
