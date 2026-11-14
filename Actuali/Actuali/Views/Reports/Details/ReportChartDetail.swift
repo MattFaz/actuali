@@ -7,9 +7,26 @@ struct ReportChartDetail: Equatable {
     enum Style: Equatable { case stackedBars, groupedBars, lines, area }
     enum Unit: Equatable { case currency, days }
     /// The headline number: the sum of the visible series, the first series
-    /// (when the others are context for it), or none (when the series aren't
-    /// summable and none leads).
-    enum Readout: Equatable { case total, first, none }
+    /// (when the others are context for it), the first minus the second
+    /// (income less expenses), or none (when no single number leads).
+    enum Readout: Equatable { case total, first, difference, none }
+
+    /// A shaded range behind the lines, such as a percentile spread.
+    struct Band: Equatable {
+        var lowerName: String
+        var upperName: String
+        var lower: [Double]
+        var upper: [Double]
+        var color: Color
+    }
+
+    /// A figure for the whole range, listed under the chart.
+    struct Stat: Equatable {
+        enum Value: Equatable { case amount(Double), text(String) }
+
+        var label: String
+        var value: Value
+    }
 
     struct Series: Equatable {
         var name: String
@@ -28,8 +45,14 @@ struct ReportChartDetail: Equatable {
     var style: Style
     var unit = Unit.currency
     var readout = Readout.total
+    /// What the headline number is, shown under it.
+    var readoutLabel = ""
     /// Single-series bars coloured by sign.
     var signed = false
+    var band: Band?
+    var stats: [Stat] = []
+    /// Abbreviate amounts ("690K"): for figures too large to need their cents.
+    var compact = false
 
     /// False when there is nothing to chart, or the labels repeat: a string
     /// axis merges equal labels into one position.
@@ -37,6 +60,13 @@ struct ReportChartDetail: Equatable {
         !intervals.isEmpty && !series.isEmpty
             && Set(intervals).count == intervals.count
             && series.allSatisfy { $0.values.count == intervals.count }
+            && (band.map { $0.lower.count == intervals.count && $0.upper.count == intervals.count } ?? true)
+    }
+
+    /// Two or three series that can't be switched off read better beside the
+    /// headline than as a list under the chart.
+    var showsInlineLegend: Bool {
+        !canHideSeries && (2...3).contains(series.count)
     }
 
     /// Series can be switched off only where the headline is their sum.
@@ -48,12 +78,26 @@ struct ReportChartDetail: Equatable {
         switch readout {
         case .total: series.indices.filter { !hidden.contains($0) }.reduce(0) { $0 + series[$1].values[interval] }
         case .first: series[0].values[interval]
+        case .difference: series.count > 1 ? series[0].values[interval] - series[1].values[interval] : nil
         case .none: nil
         }
     }
 
     fileprivate var chartable: ReportChartDetail? {
         isChartable ? self : nil
+    }
+}
+
+extension ReportChartDetail {
+    /// Change, high and low: for a series that is a level at each interval
+    /// (a balance), where a sum over the range would mean nothing.
+    static func levelStats(_ values: [Double], locale: Locale) -> [Stat] {
+        guard let first = values.first, let last = values.last else { return [] }
+        return [
+            .init(label: ReportStrings.text("Change", locale: locale), value: .amount(last - first)),
+            .init(label: ReportStrings.text("High", locale: locale), value: .amount(values.max() ?? last)),
+            .init(label: ReportStrings.text("Low", locale: locale), value: .amount(values.min() ?? last)),
+        ]
     }
 }
 
@@ -84,7 +128,7 @@ enum ReportDetailLabels {
 
 extension CustomReportData {
     /// Donut and table cards already list everything, so they have no detail.
-    var chartDetail: ReportChartDetail? {
+    func chartDetail(locale: Locale = .current) -> ReportChartDetail? {
         func detail(
             _ table: Stacked, _ style: ReportChartDetail.Style, signed: Bool = false, trends: [Trend] = []
         ) -> ReportChartDetail? {
@@ -98,7 +142,11 @@ extension CustomReportData {
                           // Empty unless the report has trend lines switched on.
                           trend: trends.indices.contains($0) ? trends[$0] : nil)
                 },
-                style: style, signed: signed
+                style: style, signed: signed,
+                // Bars are amounts per interval, so they add up; a line or an
+                // area is a level at each interval and doesn't.
+                stats: single && style == .stackedBars
+                    ? [.init(label: ReportStrings.text("Total", locale: locale), value: .amount(table.values[0].reduce(0, +)))] : []
             ).chartable
         }
         func single(_ bars: [Bar]) -> Stacked {
@@ -129,17 +177,20 @@ extension CustomReportData.Stacked {
 extension NetWorthData {
     func chartDetail(name: String, locale: Locale) -> ReportChartDetail? {
         guard points.count >= 2 else { return nil }
+        let values = points.map { Double($0.balanceCents) / 100 }
         return ReportChartDetail(
             name: name, intervals: ReportDetailLabels.dates(points.map(\.date), locale: locale),
-            series: [.init(name: name, color: .green, values: points.map { Double($0.balanceCents) / 100 })],
-            style: .area
+            series: [.init(name: name, color: .green, values: values)],
+            style: .area, stats: ReportChartDetail.levelStats(values, locale: locale)
         ).chartable
     }
 }
 
 extension CashFlowData {
     func chartDetail(name: String, locale: Locale) -> ReportChartDetail? {
-        ReportChartDetail(
+        let income = points.reduce(0) { $0 + Double($1.incomeCents) / 100 }
+        let expenses = points.reduce(0) { $0 + Double($1.expenseCents) / 100 }
+        return ReportChartDetail(
             name: name, intervals: ReportDetailLabels.dates(points.map(\.periodStart), locale: locale),
             series: [
                 .init(name: ReportStrings.text("Income", locale: locale), color: .green,
@@ -147,7 +198,12 @@ extension CashFlowData {
                 .init(name: ReportStrings.text("Expense", locale: locale), color: .red,
                       values: points.map { Double($0.expenseCents) / 100 }),
             ],
-            style: .groupedBars, readout: .none
+            style: .groupedBars, readout: .difference, readoutLabel: ReportStrings.text("Net", locale: locale),
+            stats: [
+                .init(label: ReportStrings.text("Total income", locale: locale), value: .amount(income)),
+                .init(label: ReportStrings.text("Total expenses", locale: locale), value: .amount(expenses)),
+                .init(label: ReportStrings.text("Net", locale: locale), value: .amount(income - expenses)),
+            ]
         ).chartable
     }
 }
@@ -177,7 +233,8 @@ extension BudgetAnalysisData {
             name: name, intervals: intervals,
             // Spending is stored negative; the bars compare magnitudes.
             series: [series("Budgeted", .green, \.budgetedCents), series("Spent", .red) { abs($0.spentCents) }],
-            style: graphType == .line ? .lines : .groupedBars, readout: .none
+            style: graphType == .line ? .lines : .groupedBars,
+            readout: .difference, readoutLabel: ReportStrings.text("Balance", locale: locale)
         ).chartable
     }
 }
@@ -185,11 +242,12 @@ extension BudgetAnalysisData {
 extension BalanceForecastData {
     func chartDetail(name: String, locale: Locale) -> ReportChartDetail? {
         guard points.count >= 2 else { return nil }
+        let values = points.map { Double($0.balanceCents) / 100 }
         return ReportChartDetail(
             name: name, intervals: ReportDetailLabels.dates(points.map(\.date), locale: locale),
-            series: [.init(name: name, color: .blue, values: points.map { Double($0.balanceCents) / 100 },
+            series: [.init(name: name, color: .blue, values: values,
                            dashedFrom: points.firstIndex(where: \.isForecast))],
-            style: .lines
+            style: .lines, stats: ReportChartDetail.levelStats(values, locale: locale)
         ).chartable
     }
 }
@@ -206,7 +264,17 @@ extension CrossoverData {
                 .init(name: ReportStrings.text("Expenses", locale: locale), color: .red,
                       values: points.map { Double($0.expensesCents) / 100 }, dashedFrom: projection),
             ],
-            style: .lines, readout: .none
+            style: .lines, readout: .none,
+            stats: [
+                yearsToRetire.map {
+                    ReportChartDetail.Stat(label: ReportStrings.text("Years to Retire", locale: locale),
+                                           value: .text(ReportStrings.yearsToRetire($0, locale: locale)))
+                },
+                crossoverMonth.map {
+                    ReportChartDetail.Stat(label: ReportStrings.text("Crossover", locale: locale),
+                                           value: .text(ReportDetailLabels.dates([$0], locale: locale)[0]))
+                },
+            ].compactMap(\.self)
         ).chartable
     }
 }
@@ -221,12 +289,19 @@ extension MonteCarloData {
             name: name,
             // The x-axis is the age reached in each simulated year.
             intervals: percentileBands.map { (currentAge + Double($0.year)).formatted(.number.locale(locale).precision(.fractionLength(0))) },
-            series: [
-                series(ReportStrings.text("Median", locale: locale), .purple, \.p50),
-                series("p90", .purple.opacity(0.5), \.p90),
-                series("p10", .purple.opacity(0.5), \.p10),
+            series: [series(ReportStrings.text("Median", locale: locale), .purple, \.p50)],
+            style: .lines, readoutLabel: ReportStrings.text("Median", locale: locale),
+            band: .init(lowerName: "p10", upperName: "p90",
+                        lower: percentileBands.map { Double($0.p10) / 100 },
+                        upper: percentileBands.map { Double($0.p90) / 100 }, color: .purple),
+            stats: [
+                // Upstream rounds the rate to a tenth of a percent.
+                .init(label: ReportStrings.text("Success rate", locale: locale),
+                      value: .text(MonteCarloWidgetFormatting.percentage((successRate * 1000).rounded() / 10, locale: locale))),
+                .init(label: ReportStrings.text("Simulations", locale: locale),
+                      value: .text(simulationCount.formatted(.number.locale(locale)))),
             ],
-            style: .lines, readout: .first
+            compact: true
         ).chartable
     }
 }

@@ -71,7 +71,7 @@ struct SpendingDetailView: View {
             .padding()
         }
         .navigationTitle(displayName)
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.large)
         .toolbar(.visible, for: .navigationBar)
     }
 

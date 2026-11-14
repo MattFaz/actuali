@@ -166,7 +166,7 @@ struct DemoDataSeederTests {
             if case .unsupported(let reason) = data.kind {
                 Issue.record("\(config.name) is unsupported: \(reason)")
             }
-            chartable += data.chartDetail == nil ? 0 : 1
+            chartable += data.chartDetail() == nil ? 0 : 1
         }
         // The line, stacked and bar reports open a detail page; the donut doesn't.
         #expect(chartable == 3)

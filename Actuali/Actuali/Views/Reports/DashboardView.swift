@@ -403,7 +403,7 @@ struct DashboardView: View {
             } card: { data in
                 CustomReportWidgetView(data: data)
             } detail: { data in
-                data.chartDetail.map { ReportChartDetailView(detail: $0) }
+                data.chartDetail(locale: locale).map { ReportChartDetailView(detail: $0) }
             }
         case .calendar(_, let meta):
             detailCard(widget, meta: meta, loadingHeight: 200, ranged: ranged(meta)) { meta, transactions in
