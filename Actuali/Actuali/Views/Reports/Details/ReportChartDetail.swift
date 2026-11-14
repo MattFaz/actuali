@@ -28,6 +28,12 @@ struct ReportChartDetail: Equatable {
         var value: Value
     }
 
+    struct Event: Equatable {
+        var name: String
+        var date: String
+        var amount: Double
+    }
+
     struct Series: Equatable {
         var name: String
         var color: Color
@@ -51,6 +57,8 @@ struct ReportChartDetail: Equatable {
     var signed = false
     var band: Band?
     var stats: [Stat] = []
+    /// Dated items behind the chart, listed under it (a forecast's schedules).
+    var events: [Event] = []
     /// Abbreviate amounts ("690K"): for figures too large to need their cents.
     var compact = false
     var card = Card()
@@ -89,6 +97,21 @@ struct ReportChartDetail: Equatable {
         readout == .total && series.count > 1
     }
 
+    /// Stacked bars can also be read as one bar per interval: their sum.
+    var canShowTotal: Bool {
+        style == .stackedBars && canHideSeries
+    }
+
+    /// The series still shown, added up into one.
+    func totalled(hiding hidden: Set<Int> = []) -> ReportChartDetail {
+        let values = intervals.indices.map { readoutValue(at: $0, hiding: hidden) ?? 0 }
+        var total = self
+        total.series = [.init(name: name, color: .accentColor, values: values)]
+        // A sum that can go negative reads by its sign, like a net report.
+        total.signed = values.contains { $0 < 0 }
+        return total
+    }
+
     func readoutValue(at interval: Int, hiding hidden: Set<Int> = []) -> Double? {
         switch readout {
         case .total: series.indices.filter { !hidden.contains($0) }.reduce(0) { $0 + series[$1].values[interval] }
@@ -121,10 +144,10 @@ enum ReportDetailLabels {
 
     /// "Nov 26" when every date starts a month, otherwise "Nov 13, 26". UTC,
     /// like the engines that produced the dates.
-    static func dates(_ dates: [Date], locale: Locale) -> [String] {
+    static func dates(_ dates: [Date], locale: Locale, alwaysDay: Bool = false) -> [String] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = utc
-        let monthly = dates.allSatisfy { calendar.component(.day, from: $0) == 1 }
+        let monthly = !alwaysDay && dates.allSatisfy { calendar.component(.day, from: $0) == 1 }
         let base = Date.FormatStyle(locale: locale, timeZone: utc).month(.abbreviated).year(.twoDigits)
         return dates.map { $0.formatted(monthly ? base : base.day()) }
     }
@@ -142,7 +165,7 @@ enum ReportDetailLabels {
 // MARK: - Widgets
 
 extension CustomReportData {
-    /// Donut and table cards already list everything, so they have no detail.
+    /// Donut and table reports have no intervals to chart: see `breakdown`.
     func chartDetail(locale: Locale = .current) -> ReportChartDetail? {
         func detail(
             _ table: Stacked, _ style: ReportChartDetail.Style, signed: Bool = false, trends: [Trend] = []
@@ -244,7 +267,10 @@ extension BudgetAnalysisData {
 }
 
 extension BalanceForecastData {
-    func chartDetail(name: String, locale: Locale) -> ReportChartDetail? {
+    /// The list has room for the next few occurrences, not a year of them.
+    static let upcomingLimit = 6
+
+    func chartDetail(name: String, payeeNames: [String: String] = [:], locale: Locale) -> ReportChartDetail? {
         guard points.count >= 2 else { return nil }
         let values = points.map { Double($0.balanceCents) / 100 }
         let labels = ReportDetailLabels.dates(points.map(\.date), locale: locale)
@@ -254,6 +280,12 @@ extension BalanceForecastData {
             series: [.init(name: name, color: .blue, values: values,
                            dashedFrom: points.firstIndex(where: \.isForecast))],
             style: .lines, stats: ReportChartDetail.levelStats(values, locale: locale),
+            events: zip(upcoming.prefix(Self.upcomingLimit),
+                        ReportDetailLabels.dates(upcoming.prefix(Self.upcomingLimit).map(\.date), locale: locale, alwaysDay: true)).map {
+                // Like the schedules list: an unnamed schedule goes by its payee.
+                .init(name: $0.scheduleName ?? $0.payeeId.flatMap { payeeNames[$0] } ?? ReportStrings.text("Schedule", locale: locale),
+                      date: $1, amount: Double($0.amountCents) / 100)
+            },
             // The number that matters on a forecast is how low it gets.
             card: .init(value: lowest.map { values[$0] },
                         context: lowest.map { ReportStrings.text("Low", locale: locale) + " · " + labels[$0] })

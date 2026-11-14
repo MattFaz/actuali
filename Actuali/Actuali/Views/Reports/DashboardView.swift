@@ -427,7 +427,9 @@ struct DashboardView: View {
                     CustomReportWidgetView(data: data)
                 }
             } detail: { data in
-                data.chartDetail(locale: locale).map { ReportChartDetailView(detail: $0) }
+                // A chart to scrub, or a donut or table to list in full.
+                data.chartDetail(locale: locale).map { AnyView(ReportChartDetailView(detail: $0)) }
+                    ?? data.breakdown.map { AnyView(ReportBreakdownDetailView(breakdown: $0)) }
             }
         case .calendar(_, let meta):
             detailCard(widget, meta: meta, loadingHeight: 200, ranged: ranged(meta)) { meta, transactions in
@@ -533,7 +535,11 @@ struct DashboardView: View {
                     BalanceForecastWidgetView(displayName: widget.displayName, data: data)
                 }
             } detail: { data in
-                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
+                data.chartDetail(
+                    name: widget.displayName,
+                    payeeNames: Dictionary(payees.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
+                    locale: locale
+                ).map { ReportChartDetailView(detail: $0) }
             }
         case .monteCarlo(_, let meta):
             detailCard(widget, meta: meta, loadingHeight: 220) { meta, _ in

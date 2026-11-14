@@ -32,7 +32,7 @@ struct ReportDetailChart: View {
             // Upstream draws each series' trend dashed, in the series colour.
             ForEach(trendPoints) { point in
                 LineMark(x: x(point), y: y(point),
-                         series: .value(ReportStrings.text("Series", locale: locale), "trend|\(point.series)"))
+                         series: .value(ReportStrings.text("Series", locale: locale), "trend|" + String(point.series)))
                     .foregroundStyle(point.color)
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
             }

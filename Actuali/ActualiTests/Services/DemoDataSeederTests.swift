@@ -139,6 +139,7 @@ struct DemoDataSeederTests {
         let widgets = try await database.fetchWidgets(pageId: page.id)
         #expect(widgets.map(\.typeLabel) == [
             "Notes", "Summary", "Summary", "Custom Report", "Custom Report", "Custom Report", "Custom Report",
+            "Custom Report", "Custom Report",
             "Calendar", "Sankey", "Budget Analysis", "Balance Forecast", "Crossover", "Monte Carlo",
         ])
 
@@ -154,12 +155,14 @@ struct DemoDataSeederTests {
             return nil
         }
         let configs = try await database.fetchCustomReportConfigs(ids: reportIds)
-        #expect(configs.count == 4)
-        let context = CustomReportEngine.ReportContext(
+        #expect(configs.count == 6)
+        let context = try await CustomReportEngine.ReportContext(
             categories: groups.flatMap(\.categories), groups: groups,
-            offBudgetAccountIds: Set(accounts.filter(\.offBudget).map(\.id)), firstDayOfWeekIdx: 0
+            offBudgetAccountIds: Set(accounts.filter(\.offBudget).map(\.id)), firstDayOfWeekIdx: 0,
+            payees: database.fetchPayees()
         )
         var chartable = 0
+        var breakdowns = 0
         for config in configs.values {
             let data = CustomReportEngine.compute(config: config, transactions: transactions, reportContext: context,
                                                   filterContext: .empty, today: today, locale: Locale(identifier: "en_US"))
@@ -167,9 +170,12 @@ struct DemoDataSeederTests {
                 Issue.record("\(config.name) is unsupported: \(reason)")
             }
             chartable += data.chartDetail() == nil ? 0 : 1
+            breakdowns += data.breakdown == nil ? 0 : 1
         }
-        // The line, stacked and bar reports open a detail page; the donut doesn't.
+        // The line, stacked and bar reports open a chart page; the two donuts
+        // and the table open a list.
         #expect(chartable == 3)
+        #expect(breakdowns == 3)
 
         for widget in widgets {
             switch widget {

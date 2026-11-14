@@ -172,9 +172,74 @@ struct ReportIntervalXAxis: ViewModifier {
     }
 }
 
+/// A custom report's donut: one ring of slices, or category groups inside
+/// with their categories outside.
+///
+/// Two rings are two overlaid charts rather than two mark sets in one: every
+/// SectorMark in a chart shares one angular stack, so a second ring inside
+/// the same chart would only get half the circle.
+struct ReportDonutChart: View {
+    @Environment(\.locale) private var locale
+    let slices: [CustomReportData.Slice]
+    let groups: [CustomReportData.Bar]
+    /// A group (two rings) or a slice (one ring) to pick out; the rest dim.
+    var highlighted: Int?
+
+    var body: some View {
+        let colors = Self.sliceColors(slices, groups: groups)
+        ZStack {
+            if !groups.isEmpty {
+                Chart(Array(groups.enumerated()), id: \.offset) { i, group in
+                    SectorMark(
+                        angle: .value(ReportStrings.text("Amount", locale: locale), group.valueUnits),
+                        innerRadius: .ratio(0.45),
+                        outerRadius: .ratio(0.65),
+                        angularInset: 1
+                    )
+                    .foregroundStyle(CustomReportWidgetView.palette[i % CustomReportWidgetView.palette.count])
+                    .opacity(opacity(i))
+                }
+            }
+            Chart(Array(slices.enumerated()), id: \.offset) { i, slice in
+                SectorMark(
+                    angle: .value(ReportStrings.text("Amount", locale: locale), slice.valueUnits),
+                    innerRadius: .ratio(groups.isEmpty ? 0.6 : 0.68),
+                    angularInset: 1
+                )
+                .foregroundStyle(colors[i])
+                .opacity(opacity(groups.isEmpty ? i : slice.group ?? 0))
+            }
+        }
+    }
+
+    private func opacity(_ index: Int) -> Double {
+        highlighted == nil || highlighted == index ? 1 : 0.3
+    }
+
+    /// Single ring: palette by position. Two rings: each category takes its
+    /// group's colour lightened by position within the group, matching
+    /// upstream's DonutGraph buildColorMap (0.15 + index / count * 0.5).
+    nonisolated static func sliceColors(_ slices: [CustomReportData.Slice], groups: [CustomReportData.Bar]) -> [Color] {
+        let palette = CustomReportWidgetView.palette
+        guard !groups.isEmpty else {
+            return slices.indices.map { palette[$0 % palette.count] }
+        }
+        var positionInGroup: [Int: Int] = [:]
+        let groupSizes = Dictionary(grouping: slices.compactMap(\.group), by: { $0 }).mapValues(\.count)
+        return slices.map { slice in
+            let gi = slice.group ?? 0
+            let k = positionInGroup[gi, default: 0]
+            positionInGroup[gi] = k + 1
+            let shade = 0.15 + Double(k) / Double(max(groupSizes[gi] ?? 1, 1)) * 0.5
+            return palette[gi % palette.count].mix(with: .white, by: shade)
+        }
+    }
+}
+
 struct CustomReportWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
+    @Environment(\.reportCardLinksToDetail) private var linksToDetail
     let data: CustomReportData
 
     /// The same colours the detail page gives each series, so the two agree.
@@ -189,7 +254,7 @@ struct CustomReportWidgetView: View {
     /// Fixed cycle standing in for upstream's qualitative colour scale. Only
     /// the donut assigns colours itself: a category can share a name with its
     /// group, and `foregroundStyle(by:)` would merge the two.
-    static let palette: [Color] = [
+    nonisolated static let palette: [Color] = [
         .blue, .green, .orange, .purple, .pink, .teal, .indigo, .yellow, .mint, .cyan, .brown, .red,
     ]
 
@@ -350,6 +415,18 @@ struct CustomReportWidgetView: View {
         case .table(let rows, let totalUnits):
             if rows.isEmpty {
                 emptyText
+            } else if linksToDetail, let breakdown = data.breakdown {
+                VStack(spacing: 6) {
+                    leadingRows(breakdown, limit: 4)
+                    Divider()
+                    HStack {
+                        Text(ReportStrings.text("Total", locale: locale))
+                        Spacer()
+                        Text(budgetStore.displayBalance(cents(totalUnits), locale: locale))
+                            .monospacedDigit()
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
             } else {
                 VStack(spacing: 6) {
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
@@ -382,52 +459,38 @@ struct CustomReportWidgetView: View {
 
     // MARK: - Donut
 
-    /// Two rings are two overlaid charts rather than two mark sets in one:
-    /// every SectorMark in a chart shares one angular stack, so a second ring
-    /// inside the same chart would only get half the circle.
     private func donut(slices: [CustomReportData.Slice], groups: [CustomReportData.Bar]) -> some View {
-        let colors = sliceColors(slices, groups: groups)
-        return VStack(alignment: .leading, spacing: 8) {
-            ZStack {
-                if !groups.isEmpty {
-                    Chart(Array(groups.enumerated()), id: \.offset) { i, group in
-                        SectorMark(
-                            angle: .value(ReportStrings.text("Amount", locale: locale), group.valueUnits),
-                            innerRadius: .ratio(0.45),
-                            outerRadius: .ratio(0.65),
-                            angularInset: 1
-                        )
-                        .foregroundStyle(Self.palette[i % Self.palette.count])
-                    }
-                }
-                Chart(Array(slices.enumerated()), id: \.offset) { i, slice in
-                    SectorMark(
-                        angle: .value(ReportStrings.text("Amount", locale: locale), slice.valueUnits),
-                        innerRadius: .ratio(groups.isEmpty ? 0.6 : 0.68),
-                        angularInset: 1
-                    )
-                    .foregroundStyle(colors[i])
-                }
-            }
-            .frame(height: 180)
+        let colors = ReportDonutChart.sliceColors(slices, groups: groups)
+        let chart = ReportDonutChart(slices: slices, groups: groups)
             .modifier(ChartAccessibility(
                 rows: chartAccessibilityRows(for: .donut(slices: slices, groups: groups)),
                 hidden: budgetStore.hideBalances
             ))
-
-            VStack(alignment: .leading, spacing: 4) {
-                if groups.isEmpty {
-                    ForEach(Array(slices.enumerated()), id: \.offset) { i, slice in
-                        legendRow(color: colors[i], label: slice.label, units: slice.valueUnits)
-                    }
-                } else {
-                    ForEach(Array(groups.enumerated()), id: \.offset) { gi, group in
-                        legendRow(color: Self.palette[gi % Self.palette.count],
-                                  label: group.label, units: group.valueUnits)
-                        ForEach(Array(slices.enumerated()).filter { $0.element.group == gi },
-                                id: \.offset) { i, slice in
-                            legendRow(color: colors[i], label: slice.label,
-                                      units: slice.valueUnits, indent: 14)
+        return Group {
+            if linksToDetail, let breakdown = data.breakdown {
+                // The detail page lists every slice; the card names the largest.
+                HStack(spacing: 16) {
+                    chart.frame(width: 110, height: 110)
+                    leadingRows(breakdown, limit: 3)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    chart.frame(height: 180)
+                    VStack(alignment: .leading, spacing: 4) {
+                        if groups.isEmpty {
+                            ForEach(Array(slices.enumerated()), id: \.offset) { i, slice in
+                                legendRow(color: colors[i], label: slice.label, units: slice.valueUnits)
+                            }
+                        } else {
+                            ForEach(Array(groups.enumerated()), id: \.offset) { gi, group in
+                                legendRow(color: Self.palette[gi % Self.palette.count],
+                                          label: group.label, units: group.valueUnits)
+                                ForEach(Array(slices.enumerated()).filter { $0.element.group == gi },
+                                        id: \.offset) { i, slice in
+                                    legendRow(color: colors[i], label: slice.label,
+                                              units: slice.valueUnits, indent: 14)
+                                }
+                            }
                         }
                     }
                 }
@@ -435,21 +498,27 @@ struct CustomReportWidgetView: View {
         }
     }
 
-    /// Single ring: palette by position. Two rings: each category takes its
-    /// group's colour lightened by position within the group, matching
-    /// upstream's DonutGraph buildColorMap (0.15 + index / count * 0.5).
-    private func sliceColors(_ slices: [CustomReportData.Slice], groups: [CustomReportData.Bar]) -> [Color] {
-        guard !groups.isEmpty else {
-            return slices.indices.map { Self.palette[$0 % Self.palette.count] }
-        }
-        var positionInGroup: [Int: Int] = [:]
-        let groupSizes = Dictionary(grouping: slices.compactMap(\.group), by: { $0 }).mapValues(\.count)
-        return slices.map { slice in
-            let gi = slice.group ?? 0
-            let k = positionInGroup[gi, default: 0]
-            positionInGroup[gi] = k + 1
-            let shade = 0.15 + Double(k) / Double(max(groupSizes[gi] ?? 1, 1)) * 0.5
-            return Self.palette[gi % Self.palette.count].mix(with: .white, by: shade)
+    /// The largest rows of a breakdown, and how many more its page lists.
+    private func leadingRows(_ breakdown: ReportBreakdown, limit: Int) -> some View {
+        let leading = breakdown.leadingRows(limit: limit)
+        return VStack(alignment: .leading, spacing: 6) {
+            ForEach(leading, id: \.self) { index in
+                let row = breakdown.rows[index]
+                HStack(spacing: 8) {
+                    if let color = row.color {
+                        Circle().fill(color).frame(width: 8, height: 8)
+                    }
+                    Text(row.name).lineLimit(1)
+                    Spacer()
+                    Text(budgetStore.displayBalance(cents(row.value), locale: locale)).monospacedDigit()
+                }
+                .font(.subheadline)
+            }
+            if breakdown.rows.count > leading.count {
+                Text(ReportStrings.localized("…and \(breakdown.rows.count - leading.count) more", locale: locale))
+                    .font(.footnote)
+                    .foregroundStyle(.tint)
+            }
         }
     }
 
