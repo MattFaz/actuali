@@ -87,9 +87,17 @@ enum ReportCurrencyAxisFormatting {
         narrowSymbol: Bool,
         locale: Locale
     ) -> String {
-        // Ticks are nearly always whole numbers, where ".00" only widens the
-        // axis and narrows the plot. A tick with a fraction keeps its cents.
-        CurrencyAmountFormat.string(
+        // Thousands and up are abbreviated ("400K"): a full figure costs more
+        // width than a phone chart can spare.
+        if abs(units) >= 1000 {
+            return CurrencyAmountFormat.compactString(
+                units: units, currencyCode: currencyCode, narrowSymbol: narrowSymbol,
+                numberFormat: numberFormat, locale: locale
+            )
+        }
+        // Smaller ticks are nearly always whole numbers, where ".00" only
+        // widens the axis. A tick with a fraction keeps its cents.
+        return CurrencyAmountFormat.string(
             cents: Int((units * 100).rounded()), currencyCode: currencyCode,
             narrowSymbol: narrowSymbol, wholeUnits: units == units.rounded(),
             numberFormat: numberFormat, locale: locale

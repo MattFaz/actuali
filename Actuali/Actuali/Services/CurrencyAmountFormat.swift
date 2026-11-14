@@ -194,6 +194,34 @@ enum CurrencyAmountFormat {
         )
     }
 
+    /// Abbreviated amount for chart axes ("$400K", "$1.25M"), where a full
+    /// figure costs more width than a phone chart can spare. The locale picks
+    /// the abbreviation; the decimal mark follows Actual's number format.
+    static func compactString(
+        units: Double,
+        currencyCode: String,
+        narrowSymbol: Bool,
+        numberFormat: ActualNumberFormat,
+        locale: Locale
+    ) -> String {
+        let formatted = currencyCode.isEmpty
+            ? units.formatted(
+                .number.locale(locale).notation(.compactName).precision(.significantDigits(1...3))
+            )
+            : units.formatted(
+                .currency(code: currencyCode).locale(locale)
+                    .presentation(narrowSymbol ? .narrow : .standard)
+                    .notation(.compactName).precision(.significantDigits(1...3))
+            )
+        // Only between the digits, so a "." inside a currency symbol survives.
+        guard let first = formatted.firstIndex(where: \.isWholeNumber),
+              let last = formatted.lastIndex(where: \.isWholeNumber)
+        else { return formatted }
+        return formatted.replacingOccurrences(
+            of: locale.decimalSeparator ?? ".", with: numberFormat.decimalSeparator, range: first..<formatted.index(after: last)
+        )
+    }
+
     private static func replacingNumericPart(
         in currencyString: String,
         with numericString: String
