@@ -6,6 +6,12 @@ extension CalendarData {
         let cell: Int // index into that month's `days`
     }
 
+    /// A selection can outlive the grid it was made in: the data reloads
+    /// under an open page, and a month's cell count depends on where it starts.
+    func contains(_ day: DayRef) -> Bool {
+        months.indices.contains(day.month) && months[day.month].days.indices.contains(day.cell)
+    }
+
     /// The most recent day with any income or spending, where the detail
     /// page's readout starts.
     var latestActiveDay: DayRef? {
@@ -31,7 +37,7 @@ struct CalendarDetailView: View {
     @State private var selected: CalendarData.DayRef?
 
     private var shown: CalendarData.DayRef? {
-        selected ?? data.latestActiveDay
+        (selected ?? data.latestActiveDay).flatMap { data.contains($0) ? $0 : nil }
     }
 
     private var weekdaySymbols: [String] {

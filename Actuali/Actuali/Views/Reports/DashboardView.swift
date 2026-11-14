@@ -315,16 +315,18 @@ struct DashboardView: View {
         case .netWorth(_, let meta):
             detailCard(widget, meta: meta, loadingHeight: 180, ranged: ranged(meta)) { meta, transactions in
                 NetWorthEngine.compute(meta: meta, transactions: transactions, today: today, context: conditionsContext)
-            } card: { data in
+            } model: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } card: { data, detail in
                 // The glance card when there is something to chart; the
                 // widget's own card (and its empty state) when there isn't.
-                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                if let detail {
                     ReportGlanceCard(detail: detail)
                 } else {
                     NetWorthWidgetView(displayName: widget.displayName, data: data)
                 }
-            } detail: { data in
-                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
+            } detail: {
+                ReportChartDetailView(detail: $0)
             }
         case .cashFlow(_, let meta):
             detailCard(widget, meta: meta, loadingHeight: 200, ranged: ranged(meta)) { meta, transactions in
@@ -335,18 +337,24 @@ struct DashboardView: View {
                     today: today,
                     context: conditionsContext
                 )
-            } card: { data in
+            } model: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } card: { data, detail in
                 // The glance card when there is something to chart; the
                 // widget's own card (and its empty state) when there isn't.
-                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                if let detail {
                     ReportGlanceCard(detail: detail)
                 } else {
                     CashFlowWidgetView(displayName: widget.displayName, data: data)
                 }
-            } detail: { data in
-                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
+            } detail: {
+                ReportChartDetailView(detail: $0)
             }
         case .spending(_, let meta):
+            // ponytail: all three comparisons run on every dashboard load so
+            // the detail page opens at once. Ceiling: three engine passes and
+            // a budget fetch per Spending card, where the card shows one.
+            // Compute the other two behind the page if that starts to cost.
             detailCard(widget, meta: meta, loadingHeight: 120) { meta, transactions in
                 let scoped = Self.spendingScope(transactions, offBudget: conditionsContext.offBudgetAccountIds, income: Set(categories.filter(\.isIncome).map(\.id)))
                 return SpendingComparisons.compute(meta: meta) { meta in
@@ -356,7 +364,9 @@ struct DashboardView: View {
                                            categoryGroups: categoryGroups,
                                            today: today, context: conditionsContext)
                 }
-            } card: { comparisons in
+            } model: { comparisons in
+                comparisons
+            } card: { comparisons, _ in
                 SpendingWidgetView(
                     displayName: widget.displayName,
                     data: comparisons.card,
@@ -380,16 +390,18 @@ struct DashboardView: View {
                     context: conditionsContext,
                     locale: locale
                 )
-            } card: { data in
+            } model: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } card: { data, detail in
                 // The glance card when there is something to chart; the
                 // widget's own card (and its empty state) when there isn't.
-                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                if let detail {
                     ReportGlanceCard(detail: detail)
                 } else {
                     AgeOfMoneyWidgetView(displayName: widget.displayName, data: data)
                 }
-            } detail: { data in
-                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
+            } detail: {
+                ReportChartDetailView(detail: $0)
             }
         case .formula(_, let meta):
             WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 100) { transactions in
@@ -418,18 +430,22 @@ struct DashboardView: View {
                     filterContext: conditionsContext,
                     today: today, locale: locale
                 )
-            } card: { data in
+            } model: { data in
+                // A chart to scrub, or a donut or table to list in full.
+                data.chartDetail(locale: locale).map(CustomReportPage.chart) ?? data.breakdown.map(CustomReportPage.breakdown)
+            } card: { data, page in
                 // The glance card when there is something to chart; the
                 // widget's own card (and its empty state) when there isn't.
-                if let detail = data.chartDetail(locale: locale) {
+                if case .chart(let detail) = page {
                     ReportGlanceCard(detail: detail)
                 } else {
                     CustomReportWidgetView(data: data)
                 }
-            } detail: { data in
-                // A chart to scrub, or a donut or table to list in full.
-                data.chartDetail(locale: locale).map { AnyView(ReportChartDetailView(detail: $0)) }
-                    ?? data.breakdown.map { AnyView(ReportBreakdownDetailView(breakdown: $0)) }
+            } detail: { page in
+                switch page {
+                case .chart(let detail): ReportChartDetailView(detail: detail)
+                case .breakdown(let breakdown): ReportBreakdownDetailView(breakdown: breakdown)
+                }
             }
         case .calendar(_, let meta):
             detailCard(widget, meta: meta, loadingHeight: 200, ranged: ranged(meta)) { meta, transactions in
@@ -440,10 +456,12 @@ struct DashboardView: View {
                     firstDayOfWeekIdx: firstDayOfWeekIdx,
                     context: conditionsContext
                 )
-            } card: { data in
+            } model: { data in
+                data.months.isEmpty ? nil : data
+            } card: { data, _ in
                 CalendarWidgetView(displayName: widget.displayName, data: data)
             } detail: { data in
-                data.months.isEmpty ? nil : CalendarDetailView(displayName: widget.displayName, data: data)
+                CalendarDetailView(displayName: widget.displayName, data: data)
             }
         case .crossover(_, let meta):
             detailCard(widget, meta: meta, loadingHeight: 200) { meta, transactions in
@@ -454,16 +472,18 @@ struct DashboardView: View {
                     accountIds: accounts.map(\.id),
                     today: today
                 )
-            } card: { data in
+            } model: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } card: { data, detail in
                 // The glance card when there is something to chart; the
                 // widget's own card (and its empty state) when there isn't.
-                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                if let detail {
                     ReportGlanceCard(detail: detail)
                 } else {
                     CrossoverWidgetView(displayName: widget.displayName, data: data)
                 }
-            } detail: { data in
-                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
+            } detail: {
+                ReportChartDetailView(detail: $0)
             }
         case .budgetAnalysis(_, let meta):
             detailCard(widget, meta: meta, loadingHeight: 200, ranged: ranged(meta)) { meta, transactions in
@@ -476,16 +496,18 @@ struct DashboardView: View {
                     today: today,
                     context: conditionsContext
                 )
-            } card: { data in
+            } model: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } card: { data, detail in
                 // The glance card when there is something to chart; the
                 // widget's own card (and its empty state) when there isn't.
-                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                if let detail {
                     ReportGlanceCard(detail: detail)
                 } else {
                     BudgetAnalysisWidgetView(displayName: widget.displayName, data: data)
                 }
-            } detail: { data in
-                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
+            } detail: {
+                ReportChartDetailView(detail: $0)
             }
         case .sankey(_, let meta):
             detailCard(widget, meta: meta, loadingHeight: 240, ranged: ranged(meta)) { meta, transactions in
@@ -503,10 +525,12 @@ struct DashboardView: View {
                     context: conditionsContext,
                     locale: locale
                 )
-            } card: { data in
+            } model: { data in
+                data.hasDrawableFlows ? data : nil
+            } card: { data, _ in
                 SankeyWidgetView(displayName: widget.displayName, data: data)
             } detail: { data in
-                data.hasDrawableFlows ? SankeyDetailView(displayName: widget.displayName, data: data) : nil
+                SankeyDetailView(displayName: widget.displayName, data: data)
             }
         case .balanceForecast(_, let meta):
             // No range picker: the forecast runs forward from today.
@@ -526,20 +550,22 @@ struct DashboardView: View {
                     today: today,
                     context: conditionsContext
                 )
-            } card: { data in
-                // The glance card when there is something to chart; the
-                // widget's own card (and its empty state) when there isn't.
-                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
-                    ReportGlanceCard(detail: detail)
-                } else {
-                    BalanceForecastWidgetView(displayName: widget.displayName, data: data)
-                }
-            } detail: { data in
+            } model: { data in
                 data.chartDetail(
                     name: widget.displayName,
                     payeeNames: Dictionary(payees.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
                     locale: locale
-                ).map { ReportChartDetailView(detail: $0) }
+                )
+            } card: { data, detail in
+                // The glance card when there is something to chart; the
+                // widget's own card (and its empty state) when there isn't.
+                if let detail {
+                    ReportGlanceCard(detail: detail)
+                } else {
+                    BalanceForecastWidgetView(displayName: widget.displayName, data: data)
+                }
+            } detail: {
+                ReportChartDetailView(detail: $0)
             }
         case .monteCarlo(_, let meta):
             detailCard(widget, meta: meta, loadingHeight: 220) { meta, _ in
@@ -550,16 +576,18 @@ struct DashboardView: View {
                         uniquingKeysWith: { first, _ in first }
                     )
                 )
-            } card: { data in
+            } model: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } card: { data, detail in
                 // The glance card when there is something to chart; the
                 // widget's own card (and its empty state) when there isn't.
-                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                if let detail {
                     ReportGlanceCard(detail: detail)
                 } else {
                     MonteCarloWidgetView(displayName: widget.displayName, data: data)
                 }
-            } detail: { data in
-                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
+            } detail: {
+                ReportChartDetailView(detail: $0)
             }
         case .unsupported:
             // Filtered out of visibleWidgets; listed in the top notice instead.
@@ -569,24 +597,33 @@ struct DashboardView: View {
 
     /// A card that opens a detail page. `ranged` recomputes the widget over a
     /// range picked there; leave it nil when the widget has no range to move.
-    /// A card with nothing to show in detail (`detail` returns nil) stays a
-    /// plain card.
-    private func detailCard<Meta: Sendable, Value: Sendable>(
+    /// `model` is what both the card and the page draw from; a card with
+    /// nothing to show in detail (`model` returns nil) stays a plain card.
+    /// What a custom report's page shows: a chart, or a donut or table in full.
+    private enum CustomReportPage {
+        case chart(ReportChartDetail)
+        case breakdown(ReportBreakdown)
+    }
+
+    private func detailCard<Meta: Sendable, Value: Sendable, Model>(
         _ widget: DashboardWidget,
         meta: Meta,
         loadingHeight: CGFloat,
         ranged: (@Sendable (Meta, ReportDetailRange) -> Meta)? = nil,
         compute: @escaping @Sendable (Meta, [Transaction]) -> Value,
-        @ViewBuilder card: @escaping (Value) -> some View,
-        detail: @escaping (Value) -> (some View)?
+        model: @escaping (Value) -> Model?,
+        @ViewBuilder card: @escaping (Value, Model?) -> some View,
+        @ViewBuilder detail: @escaping (Model) -> some View
     ) -> some View {
         let transactions = reportTransactions
         let locale = locale
         return WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: loadingHeight) {
             compute(meta, $0)
         } content: { value in
-            if detail(value) == nil {
-                card(value)
+            // Built once per pass, for both the card and the link.
+            let page = model(value)
+            if page == nil {
+                card(value, nil)
             } else {
                 NavigationLink {
                     ReportRangedDetail(
@@ -596,8 +633,8 @@ struct DashboardView: View {
                             { @Sendable range, transactions in compute(ranged(meta, range), transactions) }
                         }
                     ) { value in
-                        if let page = detail(value) {
-                            page
+                        if let page = model(value) {
+                            detail(page)
                         } else {
                             ContentUnavailableView(
                                 ReportStrings.text("No data in range", locale: locale),
@@ -607,7 +644,7 @@ struct DashboardView: View {
                         }
                     }
                 } label: {
-                    card(value).environment(\.reportCardLinksToDetail, true)
+                    card(value, page).environment(\.reportCardLinksToDetail, true)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("reportCard.\(widget.id)")
