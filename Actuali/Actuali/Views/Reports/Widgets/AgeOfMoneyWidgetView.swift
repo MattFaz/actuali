@@ -52,6 +52,7 @@ struct AgeOfMoneyWidgetView: View {
                     .foregroundStyle(.teal)
                 }
                 .frame(height: 140)
+                .modifier(ReportIntervalXAxis(labels: data.points.map(\.monthLabel)))
             } else {
                 Text(data.currentAge == nil ? ReportStrings.text("Not enough data", locale: locale) : "")
                     .font(.subheadline)
