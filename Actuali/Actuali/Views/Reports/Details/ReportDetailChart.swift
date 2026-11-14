@@ -11,6 +11,21 @@ struct ReportDetailChart: View {
     /// nil on a card: nothing to scrub.
     var selection: Binding<String?>?
 
+    @State private var plotWidth: CGFloat = 0
+
+    private var isLine: Bool {
+        detail.style == .lines || detail.style == .area
+    }
+
+    /// A string axis gives each interval a band and centres its mark there,
+    /// which leaves half a band empty at both ends of a line. This is how far
+    /// to stretch the scale past the plot so the line spans it, stopping
+    /// `inset` short so the selection dot at either end still fits.
+    nonisolated static func overhang(plotWidth: CGFloat, intervals: Int, inset: CGFloat = 6) -> CGFloat {
+        guard intervals > 1 else { return 0 }
+        return max(0, (plotWidth - 2 * CGFloat(intervals) * inset) / (2 * CGFloat(intervals - 1)))
+    }
+
     private var selected: String? {
         selection?.wrappedValue
     }
@@ -54,12 +69,20 @@ struct ReportDetailChart: View {
             }
         }
         .chartLegend(.hidden)
+        .chartXScale(range: .plotDimension(
+            padding: isLine ? -Self.overhang(plotWidth: plotWidth, intervals: detail.intervals.count) : 0
+        ))
+        .chartBackground { proxy in
+            Color.clear.onChange(of: proxy.plotSize.width, initial: true) { _, width in
+                plotWidth = width
+            }
+        }
 
         if let selection {
             chart
                 .chartXSelection(value: selection)
                 .chartPlotStyle { $0.frame(height: 240) }
-                .modifier(ReportIntervalXAxis(labels: detail.intervals, gridLines: false))
+                .modifier(ReportIntervalXAxis(labels: detail.intervals, gridLines: false, reachesEdges: isLine))
                 .modifier(YAxis(unit: detail.unit))
         } else {
             chart
