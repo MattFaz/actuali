@@ -73,7 +73,9 @@ struct ReportStringsTests {
         (0.0, "0 years", "0 an", "0 ano"),
         (1.0, "1 year", "1 an", "1 ano"),
         (2.0, "2 years", "2 ans", "2 anos"),
-        (1.25, "1.25 years", "1,25 an", "1,25 ano")
+        (1.25, "1.25 years", "1,25 an", "1,25 ano"),
+        // 2 months / 12: no more than two decimals.
+        (2.0 / 12, "0.17 years", "0,17 an", "0,17 ano"),
     ])
     func yearsToRetireUsesRequestedLocale(
         years: Double, english: String, french: String, brazilianPortuguese: String

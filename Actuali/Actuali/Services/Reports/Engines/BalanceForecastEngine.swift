@@ -51,8 +51,19 @@ struct BalanceForecastPoint: Equatable {
     let isForecast: Bool
 }
 
+/// One projected schedule occurrence that moves the forecast.
+struct BalanceForecastOccurrence: Equatable {
+    let scheduleName: String?
+    let payeeId: String?
+    let date: Date
+    let amountCents: Int
+}
+
 struct BalanceForecastData: Equatable {
     let points: [BalanceForecastPoint]
+    /// The schedule occurrences behind the projected segment, soonest first.
+    /// Empty for the tracking-budget source, which projects budget totals.
+    var upcoming: [BalanceForecastOccurrence] = []
 }
 
 // MARK: - Engine
@@ -106,6 +117,7 @@ enum BalanceForecastEngine {
         )
 
         let combinedByDay: [Int: Int]
+        var upcoming: [BalanceForecastOccurrence] = []
         if meta?.source == .trackingBudget {
             combinedByDay = trackingBudgetSeries(
                 transactions: transactions,
@@ -118,7 +130,7 @@ enum BalanceForecastEngine {
             if let selected = meta?.accounts, selected.isEmpty {
                 return BalanceForecastData(points: [])
             }
-            combinedByDay = schedulesSeries(
+            (combinedByDay, upcoming) = schedulesSeries(
                 meta: meta,
                 transactions: transactions,
                 schedules: schedules,
@@ -137,7 +149,7 @@ enum BalanceForecastEngine {
             chartStart: chartStart,
             chartEnd: chartEnd,
             today: todayDay
-        ))
+        ), upcoming: upcoming)
     }
 
     // MARK: - Schedules source
@@ -156,7 +168,7 @@ enum BalanceForecastEngine {
         forecastEnd: DayDate,
         today: DayDate,
         context: ConditionsFilter.Context
-    ) -> [Int: Int] {
+    ) -> (series: [Int: Int], upcoming: [BalanceForecastOccurrence]) {
         let selected = meta?.accounts.map { Set($0) }
         func inSelection(_ accountId: String) -> Bool {
             selected?.contains(accountId) ?? true
@@ -191,8 +203,9 @@ enum BalanceForecastEngine {
         // in forecast-projection.ts).
         let firstForecast = forecastEnd < today ? forecastStart : max(forecastStart, today)
 
-        func addOccurrenceLeg(accountId: String, amount: Int, payeeId: String?, categoryId: String?, date: DayDate) {
-            guard inSelection(accountId) else { return }
+        // False when the leg falls outside the widget's accounts or conditions.
+        func addOccurrenceLeg(accountId: String, amount: Int, payeeId: String?, categoryId: String?, date: DayDate) -> Bool {
+            guard inSelection(accountId) else { return false }
             let simulated = Transaction(
                 id: "forecast", accountId: accountId, date: date.yyyymmdd, amount: amount,
                 payeeId: payeeId, payeeName: nil, categoryId: categoryId, categoryName: nil,
@@ -200,10 +213,12 @@ enum BalanceForecastEngine {
                 transferId: nil, isParent: false, parentId: nil,
                 tombstone: false, sortOrder: nil, importedPayee: nil
             )
-            guard ConditionsFilter.matches(transaction: simulated, conditions: meta?.conditions, op: meta?.conditionsOp, context: context) else { return }
+            guard ConditionsFilter.matches(transaction: simulated, conditions: meta?.conditions, op: meta?.conditionsOp, context: context) else { return false }
             deltaByDay[date.yyyymmdd, default: 0] += amount
+            return true
         }
 
+        var upcoming: [BalanceForecastOccurrence] = []
         // Schedules are NOT pre-filtered by account: when only the transfer
         // side is selected, its leg still projects (forecast-schedules.ts).
         for schedule in schedules {
@@ -211,17 +226,29 @@ enum BalanceForecastEngine {
             let posted = postedDatesBySchedule[schedule.id] ?? []
             for date in occurrenceDates(for: schedule, endDate: forecastEnd) {
                 guard date >= firstForecast, date <= forecastEnd, !posted.contains(date.yyyymmdd) else { continue }
-                addOccurrenceLeg(
+                // What the occurrence does to the charted balance: both legs
+                // of a transfer between two charted accounts cancel out.
+                var counted = 0
+                if addOccurrenceLeg(
                     accountId: schedule.accountId, amount: amount,
                     payeeId: schedule.payeeId, categoryId: schedule.categoryId, date: date
-                )
+                ) {
+                    counted += amount
+                }
                 if let payeeId = schedule.payeeId,
                    let transferAccountId = transferAccountsByPayeeId[payeeId],
-                   transferAccountId != schedule.accountId {
-                    addOccurrenceLeg(
-                        accountId: transferAccountId, amount: -amount,
-                        payeeId: nil, categoryId: nil, date: date
-                    )
+                   transferAccountId != schedule.accountId,
+                   addOccurrenceLeg(
+                       accountId: transferAccountId, amount: -amount,
+                       payeeId: nil, categoryId: nil, date: date
+                   ) {
+                    counted -= amount
+                }
+                if counted != 0 {
+                    upcoming.append(BalanceForecastOccurrence(
+                        scheduleName: schedule.name, payeeId: schedule.payeeId,
+                        date: self.date(from: date), amountCents: counted
+                    ))
                 }
             }
         }
@@ -234,7 +261,7 @@ enum BalanceForecastEngine {
             series[day.yyyymmdd] = running
             day = day.adding(days: 1)
         }
-        return series
+        return (series, upcoming.sorted { $0.date < $1.date })
     }
 
     /// Port of `getFutureOccurrenceDates` (forecast-schedules.ts): the stored

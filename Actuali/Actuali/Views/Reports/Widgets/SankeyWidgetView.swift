@@ -11,7 +11,7 @@ struct SankeyWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(displayName).font(.headline)
+            ReportCardTitle(displayName)
 
             if hasDrawableFlows {
                 Canvas { context, size in
@@ -43,7 +43,13 @@ struct SankeyWidgetView: View {
     }
 
     private var hasDrawableFlows: Bool {
-        data.links.contains { $0.value > 0 }
+        data.hasDrawableFlows
+    }
+}
+
+extension SankeyData {
+    var hasDrawableFlows: Bool {
+        links.contains { $0.value > 0 }
     }
 }
 

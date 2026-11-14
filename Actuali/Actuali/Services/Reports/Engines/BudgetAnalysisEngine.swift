@@ -7,7 +7,7 @@ struct BudgetAnalysisMeta: Codable, Equatable {
     let name: String?
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
-    let timeFrame: WidgetTimeFrame?
+    var timeFrame: WidgetTimeFrame?
     let interval: String? // "Daily" | "Weekly" | "Monthly" | "Yearly"
     let graphType: String? // "Line" | "Bar"
     let showBalance: Bool?

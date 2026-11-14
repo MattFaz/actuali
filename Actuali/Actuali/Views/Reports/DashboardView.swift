@@ -97,7 +97,24 @@ struct DashboardView: View {
                             widgetCards
                         }
                     } else {
-                        widgetCards
+                        ForEach(Self.rows(visibleWidgets), id: \.first?.id) { row in
+                            if row.count == 1 {
+                                widgetView(for: row[0])
+                            } else {
+                                // Sized to the taller of the pair; the fill behind
+                                // each card is the card's own, so the shorter one
+                                // reads as the same height.
+                                HStack(spacing: 12) {
+                                    ForEach(row, id: \.id) { widget in
+                                        widgetView(for: widget)
+                                            .frame(maxHeight: .infinity, alignment: .top)
+                                            .background(Color(.secondarySystemBackground))
+                                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    }
+                                }
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
                 }
                 .padding(.vertical)
@@ -109,6 +126,28 @@ struct DashboardView: View {
                 await loadTransactions(request: currentLoadRequest)
             }
         }
+    }
+
+    /// iPhone rows: single-number widgets (Summary, Formula) sit two to a row
+    /// where they're neighbours, since one number doesn't need the full
+    /// width. Everything else gets a row of its own.
+    nonisolated static func rows(_ widgets: [DashboardWidget]) -> [[DashboardWidget]] {
+        var rows: [[DashboardWidget]] = []
+        var lastIsOpenPair = false
+        for widget in widgets {
+            let isTile = switch widget {
+            case .summary, .formula: true
+            default: false
+            }
+            if isTile, lastIsOpenPair {
+                rows[rows.count - 1].append(widget)
+                lastIsOpenPair = false
+            } else {
+                rows.append([widget])
+                lastIsOpenPair = isTile
+            }
+        }
+        return rows
     }
 
     private var currentLoadRequest: DashboardLoadRequest {
@@ -169,8 +208,9 @@ struct DashboardView: View {
 
             let needsBudgets = widgets.contains {
                 switch $0 {
-                case .budgetAnalysis, .sankey, .balanceForecast: true
-                case .spending(_, let meta): meta?.mode == .budget
+                // Spending's detail page compares against the budget
+                // whatever mode the card is in.
+                case .budgetAnalysis, .sankey, .balanceForecast, .spending: true
                 // Budgeted custom reports read budget cells instead of transactions.
                 case .customReport(_, let meta):
                     (meta?.id).flatMap { loadedConfigs[$0] }?.balanceType == "Budgeted"
@@ -273,13 +313,15 @@ struct DashboardView: View {
                 SummaryWidgetView(displayName: widget.displayName, data: data)
             }
         case .netWorth(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 180) { transactions in
+            chartCard(widget, meta: meta, loadingHeight: 180, ranged: ranged(meta)) { meta, transactions in
                 NetWorthEngine.compute(meta: meta, transactions: transactions, today: today, context: conditionsContext)
-            } content: { data in
+            } chartDetail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } fallback: { data in
                 NetWorthWidgetView(displayName: widget.displayName, data: data)
             }
         case .cashFlow(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            chartCard(widget, meta: meta, loadingHeight: 200, ranged: ranged(meta)) { meta, transactions in
                 CashFlowEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -287,27 +329,44 @@ struct DashboardView: View {
                     today: today,
                     context: conditionsContext
                 )
-            } content: { data in
+            } chartDetail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } fallback: { data in
                 CashFlowWidgetView(displayName: widget.displayName, data: data)
             }
         case .spending(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 120) { transactions in
-                SpendingEngine.compute(meta: meta, transactions: Self.spendingScope(transactions, offBudget: conditionsContext.offBudgetAccountIds, income: Set(categories.filter(\.isIncome).map(\.id))),
-                                       budgets: reportBudgets.entries,
-                                       categories: categories,
-                                       categoryGroups: categoryGroups,
-                                       today: today, context: conditionsContext)
-            } content: { data in
+            // ponytail: all three comparisons run on every dashboard load so
+            // the detail page opens at once. Ceiling: three engine passes and
+            // a budget fetch per Spending card, where the card shows one.
+            // Compute the other two behind the page if that starts to cost.
+            detailCard(widget, meta: meta, loadingHeight: 120) { meta, transactions in
+                let scoped = Self.spendingScope(transactions, offBudget: conditionsContext.offBudgetAccountIds, income: Set(categories.filter(\.isIncome).map(\.id)))
+                return SpendingComparisons.compute(meta: meta) { meta in
+                    SpendingEngine.compute(meta: meta, transactions: scoped,
+                                           budgets: reportBudgets.entries,
+                                           categories: categories,
+                                           categoryGroups: categoryGroups,
+                                           today: today, context: conditionsContext)
+                }
+            } model: { comparisons in
+                comparisons
+            } card: { comparisons, _ in
                 SpendingWidgetView(
                     displayName: widget.displayName,
-                    data: data,
+                    data: comparisons.card,
                     comparisonLabel: comparisonLabel(for: meta)
+                )
+            } detail: { comparisons in
+                SpendingDetailView(
+                    displayName: widget.displayName,
+                    comparisons: comparisons,
+                    labels: SpendingComparisons.modes.map { comparisonLabel(mode: $0, compareTo: meta?.compareTo) }
                 )
             }
         case .markdown(_, let meta):
             MarkdownWidgetView(meta: meta)
         case .ageOfMoney(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 160) { transactions in
+            chartCard(widget, meta: meta, loadingHeight: 160, ranged: ranged(meta)) { meta, transactions in
                 AgeOfMoneyEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -315,7 +374,9 @@ struct DashboardView: View {
                     context: conditionsContext,
                     locale: locale
                 )
-            } content: { data in
+            } chartDetail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } fallback: { data in
                 AgeOfMoneyWidgetView(displayName: widget.displayName, data: data)
             }
         case .formula(_, let meta):
@@ -325,9 +386,13 @@ struct DashboardView: View {
                 FormulaWidgetView(displayName: widget.displayName, result: result)
             }
         case .customReport(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            let config = (meta?.id).flatMap { customReportConfigs[$0] }
+            detailCard(
+                widget, meta: config, loadingHeight: 200,
+                ranged: config == nil ? nil : { (config: CustomReportConfig?, range: ReportDetailRange) in config?.ranged(range) }
+            ) { config, transactions in
                 CustomReportEngine.compute(
-                    config: (meta?.id).flatMap { customReportConfigs[$0] },
+                    config: config,
                     transactions: transactions,
                     reportContext: CustomReportEngine.ReportContext(
                         categories: categories,
@@ -341,11 +406,25 @@ struct DashboardView: View {
                     filterContext: conditionsContext,
                     today: today, locale: locale
                 )
-            } content: { data in
-                CustomReportWidgetView(data: data)
+            } model: { data in
+                // A chart to scrub, or a donut or table to list in full.
+                data.chartDetail(locale: locale).map(CustomReportPage.chart) ?? data.breakdown.map(CustomReportPage.breakdown)
+            } card: { data, page in
+                // The glance card when there is something to chart; the
+                // widget's own card (and its empty state) when there isn't.
+                if case .chart(let detail) = page {
+                    ReportGlanceCard(detail: detail)
+                } else {
+                    CustomReportWidgetView(data: data)
+                }
+            } detail: { page in
+                switch page {
+                case .chart(let detail): ReportChartDetailView(detail: detail)
+                case .breakdown(let breakdown): ReportBreakdownDetailView(breakdown: breakdown)
+                }
             }
         case .calendar(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            detailCard(widget, meta: meta, loadingHeight: 200, ranged: ranged(meta)) { meta, transactions in
                 CalendarEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -353,11 +432,15 @@ struct DashboardView: View {
                     firstDayOfWeekIdx: firstDayOfWeekIdx,
                     context: conditionsContext
                 )
-            } content: { data in
+            } model: { data in
+                data.months.isEmpty ? nil : data
+            } card: { data, _ in
                 CalendarWidgetView(displayName: widget.displayName, data: data)
+            } detail: { data in
+                CalendarDetailView(displayName: widget.displayName, data: data)
             }
         case .crossover(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            chartCard(widget, meta: meta, loadingHeight: 200) { meta, transactions in
                 CrossoverEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -365,11 +448,13 @@ struct DashboardView: View {
                     accountIds: accounts.map(\.id),
                     today: today
                 )
-            } content: { data in
+            } chartDetail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } fallback: { data in
                 CrossoverWidgetView(displayName: widget.displayName, data: data)
             }
         case .budgetAnalysis(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            chartCard(widget, meta: meta, loadingHeight: 200, ranged: ranged(meta)) { meta, transactions in
                 BudgetAnalysisEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -379,11 +464,13 @@ struct DashboardView: View {
                     today: today,
                     context: conditionsContext
                 )
-            } content: { data in
+            } chartDetail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } fallback: { data in
                 BudgetAnalysisWidgetView(displayName: widget.displayName, data: data)
             }
         case .sankey(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 240) { transactions in
+            detailCard(widget, meta: meta, loadingHeight: 240, ranged: ranged(meta)) { meta, transactions in
                 SankeyEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -398,12 +485,16 @@ struct DashboardView: View {
                     context: conditionsContext,
                     locale: locale
                 )
-            } content: { data in
+            } model: { data in
+                data.hasDrawableFlows ? data : nil
+            } card: { data, _ in
                 SankeyWidgetView(displayName: widget.displayName, data: data)
+            } detail: { data in
+                SankeyDetailView(displayName: widget.displayName, data: data)
             }
         case .balanceForecast(_, let meta):
-            let meta = forecastMeta(meta)
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            // No range picker: the forecast runs forward from today.
+            chartCard(widget, meta: forecastMeta(meta), loadingHeight: 200) { meta, transactions in
                 BalanceForecastEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -419,11 +510,17 @@ struct DashboardView: View {
                     today: today,
                     context: conditionsContext
                 )
-            } content: { data in
+            } chartDetail: { data in
+                data.chartDetail(
+                    name: widget.displayName,
+                    payeeNames: Dictionary(payees.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
+                    locale: locale
+                )
+            } fallback: { data in
                 BalanceForecastWidgetView(displayName: widget.displayName, data: data)
             }
         case .monteCarlo(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 220) { _ in
+            chartCard(widget, meta: meta, loadingHeight: 220) { meta, _ in
                 MonteCarloEngine.compute(
                     meta: meta,
                     accountBalances: Dictionary(
@@ -431,13 +528,101 @@ struct DashboardView: View {
                         uniquingKeysWith: { first, _ in first }
                     )
                 )
-            } content: { data in
+            } chartDetail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale)
+            } fallback: { data in
                 MonteCarloWidgetView(displayName: widget.displayName, data: data)
             }
         case .unsupported:
             // Filtered out of visibleWidgets; listed in the top notice instead.
             EmptyView()
         }
+    }
+
+    /// A card that opens a detail page. `ranged` recomputes the widget over a
+    /// range picked there; leave it nil when the widget has no range to move.
+    /// `model` is what both the card and the page draw from; a card with
+    /// nothing to show in detail (`model` returns nil) stays a plain card.
+    /// What a custom report's page shows: a chart, or a donut or table in full.
+    private enum CustomReportPage {
+        case chart(ReportChartDetail)
+        case breakdown(ReportBreakdown)
+    }
+
+    private func detailCard<Meta: Sendable, Value: Sendable, Model>(
+        _ widget: DashboardWidget,
+        meta: Meta,
+        loadingHeight: CGFloat,
+        ranged: (@Sendable (Meta, ReportDetailRange) -> Meta)? = nil,
+        compute: @escaping @Sendable (Meta, [Transaction]) -> Value,
+        model: @escaping (Value) -> Model?,
+        @ViewBuilder card: @escaping (Value, Model?) -> some View,
+        @ViewBuilder detail: @escaping (Model) -> some View
+    ) -> some View {
+        let transactions = reportTransactions
+        let locale = locale
+        return WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: loadingHeight) {
+            compute(meta, $0)
+        } content: { value in
+            // Built once per pass, for both the card and the link.
+            let page = model(value)
+            if page == nil {
+                card(value, nil)
+            } else {
+                NavigationLink {
+                    ReportRangedDetail(
+                        initial: value,
+                        transactions: transactions ?? [],
+                        recompute: ranged.map { ranged in
+                            { @Sendable range, transactions in compute(ranged(meta, range), transactions) }
+                        }
+                    ) { value in
+                        if let page = model(value) {
+                            detail(page)
+                        } else {
+                            ContentUnavailableView(
+                                ReportStrings.text("No data in range", locale: locale),
+                                systemImage: "chart.bar.xaxis"
+                            )
+                            .toolbar(.visible, for: .navigationBar)
+                        }
+                    }
+                } label: {
+                    card(value, page).environment(\.reportCardLinksToDetail, true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("reportCard.\(widget.id)")
+            }
+        }
+    }
+
+    /// A chart widget: the glance card when there is something to chart, the
+    /// widget's own card (and its empty state) when there isn't.
+    private func chartCard<Meta: Sendable, Value: Sendable>(
+        _ widget: DashboardWidget,
+        meta: Meta,
+        loadingHeight: CGFloat,
+        ranged: (@Sendable (Meta, ReportDetailRange) -> Meta)? = nil,
+        compute: @escaping @Sendable (Meta, [Transaction]) -> Value,
+        chartDetail: @escaping (Value) -> ReportChartDetail?,
+        @ViewBuilder fallback: @escaping (Value) -> some View
+    ) -> some View {
+        detailCard(widget, meta: meta, loadingHeight: loadingHeight, ranged: ranged,
+                   compute: compute, model: chartDetail) { data, detail in
+            if let detail {
+                ReportGlanceCard(detail: detail)
+            } else {
+                fallback(data)
+            }
+        } detail: {
+            ReportChartDetailView(detail: $0)
+        }
+    }
+
+    private func ranged<Meta: TimeFramedMeta>(_ meta: Meta?) -> (@Sendable (Meta?, ReportDetailRange) -> Meta?)? {
+        let today = reportDate
+        guard meta != nil else { return nil }
+        return { (meta: Meta?, range: ReportDetailRange) -> Meta? in meta?.ranged(range, asOf: today) }
     }
 
     /// Upstream's card falls back to the schedules source when the file
@@ -463,10 +648,14 @@ struct DashboardView: View {
 
     private func comparisonLabel(for meta: SpendingMeta?) -> String {
         // nil mode defaults to single-month upstream (SpendingCard.tsx).
-        switch meta?.mode ?? .singleMonth {
+        comparisonLabel(mode: meta?.mode ?? .singleMonth, compareTo: meta?.compareTo)
+    }
+
+    private func comparisonLabel(mode: SpendingMeta.Mode, compareTo: String?) -> String {
+        switch mode {
         case .budget: ReportStrings.text("vs budget", locale: locale)
         case .singleMonth:
-            ReportStrings.format("vs %@", meta?.compareTo ?? "prior", locale: locale)
+            ReportStrings.format("vs %@", compareTo ?? "prior", locale: locale)
         case .average: ReportStrings.text("vs avg", locale: locale)
         }
     }

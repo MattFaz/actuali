@@ -17,7 +17,7 @@ struct CrossoverWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
-                Text(displayName).font(.headline)
+                ReportCardTitle(displayName)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(yearsToRetireText)

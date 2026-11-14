@@ -650,13 +650,75 @@ struct CustomReportEngineTests {
     @Test func reportCurrencyAxisUsesSelectedNumberFormat() {
         let locale = Locale(identifier: "en_US")
         #expect(ReportCurrencyAxisFormatting.label(
-            units: 1000.33, numberFormat: .commaDot, currencyCode: "USD",
+            units: 100.33, numberFormat: .commaDot, currencyCode: "USD",
             narrowSymbol: true, locale: locale
-        ) == "$1,000.33")
+        ) == "$100.33")
         #expect(ReportCurrencyAxisFormatting.label(
-            units: 1000.33, numberFormat: .dotComma, currencyCode: "USD",
+            units: 100.33, numberFormat: .dotComma, currencyCode: "USD",
             narrowSymbol: true, locale: locale
-        ) == "$1.000,33")
+        ) == "$100,33")
+    }
+
+    @Test func reportCurrencyAxisDropsCentsOnlyFromWholeTicks() {
+        let locale = Locale(identifier: "en_US")
+        func label(_ units: Double, _ format: ActualNumberFormat = .commaDot) -> String {
+            ReportCurrencyAxisFormatting.label(
+                units: units, numberFormat: format, currencyCode: "USD",
+                narrowSymbol: true, locale: locale
+            )
+        }
+        #expect(label(500) == "$500")
+        #expect(label(-200) == "-$200")
+        #expect(label(0) == "$0")
+        #expect(label(0.5) == "$0.50")
+    }
+
+    @Test func reportCurrencyAxisAbbreviatesFromThousands() {
+        let locale = Locale(identifier: "en_US")
+        func label(_ units: Double, _ format: ActualNumberFormat = .commaDot, code: String = "USD") -> String {
+            ReportCurrencyAxisFormatting.label(
+                units: units, numberFormat: format, currencyCode: code,
+                narrowSymbol: true, locale: locale
+            )
+        }
+        #expect(label(999) == "$999")
+        #expect(label(1000) == "$1K")
+        #expect(label(2500) == "$2.5K")
+        #expect(label(400_000) == "$400K")
+        #expect(label(-20000) == "-$20K")
+        #expect(label(12500) == "$12.5K")
+        #expect(label(1_250_000) == "$1.25M")
+        // Ticks $500 apart on a large balance keep distinct labels.
+        #expect(label(250_500) == "$250.5K")
+        #expect(label(250_000) == "$250K")
+        // The decimal mark follows Actual's number format, not the locale.
+        #expect(label(12500, .dotComma) == "$12,5K")
+        #expect(label(1_250_000, .spaceComma) == "$1,25M")
+        // No currency set: a plain abbreviated number.
+        #expect(label(400_000, code: "") == "400K")
+        // German has no short form for thousands, so the label keeps its
+        // grouping, and that follows Actual's number format too.
+        func german(_ format: ActualNumberFormat) -> String {
+            ReportCurrencyAxisFormatting.label(
+                units: 100_000, numberFormat: format, currencyCode: "", narrowSymbol: true,
+                locale: Locale(identifier: "de_DE")
+            )
+        }
+        #expect(german(.dotComma) == "100.000")
+        #expect(german(.commaDot) == "100,000")
+    }
+
+    @Test func intervalAxisLabelsAreThinnedToFitAPhone() {
+        let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        #expect(ReportAxisLabels.thinned(months) == ["Mar", "Jun", "Sep", "Dec"])
+        #expect(ReportAxisLabels.thinned(Array(months.prefix(5))) == ["Jan", "Mar", "May"])
+        // Few enough to fit: untouched.
+        #expect(ReportAxisLabels.thinned(Array(months.prefix(4))) == ["Jan", "Feb", "Mar", "Apr"])
+        #expect(ReportAxisLabels.thinned([]) == [])
+        // However many intervals, never more than the limit, and the latest is kept.
+        let days = (1...365).map { "d\($0)" }
+        #expect(ReportAxisLabels.thinned(days).count <= 4)
+        #expect(ReportAxisLabels.thinned(days).last == "d365")
     }
 
     @Test func reportCurrencyAxisPreservesHiddenBalanceSemantics() {

@@ -152,7 +152,7 @@ struct SummaryContent: Codable, Equatable {
 
 struct NetWorthMeta: Codable, Equatable {
     let name: String?
-    let timeFrame: WidgetTimeFrame?
+    var timeFrame: WidgetTimeFrame?
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
     let interval: Interval?
@@ -173,7 +173,7 @@ struct NetWorthMeta: Codable, Equatable {
 
 struct CashFlowMeta: Codable, Equatable {
     let name: String?
-    let timeFrame: WidgetTimeFrame?
+    var timeFrame: WidgetTimeFrame?
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
     let showBalance: Bool?
@@ -186,7 +186,7 @@ struct SpendingMeta: Codable, Equatable {
     let compare: String?
     let compareTo: String?
     let isLive: Bool?
-    let mode: Mode?
+    var mode: Mode?
     let averageRange: SpendingAverageRange?
 
     enum Mode: String, Codable {
@@ -219,7 +219,7 @@ struct MarkdownMeta: Codable, Equatable {
 
 struct AgeOfMoneyMeta: Codable, Equatable {
     let name: String?
-    let timeFrame: WidgetTimeFrame?
+    var timeFrame: WidgetTimeFrame?
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
     let granularity: String? // "daily" | "weekly" | "monthly"; nil = monthly
