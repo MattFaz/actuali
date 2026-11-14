@@ -650,13 +650,13 @@ struct CustomReportEngineTests {
     @Test func reportCurrencyAxisUsesSelectedNumberFormat() {
         let locale = Locale(identifier: "en_US")
         #expect(ReportCurrencyAxisFormatting.label(
-            units: 1000.33, numberFormat: .commaDot, currencyCode: "USD",
+            units: 100.33, numberFormat: .commaDot, currencyCode: "USD",
             narrowSymbol: true, locale: locale
-        ) == "$1,000.33")
+        ) == "$100.33")
         #expect(ReportCurrencyAxisFormatting.label(
-            units: 1000.33, numberFormat: .dotComma, currencyCode: "USD",
+            units: 100.33, numberFormat: .dotComma, currencyCode: "USD",
             narrowSymbol: true, locale: locale
-        ) == "$1.000,33")
+        ) == "$100,33")
     }
 
     @Test func reportCurrencyAxisDropsCentsOnlyFromWholeTicks() {
@@ -667,11 +667,32 @@ struct CustomReportEngineTests {
                 narrowSymbol: true, locale: locale
             )
         }
-        #expect(label(400_000) == "$400,000")
-        #expect(label(400_000, .dotComma) == "$400.000")
-        #expect(label(-2000) == "-$2,000")
+        #expect(label(500) == "$500")
+        #expect(label(-200) == "-$200")
         #expect(label(0) == "$0")
         #expect(label(0.5) == "$0.50")
+    }
+
+    @Test func reportCurrencyAxisAbbreviatesFromThousands() {
+        let locale = Locale(identifier: "en_US")
+        func label(_ units: Double, _ format: ActualNumberFormat = .commaDot, code: String = "USD") -> String {
+            ReportCurrencyAxisFormatting.label(
+                units: units, numberFormat: format, currencyCode: code,
+                narrowSymbol: true, locale: locale
+            )
+        }
+        #expect(label(999) == "$999")
+        #expect(label(1000) == "$1K")
+        #expect(label(2500) == "$2.5K")
+        #expect(label(400_000) == "$400K")
+        #expect(label(-20000) == "-$20K")
+        #expect(label(12500) == "$12.5K")
+        #expect(label(1_250_000) == "$1.25M")
+        // The decimal mark follows Actual's number format, not the locale.
+        #expect(label(12500, .dotComma) == "$12,5K")
+        #expect(label(1_250_000, .spaceComma) == "$1,25M")
+        // No currency set: a plain abbreviated number.
+        #expect(label(400_000, code: "") == "400K")
     }
 
     @Test func reportCurrencyAxisPreservesHiddenBalanceSemantics() {
