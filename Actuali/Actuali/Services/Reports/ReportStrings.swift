@@ -76,6 +76,10 @@ enum ReportStrings {
         bundle: Bundle = .main
     ) -> String {
         let resolvedLocale = locale ?? .current
-        return localized("\(years, specifier: "%g") years", locale: resolvedLocale, bundle: bundle)
+        // Two decimals at most, as upstream's CrossoverCard formats it
+        // (format(yearsToRetire, 'number')); months / 12 otherwise prints
+        // as "0.166667 years".
+        let rounded = (years * 100).rounded() / 100
+        return localized("\(rounded, specifier: "%g") years", locale: resolvedLocale, bundle: bundle)
     }
 }
