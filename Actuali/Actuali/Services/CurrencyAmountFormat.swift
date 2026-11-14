@@ -204,14 +204,17 @@ enum CurrencyAmountFormat {
         numberFormat: ActualNumberFormat,
         locale: Locale
     ) -> String {
+        // Fraction digits on the abbreviated value, not significant digits:
+        // three significant digits round 250.5K to "250K", so on a narrow
+        // range neighbouring ticks would share a label.
         let formatted = currencyCode.isEmpty
             ? units.formatted(
-                .number.locale(locale).notation(.compactName).precision(.significantDigits(1...3))
+                .number.locale(locale).notation(.compactName).precision(.fractionLength(0...2))
             )
             : units.formatted(
                 .currency(code: currencyCode).locale(locale)
                     .presentation(narrowSymbol ? .narrow : .standard)
-                    .notation(.compactName).precision(.significantDigits(1...3))
+                    .notation(.compactName).precision(.fractionLength(0...2))
             )
         // Only between the digits, so a "." inside a currency symbol survives.
         guard let first = formatted.firstIndex(where: \.isWholeNumber),
