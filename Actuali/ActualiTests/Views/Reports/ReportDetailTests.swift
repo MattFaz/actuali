@@ -105,14 +105,29 @@ struct ReportDetailTests {
         #expect(report(.bars([.init(label: "Jan", valueUnits: 5)], signed: false)).chartDetail()?.canShowTotal == false)
     }
 
-    @Test func lineChartsLabelBothEndsOfTheRange() {
-        // Few enough to fit: every interval.
-        #expect(ReportDetailChart.labelledIntervals(of: 0) == [])
-        #expect(ReportDetailChart.labelledIntervals(of: 4) == [0, 1, 2, 3])
-        // Four labels only when they space evenly; otherwise the ends and the middle.
-        #expect(ReportDetailChart.labelledIntervals(of: 13) == [0, 4, 8, 12])
-        #expect(ReportDetailChart.labelledIntervals(of: 6) == [0, 2, 5])
-        #expect(ReportDetailChart.labelledIntervals(of: 365) == [0, 182, 364])
+    @Test func axisNamesMonthsOrYearsWhereTheyStart() {
+        let locale = Locale(identifier: "en_US")
+        func day(_ year: Int, _ month: Int, _ day: Int) -> Date {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: "UTC")!
+            return calendar.date(from: DateComponents(year: year, month: month, day: day))!
+        }
+        // Daily points: a label where each month begins, and on the first.
+        #expect(ReportDetailLabels.axis([day(2026, 11, 29), day(2026, 11, 30), day(2026, 12, 1), day(2026, 12, 2)], locale: locale)
+            == ["Nov", "", "Dec", ""])
+        // More than a year of months: month names would repeat, so years.
+        let months = (0..<26).map { day(2026 + $0 / 12, 1 + $0 % 12, 1) }
+        let labels = ReportDetailLabels.axis(months, locale: locale)
+        #expect(labels.filter { !$0.isEmpty } == ["2027", "2028"])
+        #expect(labels[12] == "2027")
+    }
+
+    @Test func axisTicksAreThinnedFromTheFirst() {
+        #expect(ReportDetailChart.ticks([]) == [])
+        #expect(ReportDetailChart.ticks(["Jan", "", "Feb", ""]) == [0, 2])
+        // Twelve months: every other one.
+        #expect(ReportDetailChart.ticks((1...12).map { "m\($0)" }) == [0, 2, 4, 6, 8, 10])
+        #expect(ReportDetailChart.ticks((1...56).map { "\($0)" }).count <= 6)
     }
 
     @Test func scrubbingALineSnapsToTheNearestInterval() {
@@ -280,7 +295,7 @@ struct ReportDetailTests {
     @Test func dateLabelsShowTheDayOnlyWhenSomeDateNeedsIt() {
         #expect(ReportDetailLabels.dates([utc(2026, 10), utc(2026, 11)], locale: locale) == ["Oct 26", "Nov 26"])
         #expect(ReportDetailLabels.dates([utc(2026, 11, 1), utc(2026, 11, 13)], locale: locale) == ["Nov 1, 26", "Nov 13, 26"])
-        #expect(ReportDetailLabels.months([202_512, 202_601], locale: locale) == ["Dec 25", "Jan 26"])
+        #expect(ReportDetailLabels.dates(ReportDetailLabels.monthDates([202_512, 202_601]), locale: locale) == ["Dec 25", "Jan 26"])
     }
 
     @Test func netWorthIsOneAreaSeries() throws {

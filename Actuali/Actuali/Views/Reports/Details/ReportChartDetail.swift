@@ -47,6 +47,10 @@ struct ReportChartDetail: Equatable {
     var name: String
     var caption = ""
     var intervals: [String]
+    /// What the x-axis writes at each interval where the range under the
+    /// headline already gives the full dates: a month or a year where one
+    /// starts, empty elsewhere. nil to write the intervals themselves.
+    var axisLabels: [String]?
     var series: [Series]
     var style: Style
     var unit = Unit.currency
@@ -83,6 +87,7 @@ struct ReportChartDetail: Equatable {
         !intervals.isEmpty && !series.isEmpty
             && Set(intervals).count == intervals.count
             && series.allSatisfy { $0.values.count == intervals.count }
+            && (axisLabels.map { $0.count == intervals.count } ?? true)
             && (band.map { $0.lower.count == intervals.count && $0.upper.count == intervals.count } ?? true)
     }
 
@@ -152,13 +157,30 @@ enum ReportDetailLabels {
         return dates.map { $0.formatted(monthly ? base : base.day()) }
     }
 
-    /// Budget months arrive as YYYYMM integers.
-    static func months(_ months: [Int], locale: Locale) -> [String] {
+    /// The short form for the axis: "Nov" where a month starts, or "2027"
+    /// where a year starts once the range is too long for month names to
+    /// tell apart. Empty for the dates in between.
+    static func axis(_ dates: [Date], locale: Locale) -> [String] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = utc
-        return dates(months.map {
+        let months = dates.map { calendar.dateComponents([.year, .month], from: $0) }
+        let style = Date.FormatStyle(locale: locale, timeZone: utc)
+        let byYear = Set(months).count > 12
+        return dates.indices.map { index in
+            if byYear {
+                return index > 0 && months[index].year != months[index - 1].year ? dates[index].formatted(style.year()) : ""
+            }
+            return index == 0 || months[index] != months[index - 1] ? dates[index].formatted(style.month(.abbreviated)) : ""
+        }
+    }
+
+    /// Budget months arrive as YYYYMM integers.
+    static func monthDates(_ months: [Int]) -> [Date] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        return months.map {
             calendar.date(from: DateComponents(year: $0 / 100, month: $0 % 100, day: 1)) ?? .distantPast
-        }, locale: locale)
+        }
     }
 }
 
@@ -206,6 +228,7 @@ extension NetWorthData {
         let values = points.map { Double($0.balanceCents) / 100 }
         return ReportChartDetail(
             name: name, intervals: ReportDetailLabels.dates(points.map(\.date), locale: locale),
+            axisLabels: ReportDetailLabels.axis(points.map(\.date), locale: locale),
             series: [.init(name: name, color: .green, values: values)],
             style: .area, stats: ReportChartDetail.levelStats(values, locale: locale),
             card: .init(showsChange: true, compact: true)
@@ -219,6 +242,7 @@ extension CashFlowData {
         let expenses = points.reduce(0) { $0 + Double($1.expenseCents) / 100 }
         return ReportChartDetail(
             name: name, intervals: ReportDetailLabels.dates(points.map(\.periodStart), locale: locale),
+            axisLabels: ReportDetailLabels.axis(points.map(\.periodStart), locale: locale),
             series: [
                 .init(name: ReportStrings.text("Income", locale: locale), color: .green,
                       values: points.map { Double($0.incomeCents) / 100 }),
@@ -248,16 +272,18 @@ extension AgeOfMoneyData {
 
 extension BudgetAnalysisData {
     func chartDetail(name: String, locale: Locale) -> ReportChartDetail? {
-        let intervals = ReportDetailLabels.months(intervalData.map(\.month), locale: locale)
+        let months = ReportDetailLabels.monthDates(intervalData.map(\.month))
+        let intervals = ReportDetailLabels.dates(months, locale: locale)
+        let axisLabels = ReportDetailLabels.axis(months, locale: locale)
         func series(_ key: String, _ color: Color, _ cents: (BudgetAnalysisIntervalPoint) -> Int) -> ReportChartDetail.Series {
             .init(name: ReportStrings.text(key, locale: locale), color: color, values: intervalData.map { Double(cents($0)) / 100 })
         }
         if balanceOnly {
-            return ReportChartDetail(name: name, intervals: intervals,
+            return ReportChartDetail(name: name, intervals: intervals, axisLabels: axisLabels,
                                      series: [series("Balance", .gray, \.balanceCents)], style: .lines).chartable
         }
         return ReportChartDetail(
-            name: name, intervals: intervals,
+            name: name, intervals: intervals, axisLabels: axisLabels,
             // Spending is stored negative; the bars compare magnitudes.
             series: [series("Budgeted", .green, \.budgetedCents), series("Spent", .red) { abs($0.spentCents) }],
             style: graphType == .line ? .lines : .groupedBars,
@@ -276,7 +302,7 @@ extension BalanceForecastData {
         let labels = ReportDetailLabels.dates(points.map(\.date), locale: locale)
         let lowest = points.indices.filter { points[$0].isForecast }.min { values[$0] < values[$1] }
         return ReportChartDetail(
-            name: name, intervals: labels,
+            name: name, intervals: labels, axisLabels: ReportDetailLabels.axis(points.map(\.date), locale: locale),
             series: [.init(name: name, color: .blue, values: values,
                            dashedFrom: points.firstIndex(where: \.isForecast))],
             style: .lines, stats: ReportChartDetail.levelStats(values, locale: locale),
@@ -299,6 +325,7 @@ extension CrossoverData {
         let projection = points.firstIndex(where: \.isProjection)
         return ReportChartDetail(
             name: name, intervals: ReportDetailLabels.dates(points.map(\.month), locale: locale),
+            axisLabels: ReportDetailLabels.axis(points.map(\.month), locale: locale),
             series: [
                 .init(name: ReportStrings.text("Investment income", locale: locale), color: .green,
                       values: points.map { Double($0.investmentIncomeCents) / 100 }, dashedFrom: projection),

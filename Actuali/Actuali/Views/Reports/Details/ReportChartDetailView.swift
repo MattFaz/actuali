@@ -122,6 +122,13 @@ struct ReportChartDetailView: View {
                 Text(detail.intervals[shownInterval])
                     .font(.title2.weight(.bold))
             }
+            // The axis only names months, so the dates it spans go here,
+            // unless the report's own caption already says.
+            if detail.axisLabels != nil, detail.caption.isEmpty, let first = detail.intervals.first, let last = detail.intervals.last {
+                Text(verbatim: first + " – " + last)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             if !inlineLegend.isEmpty {
                 // Side by side when they fit, stacked when they don't.
                 ViewThatFits(in: .horizontal) {
