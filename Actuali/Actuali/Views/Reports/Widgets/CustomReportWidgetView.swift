@@ -87,12 +87,12 @@ enum ReportCurrencyAxisFormatting {
         narrowSymbol: Bool,
         locale: Locale
     ) -> String {
-        CustomReportChartAccessibility.amount(
-            units: units,
-            numberFormat: numberFormat,
-            currencyCode: currencyCode,
-            narrowSymbol: narrowSymbol,
-            locale: locale
+        // Ticks are nearly always whole numbers, where ".00" only widens the
+        // axis and narrows the plot. A tick with a fraction keeps its cents.
+        CurrencyAmountFormat.string(
+            cents: Int((units * 100).rounded()), currencyCode: currencyCode,
+            narrowSymbol: narrowSymbol, wholeUnits: units == units.rounded(),
+            numberFormat: numberFormat, locale: locale
         )
     }
 
