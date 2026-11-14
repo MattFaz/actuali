@@ -8,6 +8,9 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    # The defaults plus ready_for_review: the test jobs skip draft PRs, so
+    # leaving draft has to start the run that a push would otherwise wait for.
+    types: [opened, synchronize, reopened, ready_for_review]
     # The whole workflows directory rather than this file and its noop twin:
     # naming files individually means ci-noop.yml's paths-ignore has to be kept
     # in lockstep, and any file missed from both fires *both* workflows, which
@@ -49,8 +52,13 @@ jobs:
           unzip -o swiftformat.zip
       - run: ./swiftformat --lint --strict Actuali
 
+  # Skipped on draft PRs, as is test-ios18: a draft can't merge, and each push
+  # to one would otherwise spend two macOS test runs on work in progress.
+  # SwiftFormat still runs there, since it's quick. The negation rather than
+  # `draft == false` keeps workflow_dispatch running, where there is no PR.
   test-ios26:
     name: Unit Tests (iOS 26)
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -99,6 +107,7 @@ jobs:
   # download below stays as a fallback for when the image drops them.
   test-ios18:
     name: Unit Tests (iOS 18)
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: macos-15
     timeout-minutes: 60
     steps:
