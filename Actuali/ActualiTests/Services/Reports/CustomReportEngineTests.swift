@@ -659,6 +659,21 @@ struct CustomReportEngineTests {
         ) == "$1.000,33")
     }
 
+    @Test func reportCurrencyAxisDropsCentsOnlyFromWholeTicks() {
+        let locale = Locale(identifier: "en_US")
+        func label(_ units: Double, _ format: ActualNumberFormat = .commaDot) -> String {
+            ReportCurrencyAxisFormatting.label(
+                units: units, numberFormat: format, currencyCode: "USD",
+                narrowSymbol: true, locale: locale
+            )
+        }
+        #expect(label(400_000) == "$400,000")
+        #expect(label(400_000, .dotComma) == "$400.000")
+        #expect(label(-2000) == "-$2,000")
+        #expect(label(0) == "$0")
+        #expect(label(0.5) == "$0.50")
+    }
+
     @Test func reportCurrencyAxisPreservesHiddenBalanceSemantics() {
         #expect(ReportCurrencyAxisFormatting.hidesAxis(for: true))
         #expect(!ReportCurrencyAxisFormatting.hidesAxis(for: false))
