@@ -66,7 +66,6 @@ extension CustomReportConfig {
 /// Hosts a detail page and, when the widget's range can move, a range picker
 /// that recomputes the report from the dashboard's transactions.
 struct ReportRangedDetail<Value: Sendable, Content: View>: View {
-    @Environment(\.locale) private var locale
     /// What the card shows: the range configured on the web.
     let initial: Value
     let transactions: [Transaction]
@@ -82,21 +81,9 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
             // A new range is a new report: selection and hidden series from
             // the old one don't carry over.
             .id(range)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if recompute != nil {
-                    Picker(ReportStrings.text("Time range", locale: locale), selection: $range) {
-                        Text(ReportStrings.text("Default", locale: locale)).tag(ReportDetailRange?.none)
-                        ForEach(ReportDetailRange.allCases, id: \.self) { range in
-                            Text(ReportStrings.text(range.titleKey, locale: locale)).tag(ReportDetailRange?.some(range))
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .background(.bar)
-                    .accessibilityIdentifier("reportDetail.range")
-                }
-            }
+            // The page places the picker in its own content, under the
+            // large title, with `ReportRangePicker`.
+            .environment(\.reportDetailRange, recompute == nil ? nil : $range)
             .task(id: range) {
                 guard let range, let recompute else {
                     ranged = nil
@@ -110,11 +97,33 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
     }
 }
 
+/// The range control a detail page shows at the top of its content. Draws
+/// nothing when the widget has no range to move.
+struct ReportRangePicker: View {
+    @Environment(\.reportDetailRange) private var range
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        if let range {
+            Picker(ReportStrings.text("Time range", locale: locale), selection: range) {
+                Text(ReportStrings.text("Default", locale: locale)).tag(ReportDetailRange?.none)
+                ForEach(ReportDetailRange.allCases, id: \.self) { range in
+                    Text(ReportStrings.text(range.titleKey, locale: locale)).tag(ReportDetailRange?.some(range))
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("reportDetail.range")
+        }
+    }
+}
+
 // MARK: - Card affordance
 
 extension EnvironmentValues {
     /// Set on a card that opens a detail page, so its title shows a chevron.
     @Entry var reportCardLinksToDetail = false
+    /// The detail page's range selection, when its widget has one.
+    @Entry var reportDetailRange: Binding<ReportDetailRange?>?
 }
 
 /// A report card's title, with a chevron when the card opens a detail page.

@@ -85,33 +85,65 @@ struct ReportDetailTests {
         #expect(without.series.allSatisfy { $0.trend == nil })
     }
 
-    @Test func cardNamesTheLargestSeriesInLegendOrder() {
+    @Test func cardNamesTheLargestSeriesInLegendOrder() throws {
         // Latest interval: 300, 30, 3, -900. Largest by magnitude, kept in legend order.
         let table = CustomReportData.Stacked(
             intervalLabels: ["Jan", "Feb"],
             seriesNames: ["A", "B", "C", "D"],
             values: [[0, 300], [0, 30], [0, 3], [0, -900]]
         )
-        #expect(table.leadingSeries(limit: 3) == [0, 1, 3])
-        #expect(table.leadingSeries(limit: 1) == [3])
-        #expect(table.leadingSeries(limit: 10) == [0, 1, 2, 3])
-        #expect(CustomReportData.Stacked(intervalLabels: [], seriesNames: ["A"], values: [[]]).leadingSeries() == [])
+        let detail = try #require(report(.stacked(table)).chartDetail())
+        #expect(detail.leadingSeries(limit: 3) == [0, 1, 3])
+        #expect(detail.leadingSeries(limit: 1) == [3])
+        #expect(detail.leadingSeries(limit: 10) == [0, 1, 2, 3])
     }
 
-    @Test func linkedCardCapsALongLegend() {
+    @Test func glanceCardStaysCompactHoweverManySeries() throws {
         let many = CustomReportData.Stacked(
             intervalLabels: ["Jan", "Feb", "Mar"],
             seriesNames: (0..<12).map { "Investment account number \($0)" },
             values: Array(repeating: [100, 200, 300], count: 12)
         )
-        func cardHeight(linked: Bool) -> CGFloat {
-            UIHostingController(rootView: CustomReportWidgetView(data: report(.stacked(many)))
-                .environment(\.reportCardLinksToDetail, linked)
-                .environmentObject(BudgetStore.previewInstance()))
+        func height(_ view: some View) -> CGFloat {
+            UIHostingController(rootView: view.environmentObject(BudgetStore.previewInstance()))
                 .sizeThatFits(in: CGSize(width: 390, height: 4000)).height
         }
+        let glance = try height(ReportGlanceCard(detail: #require(report(.stacked(many)).chartDetail())))
         // Three named series and a count, rather than twelve legend entries.
-        #expect(cardHeight(linked: true) < cardHeight(linked: false))
+        #expect(glance < height(CustomReportWidgetView(data: report(.stacked(many)))))
+        // And no taller for twelve series than for four.
+        let four = CustomReportData.Stacked(intervalLabels: many.intervalLabels, seriesNames: Array(many.seriesNames.prefix(4)),
+                                            values: Array(many.values.prefix(4)))
+        #expect(try glance == height(ReportGlanceCard(detail: #require(report(.stacked(four)).chartDetail()))))
+    }
+
+    @Test func cardsLeadWithTheNumberThatAnswersTheWidget() throws {
+        // A forecast: how low the balance gets, and when.
+        let forecast = BalanceForecastData(points: [
+            .init(date: utc(2026, 11, 1), balanceCents: 500_000, isForecast: false),
+            .init(date: utc(2026, 11, 8), balanceCents: 100_000, isForecast: false),
+            .init(date: utc(2026, 11, 15), balanceCents: 350_000, isForecast: true),
+            .init(date: utc(2026, 11, 22), balanceCents: 240_000, isForecast: true),
+            .init(date: utc(2026, 11, 29), balanceCents: 410_000, isForecast: true),
+        ])
+        let forecastCard = try #require(forecast.chartDetail(name: "Forecast", locale: locale)).card
+        // The lowest forecast point, not the lower one already in the past.
+        #expect(forecastCard.value == 2400)
+        #expect(forecastCard.context == "Low · Nov 22, 26")
+
+        // A balance: its change across the range.
+        let netWorth = NetWorthData(points: [.init(date: utc(2026, 10), balanceCents: 1), .init(date: utc(2026, 11), balanceCents: 2)])
+        #expect(try #require(netWorth.chartDetail(name: "", locale: locale)).card.showsChange)
+
+        // A simulation: its success rate, which isn't an amount.
+        func band(_ year: Int) -> MonteCarloPercentileBand {
+            MonteCarloPercentileBand(year: year, p5: 0, p10: 0, p25: 0, p30: 0, p50: 0, p70: 0, p75: 0, p90: 0)
+        }
+        let monteCarlo = MonteCarloData(successRate: 0.364, currentAge: 45, horizonYears: 1, simulationCount: 10,
+                                        percentileBands: [band(0), band(1)])
+        let monteCarloCard = try #require(monteCarlo.chartDetail(name: "", locale: locale)).card
+        #expect(monteCarloCard.text == "36.4%")
+        #expect(monteCarloCard.context == "Success rate")
     }
 
     // MARK: - Spending

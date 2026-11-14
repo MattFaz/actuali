@@ -316,7 +316,13 @@ struct DashboardView: View {
             detailCard(widget, meta: meta, loadingHeight: 180, ranged: ranged(meta)) { meta, transactions in
                 NetWorthEngine.compute(meta: meta, transactions: transactions, today: today, context: conditionsContext)
             } card: { data in
-                NetWorthWidgetView(displayName: widget.displayName, data: data)
+                // The glance card when there is something to chart; the
+                // widget's own card (and its empty state) when there isn't.
+                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                    ReportGlanceCard(detail: detail)
+                } else {
+                    NetWorthWidgetView(displayName: widget.displayName, data: data)
+                }
             } detail: { data in
                 data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
@@ -330,7 +336,13 @@ struct DashboardView: View {
                     context: conditionsContext
                 )
             } card: { data in
-                CashFlowWidgetView(displayName: widget.displayName, data: data)
+                // The glance card when there is something to chart; the
+                // widget's own card (and its empty state) when there isn't.
+                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                    ReportGlanceCard(detail: detail)
+                } else {
+                    CashFlowWidgetView(displayName: widget.displayName, data: data)
+                }
             } detail: { data in
                 data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
@@ -369,7 +381,13 @@ struct DashboardView: View {
                     locale: locale
                 )
             } card: { data in
-                AgeOfMoneyWidgetView(displayName: widget.displayName, data: data)
+                // The glance card when there is something to chart; the
+                // widget's own card (and its empty state) when there isn't.
+                if let detail = data.chartDetail(name: widget.displayName) {
+                    ReportGlanceCard(detail: detail)
+                } else {
+                    AgeOfMoneyWidgetView(displayName: widget.displayName, data: data)
+                }
             } detail: { data in
                 data.chartDetail(name: widget.displayName).map { ReportChartDetailView(detail: $0) }
             }
@@ -401,7 +419,13 @@ struct DashboardView: View {
                     today: today, locale: locale
                 )
             } card: { data in
-                CustomReportWidgetView(data: data)
+                // The glance card when there is something to chart; the
+                // widget's own card (and its empty state) when there isn't.
+                if let detail = data.chartDetail(locale: locale) {
+                    ReportGlanceCard(detail: detail)
+                } else {
+                    CustomReportWidgetView(data: data)
+                }
             } detail: { data in
                 data.chartDetail(locale: locale).map { ReportChartDetailView(detail: $0) }
             }
@@ -429,7 +453,13 @@ struct DashboardView: View {
                     today: today
                 )
             } card: { data in
-                CrossoverWidgetView(displayName: widget.displayName, data: data)
+                // The glance card when there is something to chart; the
+                // widget's own card (and its empty state) when there isn't.
+                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                    ReportGlanceCard(detail: detail)
+                } else {
+                    CrossoverWidgetView(displayName: widget.displayName, data: data)
+                }
             } detail: { data in
                 data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
@@ -445,7 +475,13 @@ struct DashboardView: View {
                     context: conditionsContext
                 )
             } card: { data in
-                BudgetAnalysisWidgetView(displayName: widget.displayName, data: data)
+                // The glance card when there is something to chart; the
+                // widget's own card (and its empty state) when there isn't.
+                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                    ReportGlanceCard(detail: detail)
+                } else {
+                    BudgetAnalysisWidgetView(displayName: widget.displayName, data: data)
+                }
             } detail: { data in
                 data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
@@ -489,7 +525,13 @@ struct DashboardView: View {
                     context: conditionsContext
                 )
             } card: { data in
-                BalanceForecastWidgetView(displayName: widget.displayName, data: data)
+                // The glance card when there is something to chart; the
+                // widget's own card (and its empty state) when there isn't.
+                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                    ReportGlanceCard(detail: detail)
+                } else {
+                    BalanceForecastWidgetView(displayName: widget.displayName, data: data)
+                }
             } detail: { data in
                 data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
@@ -503,7 +545,13 @@ struct DashboardView: View {
                     )
                 )
             } card: { data in
-                MonteCarloWidgetView(displayName: widget.displayName, data: data)
+                // The glance card when there is something to chart; the
+                // widget's own card (and its empty state) when there isn't.
+                if let detail = data.chartDetail(name: widget.displayName, locale: locale) {
+                    ReportGlanceCard(detail: detail)
+                } else {
+                    MonteCarloWidgetView(displayName: widget.displayName, data: data)
+                }
             } detail: { data in
                 data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }

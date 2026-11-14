@@ -53,6 +53,21 @@ struct ReportChartDetail: Equatable {
     var stats: [Stat] = []
     /// Abbreviate amounts ("690K"): for figures too large to need their cents.
     var compact = false
+    var card = Card()
+
+    /// What the dashboard card leads with, where it isn't simply the readout
+    /// at the latest interval.
+    struct Card: Equatable {
+        /// A headline that isn't an amount in the chart's unit ("87%").
+        var text: String?
+        /// A headline amount other than the latest readout (a forecast's low).
+        var value: Double?
+        /// The words beside the headline; the latest interval when nil.
+        var context: String?
+        /// Show the change across the range beside the headline.
+        var showsChange = false
+        var compact = false
+    }
 
     /// False when there is nothing to chart, or the labels repeat: a string
     /// axis merges equal labels into one position.
@@ -162,18 +177,6 @@ extension CustomReportData {
     }
 }
 
-extension CustomReportData.Stacked {
-    /// The series a card has room to name: the largest by magnitude in the
-    /// latest interval, in legend order.
-    func leadingSeries(limit: Int = 3) -> [Int] {
-        guard let latest = intervalLabels.indices.last else { return [] }
-        return seriesNames.indices
-            .sorted { abs(values[$0][latest]) > abs(values[$1][latest]) }
-            .prefix(limit)
-            .sorted()
-    }
-}
-
 extension NetWorthData {
     func chartDetail(name: String, locale: Locale) -> ReportChartDetail? {
         guard points.count >= 2 else { return nil }
@@ -181,7 +184,8 @@ extension NetWorthData {
         return ReportChartDetail(
             name: name, intervals: ReportDetailLabels.dates(points.map(\.date), locale: locale),
             series: [.init(name: name, color: .green, values: values)],
-            style: .area, stats: ReportChartDetail.levelStats(values, locale: locale)
+            style: .area, stats: ReportChartDetail.levelStats(values, locale: locale),
+            card: .init(showsChange: true, compact: true)
         ).chartable
     }
 }
@@ -214,7 +218,7 @@ extension AgeOfMoneyData {
         return ReportChartDetail(
             name: name, intervals: points.map(\.monthLabel),
             series: [.init(name: name, color: .teal, values: points.map { Double($0.age) })],
-            style: .area, unit: .days
+            style: .area, unit: .days, card: .init(showsChange: true)
         ).chartable
     }
 }
@@ -243,11 +247,16 @@ extension BalanceForecastData {
     func chartDetail(name: String, locale: Locale) -> ReportChartDetail? {
         guard points.count >= 2 else { return nil }
         let values = points.map { Double($0.balanceCents) / 100 }
+        let labels = ReportDetailLabels.dates(points.map(\.date), locale: locale)
+        let lowest = points.indices.filter { points[$0].isForecast }.min { values[$0] < values[$1] }
         return ReportChartDetail(
-            name: name, intervals: ReportDetailLabels.dates(points.map(\.date), locale: locale),
+            name: name, intervals: labels,
             series: [.init(name: name, color: .blue, values: values,
                            dashedFrom: points.firstIndex(where: \.isForecast))],
-            style: .lines, stats: ReportChartDetail.levelStats(values, locale: locale)
+            style: .lines, stats: ReportChartDetail.levelStats(values, locale: locale),
+            // The number that matters on a forecast is how low it gets.
+            card: .init(value: lowest.map { values[$0] },
+                        context: lowest.map { ReportStrings.text("Low", locale: locale) + " · " + labels[$0] })
         ).chartable
     }
 }
@@ -274,7 +283,9 @@ extension CrossoverData {
                     ReportChartDetail.Stat(label: ReportStrings.text("Crossover", locale: locale),
                                            value: .text(ReportDetailLabels.dates([$0], locale: locale)[0]))
                 },
-            ].compactMap(\.self)
+            ].compactMap(\.self),
+            card: .init(text: yearsToRetire.map { ReportStrings.yearsToRetire($0, locale: locale) },
+                        context: ReportStrings.text("Years to Retire", locale: locale))
         ).chartable
     }
 }
@@ -301,7 +312,9 @@ extension MonteCarloData {
                 .init(label: ReportStrings.text("Simulations", locale: locale),
                       value: .text(simulationCount.formatted(.number.locale(locale)))),
             ],
-            compact: true
+            compact: true,
+            card: .init(text: MonteCarloWidgetFormatting.percentage((successRate * 1000).rounded() / 10, locale: locale),
+                        context: ReportStrings.text("Success rate", locale: locale))
         ).chartable
     }
 }

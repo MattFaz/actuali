@@ -41,6 +41,7 @@ struct CalendarDetailView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
+                ReportRangePicker()
                 if let shown {
                     readout(shown)
                 }
