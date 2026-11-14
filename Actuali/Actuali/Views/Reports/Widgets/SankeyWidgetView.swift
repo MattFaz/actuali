@@ -6,19 +6,12 @@ import SwiftUI
 struct SankeyWidgetView: View {
     let displayName: String
     let data: SankeyData
-    var linksToDetail = false
 
     private static let chartHeight: CGFloat = 200
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(displayName).font(.headline)
-                Spacer()
-                if linksToDetail {
-                    ReportDetailChevron()
-                }
-            }
+            ReportCardTitle(displayName)
 
             if hasDrawableFlows {
                 Canvas { context, size in

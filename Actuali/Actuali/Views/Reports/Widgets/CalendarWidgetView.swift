@@ -5,7 +5,6 @@ struct CalendarWidgetView: View {
     @Environment(\.locale) private var locale
     let displayName: String
     let data: CalendarData
-    var linksToDetail = false
 
     /// Upstream's card lays every month out horizontally with scrolling; on
     /// iPhone we show the most recent two so cells stay readable.
@@ -23,15 +22,12 @@ struct CalendarWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(displayName).font(.headline)
+                ReportCardTitle(displayName)
                 Spacer()
                 CalendarTotalsView(
                     incomeCents: data.totalIncomeCents,
                     expenseCents: data.totalExpenseCents
                 )
-                if linksToDetail {
-                    ReportDetailChevron()
-                }
             }
             if data.months.isEmpty {
                 Text(ReportStrings.text("No data", locale: locale))

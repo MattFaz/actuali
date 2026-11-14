@@ -26,7 +26,7 @@ struct BalanceForecastWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
-                Text(displayName).font(.headline)
+                ReportCardTitle(displayName)
                 Spacer()
                 if let ending = data.points.last {
                     VStack(alignment: .trailing, spacing: 2) {

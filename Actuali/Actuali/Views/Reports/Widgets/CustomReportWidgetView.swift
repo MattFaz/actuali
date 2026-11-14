@@ -171,7 +171,6 @@ struct CustomReportWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     let data: CustomReportData
-    var linksToDetail = false
 
     /// Fixed cycle standing in for upstream's qualitative colour scale. Only
     /// the donut assigns colours itself: a category can share a name with its
@@ -182,18 +181,12 @@ struct CustomReportWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(data.name).font(.headline)
-                    if !data.rangeLabel.isEmpty {
-                        Text(data.rangeLabel)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                if linksToDetail {
-                    ReportDetailChevron()
+            VStack(alignment: .leading, spacing: 2) {
+                ReportCardTitle(data.name)
+                if !data.rangeLabel.isEmpty {
+                    Text(data.rangeLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             content

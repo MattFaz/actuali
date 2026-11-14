@@ -17,7 +17,7 @@ struct AgeOfMoneyWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(displayName).font(.headline)
+                ReportCardTitle(displayName)
                 Spacer()
                 if let age = data.currentAge {
                     HStack(spacing: 4) {
