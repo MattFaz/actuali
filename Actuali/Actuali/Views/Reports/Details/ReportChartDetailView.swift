@@ -156,12 +156,21 @@ struct ReportChartDetailView: View {
     private var chart: some View {
         // The total already leaves the hidden series out.
         let total = showsTotal && detail.canShowTotal
-        return ReportDetailChart(detail: total ? detail.totalled(hiding: hidden) : detail,
-                                 hidden: total ? [] : hidden, selection: $selected)
-            // Where a list below carries the same numbers as text, the chart
-            // would only repeat them. Otherwise it is the only way to them, so
-            // it stays reachable unless amounts are hidden.
-            .accessibilityHidden(breakdown != .none || budgetStore.hideBalances)
+        let shown = total ? detail.totalled(hiding: hidden) : detail
+        let figures = shown.figures(hiding: total ? [] : hidden)
+        return ReportDetailChart(detail: shown, hidden: total ? [] : hidden, selection: $selected)
+            // The interval list below already reads every figure. The other
+            // lists carry one interval, and VoiceOver can't drag to move it,
+            // so there the chart stands in for the whole table.
+            .accessibilityHidden(breakdown == .intervals || budgetStore.hideBalances)
+            .accessibilityRepresentation {
+                VStack(alignment: .leading) {
+                    ForEach(figures.indices, id: \.self) { index in
+                        Text(verbatim: [figures[index].series, figures[index].interval, amount(figures[index].value)]
+                            .joined(separator: ", "))
+                    }
+                }
+            }
     }
 
     // MARK: - Lists

@@ -138,6 +138,15 @@ struct ReportDetailTests {
         #expect(try detail(["2025", "2026"]).axisLabels == nil)
     }
 
+    @Test func voiceOverGetsEveryFigureOfTheSeriesStillShown() throws {
+        let stacked = CustomReportData.Stacked(intervalLabels: ["Jan", "Feb"], seriesNames: ["Rent", "Food"], values: [[1, 2], [3, 4]])
+        let detail = try #require(CustomReportData(name: "R", rangeLabel: "", kind: .stacked(stacked)).chartDetail(locale: locale))
+        #expect(detail.figures().map(\.value) == [1, 2, 3, 4])
+        #expect(detail.figures(hiding: [0]).map { "\($0.series) \($0.interval)" } == ["Food Jan", "Food Feb"])
+        // The total view reads as one series.
+        #expect(detail.totalled().figures().map(\.value) == [4, 6])
+    }
+
     @Test func axisTicksAreThinnedFromTheFirst() {
         #expect(ReportDetailChart.ticks([]) == [])
         #expect(ReportDetailChart.ticks(["Jan", "", "Feb", ""]) == [0, 2])
@@ -451,6 +460,10 @@ struct ReportDetailTests {
         #expect(detail.readoutLabel == "Median")
         #expect(detail.compact)
         #expect(detail.stats.map(\.value) == [.text("87%"), .text("1,000")])
+        // A half-year age still gets one label per year.
+        let halfYear = MonteCarloData(successRate: 0.87, currentAge: 35.5, horizonYears: 4, simulationCount: 1000,
+                                      percentileBands: (0..<4).map { band($0, 1, 1, 1) })
+        #expect(try #require(halfYear.chartDetail(name: "Outlook", locale: locale)).intervals == ["36", "37", "38", "39"])
     }
 
     // MARK: - Time range

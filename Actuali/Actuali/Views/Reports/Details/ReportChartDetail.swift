@@ -124,6 +124,14 @@ struct ReportChartDetail: Equatable {
         return total
     }
 
+    /// Every figure in the chart, series by series: what VoiceOver reads in
+    /// place of a chart it can't drag across.
+    func figures(hiding hidden: Set<Int> = []) -> [(series: String, interval: String, value: Double)] {
+        series.indices.filter { !hidden.contains($0) }.flatMap { index in
+            intervals.indices.map { (series[index].name, intervals[$0], series[index].values[$0]) }
+        }
+    }
+
     func readoutValue(at interval: Int, hiding hidden: Set<Int> = []) -> Double? {
         switch readout {
         case .total: series.indices.filter { !hidden.contains($0) }.reduce(0) { $0 + series[$1].values[interval] }
@@ -377,8 +385,12 @@ extension MonteCarloData {
         }
         return ReportChartDetail(
             name: name,
-            // The x-axis is the age reached in each simulated year.
-            intervals: percentileBands.map { (currentAge + Double($0.year)).formatted(.number.locale(locale).precision(.fractionLength(0))) },
+            // The x-axis is the age reached in each simulated year. Rounded
+            // first: the format rounds halves to even, so a half-year age
+            // would give two years one label and leave nothing chartable.
+            intervals: percentileBands.map {
+                (currentAge + Double($0.year)).rounded().formatted(.number.locale(locale).precision(.fractionLength(0)))
+            },
             series: [series(ReportStrings.text("Median", locale: locale), .purple, \.p50)],
             style: .lines, readoutLabel: ReportStrings.text("Median", locale: locale),
             band: .init(lowerName: "p10", upperName: "p90",
