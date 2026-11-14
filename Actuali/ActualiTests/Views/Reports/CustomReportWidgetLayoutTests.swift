@@ -20,6 +20,10 @@ struct CustomReportWidgetLayoutTests {
     /// squeezed the plot to nothing and ran past the card. The card has to
     /// grow with the legend instead.
     @Test func longLegendGrowsTheCardInsteadOfSqueezingThePlot() {
+        // One series is plot + axis + one legend row, so a card no taller
+        // than the 160 pt plot means the plot lost its height.
+        #expect(cardHeight({ .stacked($0) }, series: 1) > 160)
+        #expect(cardHeight({ .lines($0, trends: []) }, series: 1) > 160)
         #expect(cardHeight({ .stacked($0) }, series: 8) > cardHeight({ .stacked($0) }, series: 1))
         #expect(cardHeight({ .lines($0, trends: []) }, series: 8) > cardHeight({ .lines($0, trends: []) }, series: 1))
     }
