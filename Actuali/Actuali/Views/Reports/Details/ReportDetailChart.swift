@@ -26,13 +26,6 @@ struct ReportDetailChart: View {
         return step > 1 ? marked.indices.filter { $0.isMultiple(of: step) }.map { marked[$0] } : marked
     }
 
-    /// A line's ticks: a label sits to the right of its rule, so one too near
-    /// the end of the plot to fit there is left to the frame.
-    nonisolated static func lineTicks(_ labels: [String]) -> [Int] {
-        let last = labels.count - 1
-        return ticks(labels).filter { Double(last - $0) >= 0.08 * Double(last) }
-    }
-
     /// Whether a line has room for a dot on every point, as on a Health chart.
     nonisolated static func marksEveryPoint(intervals: Int, series: Int) -> Bool {
         intervals <= 12 && series <= 4
@@ -118,13 +111,16 @@ struct ReportDetailChart: View {
                         }
                     ))
                     .chartXAxis {
-                        AxisMarks(values: Self.lineTicks(labels).map(Double.init)) { value in
+                        let last = labels.count - 1
+                        // Aligned: a point sits on its rule, so its label goes under
+                        // it rather than beside the rule, where the default puts it.
+                        AxisMarks(preset: .aligned, values: Self.ticks(labels).map(Double.init)) { value in
                             if let index = value.as(Double.self).map({ Int($0) }), labels.indices.contains(index) {
-                                // The frame already marks the start.
-                                if index != 0 {
+                                // The frame already marks the ends.
+                                if index != 0, index != last {
                                     AxisGridLine(stroke: Self.intervalRule)
                                 }
-                                AxisValueLabel(anchor: .topLeading) {
+                                AxisValueLabel(anchor: .top) {
                                     Text(verbatim: labels[index])
                                 }
                             }

@@ -142,9 +142,6 @@ struct ReportDetailTests {
         // Twelve months: every other one.
         #expect(ReportDetailChart.ticks((1...12).map { "m\($0)" }) == [0, 2, 4, 6, 8, 10])
         #expect(ReportDetailChart.ticks((1...56).map { "\($0)" }).count <= 6)
-        // A line's label sits right of its rule: none at the very end.
-        #expect(ReportDetailChart.lineTicks(["Jun", "Jul", "Aug"]) == [0, 1])
-        #expect(ReportDetailChart.lineTicks((1...12).map { "m\($0)" }) == [0, 2, 4, 6, 8, 10])
     }
 
     @Test func sparseLinesGetADotOnEveryPoint() {
