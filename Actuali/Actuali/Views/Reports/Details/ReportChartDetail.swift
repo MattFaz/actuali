@@ -205,15 +205,16 @@ extension CustomReportData {
         ) -> ReportChartDetail? {
             let palette = CustomReportWidgetView.palette
             let single = table.seriesNames.count == 1
-            // ponytail: the engine keeps only each interval's label, so a
-            // monthly report's dates are read back from "Sep '26". Other
-            // intervals don't parse and keep their labels on the axis; carry
-            // the dates on Stacked if those need short labels too.
-            let formatter = CustomReportEngine.monthFormatter(locale: locale)
-            let months = table.intervalLabels.compactMap(formatter.date(from:))
+            // ponytail: the engine keeps only each interval's label, so the
+            // dates are read back from "Sep '26" (monthly) or "26-09-14"
+            // (daily, weekly). Yearly labels are already short and stay.
+            // Carry the dates on Stacked if this ever needs to be exact.
+            let dates = [CustomReportEngine.monthFormatter(locale: locale), CustomReportEngine.dayFormatter(locale: locale)]
+                .map { formatter in table.intervalLabels.compactMap(formatter.date(from:)) }
+                .first { $0.count == table.intervalLabels.count }
             return ReportChartDetail(
                 name: name, caption: rangeLabel, intervals: table.intervalLabels,
-                axisLabels: months.count == table.intervalLabels.count ? ReportDetailLabels.axis(months, locale: locale) : nil,
+                axisLabels: dates.map { ReportDetailLabels.axis($0, locale: locale) },
                 series: table.seriesNames.indices.map {
                     .init(name: table.seriesNames[$0], color: single ? .accentColor : palette[$0 % palette.count],
                           values: table.values[$0],
@@ -278,10 +279,11 @@ extension CashFlowData {
 }
 
 extension AgeOfMoneyData {
-    func chartDetail(name: String) -> ReportChartDetail? {
+    func chartDetail(name: String, locale: Locale) -> ReportChartDetail? {
         guard points.count >= 2 else { return nil }
         return ReportChartDetail(
-            name: name, intervals: points.map(\.monthLabel),
+            name: name, intervals: ReportDetailLabels.dates(points.map(\.month), locale: locale),
+            axisLabels: ReportDetailLabels.axis(points.map(\.month), locale: locale),
             series: [.init(name: name, color: .teal, values: points.map { Double($0.age) })],
             style: .area, unit: .days, card: .init(showsChange: true)
         ).chartable

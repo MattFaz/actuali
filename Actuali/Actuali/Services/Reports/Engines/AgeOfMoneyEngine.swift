@@ -2,6 +2,7 @@ import Foundation
 
 struct AgeOfMoneyData: Equatable {
     struct Point: Equatable {
+        var month: Date // first of the month, UTC
         var monthLabel: String // "Jan 2026"
         var age: Int // days
     }
@@ -147,6 +148,7 @@ enum AgeOfMoneyEngine {
                 let lastTen = agesSoFar.suffix(10)
                 let avg = Int((Double(lastTen.reduce(0, +)) / Double(lastTen.count)).rounded())
                 points.append(.init(
+                    month: month,
                     monthLabel: ReportMonthYearFormatting.string(from: month, locale: locale),
                     age: avg
                 ))

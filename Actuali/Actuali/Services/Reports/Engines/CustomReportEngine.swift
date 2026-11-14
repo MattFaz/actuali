@@ -569,7 +569,7 @@ enum CustomReportEngine {
         return c
     }()
 
-    private static func dayFormatter(locale: Locale) -> DateFormatter {
+    static func dayFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "yy-MM-dd"
         f.timeZone = TimeZone(identifier: "UTC")
