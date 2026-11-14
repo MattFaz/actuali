@@ -273,13 +273,15 @@ struct DashboardView: View {
                 SummaryWidgetView(displayName: widget.displayName, data: data)
             }
         case .netWorth(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 180) { transactions in
+            detailCard(widget, meta: meta, loadingHeight: 180, ranged: ranged(meta)) { meta, transactions in
                 NetWorthEngine.compute(meta: meta, transactions: transactions, today: today, context: conditionsContext)
-            } content: { data in
+            } card: { data in
                 NetWorthWidgetView(displayName: widget.displayName, data: data)
+            } detail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
         case .cashFlow(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            detailCard(widget, meta: meta, loadingHeight: 200, ranged: ranged(meta)) { meta, transactions in
                 CashFlowEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -287,8 +289,10 @@ struct DashboardView: View {
                     today: today,
                     context: conditionsContext
                 )
-            } content: { data in
+            } card: { data in
                 CashFlowWidgetView(displayName: widget.displayName, data: data)
+            } detail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
         case .spending(_, let meta):
             WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 120) { transactions in
@@ -307,7 +311,7 @@ struct DashboardView: View {
         case .markdown(_, let meta):
             MarkdownWidgetView(meta: meta)
         case .ageOfMoney(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 160) { transactions in
+            detailCard(widget, meta: meta, loadingHeight: 160, ranged: ranged(meta)) { meta, transactions in
                 AgeOfMoneyEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -315,8 +319,10 @@ struct DashboardView: View {
                     context: conditionsContext,
                     locale: locale
                 )
-            } content: { data in
+            } card: { data in
                 AgeOfMoneyWidgetView(displayName: widget.displayName, data: data)
+            } detail: { data in
+                data.chartDetail(name: widget.displayName).map { ReportChartDetailView(detail: $0) }
             }
         case .formula(_, let meta):
             WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 100) { transactions in
@@ -325,9 +331,13 @@ struct DashboardView: View {
                 FormulaWidgetView(displayName: widget.displayName, result: result)
             }
         case .customReport(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            let config = (meta?.id).flatMap { customReportConfigs[$0] }
+            detailCard(
+                widget, meta: config, loadingHeight: 200,
+                ranged: config == nil ? nil : { (config: CustomReportConfig?, range: ReportDetailRange) in config?.ranged(range) }
+            ) { config, transactions in
                 CustomReportEngine.compute(
-                    config: (meta?.id).flatMap { customReportConfigs[$0] },
+                    config: config,
                     transactions: transactions,
                     reportContext: CustomReportEngine.ReportContext(
                         categories: categories,
@@ -341,21 +351,13 @@ struct DashboardView: View {
                     filterContext: conditionsContext,
                     today: today, locale: locale
                 )
-            } content: { data in
-                if let table = data.detailTable {
-                    NavigationLink {
-                        CustomReportDetailView(data: data, table: table)
-                    } label: {
-                        CustomReportWidgetView(data: data, linksToDetail: true)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("reportCard.\(widget.id)")
-                } else {
-                    CustomReportWidgetView(data: data)
-                }
+            } card: { data in
+                CustomReportWidgetView(data: data)
+            } detail: { data in
+                data.chartDetail.map { ReportChartDetailView(detail: $0) }
             }
         case .calendar(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            detailCard(widget, meta: meta, loadingHeight: 200, ranged: ranged(meta)) { meta, transactions in
                 CalendarEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -363,21 +365,13 @@ struct DashboardView: View {
                     firstDayOfWeekIdx: firstDayOfWeekIdx,
                     context: conditionsContext
                 )
-            } content: { data in
-                if data.months.isEmpty {
-                    CalendarWidgetView(displayName: widget.displayName, data: data)
-                } else {
-                    NavigationLink {
-                        CalendarDetailView(displayName: widget.displayName, data: data)
-                    } label: {
-                        CalendarWidgetView(displayName: widget.displayName, data: data, linksToDetail: true)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("reportCard.\(widget.id)")
-                }
+            } card: { data in
+                CalendarWidgetView(displayName: widget.displayName, data: data)
+            } detail: { data in
+                data.months.isEmpty ? nil : CalendarDetailView(displayName: widget.displayName, data: data)
             }
         case .crossover(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            detailCard(widget, meta: meta, loadingHeight: 200) { meta, transactions in
                 CrossoverEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -385,11 +379,13 @@ struct DashboardView: View {
                     accountIds: accounts.map(\.id),
                     today: today
                 )
-            } content: { data in
+            } card: { data in
                 CrossoverWidgetView(displayName: widget.displayName, data: data)
+            } detail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
         case .budgetAnalysis(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            detailCard(widget, meta: meta, loadingHeight: 200, ranged: ranged(meta)) { meta, transactions in
                 BudgetAnalysisEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -399,11 +395,13 @@ struct DashboardView: View {
                     today: today,
                     context: conditionsContext
                 )
-            } content: { data in
+            } card: { data in
                 BudgetAnalysisWidgetView(displayName: widget.displayName, data: data)
+            } detail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
         case .sankey(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 240) { transactions in
+            detailCard(widget, meta: meta, loadingHeight: 240, ranged: ranged(meta)) { meta, transactions in
                 SankeyEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -418,22 +416,14 @@ struct DashboardView: View {
                     context: conditionsContext,
                     locale: locale
                 )
-            } content: { data in
-                if data.hasDrawableFlows {
-                    NavigationLink {
-                        SankeyDetailView(displayName: widget.displayName, data: data)
-                    } label: {
-                        SankeyWidgetView(displayName: widget.displayName, data: data, linksToDetail: true)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("reportCard.\(widget.id)")
-                } else {
-                    SankeyWidgetView(displayName: widget.displayName, data: data)
-                }
+            } card: { data in
+                SankeyWidgetView(displayName: widget.displayName, data: data)
+            } detail: { data in
+                data.hasDrawableFlows ? SankeyDetailView(displayName: widget.displayName, data: data) : nil
             }
         case .balanceForecast(_, let meta):
-            let meta = forecastMeta(meta)
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            // No range picker: the forecast runs forward from today.
+            detailCard(widget, meta: forecastMeta(meta), loadingHeight: 200) { meta, transactions in
                 BalanceForecastEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -449,11 +439,13 @@ struct DashboardView: View {
                     today: today,
                     context: conditionsContext
                 )
-            } content: { data in
+            } card: { data in
                 BalanceForecastWidgetView(displayName: widget.displayName, data: data)
+            } detail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
         case .monteCarlo(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 220) { _ in
+            detailCard(widget, meta: meta, loadingHeight: 220) { meta, _ in
                 MonteCarloEngine.compute(
                     meta: meta,
                     accountBalances: Dictionary(
@@ -461,13 +453,69 @@ struct DashboardView: View {
                         uniquingKeysWith: { first, _ in first }
                     )
                 )
-            } content: { data in
+            } card: { data in
                 MonteCarloWidgetView(displayName: widget.displayName, data: data)
+            } detail: { data in
+                data.chartDetail(name: widget.displayName, locale: locale).map { ReportChartDetailView(detail: $0) }
             }
         case .unsupported:
             // Filtered out of visibleWidgets; listed in the top notice instead.
             EmptyView()
         }
+    }
+
+    /// A card that opens a detail page. `ranged` recomputes the widget over a
+    /// range picked there; leave it nil when the widget has no range to move.
+    /// A card with nothing to show in detail (`detail` returns nil) stays a
+    /// plain card.
+    private func detailCard<Meta: Sendable, Value: Sendable>(
+        _ widget: DashboardWidget,
+        meta: Meta,
+        loadingHeight: CGFloat,
+        ranged: (@Sendable (Meta, ReportDetailRange) -> Meta)? = nil,
+        compute: @escaping @Sendable (Meta, [Transaction]) -> Value,
+        @ViewBuilder card: @escaping (Value) -> some View,
+        detail: @escaping (Value) -> (some View)?
+    ) -> some View {
+        let transactions = reportTransactions
+        let locale = locale
+        return WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: loadingHeight) {
+            compute(meta, $0)
+        } content: { value in
+            if detail(value) == nil {
+                card(value)
+            } else {
+                NavigationLink {
+                    ReportRangedDetail(
+                        initial: value,
+                        transactions: transactions ?? [],
+                        recompute: ranged.map { ranged in
+                            { @Sendable range, transactions in compute(ranged(meta, range), transactions) }
+                        }
+                    ) { value in
+                        if let page = detail(value) {
+                            page
+                        } else {
+                            ContentUnavailableView(
+                                ReportStrings.text("No data in range", locale: locale),
+                                systemImage: "chart.bar.xaxis"
+                            )
+                            .toolbar(.visible, for: .navigationBar)
+                        }
+                    }
+                } label: {
+                    card(value).environment(\.reportCardLinksToDetail, true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("reportCard.\(widget.id)")
+            }
+        }
+    }
+
+    private func ranged<Meta: TimeFramedMeta>(_ meta: Meta?) -> (@Sendable (Meta?, ReportDetailRange) -> Meta?)? {
+        let today = reportDate
+        guard meta != nil else { return nil }
+        return { (meta: Meta?, range: ReportDetailRange) -> Meta? in meta?.ranged(range, asOf: today) }
     }
 
     /// Upstream's card falls back to the schedules source when the file
@@ -499,16 +547,6 @@ struct DashboardView: View {
             ReportStrings.format("vs %@", meta?.compareTo ?? "prior", locale: locale)
         case .average: ReportStrings.text("vs avg", locale: locale)
         }
-    }
-}
-
-/// Marks a card as opening a detail page. Decorative: the card is the button.
-struct ReportDetailChevron: View {
-    var body: some View {
-        Image(systemName: "chevron.right")
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(.tertiary)
-            .accessibilityHidden(true)
     }
 }
 

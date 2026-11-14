@@ -32,7 +32,7 @@ struct CashFlowWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(displayName).font(.headline)
+            ReportCardTitle(displayName)
             if data.points.isEmpty || allEmpty {
                 Text(ReportStrings.text("No data", locale: locale))
                     .font(.subheadline)

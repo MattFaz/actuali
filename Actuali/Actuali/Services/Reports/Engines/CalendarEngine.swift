@@ -5,7 +5,7 @@ struct CalendarMeta: Codable, Equatable {
     let name: String?
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
-    let timeFrame: WidgetTimeFrame?
+    var timeFrame: WidgetTimeFrame?
 }
 
 /// One grid cell. `dayOfMonth` is nil for the leading/trailing padding cells
