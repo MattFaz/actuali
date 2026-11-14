@@ -153,17 +153,12 @@ enum ReportAxisLabels {
 /// `AxisMarks(values:)` is ignored on a string axis, hence the per-mark check.
 struct ReportIntervalXAxis: ViewModifier {
     let labels: [String]
-    /// Detail pages leave the vertical lines out: the scrubbing rule is the
-    /// only vertical line there.
-    var gridLines = true
     func body(content: Content) -> some View {
         let shown = Set(ReportAxisLabels.thinned(labels))
         content.chartXAxis {
             AxisMarks { value in
                 if let label = value.as(String.self), shown.contains(label) {
-                    if gridLines {
-                        AxisGridLine()
-                    }
+                    AxisGridLine()
                     AxisValueLabel()
                 }
             }
