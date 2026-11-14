@@ -556,6 +556,10 @@ struct ReportDetailTests {
         #expect(data([quiet, busy]).latestActiveDay == .init(month: 1, cell: 4))
         #expect(data([quiet]).latestActiveDay == nil)
         #expect(data([]).latestActiveDay == nil)
+        // A day picked before a reload may no longer be in the grid.
+        #expect(data([busy]).contains(.init(month: 0, cell: 4)))
+        #expect(!data([busy]).contains(.init(month: 1, cell: 4)))
+        #expect(!data([busy]).contains(.init(month: 0, cell: 99)))
     }
 
     @Test func calendarDayTitleCountsFromTheMonthStartInUTC() {
