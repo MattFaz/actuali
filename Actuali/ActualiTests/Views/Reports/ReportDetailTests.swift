@@ -163,6 +163,18 @@ struct ReportDetailTests {
         #expect(CalendarWidgetFormatting.monthKey(utc(2026, 3)) == "2026-03")
     }
 
+    @Test func abbreviatedHeadlinesKeepThreeSignificantDigits() {
+        func text(_ units: Double, headline: Bool) -> String {
+            CurrencyAmountFormat.compactString(units: units, currencyCode: "USD", narrowSymbol: true,
+                                               numberFormat: .commaDot, locale: locale, headline: headline)
+        }
+        #expect(text(72761.5, headline: true) == "$72.8K")
+        #expect(text(143_646, headline: true) == "$144K")
+        #expect(text(1_012_000, headline: true) == "$1.01M")
+        // An axis tick keeps more, to stay apart from the next one.
+        #expect(text(72761.5, headline: false) == "$72.762K")
+    }
+
     @Test func axisTicksAreThinnedFromTheFirst() {
         #expect(ReportDetailChart.ticks([]) == [])
         #expect(ReportDetailChart.ticks(["Jan", "", "Feb", ""]) == [0, 2])

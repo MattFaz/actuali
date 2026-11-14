@@ -335,7 +335,7 @@ extension ReportChartDetail {
             guard !store.hideBalances else { return BudgetStore.hiddenBalanceText }
             return CurrencyAmountFormat.compactString(
                 units: value, currencyCode: store.currencyCode, narrowSymbol: store.useNarrowCurrencySymbol,
-                numberFormat: store.numberFormat, locale: locale
+                numberFormat: store.numberFormat, locale: locale, headline: true
             )
         case .currency:
             return store.displayBalance(Int((value * 100).rounded()), locale: locale)

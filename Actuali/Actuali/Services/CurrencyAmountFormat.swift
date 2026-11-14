@@ -210,12 +210,16 @@ enum CurrencyAmountFormat {
     /// Abbreviated amount for chart axes ("$400K", "$1.25M"), where a full
     /// figure costs more width than a phone chart can spare. The locale picks
     /// the abbreviation; the decimal mark follows Actual's number format.
+    /// `headline` is for one number on its own ("$72.8K"): with no neighbour
+    /// to tell it from, three significant digits read better than an axis
+    /// tick's precision.
     static func compactString(
         units: Double,
         currencyCode: String,
         narrowSymbol: Bool,
         numberFormat: ActualNumberFormat,
-        locale: Locale
+        locale: Locale,
+        headline: Bool = false
     ) -> String {
         // Fraction digits on the abbreviated value, not significant digits:
         // three significant digits round 250.5K to "250K", so on a narrow
@@ -224,14 +228,15 @@ enum CurrencyAmountFormat {
         // which one axis label can't see. Ticks closer than 0.1% of the
         // magnitude still collide; pass the chart's value range into
         // ReportCurrencyYAxis if that shows up.
+        let precision: NumberFormatStyleConfiguration.Precision = headline ? .significantDigits(1...3) : .fractionLength(0...3)
         let formatted = currencyCode.isEmpty
             ? units.formatted(
-                .number.locale(locale).notation(.compactName).precision(.fractionLength(0...3))
+                .number.locale(locale).notation(.compactName).precision(precision)
             )
             : units.formatted(
                 .currency(code: currencyCode).locale(locale)
                     .presentation(narrowSymbol ? .narrow : .standard)
-                    .notation(.compactName).precision(.fractionLength(0...3))
+                    .notation(.compactName).precision(precision)
             )
         // Only between the digits, so a "." inside a currency symbol survives.
         guard let first = formatted.firstIndex(where: \.isWholeNumber),
