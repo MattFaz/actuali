@@ -695,6 +695,19 @@ struct CustomReportEngineTests {
         #expect(label(400_000, code: "") == "400K")
     }
 
+    @Test func intervalAxisLabelsAreThinnedToFitAPhone() {
+        let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        #expect(ReportAxisLabels.thinned(months) == ["Mar", "Jun", "Sep", "Dec"])
+        #expect(ReportAxisLabels.thinned(Array(months.prefix(5))) == ["Jan", "Mar", "May"])
+        // Few enough to fit: untouched.
+        #expect(ReportAxisLabels.thinned(Array(months.prefix(4))) == ["Jan", "Feb", "Mar", "Apr"])
+        #expect(ReportAxisLabels.thinned([]) == [])
+        // However many intervals, never more than the limit, and the latest is kept.
+        let days = (1...365).map { "d\($0)" }
+        #expect(ReportAxisLabels.thinned(days).count <= 4)
+        #expect(ReportAxisLabels.thinned(days).last == "d365")
+    }
+
     @Test func reportCurrencyAxisPreservesHiddenBalanceSemantics() {
         #expect(ReportCurrencyAxisFormatting.hidesAxis(for: true))
         #expect(!ReportCurrencyAxisFormatting.hidesAxis(for: false))

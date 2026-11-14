@@ -139,6 +139,34 @@ struct ReportCurrencyYAxis: ViewModifier {
     }
 }
 
+enum ReportAxisLabels {
+    /// At most `limit` evenly spaced labels, always ending on the latest.
+    static func thinned(_ labels: [String], limit: Int = 4) -> [String] {
+        let step = (labels.count + limit - 1) / limit
+        guard step > 1 else { return labels }
+        return labels.indices.filter { (labels.count - 1 - $0) % step == 0 }.map { labels[$0] }
+    }
+}
+
+/// Charts can't thin a string axis itself: it draws every label and, at phone
+/// width, truncates them all ("M… Ap… Ju…"). Label a readable subset instead.
+/// `AxisMarks(values:)` is ignored on a string axis, hence the per-mark check.
+struct ReportIntervalXAxis: ViewModifier {
+    let labels: [String]
+
+    func body(content: Content) -> some View {
+        let shown = Set(ReportAxisLabels.thinned(labels))
+        content.chartXAxis {
+            AxisMarks { value in
+                if let label = value.as(String.self), shown.contains(label) {
+                    AxisGridLine()
+                    AxisValueLabel()
+                }
+            }
+        }
+    }
+}
+
 struct CustomReportWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
@@ -194,6 +222,7 @@ struct CustomReportWidgetView: View {
                 // chart's frame, so a fixed chart height let a long legend
                 // squeeze the plot to nothing and spill past the card.
                 .chartPlotStyle { $0.frame(height: 160) }
+                .modifier(ReportIntervalXAxis(labels: stacked.intervalLabels))
                 .modifier(ReportCurrencyYAxis(
                     numberFormat: budgetStore.numberFormat,
                     currencyCode: budgetStore.currencyCode,
@@ -241,6 +270,7 @@ struct CustomReportWidgetView: View {
                 }
                 .chartLegend(.visible)
                 .chartPlotStyle { $0.frame(height: 160) }
+                .modifier(ReportIntervalXAxis(labels: stacked.intervalLabels))
                 .modifier(ReportCurrencyYAxis(
                     numberFormat: budgetStore.numberFormat,
                     currencyCode: budgetStore.currencyCode,
@@ -280,6 +310,7 @@ struct CustomReportWidgetView: View {
                     .foregroundStyle(Color.accentColor)
                 }
                 .frame(height: 180)
+                .modifier(ReportIntervalXAxis(labels: bars.map(\.label)))
                 .modifier(ReportCurrencyYAxis(
                     numberFormat: budgetStore.numberFormat,
                     currencyCode: budgetStore.currencyCode,
