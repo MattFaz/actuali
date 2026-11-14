@@ -342,7 +342,17 @@ struct DashboardView: View {
                     today: today, locale: locale
                 )
             } content: { data in
-                CustomReportWidgetView(data: data)
+                if let table = data.detailTable {
+                    NavigationLink {
+                        CustomReportDetailView(data: data, table: table)
+                    } label: {
+                        CustomReportWidgetView(data: data, linksToDetail: true)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("reportCard.\(widget.id)")
+                } else {
+                    CustomReportWidgetView(data: data)
+                }
             }
         case .calendar(_, let meta):
             WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
@@ -354,7 +364,17 @@ struct DashboardView: View {
                     context: conditionsContext
                 )
             } content: { data in
-                CalendarWidgetView(displayName: widget.displayName, data: data)
+                if data.months.isEmpty {
+                    CalendarWidgetView(displayName: widget.displayName, data: data)
+                } else {
+                    NavigationLink {
+                        CalendarDetailView(displayName: widget.displayName, data: data)
+                    } label: {
+                        CalendarWidgetView(displayName: widget.displayName, data: data, linksToDetail: true)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("reportCard.\(widget.id)")
+                }
             }
         case .crossover(_, let meta):
             WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
@@ -399,7 +419,17 @@ struct DashboardView: View {
                     locale: locale
                 )
             } content: { data in
-                SankeyWidgetView(displayName: widget.displayName, data: data)
+                if data.hasDrawableFlows {
+                    NavigationLink {
+                        SankeyDetailView(displayName: widget.displayName, data: data)
+                    } label: {
+                        SankeyWidgetView(displayName: widget.displayName, data: data, linksToDetail: true)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("reportCard.\(widget.id)")
+                } else {
+                    SankeyWidgetView(displayName: widget.displayName, data: data)
+                }
             }
         case .balanceForecast(_, let meta):
             let meta = forecastMeta(meta)
@@ -469,6 +499,16 @@ struct DashboardView: View {
             ReportStrings.format("vs %@", meta?.compareTo ?? "prior", locale: locale)
         case .average: ReportStrings.text("vs avg", locale: locale)
         }
+    }
+}
+
+/// Marks a card as opening a detail page. Decorative: the card is the button.
+struct ReportDetailChevron: View {
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
     }
 }
 
