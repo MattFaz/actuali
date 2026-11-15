@@ -164,10 +164,15 @@ struct ReportChartDetailView: View {
             // so there the chart stands in for the whole table.
             .accessibilityHidden(breakdown == .intervals || budgetStore.hideBalances)
             .accessibilityRepresentation {
-                VStack(alignment: .leading) {
-                    ForEach(figures.indices, id: \.self) { index in
-                        Text(verbatim: [figures[index].series, figures[index].interval, amount(figures[index].value)]
-                            .joined(separator: ", "))
+                // The representation is always built, so apply the hidden rule
+                // here too: where the interval list already reads every
+                // figure, the chart must not read them again.
+                if breakdown != .intervals, !budgetStore.hideBalances {
+                    VStack(alignment: .leading) {
+                        ForEach(figures.indices, id: \.self) { index in
+                            Text(verbatim: [figures[index].series, figures[index].interval, amount(figures[index].value)]
+                                .joined(separator: ", "))
+                        }
                     }
                 }
             }
