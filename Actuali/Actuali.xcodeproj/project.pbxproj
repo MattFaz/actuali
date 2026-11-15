@@ -730,6 +730,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
 				INFOPLIST_KEY_NSFinancialDataUsageDescription = "Actuali imports the Wallet transactions you select into your budget. They are stored in your budget file on your own server.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Actuali connects to your Actual Budget server, which may be on your local network.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Actuali uses your location to suggest nearby payees and remember where you transact. Location data stays in your budget file on your own server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -774,6 +775,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
 				INFOPLIST_KEY_NSFinancialDataUsageDescription = "Actuali imports the Wallet transactions you select into your budget. They are stored in your budget file on your own server.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Actuali connects to your Actual Budget server, which may be on your local network.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Actuali uses your location to suggest nearby payees and remember where you transact. Location data stays in your budget file on your own server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
