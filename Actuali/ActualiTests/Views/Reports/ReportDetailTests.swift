@@ -385,6 +385,8 @@ struct ReportDetailTests {
         // Two series: their values sit beside the headline, not in a list.
         #expect(detail.showsInlineLegend)
         #expect(detail.stats.map(\.value) == [.amount(7400), .amount(5650), .amount(1750)])
+        // One interval has no span to put a dash in.
+        #expect(detail.rangeCaption == "Oct '26")
         #expect(CashFlowData(points: []).chartDetail(name: "", locale: locale) == nil)
     }
 
