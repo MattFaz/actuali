@@ -492,7 +492,7 @@ struct CustomReportWidgetView: View {
         }
     }
 
-    /// The largest rows of a breakdown, and how many more its page lists.
+    /// The first few rows of a breakdown, and how many more its page lists.
     private func leadingRows(_ breakdown: ReportBreakdown, limit: Int) -> some View {
         let leading = breakdown.leadingRows(limit: limit)
         return VStack(alignment: .leading, spacing: 6) {
