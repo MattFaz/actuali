@@ -87,4 +87,12 @@ struct ServerConnectionErrorTests {
         let error = ActualServerError.httpError(statusCode: 403, message: "Forbidden")
         #expect(error.localizedDescription == "HTTP error 403: Forbidden")
     }
+
+    /// Local servers need this purpose string so iOS can ask for local network access.
+    @Test func localNetworkUsageDescriptionIsPresent() {
+        let text = Bundle.main.object(
+            forInfoDictionaryKey: "NSLocalNetworkUsageDescription"
+        ) as? String
+        #expect(text?.isEmpty == false)
+    }
 }
