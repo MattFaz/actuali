@@ -583,10 +583,21 @@ struct DashboardView: View {
                         if let page = result.model {
                             detail(page)
                         } else {
-                            ContentUnavailableView(
-                                ReportStrings.text("No data in range", locale: locale),
-                                systemImage: "chart.bar.xaxis"
-                            )
+                            // Keep the picker: a range with no data must not
+                            // strand the user on an empty page.
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 16) {
+                                    ReportRangePicker()
+                                    ContentUnavailableView(
+                                        ReportStrings.text("No data in range", locale: locale),
+                                        systemImage: "chart.bar.xaxis"
+                                    )
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .padding()
+                            }
+                            .navigationTitle(widget.displayName)
+                            .navigationBarTitleDisplayMode(.large)
                             .toolbar(.visible, for: .navigationBar)
                         }
                     }
@@ -666,15 +677,15 @@ struct DashboardView: View {
     }
 }
 
-/// Shared chrome for report widgets: shows the standard loading card until
-/// the dashboard-wide transaction fetch lands, then computes the widget's
-/// data once per fetch and hands it to `content`.
 /// A card's data with the page model built from it, computed together.
 private struct ReportCardResult<Value: Sendable, Model: Sendable>: Sendable {
     let value: Value
     let model: Model?
 }
 
+/// Shared chrome for report widgets: shows the standard loading card until
+/// the dashboard-wide transaction fetch lands, then computes the widget's
+/// data once per fetch and hands it to `content`.
 private struct WidgetCard<Value: Sendable, Content: View>: View {
     @Environment(\.locale) private var locale
     let transactions: [Transaction]?
