@@ -59,9 +59,10 @@ struct ServerConnectionErrorTests {
         #expect(!message.contains("NSURLErrorDomain"))
     }
 
-    @Test func offlineDeviceBlamesTheInternetConnectionNotTheServer() async {
+    @Test func offlineDeviceBlamesTheInternetConnectionNotTheServerAndHintsLocalNetworkAccess() async {
         let message = await loginFailureMessage(.notConnectedToInternet)
         #expect(message.localizedCaseInsensitiveContains("internet"))
+        #expect(message.localizedCaseInsensitiveContains("local network"))
     }
 
     /// Codes we don't map by hand still get the "couldn't connect" framing and

@@ -72,7 +72,7 @@ enum ActualServerError: LocalizedError {
         case .cannotConnectToHost:
             return String(format: String(localized: "Couldn't reach your server. If it's only available on your home network, connect to that network and try again. See %@ for help."), helpLink)
         case .notConnectedToInternet:
-            return String(localized: "Your device isn't connected to the internet.")
+            return String(localized: "Your device isn't connected to the internet. If your server is on your local network, check that Local Network access is enabled for Actuali in Settings → Privacy & Security → Local Network.")
         case .timedOut:
             return String(format: String(localized: "Your server took too long to respond. It may be offline, or blocked on this network. See %@ for help."), helpLink)
         default:

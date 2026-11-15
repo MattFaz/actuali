@@ -89531,49 +89531,49 @@
         }
       }
     },
-    "Your device isn't connected to the internet." : {
+    "Your device isn't connected to the internet. If your server is on your local network, check that Local Network access is enabled for Actuali in Settings → Privacy & Security → Local Network." : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dein Gerät ist nicht mit dem Internet verbunden."
+            "value" : "Dein Gerät ist nicht mit dem Internet verbunden. Wenn sich dein Server in deinem lokalen Netzwerk befindet, prüfe, ob der Zugriff auf das lokale Netzwerk für Actuali unter Einstellungen → Datenschutz & Sicherheit → Lokales Netzwerk aktiviert ist."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Your device isn't connected to the internet."
+            "value" : "Your device isn't connected to the internet. If your server is on your local network, check that Local Network access is enabled for Actuali in Settings → Privacy & Security → Local Network."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tu dispositivo no está conectado a Internet."
+            "value" : "Tu dispositivo no está conectado a Internet. Si tu servidor está en tu red local, comprueba que el acceso a la red local esté activado para Actuali en Ajustes → Privacidad y seguridad → Red local."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Votre appareil n’est pas connecté à Internet."
+            "value" : "Votre appareil n’est pas connecté à Internet. Si votre serveur se trouve sur votre réseau local, vérifiez que l’accès au réseau local est activé pour Actuali dans Réglages → Confidentialité et sécurité → Réseau local."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il dispositivo non è connesso a Internet."
+            "value" : "Il dispositivo non è connesso a Internet. Se il server si trova sulla rete locale, verifica che l’accesso alla rete locale sia attivo per Actuali in Impostazioni → Privacy e sicurezza → Rete locale."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Je apparaat is niet verbonden met internet."
+            "value" : "Je apparaat is niet verbonden met internet. Als je server op je lokale netwerk staat, controleer dan of toegang tot het lokale netwerk is ingeschakeld voor Actuali via Instellingen → Privacy en beveiliging → Lokaal netwerk."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seu dispositivo não está conectado à internet."
+            "value" : "Seu dispositivo não está conectado à internet. Se o servidor estiver na sua rede local, confira se o acesso à rede local está ativado para o Actuali em Ajustes → Privacidade e Segurança → Rede Local."
           }
         }
       }
