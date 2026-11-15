@@ -1,0 +1,53 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSLocalNetworkUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali verbindet sich mit deinem Actual-Budget-Server, der sich möglicherweise in deinem lokalen Netzwerk befindet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali connects to your Actual Budget server, which may be on your local network."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali se conecta a tu servidor de Actual Budget, que puede estar en tu red local."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali se connecte à votre serveur Actual Budget, qui peut se trouver sur votre réseau local."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali si connette al tuo server di Actual Budget, che potrebbe trovarsi sulla tua rete locale."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali maakt verbinding met je Actual Budget-server, die zich mogelijk op je lokale netwerk bevindt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Actuali se conecta ao seu servidor do Actual Budget, que pode estar na sua rede local."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
