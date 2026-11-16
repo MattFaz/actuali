@@ -2002,8 +2002,25 @@ final class BudgetStore: ObservableObject {
     }
     #endif
 
+    /// Whether this is the first launch of a new install. The Keychain
+    /// outlives a deleted app and UserDefaults doesn't, so a reinstall would
+    /// otherwise come up "connected" with a token but no server URL, and open
+    /// encrypted budgets with the previous install's keys. An install from
+    /// before the marker existed counts as fresh only with no server saved,
+    /// where nothing in the Keychain can still be in use.
+    nonisolated static func isFreshInstall(_ defaults: UserDefaults) -> Bool {
+        !defaults.bool(forKey: "hasLaunched") && (defaults.string(forKey: "serverURL") ?? "").isEmpty
+    }
+
     private init() {
         let defaults = UserDefaults.standard
+        // Before anything below reads the Keychain. Before the device's first
+        // unlock UserDefaults can read back empty, but then the Keychain
+        // items are just as unreachable and the delete does nothing.
+        if Self.isFreshInstall(defaults) {
+            Keychain.removeAll()
+        }
+        defaults.set(true, forKey: "hasLaunched")
         // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
         // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
         // overrides as strings; checking for existence first preserves non-false defaults.
