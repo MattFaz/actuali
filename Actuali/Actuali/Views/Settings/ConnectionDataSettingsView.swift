@@ -314,6 +314,7 @@ private struct BudgetSelectionSettingsSection: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var budgetToUnlock: BudgetStore.RemoteBudget?
     @State private var showingBudgetSelectPrompt = false
+    @State private var budgetPickedFromPrompt: BudgetStore.RemoteBudget?
     @State private var budgetToRemoveLocally: BudgetStore.RemoteBudget?
     @State private var budgetToDeleteFromServer: BudgetStore.RemoteBudget?
     @State private var showingCreateBudgetPrompt = false
@@ -367,19 +368,19 @@ private struct BudgetSelectionSettingsSection: View {
         .sheet(item: $budgetToDeleteFromServer) { budget in
             DeleteServerBudgetSheet(budget: budget, budgetStore: budgetStore)
         }
-        .confirmationDialog(
-            "Select a Budget",
-            isPresented: $showingBudgetSelectPrompt,
-            titleVisibility: .visible
-        ) {
-            ForEach(budgetStore.remoteBudgets) { budget in
-                Button(budget.name) {
-                    openBudget(budget)
-                }
+        // A sheet, not a confirmation dialog: picking an encrypted budget has
+        // to present the password sheet next, and a presentation asked for
+        // while the dialog was still dismissing was dropped — leaving
+        // `budgetToUnlock` set with nothing on screen, so picking that budget
+        // again did nothing either. Only a sheet reports that it has finished
+        // dismissing, so the pick is opened from `onDismiss`.
+        .sheet(isPresented: $showingBudgetSelectPrompt, onDismiss: {
+            if let budget = budgetPickedFromPrompt {
+                budgetPickedFromPrompt = nil
+                openBudget(budget)
             }
-            Button("Not Now", role: .cancel) {}
-        } message: {
-            Text("You're connected! Choose which budget to load onto this device.")
+        }) {
+            BudgetSelectPromptSheet(budgets: budgetStore.remoteBudgets) { budgetPickedFromPrompt = $0 }
         }
         .confirmationDialog(
             "Remove from this device?",
@@ -539,6 +540,50 @@ private struct BudgetSelectionSettingsSection: View {
         if budgetStore.currentBudgetId == nil, !budgetStore.remoteBudgets.isEmpty {
             showingBudgetSelectPrompt = true
         }
+    }
+}
+
+/// The one-time "pick a budget" nudge shown right after connecting.
+private struct BudgetSelectPromptSheet: View {
+    let budgets: [BudgetStore.RemoteBudget]
+    let onSelect: (BudgetStore.RemoteBudget) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(budgets) { budget in
+                        Button {
+                            onSelect(budget)
+                            dismiss()
+                        } label: {
+                            HStack {
+                                if budget.isEncrypted {
+                                    Image(systemName: "lock.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Text(budget.name)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .accessibilityIdentifier("budgetSelectPrompt.budget.\(budget.id)")
+                    }
+                } footer: {
+                    Text("You're connected! Choose which budget to load onto this device.")
+                }
+            }
+            .navigationTitle("Select a Budget")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Not Now") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

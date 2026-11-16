@@ -33,4 +33,29 @@ final class ServerConnectionEditingUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Connected"].exists)
         XCTAssertTrue(app.buttons["Disconnect"].exists)
     }
+
+    /// Picking an encrypted budget from the post-connect prompt used to drop
+    /// the password sheet, leaving no way to unlock the budget.
+    @MainActor
+    func testPostConnectPromptOpensPasswordSheetForEncryptedBudget() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-connectedServerSettings", "-budgetSelectionFixture",
+            "-initialTab", "4", "-currentBudgetId", "",
+        ]
+        app.launch()
+
+        let connectionData = app.buttons["Connection & Data"]
+        XCTAssertTrue(connectionData.waitForExistence(timeout: 10))
+        connectionData.tap()
+
+        let encrypted = app.buttons["budgetSelectPrompt.budget.debug-encrypted-budget"]
+        XCTAssertTrue(encrypted.waitForExistence(timeout: 10),
+                      "connecting with no budget open should prompt for one")
+        encrypted.tap()
+
+        XCTAssertTrue(app.navigationBars["Unlock Budget"].waitForExistence(timeout: 5),
+                      "an encrypted budget should ask for its password")
+        XCTAssertTrue(app.secureTextFields["Encryption password"].exists)
+    }
 }

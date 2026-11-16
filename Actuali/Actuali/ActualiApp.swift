@@ -76,6 +76,20 @@ struct ActualiApp: App {
                     budgetStore.isConnected = true
                 }
                 if CommandLine.arguments.contains("-budgetSelectionFixture") {
+                    var fixtureBudgets = [
+                        BudgetStore.RemoteBudget(
+                            id: "debug-other-budget",
+                            name: "Other Budget",
+                            groupId: nil,
+                            isEncrypted: false
+                        ),
+                        BudgetStore.RemoteBudget(
+                            id: "debug-encrypted-budget",
+                            name: "Encrypted Budget",
+                            groupId: nil,
+                            isEncrypted: true
+                        ),
+                    ]
                     if let budgetId = budgetStore.currentBudgetId,
                        let local = BudgetFileManager.shared.listLocalBudgets().first(where: { $0.id == budgetId }) {
                         // The demo budget is local-only, so stamp a cloud file id on first.
@@ -95,27 +109,19 @@ struct ActualiApp: App {
                                 .write(to: BudgetFileManager.shared.metadataPath(for: local.id))
                             budgetStore.refreshCurrentLocalBudget()
                         }
-                        budgetStore.remoteBudgets = [
+                        fixtureBudgets.insert(
                             BudgetStore.RemoteBudget(
                                 id: cloudFileId,
                                 name: local.budgetName ?? "Current Budget",
                                 groupId: local.groupId,
                                 isEncrypted: local.encryptKeyId != nil
                             ),
-                            BudgetStore.RemoteBudget(
-                                id: "debug-other-budget",
-                                name: "Other Budget",
-                                groupId: nil,
-                                isEncrypted: false
-                            ),
-                            BudgetStore.RemoteBudget(
-                                id: "debug-encrypted-budget",
-                                name: "Encrypted Budget",
-                                groupId: nil,
-                                isEncrypted: true
-                            ),
-                        ]
+                            at: 0
+                        )
                     }
+                    // With no budget open, the server list alone drives the
+                    // post-connect "Select a Budget" prompt.
+                    budgetStore.remoteBudgets = fixtureBudgets
                 }
 
                 // Stands in for coordinates the Add Transaction form would
