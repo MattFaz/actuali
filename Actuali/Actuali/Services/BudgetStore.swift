@@ -408,9 +408,7 @@ final class BudgetStore: ObservableObject {
     @Published private(set) var bankSyncAccounts: [BankSyncAccount] = []
     private var bankSyncLoadGeneration = 0
     /// Whether this device has claimed a SimpleFIN access key.
-    /// Read in `init`, after the fresh-install wipe, so it can't report a key
-    /// the wipe then failed to carry across.
-    @Published private(set) var isSimpleFINConfigured = false
+    @Published private(set) var isSimpleFINConfigured = SimpleFINCredentials.isConfigured
     /// True for the length of a bank sync, so the UI can show progress and
     /// keep a second sync from starting on top of the first.
     @Published private(set) var isBankSyncing = false
@@ -1968,34 +1966,8 @@ final class BudgetStore: ObservableObject {
     }
     #endif
 
-    /// Whether this is the first launch of a new install. The Keychain
-    /// outlives a deleted app and UserDefaults doesn't, so a reinstall would
-    /// otherwise come up "connected" with a token but no server URL, and open
-    /// encrypted budgets with the previous install's keys. An install from
-    /// before the marker existed counts as fresh only with no server saved
-    /// and no budget on disk, where nothing in the Keychain is still in use.
-    nonisolated static func isFreshInstall(_ defaults: UserDefaults, hasLocalBudgets: Bool) -> Bool {
-        !defaults.bool(forKey: "hasLaunched")
-            && (defaults.string(forKey: "serverURL") ?? "").isEmpty
-            && !hasLocalBudgets
-    }
-
     private init() {
         let defaults = UserDefaults.standard
-        // Before anything below reads the Keychain. Before the device's first
-        // unlock UserDefaults can read back empty, but then the Keychain
-        // items are just as unreachable and the delete does nothing.
-        if Self.isFreshInstall(defaults, hasLocalBudgets: !fileManager.listLocalBudgets().isEmpty) {
-            // The SimpleFIN key is carried across: its setup token can't be
-            // claimed twice, and a stale one causes neither reinstall bug.
-            let simpleFINKey = SimpleFINCredentials.accessKey
-            Keychain.removeAll()
-            if let simpleFINKey {
-                try? SimpleFINCredentials.save(simpleFINKey)
-            }
-        }
-        defaults.set(true, forKey: "hasLaunched")
-        _isSimpleFINConfigured = Published(initialValue: SimpleFINCredentials.isConfigured)
         // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
         // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
         // overrides as strings; checking for existence first preserves non-false defaults.
@@ -2123,7 +2095,17 @@ final class BudgetStore: ObservableObject {
         _hideClosedAccounts = Published(initialValue: defaults
             .bool(forKey: "hideClosedAccounts"))
 
-        let token = loadAndMigrateAuthToken()
+        var token = loadAndMigrateAuthToken()
+        // The Keychain outlives a deleted app and UserDefaults doesn't, so a
+        // token with no server URL is what a reinstall leaves behind. It can't
+        // reach any server, and the encryption keys beside it would open
+        // budgets without asking for their password. Drop both and start
+        // signed out.
+        if token != nil, serverURL.isEmpty {
+            try? Keychain.remove(for: "authToken")
+            EncryptionKeyManager.removeAll()
+            token = nil
+        }
 
         // Load local budget if available. The saved session is configured in
         // the same task, before the load, so the initial sync below is
