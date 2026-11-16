@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ConnectionDataSettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @State private var budgetToUnlock: BudgetStore.RemoteBudget?
+    @State private var showingBudgetSelectPrompt = false
+    @State private var budgetPickedFromPrompt: BudgetStore.RemoteBudget?
 
     var body: some View {
         Form {
@@ -11,7 +14,10 @@ struct ConnectionDataSettingsView: View {
             // remain reachable for any loaded budget, including demo and
             // offline budgets without a session.
             if budgetStore.isConnected {
-                BudgetSelectionSettingsSection()
+                BudgetSelectionSettingsSection(
+                    budgetToUnlock: $budgetToUnlock,
+                    showingBudgetSelectPrompt: $showingBudgetSelectPrompt
+                )
                 if budgetStore.canChangeBudgetType {
                     BudgetTypeSettingsSection()
                 }
@@ -23,6 +29,25 @@ struct ConnectionDataSettingsView: View {
             }
         }
         .readableWidth()
+        // Both sheets hang off the form, not the budget section: connecting
+        // inserts that section's rows, and a sheet presented from a row the
+        // list was still settling was dismissed as soon as it appeared.
+        .sheet(item: $budgetToUnlock) { budget in
+            EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)
+        }
+        // A sheet, not a confirmation dialog: picking an encrypted budget has
+        // to present the password sheet next, and a presentation asked for
+        // while the dialog was still dismissing was dropped. Only a sheet
+        // reports that it has finished dismissing, so the pick is opened from
+        // `onDismiss`.
+        .sheet(isPresented: $showingBudgetSelectPrompt, onDismiss: {
+            if let budget = budgetPickedFromPrompt {
+                budgetPickedFromPrompt = nil
+                budgetToUnlock = budgetStore.openRemoteBudget(budget)
+            }
+        }) {
+            BudgetSelectPromptSheet(budgets: budgetStore.remoteBudgets) { budgetPickedFromPrompt = $0 }
+        }
         .navigationTitle(String(localized: "Connection & Data"))
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -312,9 +337,8 @@ private struct ServerConnectionSettingsSection: View {
 
 private struct BudgetSelectionSettingsSection: View {
     @EnvironmentObject private var budgetStore: BudgetStore
-    @State private var budgetToUnlock: BudgetStore.RemoteBudget?
-    @State private var showingBudgetSelectPrompt = false
-    @State private var budgetPickedFromPrompt: BudgetStore.RemoteBudget?
+    @Binding var budgetToUnlock: BudgetStore.RemoteBudget?
+    @Binding var showingBudgetSelectPrompt: Bool
     @State private var budgetToRemoveLocally: BudgetStore.RemoteBudget?
     @State private var budgetToDeleteFromServer: BudgetStore.RemoteBudget?
     @State private var showingCreateBudgetPrompt = false
@@ -364,24 +388,8 @@ private struct BudgetSelectionSettingsSection: View {
         } message: {
             Text("Creates an empty budget file on your server and opens it on this device.")
         }
-        .sheet(item: $budgetToUnlock) { budget in
-            EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)
-        }
         .sheet(item: $budgetToDeleteFromServer) { budget in
             DeleteServerBudgetSheet(budget: budget, budgetStore: budgetStore)
-        }
-        // A sheet, not a confirmation dialog: picking an encrypted budget has
-        // to present the password sheet next, and a presentation asked for
-        // while the dialog was still dismissing was dropped, so the prompt just
-        // vanished. Only a sheet reports that it has finished dismissing, so
-        // the pick is opened from `onDismiss`.
-        .sheet(isPresented: $showingBudgetSelectPrompt, onDismiss: {
-            if let budget = budgetPickedFromPrompt {
-                budgetPickedFromPrompt = nil
-                openBudget(budget)
-            }
-        }) {
-            BudgetSelectPromptSheet(budgets: budgetStore.remoteBudgets) { budgetPickedFromPrompt = $0 }
         }
         .confirmationDialog(
             "Remove from this device?",
