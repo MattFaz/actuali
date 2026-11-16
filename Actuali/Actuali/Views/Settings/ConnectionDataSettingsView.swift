@@ -222,7 +222,7 @@ private struct ServerConnectionSettingsSection: View {
                         }
                     }
                 }
-                .disabled(budgetStore.serverURL.isEmpty || budgetStore.isLoading)
+                .disabled(!budgetStore.canConnect(password: password))
 
                 if budgetStore.supportsOpenIDLogin {
                     Button(String(localized: "Sign in with OpenID")) {
@@ -540,7 +540,7 @@ private struct BudgetSelectionSettingsSection: View {
     /// One-time nudge after connecting: surface budget selection so a fresh
     /// connection doesn't leave the user staring at empty tabs.
     private func promptBudgetSelectionIfNeeded() {
-        if budgetStore.currentBudgetId == nil, !budgetStore.remoteBudgets.isEmpty {
+        if budgetStore.consumeBudgetSelectionPrompt() {
             showingBudgetSelectPrompt = true
         }
     }

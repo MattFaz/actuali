@@ -331,6 +331,27 @@ final class BudgetStore: ObservableObject {
         availableLoginMethods.contains { $0.method == "password" && $0.isActive }
     }
 
+    /// Whether the Connect button has anything to do. Once the server is known
+    /// to use password login, an empty password can only fail, so the button
+    /// stays off instead of appearing to do nothing. Before the probe answers
+    /// it stays available: tapping it is what discovers an OpenID-only server.
+    func canConnect(password: String) -> Bool {
+        !serverURL.isEmpty && !isLoading && !(passwordLoginActive && password.isEmpty)
+    }
+
+    /// Set by a fresh sign-in and consumed by the budget section, so the
+    /// "select a budget" prompt appears once per connection rather than on
+    /// every visit to the screen.
+    var budgetSelectionPromptPending = false
+
+    /// Whether to show the post-connect budget prompt now. Clears the pending
+    /// flag either way: a connection that had nothing to offer shouldn't
+    /// prompt later out of the blue.
+    func consumeBudgetSelectionPrompt() -> Bool {
+        defer { budgetSelectionPromptPending = false }
+        return budgetSelectionPromptPending && currentBudgetId == nil && !remoteBudgets.isEmpty
+    }
+
     /// Whether the configured server offers OpenID/OAuth login.
     var supportsOpenIDLogin: Bool {
         availableLoginMethods.contains { $0.method == "openid" }
@@ -2345,6 +2366,7 @@ final class BudgetStore: ObservableObject {
         do {
             let token = try await serverClient.login(password: password)
             try? Keychain.set(token, for: "authToken")
+            budgetSelectionPromptPending = true
             isConnected = true
             await fetchRemoteBudgets()
         } catch {
@@ -2440,6 +2462,7 @@ final class BudgetStore: ObservableObject {
 
             await serverClient.setToken(token)
             try? Keychain.set(token, for: "authToken")
+            budgetSelectionPromptPending = true
             isConnected = true
             await fetchRemoteBudgets()
         } catch OpenIDAuthError.cancelled {
@@ -2497,6 +2520,7 @@ final class BudgetStore: ObservableObject {
         }
 
         isConnected = false
+        budgetSelectionPromptPending = false
         remoteBudgets = []
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
@@ -2617,6 +2641,21 @@ final class BudgetStore: ObservableObject {
             return
         }
         #endif
+        // Signing in and the budget section appearing both ask for the list
+        // at the same moment. Share one request, so the first to finish can't
+        // clear the spinner or the error out from under the other.
+        if let remoteBudgetsFetch {
+            return await remoteBudgetsFetch.value
+        }
+        let fetch = Task { await loadRemoteBudgets() }
+        remoteBudgetsFetch = fetch
+        await fetch.value
+        remoteBudgetsFetch = nil
+    }
+
+    private var remoteBudgetsFetch: Task<Void, Never>?
+
+    private func loadRemoteBudgets() async {
         isLoading = true
         error = nil
 
@@ -2747,6 +2786,12 @@ final class BudgetStore: ObservableObject {
         // the sheet for it left the user on a frozen form with no way out.
         if await downloadAndOpen(remoteBudget) {
             Task { await runInitialSync() }
+        } else {
+            // Loading the budget reads the key back from the Keychain, so it
+            // has to be stored before the download — but a key that opened
+            // nothing must not stay behind, or the next attempt would skip
+            // the password and retry on its own.
+            try? EncryptionKeyManager.remove(fileId: remoteBudget.id)
         }
         return error // any download error surfaced by downloadAndOpen
     }

@@ -350,4 +350,41 @@ private enum StoredZip {
         }
         #expect(store.syncStatus.lastSyncTime != nil)
     }
+
+    /// A key stored for a budget that then failed to download used to stay in
+    /// the Keychain, so picking the budget again skipped the password sheet
+    /// and silently retried the download.
+    @Test func failedUnlockDownloadDoesNotLeaveTheKeyBehind() async throws {
+        let savedBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
+        let root = try makeRootDirectory()
+        let remoteBudget = BudgetStore.RemoteBudget(
+            id: "cloud-file-\(UUID().uuidString)", name: "Test Budget", groupId: "group-1", isEncrypted: true
+        )
+        defer {
+            try? EncryptionKeyManager.remove(fileId: remoteBudget.id)
+            cleanUp(root: root, budgetId: nil, savedBudgetId: savedBudgetId)
+        }
+
+        let fixtureURL = try #require(
+            Bundle(for: BundleToken.self).url(forResource: "encryption-key-fixture", withExtension: "json")
+        )
+        let fixture = try JSONDecoder().decode(KeyFixture.self, from: Data(contentsOf: fixtureURL))
+        let keyInfo = try JSONEncoder().encode(KeyInfoResponse(
+            status: "ok",
+            data: .init(id: fixture.keyId, salt: fixture.salt, test: fixture.test)
+        ))
+        // The password checks out, then the download itself fails.
+        let store = try await makeStore(root: root) { request in
+            guard request.url?.path.contains("user-get-key") == true else {
+                throw URLError(.cannotConnectToHost)
+            }
+            return StubTransport.Response(contentType: "application/json", body: keyInfo)
+        }
+
+        let failure = await store.unlockAndOpen(remoteBudget, password: fixture.password)
+
+        #expect(failure != nil)
+        #expect(EncryptionKeyManager.load(fileId: remoteBudget.id) == nil)
+        #expect(store.isInitialSyncing == false)
+    }
 }

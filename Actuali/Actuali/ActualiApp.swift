@@ -74,6 +74,7 @@ struct ActualiApp: App {
                     budgetStore.serverURL = "https://primary.example.com"
                     budgetStore.fallbackServerURL = ""
                     budgetStore.isConnected = true
+                    budgetStore.budgetSelectionPromptPending = true
                 }
                 if CommandLine.arguments.contains("-budgetSelectionFixture") {
                     var fixtureBudgets = [
