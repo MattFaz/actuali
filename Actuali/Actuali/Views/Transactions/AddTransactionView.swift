@@ -998,14 +998,13 @@ struct AddTransactionView: View {
     /// The sign is the direction, as in Actual. A split parent flips as a
     /// whole once its lines load: the save plan applies the new direction to
     /// every line and keeps each line's flip, and a transfer line's partner
-    /// follows its amount as it does for a per-line flip. Existing transfers
-    /// stay fixed by their two legs; converting a row keeps its own side.
+    /// follows its amount as it does for a per-line flip. An existing transfer
+    /// reverses both legs (GH #844); converting a row keeps its own side.
     private var canToggleDirection: Bool {
         Self.canToggleDirection(
             isEditingSplitParent: isEditingSplitParent,
             // Before the lines load, a save would keep the parent's old amount.
             splitLoaded: unsplitRequested || !splitLines.isEmpty,
-            isEditingTransfer: isEditingTransfer,
             isConvertingToTransfer: isConvertingToTransfer,
             isTransfer: isTransfer,
             hasTransferPartner: transferToAccountId != nil
@@ -1015,12 +1014,11 @@ struct AddTransactionView: View {
     nonisolated static func canToggleDirection(
         isEditingSplitParent: Bool,
         splitLoaded: Bool,
-        isEditingTransfer: Bool,
         isConvertingToTransfer: Bool,
         isTransfer: Bool,
         hasTransferPartner: Bool
     ) -> Bool {
-        guard !isEditingTransfer, !isConvertingToTransfer, !isEditingSplitParent || splitLoaded else { return false }
+        guard !isConvertingToTransfer, !isEditingSplitParent || splitLoaded else { return false }
         return !isTransfer || hasTransferPartner
     }
 

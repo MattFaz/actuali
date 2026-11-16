@@ -61,18 +61,16 @@ struct AddTransactionSplitGateTests {
     // MARK: - Sign key
 
     @Test(arguments: [
-        (false, true, false, false, false, false, true), // Ordinary expense/income.
-        (false, true, false, false, true, true, true), // New transfer with both accounts.
-        (false, true, false, false, true, false, false), // No account to swap with.
-        (true, false, false, false, false, false, false), // Split parent while children load.
-        (true, true, false, false, false, false, true), // Loaded split parent can reverse all split lines.
-        (false, true, true, false, true, true, false), // Existing transfer.
-        (false, true, false, true, true, true, false), // Converting an existing row.
+        (false, true, false, false, false, true), // Ordinary expense/income.
+        (false, true, false, true, true, true), // New or existing transfer with both accounts (GH #844).
+        (false, true, false, true, false, false), // No account to swap with, e.g. an unresolved partner.
+        (true, false, false, false, false, false), // Split parent while children load.
+        (true, true, false, false, false, true), // Loaded split parent can reverse all split lines.
+        (false, true, true, true, true, false), // Converting an existing row.
     ])
     func signToggleEligibility(
         isEditingSplitParent: Bool,
         splitLoaded: Bool,
-        isEditingTransfer: Bool,
         isConvertingToTransfer: Bool,
         isTransfer: Bool,
         hasTransferPartner: Bool,
@@ -81,7 +79,6 @@ struct AddTransactionSplitGateTests {
         #expect(AddTransactionView.canToggleDirection(
             isEditingSplitParent: isEditingSplitParent,
             splitLoaded: splitLoaded,
-            isEditingTransfer: isEditingTransfer,
             isConvertingToTransfer: isConvertingToTransfer,
             isTransfer: isTransfer,
             hasTransferPartner: hasTransferPartner

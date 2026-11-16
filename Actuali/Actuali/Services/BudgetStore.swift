@@ -5638,8 +5638,17 @@ final class BudgetStore: ObservableObject {
             return leg.id == original.id ? categoryId : leg.categoryId
         }
 
-        // The opened row can be either leg; the negative one is the source.
-        let (sourceLeg, targetLeg) = original.amount < 0
+        // Each leg stays in its account while that account is still an end, so
+        // a reversal flips the amounts in place as Actual's updateTransfer does
+        // (GH #844). If neither end matches, the negative leg stays the source.
+        let originalIsSource = if original.accountId == fromAccountId || partner.accountId == toAccountId {
+            true
+        } else if original.accountId == toAccountId || partner.accountId == fromAccountId {
+            false
+        } else {
+            original.amount < 0
+        }
+        let (sourceLeg, targetLeg) = originalIsSource
             ? (original, partner) : (partner, original)
 
         var source = sourceLeg
@@ -5662,14 +5671,12 @@ final class BudgetStore: ObservableObject {
         target.notes = notes
         target.cleared = cleared
 
-        let sourceChanges = Self.changedFields(original: sourceLeg, updated: source)
-        if !sourceChanges.isEmpty {
-            try await syncClient.updateTransaction(source, changedFields: sourceChanges)
-        }
-        let targetChanges = Self.changedFields(original: targetLeg, updated: target)
-        if !targetChanges.isEmpty {
-            try await syncClient.updateTransaction(target, changedFields: targetChanges)
-        }
+        // One write for both legs: another device must never sync half a
+        // reversal or a transfer whose amounts disagree.
+        let updates = [(source, sourceLeg), (target, targetLeg)]
+            .map { (transaction: $0.0, changedFields: Self.changedFields(original: $0.1, updated: $0.0)) }
+            .filter { !$0.changedFields.isEmpty }
+        try await syncClient.updateTransactions(updates)
         await refreshDataOnly()
     }
 

@@ -166,6 +166,41 @@ struct BudgetStoreUpdateTransferTests {
         #expect(try #require(byId["leg-in"])["amount"] == 1000)
     }
 
+    /// Columns with a CRDT message for `row`, to show what a save wrote.
+    private func messagedColumns(_ database: BudgetDatabase, row: String) async throws -> Set<String> {
+        try await database.dbQueueForTesting.read { db in
+            try Set(String.fetchAll(db, sql: "SELECT column FROM messages_crdt WHERE row = ?", arguments: [row]))
+        }
+    }
+
+    /// Flipping the sign reverses the transfer (GH #844). As in Actual, each
+    /// leg stays in its own account with its payee, and only the amounts swap.
+    @Test(arguments: ["leg-out", "leg-in"])
+    func reversingATransferFlipsBothLegsInPlace(openedLeg: String) async throws {
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        let (source, target) = try seedTransfer(into: database)
+        let opened = openedLeg == source.id ? source : target
+
+        // The form now reads Savings → Checking, whichever leg was opened.
+        try await store.saveTransaction(
+            form(accountId: "acct-savings", transferToAccountId: "acct-checking"), editing: opened
+        )
+
+        let byId = try rows(path: path)
+        let out = try #require(byId["leg-out"])
+        let inn = try #require(byId["leg-in"])
+        #expect(out["acct"] == "acct-checking")
+        #expect(inn["acct"] == "acct-savings")
+        #expect(out["amount"] == 2500)
+        #expect(inn["amount"] == -2500)
+        #expect(out["description"] == "payee-savings")
+        #expect(inn["description"] == "payee-checking")
+        #expect(try await messagedColumns(database, row: "leg-out") == ["amount", "date"])
+        #expect(try await messagedColumns(database, row: "leg-in") == ["amount", "date"])
+    }
+
     @Test func categoryIsClearedWhenBothAccountsAreOnBudget() async throws {
         let (database, path) = try await makeDatabase()
         defer { cleanup(path) }
