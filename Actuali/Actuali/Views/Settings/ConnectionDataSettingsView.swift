@@ -329,7 +329,7 @@ private struct BudgetSelectionSettingsSection: View {
                 budgetPickerForNoSelection()
             }
 
-            if budgetStore.remoteBudgets.isEmpty, !budgetStore.isLoading {
+            if budgetStore.remoteBudgets.isEmpty || budgetStore.remoteBudgetsLoadFailed, !budgetStore.isLoading {
                 Button("Refresh Budgets") {
                     Task { await budgetStore.fetchRemoteBudgets() }
                 }
@@ -343,7 +343,9 @@ private struct BudgetSelectionSettingsSection: View {
         } header: {
             Text("Budget Selection")
         } footer: {
-            if budgetStore.currentBudgetId == nil {
+            if budgetStore.remoteBudgetsLoadFailed, !budgetStore.isLoading {
+                Text("Couldn't load your budgets from the server. Check your connection, then tap Refresh Budgets.")
+            } else if budgetStore.currentBudgetId == nil {
                 if budgetStore.remoteBudgets.isEmpty, !budgetStore.isLoading {
                     Text("No budgets were found on your server. Tap Create New Budget to make one, or Refresh Budgets if you've created one elsewhere.")
                 } else {

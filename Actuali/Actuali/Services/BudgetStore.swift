@@ -2522,6 +2522,7 @@ final class BudgetStore: ObservableObject {
         isConnected = false
         budgetSelectionPromptPending = false
         remoteBudgets = []
+        remoteBudgetsLoadFailed = false
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
@@ -2655,6 +2656,10 @@ final class BudgetStore: ObservableObject {
 
     private var remoteBudgetsFetch: Task<Void, Never>?
 
+    /// Whether the last request for the server's budget list failed, so the
+    /// budget section can tell "couldn't ask" apart from "the server has none".
+    @Published private(set) var remoteBudgetsLoadFailed = false
+
     private func loadRemoteBudgets() async {
         isLoading = true
         error = nil
@@ -2669,8 +2674,10 @@ final class BudgetStore: ObservableObject {
                     isEncrypted: file.encryptKeyId != nil
                 )
             }
+            remoteBudgetsLoadFailed = false
         } catch {
             self.error = error.localizedDescription
+            remoteBudgetsLoadFailed = true
         }
 
         isLoading = false

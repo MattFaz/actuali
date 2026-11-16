@@ -125,4 +125,28 @@ struct BudgetStoreConnectTests {
             #expect(!store.consumeBudgetSelectionPrompt())
         }
     }
+
+    /// A list request that failed used to read as "No budgets were found on
+    /// your server", which sent people looking for budgets that were there.
+    @Test func failedBudgetListFetchIsReportedAsAFailureNotAnEmptyServer() async throws {
+        let failing = ActualServerClient(session: StubTransport.session { _ in
+            throw URLError(.cannotConnectToHost)
+        })
+        try await failing.configure(serverURL: "https://budget.example.com")
+        await failing.setToken("test-token")
+        let store = BudgetStore.previewInstance()
+        store.setServerClientForTesting(failing)
+
+        await store.fetchRemoteBudgets()
+
+        #expect(store.remoteBudgetsLoadFailed)
+        #expect(store.remoteBudgets.isEmpty)
+
+        // The next successful fetch clears it.
+        let working = try await makeStore()
+        #expect(!working.remoteBudgetsLoadFailed)
+        await working.fetchRemoteBudgets()
+        #expect(!working.remoteBudgetsLoadFailed)
+        #expect(working.remoteBudgets.count == 1)
+    }
 }
