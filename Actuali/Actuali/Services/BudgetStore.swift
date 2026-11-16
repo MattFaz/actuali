@@ -408,8 +408,8 @@ final class BudgetStore: ObservableObject {
     @Published private(set) var bankSyncAccounts: [BankSyncAccount] = []
     private var bankSyncLoadGeneration = 0
     /// Whether this device has claimed a SimpleFIN access key.
-    /// Read in `init`, after the fresh-install wipe: a default value here would
-    /// be evaluated first and report the previous install's key.
+    /// Read in `init`, after the fresh-install wipe, so it can't report a key
+    /// the wipe then failed to carry across.
     @Published private(set) var isSimpleFINConfigured = false
     /// True for the length of a bank sync, so the UI can show progress and
     /// keep a second sync from starting on top of the first.
@@ -1973,8 +1973,7 @@ final class BudgetStore: ObservableObject {
     /// otherwise come up "connected" with a token but no server URL, and open
     /// encrypted budgets with the previous install's keys. An install from
     /// before the marker existed counts as fresh only with no server saved
-    /// and no budget on disk: a local-only budget can still hold a SimpleFIN
-    /// access key, which can't be claimed a second time.
+    /// and no budget on disk, where nothing in the Keychain is still in use.
     nonisolated static func isFreshInstall(_ defaults: UserDefaults, hasLocalBudgets: Bool) -> Bool {
         !defaults.bool(forKey: "hasLaunched")
             && (defaults.string(forKey: "serverURL") ?? "").isEmpty
@@ -1987,7 +1986,13 @@ final class BudgetStore: ObservableObject {
         // unlock UserDefaults can read back empty, but then the Keychain
         // items are just as unreachable and the delete does nothing.
         if Self.isFreshInstall(defaults, hasLocalBudgets: !fileManager.listLocalBudgets().isEmpty) {
+            // The SimpleFIN key is carried across: its setup token can't be
+            // claimed twice, and a stale one causes neither reinstall bug.
+            let simpleFINKey = SimpleFINCredentials.accessKey
             Keychain.removeAll()
+            if let simpleFINKey {
+                try? SimpleFINCredentials.save(simpleFINKey)
+            }
         }
         defaults.set(true, forKey: "hasLaunched")
         _isSimpleFINConfigured = Published(initialValue: SimpleFINCredentials.isConfigured)

@@ -13,8 +13,8 @@ struct BudgetStoreFreshInstallTests {
 
         #expect(BudgetStore.isFreshInstall(defaults, hasLocalBudgets: false))
 
-        // Updating from a build without the marker, never connected: a
-        // local-only budget can still own a SimpleFIN access key.
+        // Updating from a build without the marker, never connected, with a
+        // local-only budget on disk.
         #expect(!BudgetStore.isFreshInstall(defaults, hasLocalBudgets: true))
 
         // Updating from a build without the marker: the session is live.
