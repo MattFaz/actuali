@@ -184,6 +184,22 @@ struct ScheduleRegisterProjectionTests {
         #expect(entries.map { $0.status(in: ["daily": .due], today: today) } == [.upcoming, .upcoming, .upcoming, .due])
     }
 
+    @Test func longMissedRepeatsStartOneUpcomingWindowBack() {
+        let yearAgo = today.adding(days: -365)
+        let daily = schedule("daily", date: yearAgo, amount: -100, repeats: RecurConfig(frequency: .daily, start: yearAgo))
+
+        let entries = ScheduleRegisterProjection.upcomingEntries(
+            schedules: [daily],
+            statuses: ["daily": .missed],
+            activeAccountIds: ["account-1"],
+            upcomingLength: "7",
+            today: today
+        )
+
+        // The next date stays, since every row's actions target it; older repeats are dropped.
+        #expect(entries.map(\.date) == (-7...7).reversed().map { today.adding(days: $0) } + [yearAgo])
+    }
+
     @Test func customUpcomingLengthOverridesTheBudgetWindowForRepeats() {
         let wednesday = today.adding(days: 1)
         let weekly = schedule(

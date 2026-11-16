@@ -73,9 +73,16 @@ enum ScheduleRegisterProjection {
         today: DayDate
     ) -> [DayDate] {
         guard case .recurring(let config) = schedule.dateCondition else { return [nextDate] }
-        let end = today.adding(days: ScheduleUpcomingLength.days(
-            for: schedule.customUpcomingLength ?? upcomingLength, today: today
-        ))
-        return ScheduleRecurrence.occurrences(of: config, from: nextDate, through: end)
+        let days = ScheduleUpcomingLength.days(for: schedule.customUpcomingLength ?? upcomingLength, today: today)
+        let end = today.adding(days: days)
+        // ponytail: missed repeats start one upcoming window back, so a schedule
+        // neglected for months cannot fill the register (upstream lists them all).
+        // The next date always stays because every row's actions target it.
+        let floor = today.adding(days: -days)
+        guard nextDate < floor else { return ScheduleRecurrence.occurrences(of: config, from: nextDate, through: end) }
+        guard let start = ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: floor),
+              start > nextDate, start <= end
+        else { return [nextDate] }
+        return [nextDate] + ScheduleRecurrence.occurrences(of: config, from: start, through: end)
     }
 }
