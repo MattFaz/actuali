@@ -527,33 +527,80 @@ struct TransactionRow: View {
         )
     }
 
-    /// The note, wrapping over as many lines as it needs, with each `#tag`
-    /// drawn as a colored chip in place so the tags read as part of the note.
-    private func noteLine(_ notes: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(notes.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).enumerated()), id: \.offset) { _, line in
-                if line.allSatisfy(\.isWhitespace) {
-                    Text(verbatim: " ").font(.caption)
-                } else {
-                    FlowLayout(spacing: 4, lineSpacing: 2) {
-                        ForEach(Array(TagFilter.noteSegments(String(line)).enumerated()), id: \.offset) { _, segment in
-                            switch segment {
-                            case .text(let text):
-                                ForEach(Array(text.split(separator: " ").enumerated()), id: \.offset) { _, word in
-                                    Text(word)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+    private var categoryPill: some View {
+        HStack(spacing: 3) {
+            if transaction.isParent {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            Text(categoryLabel)
+                .font(.caption2)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2)
+        .background(Color.secondary.opacity(0.12), in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(categoryLabel)
+    }
+
+    /// Each explicit note line gets its own flow, while the first shares the
+    /// category line. Pills wrap as a group without flattening intentional newlines.
+    @ViewBuilder
+    private func metadataPills(_ notes: String?) -> some View {
+        if let notes, !notes.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(
+                    Array(notes.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).enumerated()),
+                    id: \.offset
+                ) { index, line in
+                    FlowLayout(spacing: 3, lineSpacing: 2) {
+                        if index == 0 {
+                            categoryPill
+                        }
+                        if line.allSatisfy(\.isWhitespace) {
+                            Text(verbatim: " ")
+                                .font(.caption2)
+                        } else {
+                            ForEach(
+                                Array(TagFilter.noteSegments(String(line)).enumerated()),
+                                id: \.offset
+                            ) { _, segment in
+                                switch segment {
+                                case .text(let text):
+                                    noteChip(text)
+                                case .tag(let rawTag):
+                                    tagChip(rawTag)
                                 }
-                            case .tag(let rawTag):
-                                tagChip(rawTag)
                             }
                         }
                     }
                 }
             }
+            .accessibilityRepresentation {
+                HStack(spacing: 4) {
+                    Text(categoryLabel)
+                    Text(notes)
+                }
+                .accessibilityElement(children: .contain)
+            }
+        } else {
+            categoryPill
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(notes)
+    }
+
+    private func noteChip(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color.secondary.opacity(0.12), in: Capsule())
+            .foregroundStyle(.secondary)
     }
 
     private func tagChip(_ rawTag: String) -> some View {
@@ -562,6 +609,7 @@ struct TransactionRow: View {
         return Text(rawTag)
             .font(.system(size: 10, weight: .semibold))
             .lineLimit(1)
+            .truncationMode(.tail)
             .padding(.horizontal, 5)
             .padding(.vertical, 1.5)
             .background(tagColor.opacity(0.15), in: Capsule())
@@ -614,32 +662,21 @@ struct TransactionRow: View {
                 ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
                     .frame(width: 28, height: 28)
             }
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(Self.payeeLabel(payeeName: transaction.payeeName, locale: locale))
-                    .font(.body)
-                HStack(spacing: 4) {
-                    if transaction.isParent {
-                        Image(systemName: "arrow.triangle.branch")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(categoryLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let notes = transaction.notes, !notes.isEmpty {
-                    noteLine(notes)
-                }
+                    .font(.subheadline)
+                metadataPills(transaction.notes)
             }
             // Take all the width the amount column leaves. A trailing Spacer
             // would claim half of it, wrapping notes well before the amount.
             .frame(maxWidth: .infinity, alignment: .leading)
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: 1) {
                 Text(budgetStore.displayBalance(transaction.amount))
+                    .font(.subheadline)
                     .foregroundColor(transaction.isOutflow ? .primary : .green)
                 if showAccount {
                     Text(accountName)
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 120, alignment: .trailing)
@@ -647,16 +684,16 @@ struct TransactionRow: View {
                 if let runningBalance = transaction.runningBalance {
                     Text(budgetStore.displayBalance(runningBalance))
                         .foregroundStyle(balanceColor(for: runningBalance))
-                        .font(.caption)
+                        .font(.caption2)
                 }
                 if showDate {
                     Text(transaction.dateFormatted)
-                        .font(.caption)
+                        .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 1)
         .onChange(of: isSelectionMode) { _, active in
             // The row's long-press gesture spans the cleared-status button
             // too, so a hold on the dot can flip this row into selection
