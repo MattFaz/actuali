@@ -27,6 +27,19 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    var groupingSeparator: String {
+        switch self {
+        case .commaDot, .commaDotIn:
+            ","
+        case .dotComma:
+            "."
+        case .spaceComma:
+            "\u{202F}"
+        case .apostropheDot:
+            "\u{2019}"
+        }
+    }
+
     var decimalSeparator: String {
         switch self {
         case .commaDot, .apostropheDot, .commaDotIn:
@@ -192,6 +205,59 @@ enum CurrencyAmountFormat {
             in: currencyString,
             with: numericString
         )
+    }
+
+    /// Abbreviated amount for chart axes ("$400K", "$1.25M"), where a full
+    /// figure costs more width than a phone chart can spare. The locale picks
+    /// the abbreviation; the decimal mark follows Actual's number format.
+    /// `headline` is for one number on its own ("$72.8K"): with no neighbour
+    /// to tell it from, three significant digits read better than an axis
+    /// tick's precision.
+    static func compactString(
+        units: Double,
+        currencyCode: String,
+        narrowSymbol: Bool,
+        numberFormat: ActualNumberFormat,
+        locale: Locale,
+        headline: Bool = false
+    ) -> String {
+        // Fraction digits on the abbreviated value, not significant digits:
+        // three significant digits round 250.5K to "250K", so on a narrow
+        // range neighbouring ticks would share a label.
+        // ponytail: three digits, fixed rather than derived from the tick step,
+        // which one axis label can't see. Ticks closer than 0.1% of the
+        // magnitude still collide; pass the chart's value range into
+        // ReportCurrencyYAxis if that shows up.
+        let precision: NumberFormatStyleConfiguration.Precision = headline ? .significantDigits(1...3) : .fractionLength(0...3)
+        let formatted = currencyCode.isEmpty
+            ? units.formatted(
+                .number.locale(locale).notation(.compactName).precision(precision)
+            )
+            : units.formatted(
+                .currency(code: currencyCode).locale(locale)
+                    .presentation(narrowSymbol ? .narrow : .standard)
+                    .notation(.compactName).precision(precision)
+            )
+        // Only between the digits, so a "." inside a currency symbol survives.
+        guard let first = formatted.firstIndex(where: \.isWholeNumber),
+              let last = formatted.lastIndex(where: \.isWholeNumber)
+        else { return formatted }
+        // Both separators, in one pass so a swapped pair can't apply twice:
+        // a language with no short form for thousands (German) writes
+        // "100.000", and that "." is grouping.
+        // ponytail: a separator swap, so comma-dot-in keeps western 3-digit
+        // groups here rather than lakh/crore. Format the mantissa with
+        // numberFormat and re-attach the suffix if that matters.
+        let localeDecimal = locale.decimalSeparator ?? "."
+        let localeGrouping = locale.groupingSeparator ?? ","
+        let digits = formatted[first...last].map { character -> String in
+            switch String(character) {
+            case localeDecimal: numberFormat.decimalSeparator
+            case localeGrouping: numberFormat.groupingSeparator
+            default: String(character)
+            }
+        }.joined()
+        return formatted.replacingCharacters(in: first...last, with: digits)
     }
 
     private static func replacingNumericPart(

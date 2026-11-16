@@ -569,22 +569,29 @@ enum CustomReportEngine {
         return c
     }()
 
-    private static func dayFormatter(locale: Locale) -> DateFormatter {
-        let f = DateFormatter()
-        f.dateFormat = "yy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = locale
-        f.calendar = Calendar(identifier: .gregorian)
-        return f
+    /// Detail pages ask for these on every pass through a card's body.
+    private static let formatterCache = FormatterCache<DateFormatter>()
+
+    static func dayFormatter(locale: Locale) -> DateFormatter {
+        formatterCache.value("day|" + locale.identifier) {
+            let f = DateFormatter()
+            f.dateFormat = "yy-MM-dd"
+            f.timeZone = TimeZone(identifier: "UTC")
+            f.locale = locale
+            f.calendar = Calendar(identifier: .gregorian)
+            return f
+        }
     }
 
-    private static func monthFormatter(locale: Locale) -> DateFormatter {
-        let f = DateFormatter()
-        f.dateFormat = "MMM ''yy"
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = locale
-        f.calendar = Calendar(identifier: .gregorian)
-        return f
+    static func monthFormatter(locale: Locale) -> DateFormatter {
+        formatterCache.value("month|" + locale.identifier) {
+            let f = DateFormatter()
+            f.dateFormat = "MMM ''yy"
+            f.timeZone = TimeZone(identifier: "UTC")
+            f.locale = locale
+            f.calendar = Calendar(identifier: .gregorian)
+            return f
+        }
     }
 
     private static func yearFormatter(locale: Locale) -> DateFormatter {

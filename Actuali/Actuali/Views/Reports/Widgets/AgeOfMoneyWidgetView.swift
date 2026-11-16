@@ -17,7 +17,7 @@ struct AgeOfMoneyWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(displayName).font(.headline)
+                ReportCardTitle(displayName)
                 Spacer()
                 if let age = data.currentAge {
                     HStack(spacing: 4) {
@@ -52,6 +52,7 @@ struct AgeOfMoneyWidgetView: View {
                     .foregroundStyle(.teal)
                 }
                 .frame(height: 140)
+                .modifier(ReportIntervalXAxis(labels: data.points.map(\.monthLabel)))
             } else {
                 Text(data.currentAge == nil ? ReportStrings.text("Not enough data", locale: locale) : "")
                     .font(.subheadline)

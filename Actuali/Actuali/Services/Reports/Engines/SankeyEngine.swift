@@ -7,7 +7,7 @@ struct SankeyMeta: Codable, Equatable {
     let name: String?
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
-    let timeFrame: WidgetTimeFrame?
+    var timeFrame: WidgetTimeFrame?
     let mode: String? // "budgeted" | "spent"; nil = "spent"
     let topNcategories: Int?
     let categorySort: String? // "per-group" | "global" | "budget-order"

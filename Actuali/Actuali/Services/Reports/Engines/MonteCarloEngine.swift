@@ -414,6 +414,11 @@ struct MonteCarloData: Equatable {
     let horizonYears: Int
     let simulationCount: Int
     let percentileBands: [MonteCarloPercentileBand]
+
+    /// Upstream: Math.round(successRate * 1000) / 10
+    var successPercent: Double {
+        (successRate * 1000).rounded() / 10
+    }
 }
 
 // MARK: - PRNG
