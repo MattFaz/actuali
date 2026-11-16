@@ -87,14 +87,4 @@ enum Keychain {
             throw KeychainError.unhandled(status)
         }
     }
-
-    /// Remove everything this app has stored. Best effort: there is nothing
-    /// useful to do with a failure.
-    static func removeAll() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-        ]
-        SecItemDelete(query as CFDictionary)
-    }
 }
