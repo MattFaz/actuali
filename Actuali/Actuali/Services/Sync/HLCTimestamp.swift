@@ -28,10 +28,12 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
         // Format counter as 4-digit uppercase hex
         let counterHex = String(format: "%04X", counter)
 
-        // Ensure node is 16 chars, padded with leading zeros
-        let paddedNode = String(repeating: "0", count: Swift.max(0, 16 - node.count)) + node.suffix(16)
-
         return "\(isoString)-\(counterHex)-\(paddedNode)"
+    }
+
+    /// The node as it is written out: 16 chars, padded with leading zeros.
+    private var paddedNode: String {
+        node.count == 16 ? node : String(repeating: "0", count: Swift.max(0, 16 - node.count)) + node.suffix(16)
     }
 
     // MARK: - Parsing
@@ -116,8 +118,17 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
     // MARK: - Comparable
 
     static func < (lhs: HLCTimestamp, rhs: HLCTimestamp) -> Bool {
-        // Lexicographic comparison of string representation works correctly
-        lhs.toString() < rhs.toString()
+        // Upstream orders timestamps by their string form. Every field in it
+        // is fixed width, so comparing the fields in order gives the same
+        // answer without formatting a date per operand: sorting a first sync's
+        // tens of thousands of messages spent minutes building formatters.
+        if lhs.millis != rhs.millis {
+            return lhs.millis < rhs.millis
+        }
+        if lhs.counter != rhs.counter {
+            return lhs.counter < rhs.counter
+        }
+        return lhs.paddedNode < rhs.paddedNode
     }
 
     // MARK: - Hashing (for Merkle tree)
