@@ -2638,6 +2638,17 @@ final class BudgetStore: ObservableObject {
     }
 
     func downloadBudget(_ remoteBudget: RemoteBudget) async {
+        // Outside the download spinner: the budget is on screen from here, it
+        // just isn't caught up yet.
+        if await downloadAndOpen(remoteBudget) {
+            await runInitialSync()
+        }
+    }
+
+    /// Downloads, imports and loads a budget. Returns whether it actually got
+    /// opened, so the initial sync runs only when there is something to catch
+    /// up.
+    private func downloadAndOpen(_ remoteBudget: RemoteBudget) async -> Bool {
         isLoading = true
         downloadingBudgetId = remoteBudget.id
         error = nil
@@ -2648,8 +2659,6 @@ final class BudgetStore: ObservableObject {
         syncClient = nil
         database = nil
 
-        // Whether the budget actually got opened, so the initial sync below
-        // runs only when there is something to catch up.
         var opened = false
 
         do {
@@ -2659,7 +2668,7 @@ final class BudgetStore: ObservableObject {
                     self.error = String(localized: "This budget is encrypted. Enter its encryption password to open it.")
                     isLoading = false
                     downloadingBudgetId = nil
-                    return
+                    return false
                 }
                 loadedKey = key
             }
@@ -2678,7 +2687,7 @@ final class BudgetStore: ObservableObject {
                     self.error = String(localized: "This budget's encryption key has changed. Re-enter the password.")
                     isLoading = false
                     downloadingBudgetId = nil
-                    return
+                    return false
                 }
                 guard let iv = meta.iv, let authTag = meta.authTag else {
                     throw ActualServerError.invalidResponse
@@ -2707,12 +2716,7 @@ final class BudgetStore: ObservableObject {
 
         isLoading = false
         downloadingBudgetId = nil
-
-        // Outside the download spinner: the budget is on screen from here, it
-        // just isn't caught up yet.
-        if opened {
-            await runInitialSync()
-        }
+        return opened
     }
 
     /// The first sync after a budget is opened. A downloaded budget is a server
@@ -2738,8 +2742,13 @@ final class BudgetStore: ObservableObject {
         } catch {
             return error.localizedDescription
         }
-        await downloadBudget(remoteBudget)
-        return error // any download error surfaced by downloadBudget
+        // The sheet waits for the budget to open, not for its initial sync:
+        // that catch-up can run for minutes on a long history, and holding
+        // the sheet for it left the user on a frozen form with no way out.
+        if await downloadAndOpen(remoteBudget) {
+            Task { await runInitialSync() }
+        }
+        return error // any download error surfaced by downloadAndOpen
     }
 
     /// Mirror of upstream's validateBudgetName (util/budget-name.ts:23),

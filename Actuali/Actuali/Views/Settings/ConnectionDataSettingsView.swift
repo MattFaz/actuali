@@ -370,10 +370,9 @@ private struct BudgetSelectionSettingsSection: View {
         }
         // A sheet, not a confirmation dialog: picking an encrypted budget has
         // to present the password sheet next, and a presentation asked for
-        // while the dialog was still dismissing was dropped — leaving
-        // `budgetToUnlock` set with nothing on screen, so picking that budget
-        // again did nothing either. Only a sheet reports that it has finished
-        // dismissing, so the pick is opened from `onDismiss`.
+        // while the dialog was still dismissing was dropped, so the prompt just
+        // vanished. Only a sheet reports that it has finished dismissing, so
+        // the pick is opened from `onDismiss`.
         .sheet(isPresented: $showingBudgetSelectPrompt, onDismiss: {
             if let budget = budgetPickedFromPrompt {
                 budgetPickedFromPrompt = nil
