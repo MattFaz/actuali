@@ -91,6 +91,10 @@ struct ActualiApp: App {
                             isEncrypted: true
                         ),
                     ]
+                    // A launch argument can only blank the id, not remove it.
+                    if budgetStore.currentBudgetId?.isEmpty == true {
+                        budgetStore.currentBudgetId = nil
+                    }
                     if let budgetId = budgetStore.currentBudgetId,
                        let local = BudgetFileManager.shared.listLocalBudgets().first(where: { $0.id == budgetId }) {
                         // The demo budget is local-only, so stamp a cloud file id on first.

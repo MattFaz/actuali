@@ -184,94 +184,6 @@ struct BudgetStoreInitialSyncTests {
         let watermark = (UserDefaults.standard.object(forKey: key) as? NSNumber)?.int64Value
         #expect(watermark != 500)
     }
-}
-
-/// Builds an uncompressed ZIP in memory. Hand-rolled because ZIPFoundation is
-/// linked into the app target only; stored entries are the simplest thing it
-/// will read back, and that read is what these tests are exercising.
-private enum StoredZip {
-    static func archive(_ entries: [(name: String, data: Data)]) -> Data {
-        var payload = Data()
-        var central = Data()
-
-        for entry in entries {
-            let name = Data(entry.name.utf8)
-            let crc = crc32(entry.data)
-            let size = UInt32(entry.data.count)
-            let offset = UInt32(payload.count)
-
-            payload += le32(0x04034b50) // local file header
-            payload += le16(20) // version needed
-            payload += le16(0) // flags
-            payload += le16(0) // method: stored
-            payload += le16(0) // mod time
-            payload += le16(0x21) // mod date: 1980-01-01
-            payload += le32(crc)
-            payload += le32(size) // compressed size
-            payload += le32(size) // uncompressed size
-            payload += le16(UInt16(name.count))
-            payload += le16(0) // extra field length
-            payload += name
-            payload += entry.data
-
-            central += le32(0x02014b50) // central directory header
-            central += le16(20) // version made by
-            central += le16(20) // version needed
-            central += le16(0) // flags
-            central += le16(0) // method: stored
-            central += le16(0) // mod time
-            central += le16(0x21) // mod date
-            central += le32(crc)
-            central += le32(size)
-            central += le32(size)
-            central += le16(UInt16(name.count))
-            central += le16(0) // extra field length
-            central += le16(0) // comment length
-            central += le16(0) // disk number start
-            central += le16(0) // internal attributes
-            central += le32(0) // external attributes
-            central += le32(offset)
-            central += name
-        }
-
-        let centralOffset = UInt32(payload.count)
-        var output = payload
-        output += central
-        output += le32(0x06054b50) // end of central directory
-        output += le16(0) // this disk
-        output += le16(0) // disk with central directory
-        output += le16(UInt16(entries.count))
-        output += le16(UInt16(entries.count))
-        output += le32(UInt32(central.count))
-        output += le32(centralOffset)
-        output += le16(0) // comment length
-        return output
-    }
-
-    private static func le16(_ value: UInt16) -> Data {
-        Data([UInt8(value & 0xff), UInt8(value >> 8)])
-    }
-
-    private static func le32(_ value: UInt32) -> Data {
-        Data([
-            UInt8(value & 0xff),
-            UInt8((value >> 8) & 0xff),
-            UInt8((value >> 16) & 0xff),
-            UInt8((value >> 24) & 0xff),
-        ])
-    }
-
-    private static func crc32(_ data: Data) -> UInt32 {
-        var crc: UInt32 = 0xffffffff
-        for byte in data {
-            crc ^= UInt32(byte)
-            for _ in 0..<8 {
-                // Branch-free: subtract the low bit from zero to get the mask.
-                crc = (crc >> 1) ^ (0xedb88320 & (0 &- (crc & 1)))
-            }
-        }
-        return crc ^ 0xffffffff
-    }
 
     private struct KeyFixture: Codable {
         let password: String
@@ -386,5 +298,93 @@ private enum StoredZip {
         #expect(failure != nil)
         #expect(EncryptionKeyManager.load(fileId: remoteBudget.id) == nil)
         #expect(store.isInitialSyncing == false)
+    }
+}
+
+/// Builds an uncompressed ZIP in memory. Hand-rolled because ZIPFoundation is
+/// linked into the app target only; stored entries are the simplest thing it
+/// will read back, and that read is what these tests are exercising.
+private enum StoredZip {
+    static func archive(_ entries: [(name: String, data: Data)]) -> Data {
+        var payload = Data()
+        var central = Data()
+
+        for entry in entries {
+            let name = Data(entry.name.utf8)
+            let crc = crc32(entry.data)
+            let size = UInt32(entry.data.count)
+            let offset = UInt32(payload.count)
+
+            payload += le32(0x04034b50) // local file header
+            payload += le16(20) // version needed
+            payload += le16(0) // flags
+            payload += le16(0) // method: stored
+            payload += le16(0) // mod time
+            payload += le16(0x21) // mod date: 1980-01-01
+            payload += le32(crc)
+            payload += le32(size) // compressed size
+            payload += le32(size) // uncompressed size
+            payload += le16(UInt16(name.count))
+            payload += le16(0) // extra field length
+            payload += name
+            payload += entry.data
+
+            central += le32(0x02014b50) // central directory header
+            central += le16(20) // version made by
+            central += le16(20) // version needed
+            central += le16(0) // flags
+            central += le16(0) // method: stored
+            central += le16(0) // mod time
+            central += le16(0x21) // mod date
+            central += le32(crc)
+            central += le32(size)
+            central += le32(size)
+            central += le16(UInt16(name.count))
+            central += le16(0) // extra field length
+            central += le16(0) // comment length
+            central += le16(0) // disk number start
+            central += le16(0) // internal attributes
+            central += le32(0) // external attributes
+            central += le32(offset)
+            central += name
+        }
+
+        let centralOffset = UInt32(payload.count)
+        var output = payload
+        output += central
+        output += le32(0x06054b50) // end of central directory
+        output += le16(0) // this disk
+        output += le16(0) // disk with central directory
+        output += le16(UInt16(entries.count))
+        output += le16(UInt16(entries.count))
+        output += le32(UInt32(central.count))
+        output += le32(centralOffset)
+        output += le16(0) // comment length
+        return output
+    }
+
+    private static func le16(_ value: UInt16) -> Data {
+        Data([UInt8(value & 0xff), UInt8(value >> 8)])
+    }
+
+    private static func le32(_ value: UInt32) -> Data {
+        Data([
+            UInt8(value & 0xff),
+            UInt8((value >> 8) & 0xff),
+            UInt8((value >> 16) & 0xff),
+            UInt8((value >> 24) & 0xff),
+        ])
+    }
+
+    private static func crc32(_ data: Data) -> UInt32 {
+        var crc: UInt32 = 0xffffffff
+        for byte in data {
+            crc ^= UInt32(byte)
+            for _ in 0..<8 {
+                // Branch-free: subtract the low bit from zero to get the mask.
+                crc = (crc >> 1) ^ (0xedb88320 & (0 &- (crc & 1)))
+            }
+        }
+        return crc ^ 0xffffffff
     }
 }

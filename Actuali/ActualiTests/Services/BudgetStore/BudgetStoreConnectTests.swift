@@ -129,24 +129,27 @@ struct BudgetStoreConnectTests {
     /// A list request that failed used to read as "No budgets were found on
     /// your server", which sent people looking for budgets that were there.
     @Test func failedBudgetListFetchIsReportedAsAFailureNotAnEmptyServer() async throws {
-        let failing = ActualServerClient(session: StubTransport.session { _ in
-            throw URLError(.cannotConnectToHost)
+        // One store throughout, so the second fetch has a failure to clear.
+        let listRequests = RequestCounter()
+        let files = try JSONEncoder().encode(Self.files)
+        let serverClient = ActualServerClient(session: StubTransport.session { _ in
+            listRequests.increment()
+            guard listRequests.value > 1 else { throw URLError(.cannotConnectToHost) }
+            return StubTransport.Response(contentType: "application/json", body: files)
         })
-        try await failing.configure(serverURL: "https://budget.example.com")
-        await failing.setToken("test-token")
+        try await serverClient.configure(serverURL: "https://budget.example.com")
+        await serverClient.setToken("test-token")
         let store = BudgetStore.previewInstance()
-        store.setServerClientForTesting(failing)
+        store.setServerClientForTesting(serverClient)
 
         await store.fetchRemoteBudgets()
 
         #expect(store.remoteBudgetsLoadFailed)
         #expect(store.remoteBudgets.isEmpty)
 
-        // The next successful fetch clears it.
-        let working = try await makeStore()
-        #expect(!working.remoteBudgetsLoadFailed)
-        await working.fetchRemoteBudgets()
-        #expect(!working.remoteBudgetsLoadFailed)
-        #expect(working.remoteBudgets.count == 1)
+        await store.fetchRemoteBudgets()
+
+        #expect(!store.remoteBudgetsLoadFailed)
+        #expect(store.remoteBudgets.count == 1)
     }
 }
