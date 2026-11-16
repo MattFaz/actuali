@@ -1,7 +1,7 @@
 # Companion to ci.yml: PRs that don't touch app code (website, docs) still get
-# passing "Unit Tests (iOS 26)" and "Unit Tests (iOS 18)" checks, so branch
-# protection can require them unconditionally. The paths-ignore list must
-# mirror ci.yml's paths list exactly.
+# passing "Unit Tests (iOS 26)", "Unit Tests (iOS 18)", and "Unit Tests Gate"
+# checks, so branch protection can require them unconditionally. The
+# paths-ignore list must mirror ci.yml's paths list exactly.
 #
 # ponytail: mirrored lists stop both workflows firing on a workflow-only PR,
 # but not on a mixed one (a workflow file plus a doc), which still reports each
@@ -20,6 +20,12 @@ permissions:
   contents: read
 
 jobs:
+  tests-gate:
+    name: Unit Tests Gate
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No app code changed — nothing to gate."
+
   test-ios26:
     name: Unit Tests (iOS 26)
     runs-on: ubuntu-latest
