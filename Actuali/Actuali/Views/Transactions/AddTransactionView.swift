@@ -1221,7 +1221,8 @@ struct AddTransactionView: View {
             recordLocation: saveLocation,
             reviewConfirmations: confirmedReviewRequirements,
             categoryIsExplicit: userPickedCategory,
-            automaticCategoryPreview: automaticCategoryPreview
+            automaticCategoryPreview: automaticCategoryPreview,
+            transferOpenedLegIsSource: !isInflow
         )
     }
 
