@@ -59,9 +59,10 @@ struct ServerConnectionErrorTests {
         #expect(!message.contains("NSURLErrorDomain"))
     }
 
-    @Test func offlineDeviceBlamesTheInternetConnectionNotTheServer() async {
+    @Test func offlineDeviceBlamesTheInternetConnectionNotTheServerAndHintsLocalNetworkAccess() async {
         let message = await loginFailureMessage(.notConnectedToInternet)
         #expect(message.localizedCaseInsensitiveContains("internet"))
+        #expect(message.localizedCaseInsensitiveContains("local network"))
     }
 
     /// Codes we don't map by hand still get the "couldn't connect" framing and
@@ -86,5 +87,13 @@ struct ServerConnectionErrorTests {
     @Test func httpErrorsKeepTheirExistingMessage() {
         let error = ActualServerError.httpError(statusCode: 403, message: "Forbidden")
         #expect(error.localizedDescription == "HTTP error 403: Forbidden")
+    }
+
+    /// Local servers need this purpose string so iOS can ask for local network access.
+    @Test func localNetworkUsageDescriptionIsPresent() {
+        let text = Bundle.main.object(
+            forInfoDictionaryKey: "NSLocalNetworkUsageDescription"
+        ) as? String
+        #expect(text?.isEmpty == false)
     }
 }

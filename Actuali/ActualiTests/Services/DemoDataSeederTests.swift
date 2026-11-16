@@ -120,12 +120,86 @@ struct DemoDataSeederTests {
         #expect(!newest.cleared)
     }
 
-    /// Two pages so the demo exercises the dashboard switcher (GH #120);
-    /// "Main" is first so it's the default dashboard on open.
-    @Test func seedsTwoDashboardPages() async throws {
+    /// Several pages so the demo exercises the dashboard switcher (GH #120);
+    /// "Main" is first so it's the default dashboard on open. "All Reports"
+    /// holds one of every remaining widget type for manual testing.
+    @Test func seedsDashboardPages() async throws {
         let database = try open(Self.defaultSeed)
         let pages = try await database.fetchDashboardPages()
-        #expect(pages.map(\.name) == ["Main", "Trends"])
+        #expect(pages.map(\.name) == ["Main", "Trends", "All Reports"])
+    }
+
+    /// Every card on "All Reports" has to show something: an empty or
+    /// unsupported card there would make the page useless for trying the
+    /// cards and their detail pages.
+    @Test func allReportsDashboardCoversEveryOtherWidgetTypeWithData() async throws {
+        let database = try open(Self.defaultSeed)
+        let pages = try await database.fetchDashboardPages()
+        let page = try #require(pages.first { $0.name == "All Reports" })
+        let widgets = try await database.fetchWidgets(pageId: page.id)
+        #expect(widgets.map(\.typeLabel) == [
+            "Notes", "Summary", "Summary", "Custom Report", "Custom Report", "Custom Report", "Custom Report",
+            "Custom Report", "Custom Report",
+            "Calendar", "Sankey", "Budget Analysis", "Balance Forecast", "Crossover", "Monte Carlo",
+        ])
+
+        let transactions = try await database.fetchTransactionsForReports()
+        let groups = try await database.fetchCategoryGroups()
+        let accounts = try await database.fetchAccounts()
+        let today = Date()
+
+        let reportIds = widgets.compactMap { widget -> String? in
+            if case .customReport(_, let meta) = widget {
+                return meta?.id
+            }
+            return nil
+        }
+        let configs = try await database.fetchCustomReportConfigs(ids: reportIds)
+        #expect(configs.count == 6)
+        let context = try await CustomReportEngine.ReportContext(
+            categories: groups.flatMap(\.categories), groups: groups,
+            offBudgetAccountIds: Set(accounts.filter(\.offBudget).map(\.id)), firstDayOfWeekIdx: 0,
+            payees: database.fetchPayees()
+        )
+        var chartable = 0
+        var breakdowns = 0
+        for config in configs.values {
+            let data = CustomReportEngine.compute(config: config, transactions: transactions, reportContext: context,
+                                                  filterContext: .empty, today: today, locale: Locale(identifier: "en_US"))
+            if case .unsupported(let reason) = data.kind {
+                Issue.record("\(config.name) is unsupported: \(reason)")
+            }
+            chartable += data.chartDetail() == nil ? 0 : 1
+            breakdowns += data.breakdown == nil ? 0 : 1
+        }
+        // The line, stacked and bar reports open a chart page; the two donuts
+        // and the table open a list.
+        #expect(chartable == 3)
+        #expect(breakdowns == 3)
+
+        for widget in widgets {
+            switch widget {
+            case .calendar(_, let meta):
+                let data = CalendarEngine.compute(meta: meta, transactions: transactions, today: today, firstDayOfWeekIdx: 0)
+                #expect(data.latestActiveDay != nil)
+            case .sankey(_, let meta):
+                let data = SankeyEngine.compute(meta: meta, transactions: transactions, categoryGroups: groups,
+                                                budget: SankeyBudgetInput(), today: today, context: .empty,
+                                                locale: Locale(identifier: "en_US"))
+                #expect(data.hasDrawableFlows)
+            case .crossover(_, let meta):
+                let data = CrossoverEngine.compute(meta: meta, transactions: transactions, categories: groups.flatMap(\.categories),
+                                                   accountIds: accounts.map(\.id), today: today)
+                #expect(data.points.count >= 2)
+            case .monteCarlo(_, let meta):
+                let data = MonteCarloEngine.compute(meta: meta, accountBalances: Dictionary(
+                    accounts.map { ($0.id, $0.balance) }, uniquingKeysWith: { first, _ in first }
+                ))
+                #expect(data.percentileBands.count >= 2)
+            default:
+                break
+            }
+        }
     }
 
     @Test func seededDashboardWidgetsAllParseToSupportedTypes() async throws {

@@ -142,6 +142,12 @@ struct BalanceForecastEngineTests {
         )
         #expect(result.points.map(\.balanceCents) == [100_000, 95000, 90000, 85000])
         #expect(result.points.map(\.isForecast) == [false, true, true, true])
+        // The occurrences behind the projection, soonest first.
+        #expect(result.upcoming.map(\.amountCents) == [-5000, -5000, -5000])
+        #expect(result.upcoming.map(\.date) == result.upcoming.map(\.date).sorted())
+        #expect(result.upcoming.first?.date == Calendar(identifier: .gregorian).date(from: DateComponents(
+            timeZone: TimeZone(identifier: "UTC"), year: 2026, month: 5, day: 20
+        )))
     }
 
     @Test func pastDueOccurrencesDoNotProject() {
@@ -179,6 +185,8 @@ struct BalanceForecastEngineTests {
             transferAccountsByPayeeId: transferMap, today: asOf
         )
         #expect(combined.points.map(\.balanceCents) == [0])
+        // A transfer inside the charted accounts moves nothing, so it isn't listed.
+        #expect(combined.upcoming.isEmpty)
 
         // Only the transfer side selected: its leg still projects.
         let savingsOnly = BalanceForecastEngine.compute(
@@ -187,6 +195,8 @@ struct BalanceForecastEngineTests {
             transferAccountsByPayeeId: transferMap, today: asOf
         )
         #expect(savingsOnly.points.map(\.balanceCents) == [25000])
+        #expect(savingsOnly.upcoming.map(\.amountCents) == [25000])
+        #expect(savingsOnly.upcoming.map(\.payeeId) == ["p-transfer"])
     }
 
     // MARK: - Tracking-budget source
