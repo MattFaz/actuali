@@ -126,6 +126,19 @@ struct BudgetStoreConnectTests {
         }
     }
 
+    /// A sign-in whose budget list came back empty has nothing to offer; the
+    /// prompt must not then turn up on a later visit once budgets exist.
+    @Test func budgetPromptIsDroppedWhenTheConnectionHadNoBudgets() async throws {
+        let store = try await makeStore()
+        store.budgetSelectionPromptPending = true
+
+        #expect(!store.consumeBudgetSelectionPrompt(), "no budgets listed yet")
+
+        await store.fetchRemoteBudgets()
+        #expect(store.remoteBudgets.count == 1)
+        #expect(!store.consumeBudgetSelectionPrompt())
+    }
+
     /// A list request that failed used to read as "No budgets were found on
     /// your server", which sent people looking for budgets that were there.
     @Test func failedBudgetListFetchIsReportedAsAFailureNotAnEmptyServer() async throws {
