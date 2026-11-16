@@ -55,6 +55,13 @@ struct TransactionRowTests {
         #expect(category("Food", isParent: true, offBudget: true) == "Off budget")
     }
 
+    @Test func metadataAccessibilityLabelIncludesCategoryAndFullNote() {
+        #expect(TransactionRow.metadataAccessibilityLabel(
+            category: "Food",
+            notes: "Lunch with the team #work"
+        ) == "Food, Lunch with the team #work")
+    }
+
     @Test @MainActor func accountNamesWrapAtDefaultAndAccessibilitySizes() throws {
         for (size, name) in [
             (DynamicTypeSize.large, "Chase Checking Everyday Spending"),
@@ -82,6 +89,20 @@ struct TransactionRowTests {
         #expect(multipleTags.height > oneTag.height)
     }
 
+    @Test @MainActor func longCategoryNamesWrapInsteadOfTruncating() throws {
+        let short = try renderedRow(categoryName: "Food", width: 320)
+        let long = try renderedRow(
+            categoryName: String(repeating: "Household supplies and recurring essentials ", count: 3),
+            width: 320
+        )
+        let longer = try renderedRow(
+            categoryName: String(repeating: "Household supplies and recurring essentials ", count: 6),
+            width: 320
+        )
+        #expect(long.height > short.height)
+        #expect(longer.height > long.height)
+    }
+
     @Test @MainActor func tagChipColorsRenderAtNarrowAndWideWidths() throws {
         for width: CGFloat in [220, 600] {
             let red = try renderedRow(notes: "#reimbursable", width: width, tagColor: "#ff0000")
@@ -106,7 +127,9 @@ struct TransactionRowTests {
             String(repeating: "食料品の領収書", count: 12),
         ] {
             let long = try renderedRow(notes: note, width: 320)
+            let longer = try renderedRow(notes: note + note, width: 320)
             #expect(long.height > short.height)
+            #expect(longer.height > long.height)
         }
     }
 
@@ -130,21 +153,16 @@ struct TransactionRowTests {
         #expect(taggedLines.height > taggedSingleLine.height)
     }
 
-    @Test @MainActor func overlongTagWrapsWithoutChangingTheAmount() throws {
-        let short = try renderedRow(notes: "#item", width: 220)
+    @Test @MainActor func overlongTagDoesNotShiftTheAmount() throws {
+        // Both metadata layouts occupy two lines, so the amount has the same
+        // vertical position without relying on rounded half-pixel offsets.
+        let short = try renderedRow(notes: "#item\n#item", width: 220)
         let long = try renderedRow(notes: "#" + String(repeating: "item", count: 100), width: 220)
-        #expect(long.height > short.height)
+        #expect(long.height == short.height)
 
         let amountBounds = CGRect(x: 172, y: 0, width: 48, height: short.height)
-        let verticalOffset = (CGFloat(long.height - short.height) / 2).rounded()
-        let longAmountBounds = CGRect(
-            x: amountBounds.minX,
-            y: verticalOffset,
-            width: amountBounds.width,
-            height: amountBounds.height
-        )
         let shortAmount = try #require(short.cropping(to: amountBounds))
-        let longAmount = try #require(long.cropping(to: longAmountBounds))
+        let longAmount = try #require(long.cropping(to: amountBounds))
         #expect(UIImage(cgImage: longAmount).pngData() == UIImage(cgImage: shortAmount).pngData())
     }
 
@@ -152,6 +170,7 @@ struct TransactionRowTests {
     private func renderedRow(
         accountName: String = "A",
         notes: String? = nil,
+        categoryName: String = "Food",
         width: CGFloat = 390,
         size: DynamicTypeSize = .large,
         tagColor: String = "#ff0000"
@@ -167,7 +186,7 @@ struct TransactionRowTests {
         ]
         let transaction = Transaction(
             id: "transaction", accountId: "account", date: 20_261_004, amount: -100,
-            payeeId: nil, payeeName: "Cafe", categoryId: "category", categoryName: "Food",
+            payeeId: nil, payeeName: "Cafe", categoryId: "category", categoryName: categoryName,
             notes: notes, cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: nil, tombstone: false, sortOrder: nil, importedPayee: nil
         )

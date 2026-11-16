@@ -514,6 +514,10 @@ struct TransactionRow: View {
             ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
     }
 
+    nonisolated static func metadataAccessibilityLabel(category: String, notes: String) -> String {
+        "\(category), \(notes)"
+    }
+
     private var categoryLabel: String {
         Self.categoryLabel(
             categoryName: transaction.categoryName,
@@ -536,8 +540,6 @@ struct TransactionRow: View {
             }
             Text(categoryLabel)
                 .font(.caption2)
-                .lineLimit(1)
-                .truncationMode(.tail)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 7)
@@ -580,13 +582,8 @@ struct TransactionRow: View {
                     }
                 }
             }
-            .accessibilityRepresentation {
-                HStack(spacing: 4) {
-                    Text(categoryLabel)
-                    Text(notes)
-                }
-                .accessibilityElement(children: .contain)
-            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Self.metadataAccessibilityLabel(category: categoryLabel, notes: notes))
         } else {
             categoryPill
         }
@@ -595,8 +592,6 @@ struct TransactionRow: View {
     private func noteChip(_ text: String) -> some View {
         Text(text)
             .font(.caption2)
-            .lineLimit(1)
-            .truncationMode(.tail)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .background(Color.secondary.opacity(0.12), in: Capsule())
