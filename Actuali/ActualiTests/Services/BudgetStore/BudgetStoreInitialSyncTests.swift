@@ -263,6 +263,54 @@ struct BudgetStoreInitialSyncTests {
         #expect(store.syncStatus.lastSyncTime != nil)
     }
 
+    /// The encryption password was reset elsewhere, so the stored key is for
+    /// an older key id. The download must stop, drop the stale key and leave
+    /// the budget asking for its password again.
+    @Test func downloadWithAStaleKeyDropsItAndAsksForThePasswordAgain() async throws {
+        let savedBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
+        let root = try makeRootDirectory()
+        let remoteBudget = BudgetStore.RemoteBudget(
+            id: "cloud-file-\(UUID().uuidString)", name: "Test Budget", groupId: "group-1", isEncrypted: true
+        )
+        defer {
+            try? EncryptionKeyManager.remove(fileId: remoteBudget.id)
+            cleanUp(root: root, budgetId: nil, savedBudgetId: savedBudgetId)
+        }
+
+        try EncryptionKeyManager.store(
+            LoadedKey(keyId: "old-key", key: SymmetricKey(size: .bits256)), fileId: remoteBudget.id
+        )
+        let fileInfo = try JSONEncoder().encode(FileInfoResponse(
+            status: "ok",
+            data: .init(
+                fileId: remoteBudget.id,
+                groupId: remoteBudget.groupId,
+                name: remoteBudget.name,
+                deleted: 0,
+                encryptMeta: .init(keyId: "new-key", algorithm: "aes-256-gcm", iv: "aXY=", authTag: "dGFn")
+            )
+        ))
+        let store = try await makeStore(root: root) { request in
+            let path = request.url?.path ?? ""
+            if path.contains("get-user-file-info") {
+                return StubTransport.Response(contentType: "application/json", body: fileInfo)
+            }
+            if path.contains("download-user-file") {
+                return StubTransport.Response(contentType: "application/zip", body: Data("ciphertext".utf8))
+            }
+            throw URLError(.cannotConnectToHost)
+        }
+
+        await store.downloadBudget(remoteBudget)
+
+        #expect(store.error == "This budget's encryption key has changed. Re-enter the password.")
+        #expect(store.accounts.isEmpty)
+        #expect(store.isInitialSyncing == false)
+        #expect(EncryptionKeyManager.load(fileId: remoteBudget.id) == nil)
+        // With the key gone, picking the budget hands it back for its password.
+        #expect(store.openRemoteBudget(remoteBudget)?.id == remoteBudget.id)
+    }
+
     /// A key stored for a budget that then failed to download used to stay in
     /// the Keychain, so picking the budget again skipped the password sheet
     /// and silently retried the download.
