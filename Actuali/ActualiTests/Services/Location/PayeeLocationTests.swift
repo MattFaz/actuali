@@ -282,6 +282,73 @@ struct PayeeLocationTests {
         UserDefaults.standard.removeObject(forKey: "recordPayeeLocations")
     }
 
+    @Test func isNearHomeUsesFixedRadius() {
+        let home = Coordinates(latitude: 0, longitude: 0)
+        let near = Coordinates(latitude: 0.001, longitude: 0) // ~111 m
+        let far = Coordinates(latitude: 0.002, longitude: 0) // ~222 m
+
+        #expect(BudgetStore.isNearHome(near, home: home))
+        #expect(!BudgetStore.isNearHome(far, home: home))
+        #expect(!BudgetStore.isNearHome(near, home: nil))
+    }
+
+    @Test func homeLocationPersistsAndClears() {
+        UserDefaults.standard.removeObject(forKey: "homeLocation")
+        defer { UserDefaults.standard.removeObject(forKey: "homeLocation") }
+        let store = BudgetStore.previewInstance()
+        #expect(store.homeLocation == nil)
+
+        store.homeLocation = Coordinates(latitude: -33.85, longitude: 151.21)
+        #expect(BudgetStore.loadHomeLocation(from: .standard) == Coordinates(latitude: -33.85, longitude: 151.21))
+
+        store.homeLocation = nil
+        #expect(UserDefaults.standard.object(forKey: "homeLocation") == nil)
+        #expect(BudgetStore.loadHomeLocation(from: .standard) == nil)
+    }
+
+    /// Home is device-only state: setting it must not create a payee
+    /// location, so it can never surface as a nearby suggestion.
+    @Test func setHomeToCurrentLocationStoresPositionOnly() async {
+        defer { UserDefaults.standard.removeObject(forKey: "homeLocation") }
+        let store = BudgetStore.previewInstance()
+        store.setLocationProviderForTesting(LocationProvider(source: FakePositionSource()))
+
+        #expect(await store.setHomeToCurrentLocation())
+        #expect(store.homeLocation == Coordinates(latitude: 1, longitude: 2))
+
+        let denied = FakePositionSource()
+        denied.status = .denied
+        store.homeLocation = nil
+        store.setLocationProviderForTesting(LocationProvider(source: denied))
+        #expect(await !store.setHomeToCurrentLocation())
+        #expect(store.homeLocation == nil)
+    }
+
+    @Test func isAtHomeRequiresHomeAndRecording() async {
+        defer {
+            UserDefaults.standard.removeObject(forKey: "homeLocation")
+            UserDefaults.standard.removeObject(forKey: "recordPayeeLocations")
+        }
+        // Server gate left off: on a cold launch it is still unset when the
+        // Add form first checks.
+        let store = BudgetStore.previewInstance()
+        store.setLocationProviderForTesting(LocationProvider(source: FakePositionSource()))
+        store.recordPayeeLocations = true
+
+        store.homeLocation = nil
+        #expect(await !store.isAtHome())
+
+        store.homeLocation = Coordinates(latitude: 1, longitude: 2)
+        #expect(await store.isAtHome())
+
+        store.homeLocation = Coordinates(latitude: 1.01, longitude: 2) // ~1.1 km
+        #expect(await !store.isAtHome())
+
+        store.homeLocation = Coordinates(latitude: 1, longitude: 2)
+        store.recordPayeeLocations = false
+        #expect(await !store.isAtHome())
+    }
+
     /// Existing form callers (and Shortcuts, which bypasses the form) must
     /// keep recording by default — opting out is per-save and explicit.
     @Test func transactionFormDefaultsToRecordingLocation() {

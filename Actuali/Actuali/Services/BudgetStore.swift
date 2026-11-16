@@ -1082,6 +1082,21 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Where Add Transaction defaults Save Location off (GH #845), so
+    /// entries made at home don't pin home to the payee. Device-only
+    /// UserDefaults, never synced and never a payee location.
+    @Published var homeLocation: Coordinates? {
+        didSet {
+            if let homeLocation {
+                UserDefaults.standard.set(
+                    [homeLocation.latitude, homeLocation.longitude], forKey: "homeLocation"
+                )
+            } else {
+                UserDefaults.standard.removeObject(forKey: "homeLocation")
+            }
+        }
+    }
+
     /// Transient toast text ("Posted N scheduled transaction(s)"), cleared
     /// automatically a few seconds after being set. Nil = no toast.
     @Published var schedulePostNotice: String?
@@ -2087,6 +2102,7 @@ final class BudgetStore: ObservableObject {
         _recordPayeeLocations = Published(
             initialValue: persistedBool("recordPayeeLocations", default: true)
         )
+        _homeLocation = Published(initialValue: Self.loadHomeLocation(from: defaults))
         // bool(forKey:) defaults to false — the correct opt-in default.
         _hideZeroBudgetCategories = Published(initialValue: defaults
             .bool(forKey: "hideZeroBudgetCategories"))
@@ -7407,6 +7423,52 @@ final class BudgetStore: ObservableObject {
                 lat2: location.latitude, lon2: location.longitude
             ) <= LocationUtils.defaultMaxDistanceMeters
         }
+    }
+
+    /// Fixed radius for a first version: wide enough for indoor GPS drift,
+    /// narrow enough to spare the shop down the street.
+    static let homeRadiusMeters: Double = 150
+
+    static func loadHomeLocation(from defaults: UserDefaults) -> Coordinates? {
+        guard let pair = defaults.array(forKey: "homeLocation") as? [Double], pair.count == 2 else { return nil }
+        return Coordinates(latitude: pair[0], longitude: pair[1])
+    }
+
+    static func isNearHome(_ position: Coordinates, home: Coordinates?) -> Bool {
+        guard let home else { return false }
+        return LocationUtils.calculateDistanceMeters(
+            lat1: position.latitude, lon1: position.longitude,
+            lat2: home.latitude, lon2: home.longitude
+        ) <= homeRadiusMeters
+    }
+
+    /// Whether a new transaction should default Save Location off. Never
+    /// prompts for permission: without a Home there is nothing to check.
+    /// Skips the server gate on purpose: it settles only after budget load,
+    /// later than the Add form's first appearance, and hides the toggle anyway.
+    func isAtHome() async -> Bool {
+        guard recordPayeeLocations, let homeLocation else { return false }
+        let provider = payeeLocationProvider
+        guard await provider.authorizationStatus() == .granted,
+              let position = try? await provider.currentPosition() else {
+            return false
+        }
+        return Self.isNearHome(position, home: homeLocation)
+    }
+
+    /// Set Home to the current position, asking for permission on first
+    /// use. False when no valid fix is available.
+    func setHomeToCurrentLocation() async -> Bool {
+        let provider = payeeLocationProvider
+        if await provider.authorizationStatus() == .notDetermined {
+            _ = await provider.requestPermission()
+        }
+        guard let position = try? await provider.currentPosition(),
+              LocationUtils.isValidCoordinate(latitude: position.latitude, longitude: position.longitude) else {
+            return false
+        }
+        homeLocation = position
+        return true
     }
 
     /// Fire-and-forget: attach the current position to `payeeId`. All guards

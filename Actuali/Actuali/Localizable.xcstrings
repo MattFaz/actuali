@@ -15965,6 +15965,54 @@
         }
       }
     },
+    "Actuali could not get your current location. Allow location access in Settings, then try again." : {
+      "comment" : "Alert message when the current location could not be saved as Home",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali konnte deinen aktuellen Standort nicht ermitteln. Erlaube den Standortzugriff in den Einstellungen und versuche es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali could not get your current location. Allow location access in Settings, then try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali no pudo obtener tu ubicación actual. Permite el acceso a la ubicación en Ajustes y vuelve a intentarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali n’a pas pu obtenir votre position actuelle. Autorisez l’accès à la position dans Réglages, puis réessayez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali non è riuscita a ottenere la tua posizione attuale. Consenti l’accesso alla posizione in Impostazioni, poi riprova."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali kan je huidige locatie niet bepalen. Sta locatietoegang toe in Instellingen en probeer het opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Actuali não conseguiu obter seu local atual. Permita o acesso à localização em Ajustes e tente novamente."
+          }
+        }
+      }
+    },
     "Actuali menu" : {
       "comment" : "Accessibility label for the Actuali-mark budget menu",
       "localizations" : {
@@ -28178,6 +28226,54 @@
         }
       }
     },
+    "Clear Home Location" : {
+      "comment" : "Settings button that removes the saved Home location",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuhause-Standort entfernen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear Home Location"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrar ubicación de casa"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effacer la position du domicile"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancella posizione di casa"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thuislocatie wissen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limpar local de casa"
+          }
+        }
+      }
+    },
     "Clear Search" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -31476,6 +31572,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Não foi possível criar um instantâneo do banco de dados do orçamento: %@"
+          }
+        }
+      }
+    },
+    "Couldn't Set Home Location" : {
+      "comment" : "Alert title when the current location could not be saved as Home",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuhause konnte nicht festgelegt werden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't Set Home Location"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo establecer la ubicación de casa"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de définir le domicile"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile impostare la posizione di casa"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kan thuislocatie niet instellen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível definir o local de casa"
           }
         }
       }
@@ -70751,6 +70895,54 @@
         }
       }
     },
+    "Save Location starts off for new transactions entered near Home. Home stays on this device." : {
+      "comment" : "Settings footer explaining the Home location",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Standort speichern“ ist bei neuen Transaktionen in der Nähe von Zuhause anfangs aus. Zuhause bleibt auf diesem Gerät."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save Location starts off for new transactions entered near Home. Home stays on this device."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Guardar ubicación» empieza desactivado en las transacciones nuevas creadas cerca de casa. La casa se queda en este dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "« Enregistrer le lieu » est désactivé par défaut pour les nouvelles transactions saisies près du domicile. Le domicile reste sur cet appareil."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Salva posizione» parte disattivato per le nuove transazioni inserite vicino a casa. La posizione di casa resta su questo dispositivo."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "‘Locatie bewaren’ staat standaard uit voor nieuwe transacties die je in de buurt van thuis invoert. Thuis blijft op dit apparaat."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Salvar local” começa desativado em novas transações registradas perto de casa. A casa fica neste dispositivo."
+          }
+        }
+      }
+    },
     "Save by date" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -73621,6 +73813,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Definir status de compensação"
+          }
+        }
+      }
+    },
+    "Set Home to Current Location" : {
+      "comment" : "Settings button that saves the current location as Home, where Save Location starts off",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuellen Standort als Zuhause festlegen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set Home to Current Location"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar ubicación actual como casa"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Définir le domicile sur la position actuelle"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imposta casa sulla posizione attuale"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Huidige locatie instellen als thuis"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Definir casa como local atual"
           }
         }
       }

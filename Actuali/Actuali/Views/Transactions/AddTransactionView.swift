@@ -687,6 +687,7 @@ struct AddTransactionView: View {
                         Toggle(isOn: $saveLocation) {
                             Label("Save Location", systemImage: "location")
                         }
+                        .accessibilityIdentifier("addTransaction.saveLocation")
                     }
                 }
 
@@ -853,6 +854,11 @@ struct AddTransactionView: View {
                 // payees load as empty so a parent payee edit follows through
                 // to them, mirroring Actual's cascade rule.
                 await loadSplitChildren()
+            }
+            .task {
+                if !isEditing, await budgetStore.isAtHome() {
+                    saveLocation = false
+                }
             }
             .task(id: automaticCategoryInput) {
                 let input = automaticCategoryInput
