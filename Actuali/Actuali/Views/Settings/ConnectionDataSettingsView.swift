@@ -519,9 +519,13 @@ private struct BudgetSelectionSettingsSection: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                if budgetStore.downloadingBudgetId != nil {
+                    ProgressView()
+                } else {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .disabled(budgetStore.downloadingBudgetId != nil || budgetStore.remoteBudgets.isEmpty)
