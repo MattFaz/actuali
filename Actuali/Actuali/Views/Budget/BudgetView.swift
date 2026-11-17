@@ -93,14 +93,13 @@ struct BudgetView: View {
     @State private var editingMonthNote = false
     @State private var editingBudgetViewOptions = false
 
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
 
     /// Category details present as an inspector column beside the table in a
     /// wide window, and as the usual sheet everywhere else. Same gate as
     /// AccountsListView's split layout.
     private var usesInspector: Bool {
-        horizontalSizeClass == .regular && isWideLayout
+        isWideLayout
     }
 
     /// Comma-joined group ids the user has collapsed, PWA-style. Stored as a
