@@ -12,7 +12,8 @@ struct HLCTimestampOrderingTests {
 
         mutating func next(_ bound: UInt64) -> UInt64 {
             state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-            return (state >> 33) % bound
+            // The top 48 bits: enough to cover every millisecond `parse` accepts.
+            return (state >> 16) % bound
         }
     }
 
@@ -23,14 +24,17 @@ struct HLCTimestampOrderingTests {
 
     @Test func fieldOrderMatchesStringOrder() {
         var generator = Generator()
-        // The whole range `parse` accepts, plus a narrow band so that equal
-        // and adjacent milliseconds, and so the counter and node, get compared.
+        // Bases spread over the whole range `parse` accepts, each with a few
+        // neighbours at equal and adjacent milliseconds, so that the date
+        // formatting is checked everywhere and the counter and node get to decide.
         let lastMillis: UInt64 = 253_402_300_799_999
+        var base: UInt64 = 1_780_000_000_000
         var timestamps: [HLCTimestamp] = []
         for _ in 0..<600 {
-            let millis = generator.next(2) == 0
-                ? generator.next(lastMillis + 1)
-                : 1_780_000_000_000 + generator.next(3)
+            if generator.next(4) == 0 {
+                base = generator.next(lastMillis - 1)
+            }
+            let millis = base + generator.next(3)
             timestamps.append(HLCTimestamp(
                 millis: Int64(millis),
                 counter: UInt16(generator.next(2) == 0 ? generator.next(3) : generator.next(65536)),
@@ -47,6 +51,8 @@ struct HLCTimestampOrderingTests {
             }
         }
         #expect(disagreements.isEmpty, "\(disagreements.prefix(5))")
+        // Guards the generator: a narrow one once kept every base in January 1970.
+        #expect(Set(strings.map { $0.prefix(2) }).count > 50)
     }
 
     @Test func sortingAgreesWithSortingTheStrings() {
