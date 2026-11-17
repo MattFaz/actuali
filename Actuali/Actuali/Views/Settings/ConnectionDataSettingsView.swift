@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ConnectionDataSettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @State private var budgetToUnlock: BudgetStore.RemoteBudget?
+    @State private var showingBudgetSelectPrompt = false
+    @State private var budgetPickedFromPrompt: BudgetStore.RemoteBudget?
 
     var body: some View {
         Form {
@@ -11,7 +14,10 @@ struct ConnectionDataSettingsView: View {
             // remain reachable for any loaded budget, including demo and
             // offline budgets without a session.
             if budgetStore.isConnected {
-                BudgetSelectionSettingsSection()
+                BudgetSelectionSettingsSection(
+                    budgetToUnlock: $budgetToUnlock,
+                    showingBudgetSelectPrompt: $showingBudgetSelectPrompt
+                )
                 if budgetStore.canChangeBudgetType {
                     BudgetTypeSettingsSection()
                 }
@@ -23,6 +29,25 @@ struct ConnectionDataSettingsView: View {
             }
         }
         .readableWidth()
+        // Both sheets hang off the form, not the budget section: connecting
+        // inserts that section's rows, and a sheet presented from a row the
+        // list was still settling was dismissed as soon as it appeared.
+        .sheet(item: $budgetToUnlock) { budget in
+            EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)
+        }
+        // A sheet, not a confirmation dialog: picking an encrypted budget has
+        // to present the password sheet next, and a presentation asked for
+        // while the dialog was still dismissing was dropped. Only a sheet
+        // reports that it has finished dismissing, so the pick is opened from
+        // `onDismiss`.
+        .sheet(isPresented: $showingBudgetSelectPrompt, onDismiss: {
+            if let budget = budgetPickedFromPrompt {
+                budgetPickedFromPrompt = nil
+                budgetToUnlock = budgetStore.openRemoteBudget(budget)
+            }
+        }) {
+            BudgetSelectPromptSheet(budgets: budgetStore.remoteBudgets) { budgetPickedFromPrompt = $0 }
+        }
         .navigationTitle(String(localized: "Connection & Data"))
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -222,7 +247,7 @@ private struct ServerConnectionSettingsSection: View {
                         }
                     }
                 }
-                .disabled(budgetStore.serverURL.isEmpty || budgetStore.isLoading)
+                .disabled(!budgetStore.canConnect(password: password))
 
                 if budgetStore.supportsOpenIDLogin {
                     Button(String(localized: "Sign in with OpenID")) {
@@ -312,8 +337,8 @@ private struct ServerConnectionSettingsSection: View {
 
 private struct BudgetSelectionSettingsSection: View {
     @EnvironmentObject private var budgetStore: BudgetStore
-    @State private var budgetToUnlock: BudgetStore.RemoteBudget?
-    @State private var showingBudgetSelectPrompt = false
+    @Binding var budgetToUnlock: BudgetStore.RemoteBudget?
+    @Binding var showingBudgetSelectPrompt: Bool
     @State private var budgetToRemoveLocally: BudgetStore.RemoteBudget?
     @State private var budgetToDeleteFromServer: BudgetStore.RemoteBudget?
     @State private var showingCreateBudgetPrompt = false
@@ -328,7 +353,7 @@ private struct BudgetSelectionSettingsSection: View {
                 budgetPickerForNoSelection()
             }
 
-            if budgetStore.remoteBudgets.isEmpty, !budgetStore.isLoading {
+            if budgetStore.remoteBudgets.isEmpty || budgetStore.remoteBudgetsLoadFailed, !budgetStore.isLoading {
                 Button("Refresh Budgets") {
                     Task { await budgetStore.fetchRemoteBudgets() }
                 }
@@ -342,7 +367,9 @@ private struct BudgetSelectionSettingsSection: View {
         } header: {
             Text("Budget Selection")
         } footer: {
-            if budgetStore.currentBudgetId == nil {
+            if budgetStore.remoteBudgetsLoadFailed, !budgetStore.isLoading {
+                Text("Couldn't load your budgets from the server. Check your connection, then tap Refresh Budgets.")
+            } else if budgetStore.currentBudgetId == nil {
                 if budgetStore.remoteBudgets.isEmpty, !budgetStore.isLoading {
                     Text("No budgets were found on your server. Tap Create New Budget to make one, or Refresh Budgets if you've created one elsewhere.")
                 } else {
@@ -361,25 +388,8 @@ private struct BudgetSelectionSettingsSection: View {
         } message: {
             Text("Creates an empty budget file on your server and opens it on this device.")
         }
-        .sheet(item: $budgetToUnlock) { budget in
-            EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)
-        }
         .sheet(item: $budgetToDeleteFromServer) { budget in
             DeleteServerBudgetSheet(budget: budget, budgetStore: budgetStore)
-        }
-        .confirmationDialog(
-            "Select a Budget",
-            isPresented: $showingBudgetSelectPrompt,
-            titleVisibility: .visible
-        ) {
-            ForEach(budgetStore.remoteBudgets) { budget in
-                Button(budget.name) {
-                    openBudget(budget)
-                }
-            }
-            Button("Not Now", role: .cancel) {}
-        } message: {
-            Text("You're connected! Choose which budget to load onto this device.")
         }
         .confirmationDialog(
             "Remove from this device?",
@@ -519,9 +529,13 @@ private struct BudgetSelectionSettingsSection: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                if budgetStore.downloadingBudgetId != nil {
+                    ProgressView()
+                } else {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .disabled(budgetStore.downloadingBudgetId != nil || budgetStore.remoteBudgets.isEmpty)
@@ -536,9 +550,53 @@ private struct BudgetSelectionSettingsSection: View {
     /// One-time nudge after connecting: surface budget selection so a fresh
     /// connection doesn't leave the user staring at empty tabs.
     private func promptBudgetSelectionIfNeeded() {
-        if budgetStore.currentBudgetId == nil, !budgetStore.remoteBudgets.isEmpty {
+        if budgetStore.consumeBudgetSelectionPrompt() {
             showingBudgetSelectPrompt = true
         }
+    }
+}
+
+/// The one-time "pick a budget" nudge shown right after connecting.
+private struct BudgetSelectPromptSheet: View {
+    let budgets: [BudgetStore.RemoteBudget]
+    let onSelect: (BudgetStore.RemoteBudget) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(budgets) { budget in
+                        Button {
+                            onSelect(budget)
+                            dismiss()
+                        } label: {
+                            HStack {
+                                if budget.isEncrypted {
+                                    Image(systemName: "lock.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Text(budget.name)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .accessibilityIdentifier("budgetSelectPrompt.budget.\(budget.id)")
+                    }
+                } footer: {
+                    Text("You're connected! Choose which budget to load onto this device.")
+                }
+            }
+            .navigationTitle("Select a Budget")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Not Now") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

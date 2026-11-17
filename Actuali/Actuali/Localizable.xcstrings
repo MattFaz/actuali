@@ -31056,6 +31056,52 @@
         }
       }
     },
+    "Couldn't load your budgets from the server. Check your connection, then tap Refresh Budgets." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Budgets konnten nicht vom Server geladen werden. Prüfen Sie Ihre Verbindung und tippen Sie dann auf „Budgets aktualisieren“."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't load your budgets from the server. Check your connection, then tap Refresh Budgets."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron cargar sus presupuestos desde el servidor. Compruebe su conexión y toque Actualizar presupuestos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de charger vos budgets depuis le serveur. Vérifiez votre connexion, puis appuyez sur Actualiser les budgets."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile caricare i tuoi budget dal server. Controlla la connessione, poi tocca Aggiorna budget."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uw budgetten konden niet van de server worden geladen. Controleer uw verbinding en tik daarna op Budgetten vernieuwen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível carregar seus orçamentos do servidor. Verifique sua conexão e toque em Atualizar orçamentos."
+          }
+        }
+      }
+    },
     "Couldn't log transaction" : {
       "comment" : "Local notification title: the Log Transaction automation failed",
       "extractionState" : "stale",

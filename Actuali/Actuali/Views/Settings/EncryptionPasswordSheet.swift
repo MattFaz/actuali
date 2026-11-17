@@ -33,8 +33,12 @@ struct EncryptionPasswordSheet: View {
                     Button("Cancel") { dismiss() }.disabled(isWorking)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Unlock") { Task { await unlock() } }
-                        .disabled(password.isEmpty || isWorking)
+                    if isWorking {
+                        ProgressView()
+                    } else {
+                        Button("Unlock") { Task { await unlock() } }
+                            .disabled(password.isEmpty)
+                    }
                 }
             }
             .interactiveDismissDisabled(isWorking)
