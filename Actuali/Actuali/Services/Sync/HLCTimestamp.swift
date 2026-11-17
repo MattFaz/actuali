@@ -78,8 +78,8 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
     /// Minutes since the Unix epoch for a timestamp string, read straight off
     /// its ISO-8601 prefix (`YYYY-MM-DDTHH:MM`, always UTC).
     ///
-    /// `parse` builds an `ISO8601DateFormatter` per call, which dominates any
-    /// pass over a whole message log — and the Merkle trie only ever needs the
+    /// `parse` formats a date behind a shared lock, which a pass over a whole
+    /// message log still feels, and the Merkle trie only ever needs the
     /// minute (`MerkleTree` keys on `millis / 1000 / 60`), never the full
     /// timestamp. Returns nil if the prefix isn't well formed.
     static func minutesSinceEpoch(of string: String) -> Int64? {
