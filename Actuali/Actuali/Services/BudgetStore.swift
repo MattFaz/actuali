@@ -5594,14 +5594,16 @@ final class BudgetStore: ObservableObject {
     /// Re-save an existing transfer: both legs take the new accounts, amount,
     /// date, notes and cleared state, with payees remapped to the (possibly
     /// re-targeted) accounts' transfer payees. `original` is whichever leg the
-    /// user opened; its partner is fetched through `transferId`. A category
-    /// survives only on an on-budget leg whose partner account is off-budget
+    /// user opened, on the source side when `openedLegIsSource`; its partner
+    /// is fetched through `transferId`. A category survives only on an
+    /// on-budget leg whose partner account is off-budget
     /// (Actual's rule — money leaving the budget still needs a category);
     /// every other configuration clears it.
     func updateTransfer(
         original: Transaction,
         fromAccountId: String,
         toAccountId: String,
+        openedLegIsSource: Bool,
         amountCents: Int,
         date: Int,
         notes: String?,
@@ -5638,8 +5640,9 @@ final class BudgetStore: ObservableObject {
             return leg.id == original.id ? categoryId : leg.categoryId
         }
 
-        // The opened row can be either leg; the negative one is the source.
-        let (sourceLeg, targetLeg) = original.amount < 0
+        // The form says which side the opened row is on, so a reversal flips
+        // the amounts in place as Actual's updateTransfer does (GH #844).
+        let (sourceLeg, targetLeg) = openedLegIsSource
             ? (original, partner) : (partner, original)
 
         var source = sourceLeg
@@ -5662,14 +5665,12 @@ final class BudgetStore: ObservableObject {
         target.notes = notes
         target.cleared = cleared
 
-        let sourceChanges = Self.changedFields(original: sourceLeg, updated: source)
-        if !sourceChanges.isEmpty {
-            try await syncClient.updateTransaction(source, changedFields: sourceChanges)
-        }
-        let targetChanges = Self.changedFields(original: targetLeg, updated: target)
-        if !targetChanges.isEmpty {
-            try await syncClient.updateTransaction(target, changedFields: targetChanges)
-        }
+        // One write for both legs: another device must never sync half a
+        // reversal or a transfer whose amounts disagree.
+        let updates = [(source, sourceLeg), (target, targetLeg)]
+            .map { (transaction: $0.0, changedFields: Self.changedFields(original: $0.1, updated: $0.0)) }
+            .filter { !$0.changedFields.isEmpty }
+        try await syncClient.updateTransactions(updates)
         await refreshDataOnly()
     }
 
@@ -6379,6 +6380,10 @@ final class BudgetStore: ObservableObject {
         /// True for a picker choice or prefill; false for payee-history suggestions.
         var categoryIsExplicit: Bool = false
         var automaticCategoryPreview: AutomaticCategoryPreview?
+        /// For an existing transfer, whether the opened leg is the source. The
+        /// from/to pair can't say which end holds the opened row once both
+        /// accounts move, and the sign is the direction (GH #844).
+        var transferOpenedLegIsSource: Bool = true
 
         /// Category the rules pass starts from: an explicit pick stands, and an
         /// untouched preview reverts to its pre-rule source so rules run once.
@@ -6617,6 +6622,7 @@ final class BudgetStore: ObservableObject {
                     original: original,
                     fromAccountId: form.accountId,
                     toAccountId: toAccountId,
+                    openedLegIsSource: form.transferOpenedLegIsSource,
                     amountCents: amountCents,
                     date: date,
                     notes: notes,
