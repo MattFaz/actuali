@@ -1,6 +1,7 @@
 // Actuali/Actuali/Services/Sync/HLCTimestamp.swift
 
 import Foundation
+import Synchronization
 
 /// Hybrid Logical Clock timestamp
 /// Format: 2025-12-09T14:30:45.123Z-0000-9f66d38cba0ef956
@@ -12,6 +13,15 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
 
     // MARK: - Formatting
 
+    /// One formatter for every call: building one per timestamp dominated a
+    /// long sync. Behind a lock because `ISO8601DateFormatter`, unlike
+    /// `DateFormatter`, does no locking of its own.
+    private static let isoFormatter: Mutex<ISO8601DateFormatter> = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return Mutex(formatter)
+    }()
+
     var description: String {
         toString()
     }
@@ -21,9 +31,7 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
         let seconds = Double(millis) / 1000.0
         let date = Date(timeIntervalSince1970: seconds)
 
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let isoString = formatter.string(from: date)
+        let isoString = Self.isoFormatter.withLock { $0.string(from: date) }
 
         // Format counter as 4-digit uppercase hex
         let counterHex = String(format: "%04X", counter)
@@ -50,9 +58,7 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
         let isoString = "\(parts[0])-\(parts[1])-\(parts[2])"
 
         // Parse ISO date
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: String(isoString)) else { return nil }
+        guard let date = Self.isoFormatter.withLock({ $0.date(from: isoString) }) else { return nil }
 
         let millis = Int64(date.timeIntervalSince1970 * 1000)
 
@@ -72,8 +78,8 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
     /// Minutes since the Unix epoch for a timestamp string, read straight off
     /// its ISO-8601 prefix (`YYYY-MM-DDTHH:MM`, always UTC).
     ///
-    /// `parse` builds an `ISO8601DateFormatter` per call, which dominates any
-    /// pass over a whole message log — and the Merkle trie only ever needs the
+    /// `parse` formats a date behind a shared lock, which a pass over a whole
+    /// message log still feels, and the Merkle trie only ever needs the
     /// minute (`MerkleTree` keys on `millis / 1000 / 60`), never the full
     /// timestamp. Returns nil if the prefix isn't well formed.
     static func minutesSinceEpoch(of string: String) -> Int64? {
