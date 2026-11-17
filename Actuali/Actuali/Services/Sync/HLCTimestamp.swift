@@ -33,7 +33,7 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
 
     /// The node as it is written out: 16 chars, padded with leading zeros.
     private var paddedNode: String {
-        node.count == 16 ? node : String(repeating: "0", count: Swift.max(0, 16 - node.count)) + node.suffix(16)
+        String(repeating: "0", count: Swift.max(0, 16 - node.count)) + node.suffix(16)
     }
 
     // MARK: - Parsing
