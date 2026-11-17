@@ -2132,7 +2132,17 @@ final class BudgetStore: ObservableObject {
         _hideClosedAccounts = Published(initialValue: defaults
             .bool(forKey: "hideClosedAccounts"))
 
-        let token = loadAndMigrateAuthToken()
+        var token = loadAndMigrateAuthToken()
+        // The Keychain outlives a deleted app and UserDefaults doesn't, so a
+        // token with no server URL is what a reinstall leaves behind. It can't
+        // reach any server, and the encryption keys beside it would open
+        // budgets without asking for their password. Drop both and start
+        // signed out.
+        if token != nil, serverURL.isEmpty {
+            try? Keychain.remove(for: "authToken")
+            EncryptionKeyManager.removeAll()
+            token = nil
+        }
 
         // Load local budget if available. The saved session is configured in
         // the same task, before the load, so the initial sync below is
