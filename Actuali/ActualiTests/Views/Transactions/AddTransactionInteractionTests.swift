@@ -58,6 +58,16 @@ struct AddTransactionInteractionTests {
             return try #require(field)
         }
 
+        func saveLocationSwitch() -> UISwitch? {
+            func switches(in view: UIView) -> [UISwitch] {
+                (view as? UISwitch).map { [$0] } ?? view.subviews.flatMap(switches)
+            }
+            // SwiftUI keeps the identifier off the UISwitch, so go by
+            // position: Save Location is the row after Cleared.
+            let all = switches(in: controller.view)
+            return all.count == 2 ? all[1] : nil
+        }
+
         func enterNotes(_ text: String) throws {
             let field = try notesField()
             field.text = text
@@ -183,5 +193,43 @@ struct AddTransactionInteractionTests {
         try await Self.waitUntil { ruleReads.withLock { $0 } > 0 }
         try await Task.sleep(for: .milliseconds(350))
         #expect(ruleReads.withLock { $0 } == 1)
+    }
+
+    private struct FixedPosition: PositionSource {
+        let position: Coordinates
+        func requestPermission() async -> LocationAuthStatus {
+            .granted
+        }
+
+        func authorizationStatus() -> LocationAuthStatus {
+            .granted
+        }
+
+        func fetchPosition() async throws -> Coordinates {
+            position
+        }
+    }
+
+    /// GH #845: Save Location starts off near Home and on elsewhere.
+    @Test(arguments: [(atHome: true, isOn: false), (atHome: false, isOn: true)])
+    func saveLocationDefaultFollowsHome(atHome: Bool, isOn: Bool) async throws {
+        let (store, _, path) = try await Self.fixture()
+        defer {
+            cleanup(path)
+            UserDefaults.standard.removeObject(forKey: "homeLocation")
+        }
+        store.setPayeeLocationWritesEnabledForTesting(true)
+        store.setLocationProviderForTesting(LocationProvider(
+            source: FixedPosition(position: Coordinates(latitude: -33.85, longitude: 151.21))
+        ))
+        // ~1.1 km north when away.
+        store.homeLocation = Coordinates(latitude: atHome ? -33.85 : -33.84, longitude: 151.21)
+
+        let hosted = try HostedForm(store: store)
+        defer { hosted.close() }
+        try await Self.waitUntil { hosted.saveLocationSwitch() != nil }
+        // Let the at-home check settle before reading the final state.
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(hosted.saveLocationSwitch()?.isOn == isOn)
     }
 }

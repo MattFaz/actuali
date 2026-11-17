@@ -1082,6 +1082,21 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Where Add Transaction defaults Save Location off (GH #845), so
+    /// entries made at home don't pin home to the payee. Device-only
+    /// UserDefaults, never synced and never a payee location.
+    @Published var homeLocation: Coordinates? {
+        didSet {
+            if let homeLocation {
+                UserDefaults.standard.set(
+                    [homeLocation.latitude, homeLocation.longitude], forKey: "homeLocation"
+                )
+            } else {
+                UserDefaults.standard.removeObject(forKey: "homeLocation")
+            }
+        }
+    }
+
     /// Transient toast text ("Posted N scheduled transaction(s)"), cleared
     /// automatically a few seconds after being set. Nil = no toast.
     @Published var schedulePostNotice: String?
@@ -2087,6 +2102,7 @@ final class BudgetStore: ObservableObject {
         _recordPayeeLocations = Published(
             initialValue: persistedBool("recordPayeeLocations", default: true)
         )
+        _homeLocation = Published(initialValue: Self.loadHomeLocation(from: defaults))
         // bool(forKey:) defaults to false — the correct opt-in default.
         _hideZeroBudgetCategories = Published(initialValue: defaults
             .bool(forKey: "hideZeroBudgetCategories"))
@@ -6376,6 +6392,11 @@ final class BudgetStore: ObservableObject {
         /// transactions record: an edit happens wherever the phone is now,
         /// not where the transaction did (GH #794).
         var recordLocation: Bool = true
+        /// False skips recording when the phone is near Home (GH #845). The
+        /// form's at-home default can lose a race with a fast save, so the
+        /// recorder checks again; only a user who turned Save Location on
+        /// passes true. Defaults on so other callers are unchanged.
+        var recordLocationNearHome: Bool = true
         var reviewConfirmations: Set<PendingImportReviewRequirement> = []
         /// True for a picker choice or prefill; false for payee-history suggestions.
         var categoryIsExplicit: Bool = false
@@ -6777,7 +6798,7 @@ final class BudgetStore: ObservableObject {
             await publishTransactionsImmediately([parent.id])
             await refreshDataOnly()
             if form.recordLocation, let payeeId {
-                recordPayeeLocationIfAppropriate(payeeId: payeeId)
+                recordPayeeLocationIfAppropriate(payeeId: payeeId, nearHome: form.recordLocationNearHome)
             }
             return nil
 
@@ -6852,7 +6873,7 @@ final class BudgetStore: ObservableObject {
                     showImpact: true
                 )
                 if form.recordLocation, let payeeId {
-                    recordPayeeLocationIfAppropriate(payeeId: payeeId)
+                    recordPayeeLocationIfAppropriate(payeeId: payeeId, nearHome: form.recordLocationNearHome)
                 }
                 return transaction.id
             }
@@ -7415,10 +7436,56 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Fixed radius for a first version: wide enough for indoor GPS drift,
+    /// narrow enough to spare the shop down the street.
+    static let homeRadiusMeters: Double = 150
+
+    static func loadHomeLocation(from defaults: UserDefaults) -> Coordinates? {
+        guard let pair = defaults.array(forKey: "homeLocation") as? [Double], pair.count == 2 else { return nil }
+        return Coordinates(latitude: pair[0], longitude: pair[1])
+    }
+
+    static func isNearHome(_ position: Coordinates, home: Coordinates?) -> Bool {
+        guard let home else { return false }
+        return LocationUtils.calculateDistanceMeters(
+            lat1: position.latitude, lon1: position.longitude,
+            lat2: home.latitude, lon2: home.longitude
+        ) <= homeRadiusMeters
+    }
+
+    /// Whether a new transaction should default Save Location off. Never
+    /// prompts for permission: without a Home there is nothing to check.
+    /// Skips the server gate on purpose: it settles only after budget load,
+    /// later than the Add form's first appearance, and hides the toggle anyway.
+    func isAtHome() async -> Bool {
+        guard recordPayeeLocations, let homeLocation else { return false }
+        let provider = payeeLocationProvider
+        guard await provider.authorizationStatus() == .granted,
+              let position = try? await provider.currentPosition() else {
+            return false
+        }
+        return Self.isNearHome(position, home: homeLocation)
+    }
+
+    /// Set Home to the current position, asking for permission on first
+    /// use. False when no valid fix is available.
+    func setHomeToCurrentLocation() async -> Bool {
+        let provider = payeeLocationProvider
+        if await provider.authorizationStatus() == .notDetermined {
+            _ = await provider.requestPermission()
+        }
+        guard let position = try? await provider.currentPosition(),
+              LocationUtils.isValidCoordinate(latitude: position.latitude, longitude: position.longitude) else {
+            return false
+        }
+        homeLocation = position
+        return true
+    }
+
     /// Fire-and-forget: attach the current position to `payeeId`. All guards
     /// and failures collapse to "do nothing" — recording a location must
     /// never affect the save that triggered it.
-    func recordPayeeLocationIfAppropriate(payeeId: String) {
+    func recordPayeeLocationIfAppropriate(payeeId: String, nearHome: Bool = true) {
         guard payeeLocationWritesEnabled, recordPayeeLocations else { return }
         payeeLocationTask = Task { [weak self] in
             guard let self else { return }
@@ -7428,6 +7495,7 @@ final class BudgetStore: ObservableObject {
                   LocationUtils.isValidCoordinate(
                       latitude: position.latitude, longitude: position.longitude
                   ),
+                  nearHome || !Self.isNearHome(position, home: self.homeLocation),
                   let database = self.database,
                   let existing = try? await database.fetchPayeeLocations(payeeId: payeeId),
                   Self.shouldRecordLocation(at: position, existing: existing),
