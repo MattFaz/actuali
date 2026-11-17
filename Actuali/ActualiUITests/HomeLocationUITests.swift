@@ -19,19 +19,24 @@ final class HomeLocationUITests: XCTestCase {
     }
 
     @MainActor
-    private func saveLocationValue(at coordinate: CLLocationCoordinate2D) -> String? {
+    private func saveLocationToggle(in app: XCUIApplication) -> XCUIElement {
+        let toggle = app.switches["addTransaction.saveLocation"]
+        scrollTo(toggle, in: app)
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Save Location toggle not shown")
+        // The at-home check resolves after the form appears.
+        sleep(3)
+        return toggle
+    }
+
+    @MainActor
+    private func launchAddTab(at coordinate: CLLocationCoordinate2D) -> XCUIApplication {
         XCUIDevice.shared.location = XCUILocation(location: CLLocation(
             latitude: coordinate.latitude, longitude: coordinate.longitude
         ))
         let app = XCUIApplication()
         app.launchArguments = launchArguments + ["-initialTab", "2"]
         app.launch()
-        let toggle = app.switches["addTransaction.saveLocation"]
-        scrollTo(toggle, in: app)
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Save Location toggle not shown")
-        // The at-home check resolves after the form appears.
-        sleep(3)
-        return toggle.value as? String
+        return app
     }
 
     @MainActor
@@ -68,10 +73,25 @@ final class HomeLocationUITests: XCTestCase {
         XCTAssertTrue(clear.waitForExistence(timeout: 10), "Home was not set from the current location")
         app.terminate()
 
-        XCTAssertEqual(saveLocationValue(at: home), "0", "Save Location should start off at Home")
+        let atHome = launchAddTab(at: home)
+        let toggle = saveLocationToggle(in: atHome)
+        XCTAssertEqual(toggle.value as? String, "0", "Save Location should start off at Home")
+
+        // Turning it on is a per-entry choice: once the tab-hosted form
+        // resets, the next entry starts off again.
+        // The row's centre is its label; tap the switch itself.
+        let control = toggle.switches.firstMatch
+        (control.exists ? control : toggle).tap()
+        XCTAssertEqual(toggle.value as? String, "1")
+        atHome.buttons["Cancel"].tap()
+        atHome.tabBars.buttons["Add"].tap()
+        XCTAssertEqual(saveLocationToggle(in: atHome).value as? String, "0",
+                       "the next entry inherited the last entry's Save Location")
+        atHome.terminate()
 
         // ~1.1 km north of Home.
         let away = CLLocationCoordinate2D(latitude: -33.8468, longitude: 151.2153)
-        XCTAssertEqual(saveLocationValue(at: away), "1", "Save Location should stay on away from Home")
+        XCTAssertEqual(saveLocationToggle(in: launchAddTab(at: away)).value as? String, "1",
+                       "Save Location should stay on away from Home")
     }
 }

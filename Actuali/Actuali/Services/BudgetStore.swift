@@ -6391,6 +6391,11 @@ final class BudgetStore: ObservableObject {
         /// transactions record: an edit happens wherever the phone is now,
         /// not where the transaction did (GH #794).
         var recordLocation: Bool = true
+        /// False skips recording when the phone is near Home (GH #845). The
+        /// form's at-home default can lose a race with a fast save, so the
+        /// recorder checks again; only a user who turned Save Location on
+        /// passes true. Defaults on so other callers are unchanged.
+        var recordLocationNearHome: Bool = true
         var reviewConfirmations: Set<PendingImportReviewRequirement> = []
         /// True for a picker choice or prefill; false for payee-history suggestions.
         var categoryIsExplicit: Bool = false
@@ -6787,7 +6792,7 @@ final class BudgetStore: ObservableObject {
             await publishTransactionsImmediately([parent.id])
             await refreshDataOnly()
             if form.recordLocation, let payeeId {
-                recordPayeeLocationIfAppropriate(payeeId: payeeId)
+                recordPayeeLocationIfAppropriate(payeeId: payeeId, nearHome: form.recordLocationNearHome)
             }
             return nil
 
@@ -6862,7 +6867,7 @@ final class BudgetStore: ObservableObject {
                     showImpact: true
                 )
                 if form.recordLocation, let payeeId {
-                    recordPayeeLocationIfAppropriate(payeeId: payeeId)
+                    recordPayeeLocationIfAppropriate(payeeId: payeeId, nearHome: form.recordLocationNearHome)
                 }
                 return transaction.id
             }
@@ -7474,7 +7479,7 @@ final class BudgetStore: ObservableObject {
     /// Fire-and-forget: attach the current position to `payeeId`. All guards
     /// and failures collapse to "do nothing" — recording a location must
     /// never affect the save that triggered it.
-    func recordPayeeLocationIfAppropriate(payeeId: String) {
+    func recordPayeeLocationIfAppropriate(payeeId: String, nearHome: Bool = true) {
         guard payeeLocationWritesEnabled, recordPayeeLocations else { return }
         payeeLocationTask = Task { [weak self] in
             guard let self else { return }
@@ -7484,6 +7489,7 @@ final class BudgetStore: ObservableObject {
                   LocationUtils.isValidCoordinate(
                       latitude: position.latitude, longitude: position.longitude
                   ),
+                  nearHome || !Self.isNearHome(position, home: self.homeLocation),
                   let database = self.database,
                   let existing = try? await database.fetchPayeeLocations(payeeId: payeeId),
                   Self.shouldRecordLocation(at: position, existing: existing),

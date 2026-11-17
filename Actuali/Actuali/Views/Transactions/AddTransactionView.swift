@@ -7,6 +7,7 @@ struct AddTransactionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.isPresented) private var isPresented
     @Environment(\.locale) private var locale
+    @Environment(\.scenePhase) private var scenePhase
 
     private let editing: Transaction?
     /// Called after a successful save (not on cancel). The optional id is the
@@ -52,6 +53,13 @@ struct AddTransactionView: View {
     @State private var showCategoryPicker = false
     @State private var showAccountPicker = false
     @State private var saveLocation = true
+    /// Set once the user flips Save Location, so the at-home default never
+    /// overrides their choice for this entry (GH #845).
+    @State private var saveLocationChosen = false
+    /// Bumped per fresh entry and on return to the foreground: the
+    /// tab-hosted form outlives a trip away from Home, and the at-home
+    /// default must follow the phone rather than the last entry.
+    @State private var homeCheck = 0
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
     /// True while the edit form's "Remove Split" is toggled on an existing
     /// split parent: the lines are kept in memory (so tapping "Split into
@@ -684,7 +692,13 @@ struct AddTransactionView: View {
                     if !isEditing, !isTransfer,
                        budgetStore.payeeLocationWritesEnabled,
                        budgetStore.recordPayeeLocations {
-                        Toggle(isOn: $saveLocation) {
+                        Toggle(isOn: Binding(
+                            get: { saveLocation },
+                            set: {
+                                saveLocation = $0
+                                saveLocationChosen = true
+                            }
+                        )) {
                             Label("Save Location", systemImage: "location")
                         }
                         .accessibilityIdentifier("addTransaction.saveLocation")
@@ -855,9 +869,11 @@ struct AddTransactionView: View {
                 // to them, mirroring Actual's cascade rule.
                 await loadSplitChildren()
             }
-            .task {
-                if !isEditing, await budgetStore.isAtHome() {
-                    saveLocation = false
+            .task(id: homeCheck) {
+                guard !isEditing else { return }
+                let atHome = await budgetStore.isAtHome()
+                if !saveLocationChosen {
+                    saveLocation = !atHome
                 }
             }
             .task(id: automaticCategoryInput) {
@@ -868,6 +884,11 @@ struct AddTransactionView: View {
                     try await Task.sleep(for: .milliseconds(300))
                 } catch { return }
                 await applyAutomaticCategory(for: input)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    homeCheck += 1
+                }
             }
             .onChange(of: amount) { _, newValue in
                 if !newValue.isEmpty {
@@ -1227,6 +1248,7 @@ struct AddTransactionView: View {
             splits: isTransfer ? [] : (unsplitRequested ? [] : splitLines),
             collapseSplit: unsplitRequested,
             recordLocation: saveLocation,
+            recordLocationNearHome: saveLocationChosen,
             reviewConfirmations: confirmedReviewRequirements,
             categoryIsExplicit: userPickedCategory,
             automaticCategoryPreview: automaticCategoryPreview
@@ -1250,6 +1272,8 @@ struct AddTransactionView: View {
         // discarded manual pick must not keep suppressing the lookup.
         userPickedCategory = false
         automaticCategoryPreview = nil
+        saveLocationChosen = false
+        homeCheck += 1
         // A reset can arrive with the amount or payee field still focused —
         // Esc or ⌘Return from a hardware keyboard — and a fresh form doesn't
         // keep the old keyboard up.
