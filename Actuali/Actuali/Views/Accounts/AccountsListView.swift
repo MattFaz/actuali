@@ -529,6 +529,14 @@ struct AccountsListView: View {
             }
         }
         .animation(AppAnimation.appearance, value: budgetStore.bankSyncNotice)
+        // Only a sync someone asked for sets either of these, so the quiet
+        // Wallet imports on foregrounding stay quiet.
+        .sensoryFeedback(trigger: budgetStore.bankSyncNotice) { _, notice in
+            notice == nil ? nil : .success
+        }
+        .sensoryFeedback(trigger: budgetStore.bankSyncSummary) { _, summary in
+            summary == nil ? nil : .warning
+        }
     }
 
     /// The phone layout: tap an account, push its transactions.
