@@ -5,16 +5,6 @@ import Testing
 /// `parse` reads the one shape upstream writes off its fixed positions and
 /// leaves every other string to `ISO8601DateFormatter`, as before.
 struct HLCTimestampParseTests {
-    /// Deterministic, so a failure reproduces.
-    private struct Generator {
-        var state: UInt64 = 0x9e3779b97f4a7c15
-
-        mutating func next(_ bound: UInt64) -> UInt64 {
-            state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-            return (state >> 16) % bound
-        }
-    }
-
     /// `parse` as it was when the formatter read every date.
     private static func formatterParse(_ string: String, _ formatter: ISO8601DateFormatter) -> HLCTimestamp? {
         let parts = string.split(separator: "-")
@@ -48,7 +38,7 @@ struct HLCTimestampParseTests {
     /// above broke that for about a quarter of the timestamps between
     /// 2038-01-19 and 2039-09-07, and for none between 2015 and 2030.
     @Test func parseReadsTheExactMillisecond() {
-        var generator = Generator()
+        var generator = SeededGenerator()
         var wrong: [String] = []
         var millisToCheck: [Int64] = [0, 999, 253_402_300_799_999, 2_193_942_060_161]
         for _ in 0..<50000 {
@@ -71,7 +61,7 @@ struct HLCTimestampParseTests {
     @Test func parseAcceptsExactlyWhatTheFormatterDid() {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        var generator = Generator()
+        var generator = SeededGenerator()
         var strings: [String] = []
         // Calendar and clock edges in the canonical shape.
         for year in [0, 1969, 1970, 1900, 2000, 2023, 2024, 2100, 9999] {
