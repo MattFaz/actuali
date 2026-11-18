@@ -1060,6 +1060,18 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// The live transactions among `ids`, newest first, with display names.
+    func fetchTransactions(ids: [String]) async throws -> [Transaction] {
+        guard !ids.isEmpty else { return [] }
+        return try await dbQueue.read { db in
+            let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ", ")
+            return try Row.fetchAll(db, sql: Self.transactionSelect + """
+             AND t.id IN (\(placeholders))
+            ORDER BY t.date DESC, t.sort_order DESC
+            """, arguments: StatementArguments(ids)).map(Self.mapTransaction)
+        }
+    }
+
     /// Rows per page in the transaction lists. One page is the default for
     /// `fetchTransactions`, and TransactionPager treats a shorter page as
     /// the end of the result set.

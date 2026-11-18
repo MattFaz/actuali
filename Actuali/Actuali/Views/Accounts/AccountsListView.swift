@@ -5,6 +5,7 @@ import SwiftUI
 /// Accounts, and a save can tell when All Accounts is already showing.
 private enum AccountsRoute: Hashable {
     case allAccounts
+    case newTransactions
     case onBudgetTransactions
     case offBudgetTransactions
     case account(Account)
@@ -15,6 +16,7 @@ private enum AccountsRoute: Hashable {
 /// and a stored value would stop matching its row the moment it did.
 private enum AccountSelection: Hashable {
     case allAccounts
+    case newTransactions
     case onBudgetTransactions
     case offBudgetTransactions
     case account(String)
@@ -308,6 +310,9 @@ struct AccountsListView: View {
                     isBackgroundClear: accountGroupBackgroundIsClear(group.id),
                     allowsCollapse: !isSearchingAccounts && !isReordering,
                     totalTrailingPadding: linked ? 24 : 0,
+                    unreviewedCount: bucket.accounts.reduce(0) {
+                        $0 + budgetStore.unreviewedCount(forAccountId: $1.id)
+                    },
                     action: { toggleAccountGroup(group.id) }
                 )
                 .moveDisabled(!isReordering || !budgetStore.canReorderAccountGroups)
@@ -328,6 +333,40 @@ struct AccountsListView: View {
                     ))
                     .moveDisabled(!isReordering)
             }
+        }
+    }
+
+    /// The way into everything still marked new, so a sync's imports can be
+    /// gone through in one place. Only there while something is.
+    @ViewBuilder
+    private func newTransactionsSection(linked: Bool) -> some View {
+        let count = budgetStore.unreviewedTransactions.count
+        if count > 0, !isSearchingAccounts, !isReordering {
+            let label = HStack {
+                Label(String(localized: "New Transactions"), systemImage: "tray.and.arrow.down")
+                Spacer()
+                UnreviewedCountBadge(count: count)
+            }
+            Section {
+                Group {
+                    if linked {
+                        NavigationLink(value: AccountsRoute.newTransactions) { label }
+                    } else {
+                        label.tag(AccountSelection.newTransactions)
+                    }
+                }
+                .listRowBackground(AccountGroupRowBackground(position: .single))
+                .accessibilityIdentifier("accounts.newTransactions")
+            }
+        }
+    }
+
+    private func showNewTransactions() {
+        budgetStore.dismissBankSyncNotice()
+        if usesSplitLayout {
+            selection = .newTransactions
+        } else {
+            path = [.newTransactions]
         }
     }
 
@@ -473,6 +512,23 @@ struct AccountsListView: View {
         } message: {
             Text(budgetStore.bankSyncSummary ?? "")
         }
+        // A clean sync says so without stopping anyone; only problems get
+        // the alert above.
+        .overlay(alignment: .top) {
+            if let notice = budgetStore.bankSyncNotice {
+                if notice.offersReview {
+                    Button(action: showNewTransactions) {
+                        ToastView(text: notice.text, actionTitle: String(localized: "Review"))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("bankSync.review")
+                } else {
+                    ToastView(text: notice.text)
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+        .animation(AppAnimation.appearance, value: budgetStore.bankSyncNotice)
     }
 
     /// The phone layout: tap an account, push its transactions.
@@ -483,6 +539,7 @@ struct AccountsListView: View {
                     emptyState
                 } else {
                     List {
+                        newTransactionsSection(linked: true)
                         if !filteredOnBudgetAccounts.isEmpty {
                             Section {
                                 if isOnBudgetExpanded || isSearchingAccounts || isReordering {
@@ -571,6 +628,7 @@ struct AccountsListView: View {
             .navigationDestination(for: AccountsRoute.self) { route in
                 switch route {
                 case .allAccounts: AccountTransactionsScreen()
+                case .newTransactions: NewTransactionsView()
                 case .onBudgetTransactions: AccountTransactionsScreen(scope: .onBudget)
                 case .offBudgetTransactions: AccountTransactionsScreen(scope: .offBudget)
                 case .account(let account): AccountTransactionsScreen(account: account)
@@ -587,6 +645,7 @@ struct AccountsListView: View {
                     emptyState
                 } else {
                     List(selection: $selection) {
+                        newTransactionsSection(linked: false)
                         if !filteredOnBudgetAccounts.isEmpty {
                             Section {
                                 if isOnBudgetExpanded || isSearchingAccounts || isReordering {
@@ -684,6 +743,8 @@ struct AccountsListView: View {
                     }
                 case .allAccounts:
                     AccountTransactionsScreen()
+                case .newTransactions:
+                    NewTransactionsView()
                 case .onBudgetTransactions:
                     AccountTransactionsScreen(scope: .onBudget)
                 case .offBudgetTransactions:
@@ -1380,6 +1441,9 @@ private struct AccountGroupListHeader: View {
     /// Sidebar rows have no NavigationLink chevron, so they pass zero to keep
     /// group totals aligned with the account balances below.
     var totalTrailingPadding: CGFloat = 24
+    /// New transactions across the group's accounts, shown while it is
+    /// collapsed and their own rows can't say so.
+    let unreviewedCount: Int
     let action: () -> Void
 
     var body: some View {
@@ -1393,6 +1457,9 @@ private struct AccountGroupListHeader: View {
                 Text(group.name)
                     .font(.body.weight(.bold))
                     .foregroundStyle(isExpanded ? .secondary : .primary)
+                if !isExpanded, unreviewedCount > 0 {
+                    UnreviewedCountBadge(count: unreviewedCount)
+                }
                 Spacer()
                 AccountGroupTotal(totalText: totalText, total: total)
                     .padding(.trailing, totalTrailingPadding)
@@ -1568,6 +1635,21 @@ struct AccountTypeAvatar: View {
             .foregroundStyle(color)
         }
         .frame(width: 36, height: 36)
+    }
+}
+
+/// How many new transactions sit behind a row, the way Mail counts unread.
+struct UnreviewedCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text(count, format: .number)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.accentColor, in: Capsule())
+            .accessibilityLabel(String(localized: "\(count) new transactions"))
     }
 }
 
@@ -1754,13 +1836,7 @@ struct AccountRow: View {
                         .font(.body)
                         .fontWeight(unreviewedCount > 0 ? .semibold : .regular)
                     if unreviewedCount > 0 {
-                        Text(unreviewedCount, format: .number)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.accentColor, in: Capsule())
-                            .accessibilityLabel(String(localized: "\(unreviewedCount) new transactions"))
+                        UnreviewedCountBadge(count: unreviewedCount)
                             .accessibilityIdentifier("accountRow.unreviewed.\(account.id)")
                     }
                     if let linked = budgetStore.bankSyncAccount(forAccountId: account.id) {

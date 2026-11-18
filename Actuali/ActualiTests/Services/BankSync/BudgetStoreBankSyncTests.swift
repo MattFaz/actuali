@@ -1425,6 +1425,65 @@ struct BudgetStoreBankSyncTests {
         #expect(store.unreviewedTransactions[imported.id] == nil)
     }
 
+    @Test func aCleanSyncReportsThroughTheToastAndOffersReviewOnlyForImports() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-toast", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Toast"}
+        """))
+
+        await store.runBankSync()
+
+        #expect(store.bankSyncSummary == nil)
+        let first = try #require(store.bankSyncNotice)
+        #expect(first.offersReview)
+        #expect(!first.text.contains("\n"))
+
+        // The same download again matches what is already there.
+        await store.runBankSync()
+        #expect(store.bankSyncNotice?.offersReview == false)
+
+        store.dismissBankSyncNotice()
+        #expect(store.bankSyncNotice == nil)
+    }
+
+    @Test func aSyncWithProblemsStillReportsThroughTheAlert() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        store.setSimpleFINAccessKeyForTesting(nil)
+
+        await store.runBankSync()
+
+        #expect(store.bankSyncSummary != nil)
+        #expect(store.bankSyncNotice == nil)
+    }
+
+    @Test func theNewTransactionsListDropsMarksWhoseTransactionIsGone() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-kept", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Kept"},
+        {"id": "sf-gone", "posted": \(Self.daysAgo(3)), "amount": "-8.00", "payee": "Gone"}
+        """))
+        store.markAllReviewed()
+        _ = try await store.syncBankAccounts()
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 2)
+
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "UPDATE transactions SET tombstone = 1 WHERE financial_id = 'sf-gone'")
+        }
+        let listed = await store.fetchUnreviewedTransactions()
+
+        #expect(listed.count == 1)
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
+
+        store.markAllReviewed()
+        #expect(store.unreviewedTransactions.isEmpty)
+        let afterReview = await store.fetchUnreviewedTransactions()
+        #expect(afterReview.isEmpty)
+    }
+
     @Test func aRunningSyncNamesTheAccountsItIsDownloading() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }

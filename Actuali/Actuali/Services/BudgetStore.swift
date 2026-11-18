@@ -429,9 +429,10 @@ final class BudgetStore: ObservableObject {
     /// haven't been looked at yet, as transaction id → account id. Local to
     /// the device and budget, like the notification watermark: what this
     /// phone has shown its owner is not budget data.
-    // ponytail: ids are never checked against the database, so a transaction
-    // deleted before its account is opened stays counted until then. Prune on
-    // refresh if that ever shows.
+    // ponytail: ids are only checked against the database when the New
+    // Transactions list loads, so a transaction deleted before then stays
+    // counted until that list or its account is opened. Prune on refresh if
+    // that ever shows.
     @Published private(set) var unreviewedTransactions: [String: String] = [:] {
         didSet {
             guard let budgetId = currentBudgetId else { return }
@@ -1078,6 +1079,25 @@ final class BudgetStore: ObservableObject {
     func markAccountReviewed(_ accountId: String) {
         guard unreviewedTransactions.values.contains(accountId) else { return }
         unreviewedTransactions = unreviewedTransactions.filter { $0.value != accountId }
+    }
+
+    func markAllReviewed() {
+        guard !unreviewedTransactions.isEmpty else { return }
+        unreviewedTransactions = [:]
+    }
+
+    /// The transactions still marked new, newest first. Marks whose
+    /// transaction has since been deleted are dropped on the way.
+    func fetchUnreviewedTransactions() async -> [Transaction] {
+        let marked = unreviewedTransactions
+        guard let database,
+              let found = try? await database.fetchTransactions(ids: Array(marked.keys)) else { return [] }
+        let live = Set(found.map(\.id))
+        if live.count != marked.count {
+            // Only what this call looked up: a mark made during the read stays.
+            unreviewedTransactions = unreviewedTransactions.filter { marked[$0.key] == nil || live.contains($0.key) }
+        }
+        return found
     }
 
     /// Closed accounts the Accounts list should show — none when the hide
@@ -4703,6 +4723,34 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// A clean bank sync's outcome, shown as a toast that goes away by
+    /// itself. A sync with problems goes to `bankSyncSummary` instead, whose
+    /// alert waits to be read.
+    struct BankSyncNotice: Equatable {
+        let text: String
+        /// Whether the sync imported something worth going through.
+        let offersReview: Bool
+    }
+
+    @Published private(set) var bankSyncNotice: BankSyncNotice?
+    private var bankSyncNoticeDismissTask: Task<Void, Never>?
+
+    func dismissBankSyncNotice() {
+        bankSyncNoticeDismissTask?.cancel()
+        bankSyncNotice = nil
+    }
+
+    private func showBankSyncNotice(_ notice: BankSyncNotice) {
+        bankSyncNoticeDismissTask?.cancel()
+        bankSyncNotice = notice
+        bankSyncNoticeDismissTask = Task { [weak self] in
+            // Longer when there is something to tap.
+            try? await Task.sleep(for: .seconds(notice.offersReview ? 8 : 4))
+            guard !Task.isCancelled else { return }
+            self?.bankSyncNotice = nil
+        }
+    }
+
     /// The last bank sync's outcome, waiting to be shown. Held here rather
     /// than in a view because the sync is kicked off from a toolbar menu that
     /// is gone by the time it finishes.
@@ -4765,15 +4813,25 @@ final class BudgetStore: ObservableObject {
         return SimpleFINDirectProvider(client: simpleFINClient, accessKey: deviceKey)
     }
 
-    /// Run a sync and leave its outcome in `bankSyncSummary`. The button-shaped
-    /// entry point — `syncBankAccounts` is the one that throws.
+    /// Run a sync and leave its outcome in `bankSyncNotice`, or in
+    /// `bankSyncSummary` when something went wrong. The button-shaped entry
+    /// point — `syncBankAccounts` is the one that throws.
     func runBankSync(accountIds: [String] = []) async {
         // A tap that lands while a sync is already running does nothing — the
         // running sync posts its own summary, which would otherwise be
         // clobbered by this call's empty one.
         guard !isBankSyncing else { return }
         do {
-            bankSyncSummary = try await syncBankAccounts(accountIds: accountIds).summary
+            let result = try await syncBankAccounts(accountIds: accountIds)
+            if result.problems.isEmpty {
+                showBankSyncNotice(BankSyncNotice(
+                    // One line: the toast is a capsule.
+                    text: result.summary.replacingOccurrences(of: "\n\n", with: " "),
+                    offersReview: !result.importedTransactions.isEmpty
+                ))
+            } else {
+                bankSyncSummary = result.summary
+            }
         } catch {
             bankSyncSummary = error.localizedDescription
         }
