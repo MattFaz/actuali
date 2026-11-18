@@ -1381,6 +1381,7 @@ struct BudgetStoreBankSyncTests {
         #expect(try #require(linked.lastSync) >= before.addingTimeInterval(-1))
         #expect(linked.status == "ok")
         #expect(!linked.needsAttention)
+        #expect(linked.attentionMessage == nil)
     }
 
     @Test func aFailedStatusMarksTheLinkedAccountWithoutLosingItsLastSync() async throws {
@@ -1398,6 +1399,7 @@ struct BudgetStoreBankSyncTests {
         let linked = try #require(store.bankSyncAccount(forAccountId: accountId))
         #expect(linked.lastSync == Date(timeIntervalSince1970: 1_600_000_000))
         #expect(linked.needsAttention)
+        #expect(linked.attentionMessage != nil)
     }
 
     @Test func importedTransactionsStayUnreviewedUntilTheirAccountIsSeen() async throws {

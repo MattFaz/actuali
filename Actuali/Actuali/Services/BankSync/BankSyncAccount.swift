@@ -43,6 +43,20 @@ struct BankSyncAccount: Sendable, Equatable, Identifiable {
     var needsAttention: Bool {
         status != nil && status != "ok"
     }
+
+    /// What went wrong on the latest attempt and what to do about it, in
+    /// upstream's `bank_sync_status` vocabulary. Nil after a clean download.
+    var attentionMessage: String? {
+        switch status {
+        case nil, "ok": nil
+        case "reauth-required": String(localized: "Your bank needs you to sign in again at SimpleFIN.")
+        case "attention-required": String(localized: "Your bank connection needs attention at SimpleFIN.")
+        case "rate-limit-exceeded": String(localized: "Too many sync requests today. Try again tomorrow.")
+        case "timed-out": String(localized: "The bank took too long to answer. Try again later.")
+        case "account-missing": String(localized: "The bank feed no longer has this account. Unlink it and link it again.")
+        default: String(localized: "The last bank sync failed. Try again later.")
+        }
+    }
 }
 
 /// A provider-side account offered for linking, whichever provider it came

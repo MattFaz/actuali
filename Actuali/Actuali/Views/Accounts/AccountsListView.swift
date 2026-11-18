@@ -1665,7 +1665,10 @@ struct BankSyncBadge: View {
                 .controlSize(.mini)
                 .accessibilityLabel(String(localized: "Syncing..."))
         } else {
-            Image(systemName: linked.source == .financeKit ? "wallet.pass" : "building.columns")
+            // A different shape, not only a different color, when it failed.
+            Image(systemName: linked.needsAttention
+                ? "exclamationmark.triangle.fill"
+                : linked.source == .financeKit ? "wallet.pass" : "building.columns")
                 .foregroundStyle(linked.needsAttention ? Color.red : Color.secondary)
                 .accessibilityLabel(linked.needsAttention
                     ? String(localized: "Bank sync needs attention")

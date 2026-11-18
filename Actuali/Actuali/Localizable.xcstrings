@@ -5928,6 +5928,150 @@
         }
       }
     },
+    "The bank took too long to answer. Try again later." : {
+      "comment" : "Account detail explanation of why the last bank sync needs attention",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bank hat zu lange für eine Antwort gebraucht. Versuche es später erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The bank took too long to answer. Try again later."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El banco tardó demasiado en responder. Inténtalo de nuevo más tarde."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La banque a mis trop de temps à répondre. Réessayez plus tard."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La banca ha impiegato troppo tempo a rispondere. Riprova più tardi."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De bank deed er te lang over om te antwoorden. Probeer het later opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O banco demorou demais para responder. Tente novamente mais tarde."
+          }
+        }
+      }
+    },
+    "The bank feed no longer has this account. Unlink it and link it again." : {
+      "comment" : "Account detail explanation of why the last bank sync needs attention",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Bank-Feed enthält dieses Konto nicht mehr. Trenne die Verknüpfung und verknüpfe es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The bank feed no longer has this account. Unlink it and link it again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La conexión bancaria ya no incluye esta cuenta. Desvincúlala y vuelve a vincularla."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le flux bancaire ne contient plus ce compte. Dissociez-le puis associez-le à nouveau."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il feed bancario non contiene più questo conto. Scollegalo e collegalo di nuovo."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De bankfeed bevat deze rekening niet meer. Ontkoppel de rekening en koppel deze opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A conexão bancária não tem mais esta conta. Desvincule-a e vincule-a novamente."
+          }
+        }
+      }
+    },
+    "The last bank sync failed. Try again later." : {
+      "comment" : "Account detail explanation of why the last bank sync needs attention",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die letzte Banksynchronisierung ist fehlgeschlagen. Versuche es später erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The last bank sync failed. Try again later."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La última sincronización bancaria falló. Inténtalo de nuevo más tarde."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La dernière synchronisation bancaire a échoué. Réessayez plus tard."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'ultima sincronizzazione bancaria non è riuscita. Riprova più tardi."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De laatste banksynchronisatie is mislukt. Probeer het later opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A última sincronização bancária falhou. Tente novamente mais tarde."
+          }
+        }
+      }
+    },
     "The original balance is what you owed when the loan started — payoff progress is measured against it. Interest is compounded monthly, and each payment covers interest and any escrow before the rest comes off the principal.\n\nEscrow or fees applies to mortgages whose payment bundles them in. Leave it empty to skip." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6258,6 +6402,54 @@
         }
       }
     },
+    "Too many sync requests today. Try again tomorrow." : {
+      "comment" : "Account detail explanation of why the last bank sync needs attention",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heute zu viele Synchronisierungsanfragen. Versuche es morgen erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Too many sync requests today. Try again tomorrow."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Demasiadas solicitudes de sincronización hoy. Inténtalo de nuevo mañana."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trop de demandes de synchronisation aujourd'hui. Réessayez demain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Troppe richieste di sincronizzazione oggi. Riprova domani."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te veel synchronisatieverzoeken vandaag. Probeer het morgen opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muitas solicitações de sincronização hoje. Tente novamente amanhã."
+          }
+        }
+      }
+    },
     "Total" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6535,6 +6727,102 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Valor no vencimento"
+          }
+        }
+      }
+    },
+    "Your bank needs you to sign in again at SimpleFIN." : {
+      "comment" : "Account detail explanation of why the last bank sync needs attention",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Bank verlangt eine erneute Anmeldung bei SimpleFIN."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your bank needs you to sign in again at SimpleFIN."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu banco necesita que vuelvas a iniciar sesión en SimpleFIN."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre banque vous demande de vous reconnecter sur SimpleFIN."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tua banca richiede di accedere di nuovo su SimpleFIN."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je bank vraagt je opnieuw in te loggen bij SimpleFIN."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu banco precisa que você entre novamente no SimpleFIN."
+          }
+        }
+      }
+    },
+    "Your bank connection needs attention at SimpleFIN." : {
+      "comment" : "Account detail explanation of why the last bank sync needs attention",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Bankverbindung erfordert Aufmerksamkeit bei SimpleFIN."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your bank connection needs attention at SimpleFIN."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La conexión con tu banco requiere atención en SimpleFIN."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La connexion à votre banque nécessite votre attention sur SimpleFIN."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La connessione alla tua banca richiede attenzione su SimpleFIN."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je bankverbinding vereist aandacht bij SimpleFIN."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A conexão com seu banco requer atenção no SimpleFIN."
           }
         }
       }
