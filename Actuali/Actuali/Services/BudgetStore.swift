@@ -380,6 +380,7 @@ final class BudgetStore: ObservableObject {
                 depositConfigs = [:]
                 cardAccountMappings = [:]
                 excludedFromSpentCategoryIds = Self.loadExcludedFromSpentCategoryIds(for: currentBudgetId)
+                unreviewedTransactions = Self.loadUnreviewedTransactions(for: currentBudgetId)
             }
         }
     }
@@ -421,6 +422,20 @@ final class BudgetStore: ObservableObject {
             guard let budgetId = currentBudgetId else { return }
             let key = Self.excludedFromSpentDefaultsKey(for: budgetId)
             UserDefaults.standard.set(Array(excludedFromSpentCategoryIds), forKey: key)
+        }
+    }
+
+    /// Transactions that arrived by bank sync or from another device and
+    /// haven't been looked at yet, as transaction id → account id. Local to
+    /// the device and budget, like the notification watermark: what this
+    /// phone has shown its owner is not budget data.
+    // ponytail: ids are never checked against the database, so a transaction
+    // deleted before its account is opened stays counted until then. Prune on
+    // refresh if that ever shows.
+    @Published private(set) var unreviewedTransactions: [String: String] = [:] {
+        didSet {
+            guard let budgetId = currentBudgetId else { return }
+            UserDefaults.standard.set(unreviewedTransactions, forKey: Self.unreviewedDefaultsKey(for: budgetId))
         }
     }
 
@@ -1036,6 +1051,33 @@ final class BudgetStore: ObservableObject {
               let values = UserDefaults.standard.array(forKey: excludedFromSpentDefaultsKey(for: budgetId)) as? [String]
         else { return [] }
         return Set(values)
+    }
+
+    private static func unreviewedDefaultsKey(for budgetId: String) -> String {
+        "unreviewedTransactions.\(budgetId)"
+    }
+
+    private static func loadUnreviewedTransactions(for budgetId: String?) -> [String: String] {
+        guard let budgetId else { return [:] }
+        return UserDefaults.standard.dictionary(forKey: unreviewedDefaultsKey(for: budgetId)) as? [String: String] ?? [:]
+    }
+
+    /// How many of an account's transactions are waiting to be looked at.
+    func unreviewedCount(forAccountId accountId: String) -> Int {
+        unreviewedTransactions.values.filter { $0 == accountId }.count
+    }
+
+    /// Split children are left out: the parent is the row the register shows.
+    private func markUnreviewed(_ transactions: [Transaction]) {
+        let fresh = transactions.filter { $0.parentId == nil }.map { ($0.id, $0.accountId) }
+        guard !fresh.isEmpty else { return }
+        unreviewedTransactions.merge(fresh) { _, new in new }
+    }
+
+    /// The account's screen has been seen, so nothing in it is new any more.
+    func markAccountReviewed(_ accountId: String) {
+        guard unreviewedTransactions.values.contains(accountId) else { return }
+        unreviewedTransactions = unreviewedTransactions.filter { $0.value != accountId }
     }
 
     /// Closed accounts the Accounts list should show — none when the hide
@@ -2039,6 +2081,9 @@ final class BudgetStore: ObservableObject {
         }
         _excludedFromSpentCategoryIds = Published(
             initialValue: Self.loadExcludedFromSpentCategoryIds(for: defaults.string(forKey: "currentBudgetId"))
+        )
+        _unreviewedTransactions = Published(
+            initialValue: Self.loadUnreviewedTransactions(for: defaults.string(forKey: "currentBudgetId"))
         )
         _currencyCode = Published(
             initialValue: defaults.string(forKey: "currencyCode") ?? "USD"
@@ -5325,6 +5370,7 @@ final class BudgetStore: ObservableObject {
         // failing the sync over — the transactions are already in.
         try? await syncClient.recordBankSyncStatus(statuses)
 
+        markUnreviewed(result.importedTransactions)
         await refreshDataOnly()
         return result
     }
@@ -7780,7 +7826,10 @@ final class BudgetStore: ObservableObject {
     /// willPresent shows it as a banner in-app) instead of silently consuming
     /// it. Opt-in and permission are enforced inside NewTransactionNotifier.
     func notifyAboutSyncedTransactions(additional: [Transaction] = []) async {
-        await notifyAboutTransactions(detectNewTransactionsForNotification() + additional)
+        let synced = await detectNewTransactionsForNotification()
+        // `additional` came from a bank sync, which marked its own.
+        markUnreviewed(synced)
+        await notifyAboutTransactions(synced + additional)
     }
 
     private func notifyAboutTransactions(_ fresh: [Transaction]) async {

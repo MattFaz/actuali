@@ -1400,6 +1400,31 @@ struct BudgetStoreBankSyncTests {
         #expect(linked.needsAttention)
     }
 
+    @Test func importedTransactionsStayUnreviewedUntilTheirAccountIsSeen() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-unreviewed", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Unreviewed"}
+        """))
+        // The marks persist per budget, so start from a known state.
+        store.markAccountReviewed(Self.accountId)
+
+        let result = try await store.syncBankAccounts()
+
+        let imported = try #require(result.importedTransactions.first)
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
+        #expect(store.unreviewedTransactions[imported.id] == Self.accountId)
+
+        // A second sync matches the same row instead of importing it again.
+        _ = try await store.syncBankAccounts()
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
+
+        store.markAccountReviewed("some-other-account")
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
+        store.markAccountReviewed(Self.accountId)
+        #expect(store.unreviewedTransactions[imported.id] == nil)
+    }
+
     @Test func aRunningSyncNamesTheAccountsItIsDownloading() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }

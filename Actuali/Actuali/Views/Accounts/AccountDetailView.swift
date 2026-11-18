@@ -510,6 +510,17 @@ struct AccountDetailView: View {
                 selectedTransactionIds.formSymmetricDifference([transaction.id])
             }
         )
+        // In the row's leading margin, the way Mail marks unread.
+        .overlay(alignment: .leading) {
+            if budgetStore.unreviewedTransactions[transaction.id] != nil {
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 7, height: 7)
+                    .offset(x: -12)
+                    .accessibilityLabel(String(localized: "\(1) new transactions"))
+                    .accessibilityIdentifier("transactionRow.unreviewed.\(transaction.id)")
+            }
+        }
     }
 
     private func balanceColumn(
@@ -1123,7 +1134,11 @@ struct AccountDetailView: View {
             CreditCardStatementDetailView(account: account, statement: statement)
                 .environmentObject(budgetStore)
         }
-        .onChange(of: account.id) { _, _ in
+        // Cleared on the way out, not in: the marks are what there is to
+        // review while the screen is up.
+        .onDisappear { budgetStore.markAccountReviewed(account.id) }
+        .onChange(of: account.id) { previousId, _ in
+            budgetStore.markAccountReviewed(previousId)
             // Search belongs to the selected account; don't carry a hidden filter
             // or an open search field into the next account in the iPad split view.
             isTransactionSearchActive = false

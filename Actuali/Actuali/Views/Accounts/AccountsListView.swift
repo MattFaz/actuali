@@ -1735,6 +1735,7 @@ struct AccountRow: View {
             creditCardDues: budgetStore.creditCardStatementDues[account.id],
             creditCardCycle: creditCardCycle
         )
+        let unreviewedCount = budgetStore.unreviewedCount(forAccountId: account.id)
 
         return HStack(alignment: .center, spacing: 12) {
             if showAccountTypeIcons {
@@ -1751,6 +1752,17 @@ struct AccountRow: View {
                 HStack {
                     Text(account.name)
                         .font(.body)
+                        .fontWeight(unreviewedCount > 0 ? .semibold : .regular)
+                    if unreviewedCount > 0 {
+                        Text(unreviewedCount, format: .number)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor, in: Capsule())
+                            .accessibilityLabel(String(localized: "\(unreviewedCount) new transactions"))
+                            .accessibilityIdentifier("accountRow.unreviewed.\(account.id)")
+                    }
                     if let linked = budgetStore.bankSyncAccount(forAccountId: account.id) {
                         BankSyncBadge(
                             linked: linked,
