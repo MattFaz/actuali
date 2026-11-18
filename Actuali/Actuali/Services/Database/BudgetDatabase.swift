@@ -4266,6 +4266,27 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// What bank sync last stamped on each account: when a download last
+    /// completed and how the latest attempt ended. Keyed by account id, and
+    /// read apart from `fetchBankSyncAccounts` because Wallet links aren't in
+    /// the columns that query filters on but are stamped all the same.
+    func fetchBankSyncStamps() async throws -> [String: (lastSync: Date?, status: String?)] {
+        try await dbQueue.read { db in
+            let columns = try db.columns(in: "accounts").map(\.name)
+            guard columns.contains("last_sync"), columns.contains("bank_sync_status") else { return [:] }
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT id, last_sync, bank_sync_status FROM accounts
+            WHERE last_sync IS NOT NULL OR bank_sync_status IS NOT NULL
+            """)
+            return Dictionary(uniqueKeysWithValues: rows.map { row in
+                // Milliseconds since the epoch as a string, as upstream writes it.
+                let lastSync = (row["last_sync"] as String?).flatMap { Double($0) }
+                    .map { Date(timeIntervalSince1970: $0 / 1000) }
+                return (row["id"] as String, (lastSync: lastSync, status: row["bank_sync_status"] as String?))
+            })
+        }
+    }
+
     /// The transactions a download could be matching, projected down to the
     /// columns `BankSyncReconciler` reads. Fuzzy candidates are bounded by
     /// date; exact provider IDs are included account-wide.

@@ -606,6 +606,28 @@ struct AccountDetailView: View {
                 breakdownRow(String(localized: "Available Credit"), amount: headroom.available)
                 breakdownRow(String(localized: "Credit Limit"), amount: headroom.limit)
             }
+
+            if let linked = budgetStore.bankSyncAccount(forAccountId: account.id) {
+                let isSyncing = budgetStore.bankSyncingAccountIds.contains(account.id)
+                HStack(spacing: 6) {
+                    BankSyncBadge(linked: linked, isSyncing: isSyncing)
+                    Text(String(localized: "Last Bank Sync"))
+                    Spacer()
+                    Group {
+                        if isSyncing {
+                            Text(String(localized: "Syncing..."))
+                        } else if let lastSync = linked.lastSync {
+                            Text(lastSync, style: .relative)
+                        } else {
+                            Text(String(localized: "Never"))
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .font(.footnote)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("accountBankSync.status")
+            }
         }
     }
 

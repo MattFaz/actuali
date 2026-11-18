@@ -29,9 +29,19 @@ struct BankSyncAccount: Sendable, Equatable, Identifiable {
     let syncSource: String
     let offBudget: Bool
     let closed: Bool
+    /// When a download last completed (`accounts.last_sync`); nil if none has.
+    var lastSync: Date?
+    /// How the latest attempt ended (`accounts.bank_sync_status`): `ok`, or
+    /// one of upstream's failure words.
+    var status: String?
 
     var source: BankSyncSource? {
         BankSyncSource(rawValue: syncSource)
+    }
+
+    /// Whether the latest attempt ended in anything but a clean download.
+    var needsAttention: Bool {
+        status != nil && status != "ok"
     }
 }
 

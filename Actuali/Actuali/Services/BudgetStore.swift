@@ -432,7 +432,11 @@ final class BudgetStore: ObservableObject {
     @Published private(set) var isSimpleFINConfigured = SimpleFINCredentials.isConfigured
     /// True for the length of a bank sync, so the UI can show progress and
     /// keep a second sync from starting on top of the first.
-    @Published private(set) var isBankSyncing = false
+    /// The accounts a running bank sync is downloading; empty when none is.
+    @Published private(set) var bankSyncingAccountIds: Set<String> = []
+    var isBankSyncing: Bool {
+        !bankSyncingAccountIds.isEmpty
+    }
 
     #if DEBUG
     var bankSyncBeforeMaterializationHook: (() -> Void)?
@@ -4886,14 +4890,23 @@ final class BudgetStore: ObservableObject {
         let walletLinks = Dictionary(
             uniqueKeysWithValues: localLinks.map { ($0.accountId, $0.externalAccountId) }
         )
+        func stamped(_ linked: [BankSyncAccount]) async -> [BankSyncAccount] {
+            let stamps = await (try? database.fetchBankSyncStamps()) ?? [:]
+            return linked.map {
+                var account = $0
+                account.lastSync = stamps[$0.id]?.lastSync
+                account.status = stamps[$0.id]?.status
+                return account
+            }
+        }
         guard !walletLinks.isEmpty else {
+            let result = await stamped(synced)
             guard isCurrentRequest() else { return nil }
-            return synced
+            return result
         }
         let syncedById = Dictionary(uniqueKeysWithValues: synced.map { ($0.id, $0) })
         let budgetAccounts = await (try? database.fetchAccounts()) ?? fallbackAccounts ?? accounts
-        guard isCurrentRequest() else { return nil }
-        return budgetAccounts.compactMap { account in
+        let result = await stamped(budgetAccounts.compactMap { account in
             if let linked = syncedById[account.id] {
                 return linked
             }
@@ -4906,7 +4919,9 @@ final class BudgetStore: ObservableObject {
                 offBudget: account.offBudget,
                 closed: account.closed
             )
-        }
+        })
+        guard isCurrentRequest() else { return nil }
+        return result
     }
 
     /// The bank feed an account is wired up to, if any.
@@ -5076,8 +5091,8 @@ final class BudgetStore: ObservableObject {
         // Nothing may suspend between the isBankSyncing guard above and this
         // write — an await in that window would let a second call slip past
         // the guard and import everything twice.
-        isBankSyncing = true
-        defer { isBankSyncing = false }
+        bankSyncingAccountIds = Set((simpleFinTargets + walletTargets).map(\.id))
+        defer { bankSyncingAccountIds = [] }
 
         var result = BankSyncResult()
 

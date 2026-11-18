@@ -1367,6 +1367,55 @@ struct BudgetStoreBankSyncTests {
         #expect((Int64(lastSync ?? "") ?? 0) > 1_700_000_000_000)
     }
 
+    @Test func aSyncShowsItsStampOnTheLinkedAccount() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.lastSync == nil)
+
+        let before = Date()
+        _ = try await store.syncBankAccounts()
+
+        let linked = try #require(store.bankSyncAccount(forAccountId: Self.accountId))
+        // The stamp is whole milliseconds, so allow for the truncation.
+        #expect(try #require(linked.lastSync) >= before.addingTimeInterval(-1))
+        #expect(linked.status == "ok")
+        #expect(!linked.needsAttention)
+    }
+
+    @Test func aFailedStatusMarksTheLinkedAccountWithoutLosingItsLastSync() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET last_sync = ?, bank_sync_status = 'failed' WHERE id = ?",
+                arguments: ["1600000000000", accountId]
+            )
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+
+        let linked = try #require(store.bankSyncAccount(forAccountId: accountId))
+        #expect(linked.lastSync == Date(timeIntervalSince1970: 1_600_000_000))
+        #expect(linked.needsAttention)
+    }
+
+    @Test func aRunningSyncNamesTheAccountsItIsDownloading() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-running", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Running"}
+        """))
+        var idsDuringSync: Set<String> = []
+        store.bankSyncBeforeMaterializationHook = { idsDuringSync = store.bankSyncingAccountIds }
+
+        _ = try await store.syncBankAccounts()
+
+        #expect(idsDuringSync == [Self.accountId])
+        #expect(store.bankSyncingAccountIds.isEmpty)
+        #expect(!store.isBankSyncing)
+    }
+
     /// A `YYYY-MM-DD` string the sync window will accept, however long this
     /// test lives.
     private static func isoDaysAgo(_ days: Int) -> String {

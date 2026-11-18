@@ -1571,6 +1571,27 @@ struct AccountTypeAvatar: View {
     }
 }
 
+/// Marks an account as fed by a bank: which feed, whether its last sync went
+/// wrong, and a spinner while one is running.
+struct BankSyncBadge: View {
+    let linked: BankSyncAccount
+    let isSyncing: Bool
+
+    var body: some View {
+        if isSyncing {
+            ProgressView()
+                .controlSize(.mini)
+                .accessibilityLabel(String(localized: "Syncing..."))
+        } else {
+            Image(systemName: linked.source == .financeKit ? "wallet.pass" : "building.columns")
+                .foregroundStyle(linked.needsAttention ? Color.red : Color.secondary)
+                .accessibilityLabel(linked.needsAttention
+                    ? String(localized: "Bank sync needs attention")
+                    : String(localized: "Bank Sync"))
+        }
+    }
+}
+
 struct AccountRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let account: Account
@@ -1730,6 +1751,14 @@ struct AccountRow: View {
                 HStack {
                     Text(account.name)
                         .font(.body)
+                    if let linked = budgetStore.bankSyncAccount(forAccountId: account.id) {
+                        BankSyncBadge(
+                            linked: linked,
+                            isSyncing: budgetStore.bankSyncingAccountIds.contains(account.id)
+                        )
+                        .font(.caption)
+                        .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
+                    }
                     Spacer()
                     Text(balance)
                         .foregroundStyle(balanceColor(for: account.balance))
