@@ -3491,20 +3491,19 @@ final class BudgetDatabase: Sendable {
     /// is the convergent outcome.
     private static func insertMessageRows(_ db: Database, _ messages: [CRDTMessage]) throws -> [CRDTMessage] {
         var inserted: [CRDTMessage] = []
+        // Compiled once for the batch, not once per message.
+        let insert = try db.cachedStatement(sql: """
+        INSERT OR IGNORE INTO messages_crdt (timestamp, dataset, row, column, value)
+        VALUES (?, ?, ?, ?, ?)
+        """)
         for msg in messages {
-            try db.execute(
-                sql: """
-                INSERT OR IGNORE INTO messages_crdt (timestamp, dataset, row, column, value)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                arguments: [
-                    msg.timestamp.toString(),
-                    msg.dataset,
-                    msg.row,
-                    msg.column,
-                    msg.value,
-                ]
-            )
+            try insert.execute(arguments: [
+                msg.timestamp.toString(),
+                msg.dataset,
+                msg.row,
+                msg.column,
+                msg.value,
+            ])
             if db.changesCount > 0 {
                 inserted.append(msg)
             }
@@ -3575,12 +3574,14 @@ final class BudgetDatabase: Sendable {
     func filterNewMessages(_ messages: [CRDTMessage]) throws -> [CRDTMessage] {
         try dbQueue.read { db in
             var newMessages: [CRDTMessage] = []
+            // Compiled once for the batch, not once per message.
+            let newer = try db.cachedStatement(sql: """
+            SELECT timestamp FROM messages_crdt
+            WHERE dataset = ? AND row = ? AND column = ? AND timestamp >= ?
+            """)
 
             for msg in messages {
-                let existing = try Row.fetchOne(db, sql: """
-                SELECT timestamp FROM messages_crdt
-                WHERE dataset = ? AND row = ? AND column = ? AND timestamp >= ?
-                """, arguments: [
+                let existing = try Row.fetchOne(newer, arguments: [
                     msg.dataset,
                     msg.row,
                     msg.column,
@@ -3657,20 +3658,17 @@ final class BudgetDatabase: Sendable {
         rowId: String,
         value: DatabaseValue
     ) throws {
-        let exists = try Row.fetchOne(db, sql: """
-        SELECT id FROM \(table) WHERE id = ?
-        """, arguments: [rowId]) != nil
+        // Cached by SQL text, so a batch compiles each table/column pair once.
+        let exists = try Row.fetchOne(
+            db.cachedStatement(sql: "SELECT id FROM \(table) WHERE id = ?"), arguments: [rowId]
+        ) != nil
 
         if exists {
-            try db.execute(
-                sql: "UPDATE \(table) SET \(column) = ? WHERE id = ?",
-                arguments: [value, rowId]
-            )
+            try db.cachedStatement(sql: "UPDATE \(table) SET \(column) = ? WHERE id = ?")
+                .execute(arguments: [value, rowId])
         } else {
-            try db.execute(
-                sql: "INSERT INTO \(table) (id, \(column)) VALUES (?, ?)",
-                arguments: [rowId, value]
-            )
+            try db.cachedStatement(sql: "INSERT INTO \(table) (id, \(column)) VALUES (?, ?)")
+                .execute(arguments: [rowId, value])
         }
     }
 

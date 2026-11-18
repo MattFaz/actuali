@@ -378,3 +378,14 @@ extension URLRequest {
         return data
     }
 }
+
+/// Deterministic, so a failure reproduces.
+struct SeededGenerator {
+    var state: UInt64 = 0x9e3779b97f4a7c15
+
+    mutating func next(_ bound: UInt64) -> UInt64 {
+        state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+        // The top 48 bits: enough to cover every millisecond `parse` accepts.
+        return (state >> 16) % bound
+    }
+}

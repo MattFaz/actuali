@@ -57,10 +57,15 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
         // Reconstruct ISO date from first 3 parts
         let isoString = "\(parts[0])-\(parts[1])-\(parts[2])"
 
-        // Parse ISO date
-        guard let date = Self.isoFormatter.withLock({ $0.date(from: isoString) }) else { return nil }
-
-        let millis = Int64(date.timeIntervalSince1970 * 1000)
+        // Parse ISO date. Anything but the one shape upstream writes goes to
+        // the formatter, so what is accepted stays exactly what it was.
+        let millis: Int64
+        if let canonical = canonicalMillis(isoString) {
+            millis = canonical
+        } else {
+            guard let date = Self.isoFormatter.withLock({ $0.date(from: isoString) }) else { return nil }
+            millis = Int64(date.timeIntervalSince1970 * 1000)
+        }
 
         // Validate millis range (1970 to 9999)
         guard millis >= 0, millis < 253_402_300_800_000 else { return nil }
@@ -73,6 +78,39 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
         guard node.count <= 16 else { return nil }
 
         return HLCTimestamp(millis: millis, counter: counter, node: node)
+    }
+
+    /// Milliseconds since the Unix epoch for `YYYY-MM-DDTHH:MM:SS.mmmZ`, the
+    /// shape JavaScript's `toISOString()` gives every upstream timestamp, read
+    /// off its fixed positions: `ISO8601DateFormatter` takes about 50 µs to
+    /// parse one, which was half of a long sync. Nil for any other shape and
+    /// for a date the calendar doesn't have, leaving those to the formatter.
+    private static func canonicalMillis(_ iso: String) -> Int64? {
+        let bytes = Array(iso.utf8)
+        guard bytes.count == 24 else { return nil }
+        for (index, separator) in zip([4, 7, 10, 13, 16, 19, 23], "--T::.Z".utf8) where bytes[index] != separator {
+            return nil
+        }
+        func field(_ range: Range<Int>) -> Int? {
+            var value = 0
+            for byte in bytes[range] {
+                guard byte >= 48, byte <= 57 else { return nil }
+                value = value * 10 + Int(byte - 48)
+            }
+            return value
+        }
+        guard let year = field(0..<4), let month = field(5..<7), let day = field(8..<10),
+              let hour = field(11..<13), let minute = field(14..<16), let second = field(17..<19),
+              let fraction = field(20..<23),
+              year >= 1970, (1...12).contains(month), hour < 24, minute < 60, second < 60
+        else { return nil }
+        let isLeapYear = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+        let daysInMonth = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+        guard (1...daysInMonth).contains(day) else { return nil }
+
+        let seconds = daysSinceEpoch(year: year, month: month, day: day) * 86400
+            + Int64(hour * 3600 + minute * 60 + second)
+        return seconds * 1000 + Int64(fraction)
     }
 
     /// Minutes since the Unix epoch for a timestamp string, read straight off

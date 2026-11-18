@@ -6,24 +6,13 @@ import Testing
 /// rests on that order. `<` compares the fields instead, so it has to agree
 /// with the string comparison everywhere a timestamp can actually be.
 struct HLCTimestampOrderingTests {
-    /// Deterministic, so a disagreement reproduces.
-    private struct Generator {
-        var state: UInt64 = 0x9e3779b97f4a7c15
-
-        mutating func next(_ bound: UInt64) -> UInt64 {
-            state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-            // The top 48 bits: enough to cover every millisecond `parse` accepts.
-            return (state >> 16) % bound
-        }
-    }
-
     private static let nodes = [
         "a1b2c3d4e5f60718", "A1B2C3D4E5F60718", "0000000000000000", "ffffffffffffffff",
         "9f66d38cba0ef956", "0", "abc", "89e0e8e90b203f9e",
     ]
 
     @Test func fieldOrderMatchesStringOrder() {
-        var generator = Generator()
+        var generator = SeededGenerator()
         // Bases spread over the whole range `parse` accepts, each with a few
         // neighbours at equal and adjacent milliseconds, so that the date
         // formatting is checked everywhere and the counter and node get to decide.
@@ -56,7 +45,7 @@ struct HLCTimestampOrderingTests {
     }
 
     @Test func sortingAgreesWithSortingTheStrings() {
-        var generator = Generator()
+        var generator = SeededGenerator()
         let timestamps = (0..<2000).map { _ in
             HLCTimestamp(
                 millis: 1_780_000_000_000 + Int64(generator.next(5000)),
