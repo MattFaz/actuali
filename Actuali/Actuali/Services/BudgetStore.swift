@@ -425,8 +425,9 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Transactions that arrived by bank sync or from another device and
-    /// haven't been looked at yet, as transaction id → account id. Local to
+    /// Transactions this device's bank sync imported that haven't been
+    /// looked at yet, as transaction id → account id. What another device
+    /// synced in is left out: its owner already saw it there. Local to
     /// the device and budget, like the notification watermark: what this
     /// phone has shown its owner is not budget data.
     // ponytail: ids are only checked against the database when the New
@@ -4728,7 +4729,7 @@ final class BudgetStore: ObservableObject {
     /// alert waits to be read.
     struct BankSyncNotice: Equatable {
         let text: String
-        /// Whether the sync imported something worth going through.
+        /// Whether the sync imported something it marked new.
         let offersReview: Bool
     }
 
@@ -4827,7 +4828,7 @@ final class BudgetStore: ObservableObject {
                 showBankSyncNotice(BankSyncNotice(
                     // One line: the toast is a capsule.
                     text: result.summary.replacingOccurrences(of: "\n\n", with: " "),
-                    offersReview: !result.importedTransactions.isEmpty
+                    offersReview: result.importedTransactions.contains { unreviewedTransactions[$0.id] != nil }
                 ))
             } else {
                 bankSyncSummary = result.summary
@@ -5196,6 +5197,8 @@ final class BudgetStore: ObservableObject {
         // the guard and import everything twice.
         bankSyncingAccountIds = Set((simpleFinTargets + walletTargets).map(\.id))
         defer { bankSyncingAccountIds = [] }
+        // An account's first download is its history, not news.
+        let firstSyncAccountIds = Set(linked.filter { $0.lastSync == nil }.map(\.id))
 
         var result = BankSyncResult()
 
@@ -5428,7 +5431,7 @@ final class BudgetStore: ObservableObject {
         // failing the sync over — the transactions are already in.
         try? await syncClient.recordBankSyncStatus(statuses)
 
-        markUnreviewed(result.importedTransactions)
+        markUnreviewed(result.importedTransactions.filter { !firstSyncAccountIds.contains($0.accountId) })
         await refreshDataOnly()
         return result
     }
@@ -7884,10 +7887,7 @@ final class BudgetStore: ObservableObject {
     /// willPresent shows it as a banner in-app) instead of silently consuming
     /// it. Opt-in and permission are enforced inside NewTransactionNotifier.
     func notifyAboutSyncedTransactions(additional: [Transaction] = []) async {
-        let synced = await detectNewTransactionsForNotification()
-        // `additional` came from a bank sync, which marked its own.
-        markUnreviewed(synced)
-        await notifyAboutTransactions(synced + additional)
+        await notifyAboutTransactions(detectNewTransactionsForNotification() + additional)
     }
 
     private func notifyAboutTransactions(_ fresh: [Transaction]) async {

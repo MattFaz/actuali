@@ -7,6 +7,8 @@ struct ToastView: View {
     let text: String
     /// A trailing call to action, for a toast its caller wraps in a Button.
     var actionTitle: String?
+    /// The screen edge the toast sits against and slides in from.
+    var edge: VerticalEdge = .top
 
     var body: some View {
         HStack(spacing: 10) {
@@ -22,10 +24,10 @@ struct ToastView: View {
         .padding(.vertical, 10)
         .background(.regularMaterial, in: Capsule())
         .shadow(radius: 4)
-        .padding(.top, 8)
-        .transition(.move(edge: .top).combined(with: .opacity))
+        .padding(edge == .top ? .top : .bottom, 8)
+        .transition(.move(edge: edge == .top ? .top : .bottom).combined(with: .opacity))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel([text, actionTitle].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityLabel([text, actionTitle].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(.isStaticText)
     }
 }

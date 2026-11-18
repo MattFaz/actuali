@@ -629,7 +629,7 @@ struct AccountDetailView: View {
                             if isSyncing {
                                 Text(String(localized: "Syncing..."))
                             } else if let lastSync = linked.lastSync {
-                                Text(lastSync, style: .relative)
+                                Text(lastSync, format: .relative(presentation: .named))
                             } else {
                                 Text(String(localized: "Never"))
                             }

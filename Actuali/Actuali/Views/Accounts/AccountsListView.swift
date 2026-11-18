@@ -5,7 +5,6 @@ import SwiftUI
 /// Accounts, and a save can tell when All Accounts is already showing.
 private enum AccountsRoute: Hashable {
     case allAccounts
-    case newTransactions
     case onBudgetTransactions
     case offBudgetTransactions
     case account(Account)
@@ -16,7 +15,6 @@ private enum AccountsRoute: Hashable {
 /// and a stored value would stop matching its row the moment it did.
 private enum AccountSelection: Hashable {
     case allAccounts
-    case newTransactions
     case onBudgetTransactions
     case offBudgetTransactions
     case account(String)
@@ -336,38 +334,10 @@ struct AccountsListView: View {
         }
     }
 
-    /// The way into everything still marked new, so a sync's imports can be
-    /// gone through in one place. Only there while something is.
-    @ViewBuilder
-    private func newTransactionsSection(linked: Bool) -> some View {
-        let count = budgetStore.unreviewedTransactions.count
-        if count > 0, !isSearchingAccounts, !isReordering {
-            let label = HStack {
-                Label(String(localized: "New Transactions"), systemImage: "tray.and.arrow.down")
-                Spacer()
-                UnreviewedCountBadge(count: count)
-            }
-            Section {
-                Group {
-                    if linked {
-                        NavigationLink(value: AccountsRoute.newTransactions) { label }
-                    } else {
-                        label.tag(AccountSelection.newTransactions)
-                    }
-                }
-                .listRowBackground(AccountGroupRowBackground(position: .single))
-                .accessibilityIdentifier("accounts.newTransactions")
-            }
-        }
-    }
-
+    /// What a sync brought in is gone through where pending imports are.
     private func showNewTransactions() {
         budgetStore.dismissBankSyncNotice()
-        if usesSplitLayout {
-            selection = .newTransactions
-        } else {
-            path = [.newTransactions]
-        }
+        showingPendingImports = true
     }
 
     /// Phone rows push the account; iPad sidebar rows drive the selection.
@@ -514,16 +484,18 @@ struct AccountsListView: View {
         }
         // A clean sync says so without stopping anyone; only problems get
         // the alert above.
-        .overlay(alignment: .top) {
+        // At the bottom: a tappable toast at the top would take the toolbar's
+        // taps for as long as it shows.
+        .overlay(alignment: .bottom) {
             if let notice = budgetStore.bankSyncNotice {
                 if notice.offersReview {
                     Button(action: showNewTransactions) {
-                        ToastView(text: notice.text, actionTitle: String(localized: "Review"))
+                        ToastView(text: notice.text, actionTitle: String(localized: "Review"), edge: .bottom)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("bankSync.review")
                 } else {
-                    ToastView(text: notice.text)
+                    ToastView(text: notice.text, edge: .bottom)
                         .allowsHitTesting(false)
                 }
             }
@@ -547,7 +519,6 @@ struct AccountsListView: View {
                     emptyState
                 } else {
                     List {
-                        newTransactionsSection(linked: true)
                         if !filteredOnBudgetAccounts.isEmpty {
                             Section {
                                 if isOnBudgetExpanded || isSearchingAccounts || isReordering {
@@ -636,7 +607,6 @@ struct AccountsListView: View {
             .navigationDestination(for: AccountsRoute.self) { route in
                 switch route {
                 case .allAccounts: AccountTransactionsScreen()
-                case .newTransactions: NewTransactionsView()
                 case .onBudgetTransactions: AccountTransactionsScreen(scope: .onBudget)
                 case .offBudgetTransactions: AccountTransactionsScreen(scope: .offBudget)
                 case .account(let account): AccountTransactionsScreen(account: account)
@@ -653,7 +623,6 @@ struct AccountsListView: View {
                     emptyState
                 } else {
                     List(selection: $selection) {
-                        newTransactionsSection(linked: false)
                         if !filteredOnBudgetAccounts.isEmpty {
                             Section {
                                 if isOnBudgetExpanded || isSearchingAccounts || isReordering {
@@ -751,8 +720,6 @@ struct AccountsListView: View {
                     }
                 case .allAccounts:
                     AccountTransactionsScreen()
-                case .newTransactions:
-                    NewTransactionsView()
                 case .onBudgetTransactions:
                     AccountTransactionsScreen(scope: .onBudget)
                 case .offBudgetTransactions:
@@ -984,14 +951,18 @@ struct AccountsListView: View {
                     .accessibilityHint(String(localized: "Account list display options"))
                     .accessibilityIdentifier("accounts.optionsMenu")
                 }
-                if pendingImportStore.count > 0, !isReordering {
+                // One way in for everything waiting to be looked at: imports to
+                // approve and what this device's bank sync brought in.
+                let pendingCount = pendingImportStore.count
+                let newCount = budgetStore.unreviewedTransactions.count
+                if pendingCount + newCount > 0, !isReordering {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             showingPendingImports = true
                         } label: {
                             Image(systemName: "tray.and.arrow.down")
                                 .overlay(alignment: .topTrailing) {
-                                    Text("\(pendingImportStore.count)")
+                                    Text("\(pendingCount + newCount)")
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(.white)
                                         .padding(3)
@@ -999,8 +970,12 @@ struct AccountsListView: View {
                                         .offset(x: 6, y: -6)
                                 }
                         }
-                        .accessibilityLabel("Pending imports")
-                        .accessibilityValue(String(localized: "\(pendingImportStore.count) pending"))
+                        .accessibilityLabel(String(localized: "Review"))
+                        .accessibilityValue([
+                            pendingCount > 0 ? String(localized: "\(pendingCount) pending") : nil,
+                            newCount > 0 ? String(localized: "\(newCount) new transactions") : nil,
+                        ].compactMap(\.self).joined(separator: ", "))
+                        .accessibilityIdentifier("accounts.pendingImports")
                     }
                 }
             }
@@ -1850,13 +1825,14 @@ struct AccountRow: View {
                         UnreviewedCountBadge(count: unreviewedCount)
                             .accessibilityIdentifier("accountRow.unreviewed.\(account.id)")
                     }
-                    if let linked = budgetStore.bankSyncAccount(forAccountId: account.id) {
-                        BankSyncBadge(
-                            linked: linked,
-                            isSyncing: budgetStore.bankSyncingAccountIds.contains(account.id)
-                        )
-                        .font(.caption)
-                        .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
+                    // Only when there is something to say: a healthy link's
+                    // icon on every row is noise next to the name.
+                    if let linked = budgetStore.bankSyncAccount(forAccountId: account.id),
+                       case let isSyncing = budgetStore.bankSyncingAccountIds.contains(account.id),
+                       isSyncing || linked.needsAttention {
+                        BankSyncBadge(linked: linked, isSyncing: isSyncing)
+                            .font(.caption)
+                            .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
                     }
                     Spacer()
                     Text(balance)

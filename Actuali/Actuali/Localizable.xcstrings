@@ -3587,98 +3587,98 @@
         }
       }
     },
-    "New Transactions" : {
-      "comment" : "Title of the list of transactions that arrived since the user last looked",
+    "New from Bank Sync" : {
+      "comment" : "Section of the pending imports sheet listing transactions this device's bank sync imported",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Neue Transaktionen"
+            "value" : "Neu aus der Banksynchronisierung"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "New Transactions"
+            "value" : "New from Bank Sync"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Transacciones nuevas"
+            "value" : "Nuevo de la sincronización bancaria"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nouvelles transactions"
+            "value" : "Nouveautés de la synchronisation bancaire"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nuove transazioni"
+            "value" : "Novità dalla sincronizzazione bancaria"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nieuwe transacties"
+            "value" : "Nieuw van banksynchronisatie"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Novas transações"
+            "value" : "Novidades da sincronização bancária"
           }
         }
       }
     },
-    "No New Transactions" : {
-      "comment" : "Empty state of the new transactions list",
+    "To Approve" : {
+      "comment" : "Section of the review sheet listing pending imports that still need approving",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keine neuen Transaktionen"
+            "value" : "Zu genehmigen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No New Transactions"
+            "value" : "To Approve"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No hay transacciones nuevas"
+            "value" : "Por aprobar"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucune nouvelle transaction"
+            "value" : "À approuver"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessuna nuova transazione"
+            "value" : "Da approvare"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Geen nieuwe transacties"
+            "value" : "Goed te keuren"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nenhuma transação nova"
+            "value" : "Para aprovar"
           }
         }
       }
@@ -62533,100 +62533,6 @@
         }
       }
     },
-    "Pending imports" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ausstehende Importe"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pending imports"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Importaciones pendientes"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Importations en attente"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Importazioni in sospeso"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Openstaande imports"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Importações pendentes"
-          }
-        }
-      }
-    },
-    "Pending Imports" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ausstehende Importe"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pending Imports"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Importaciones pendientes"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Importations en attente"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Importazioni in sospeso"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In behandeling zijnde imports"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Importações pendentes"
-          }
-        }
-      }
-    },
     "Percent" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -68083,7 +67989,7 @@
       }
     },
     "Review" : {
-      "comment" : "Button on the bank sync toast that opens the new transactions list",
+      "comment" : "Title of the sheet listing pending imports and transactions a bank sync imported, and the toast button that opens it",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {

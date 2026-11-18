@@ -1405,6 +1405,7 @@ struct BudgetStoreBankSyncTests {
     @Test func importedTransactionsStayUnreviewedUntilTheirAccountIsSeen() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
+        try await markAlreadySynced(database)
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
         {"id": "sf-unreviewed", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Unreviewed"}
         """))
@@ -1427,9 +1428,61 @@ struct BudgetStoreBankSyncTests {
         #expect(store.unreviewedTransactions[imported.id] == nil)
     }
 
+    @Test func aTransactionSyncedFromAnotherDeviceIsNotMarkedNew() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        store.markAllReviewed()
+        // The first pass only sets the watermark.
+        _ = await store.detectNewTransactionsForNotification()
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "INSERT INTO transactions (id, acct, amount, date) VALUES ('from-desktop', ?, -1250, 20260707)",
+                arguments: [accountId]
+            )
+            try db.execute(sql: """
+            INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
+            VALUES ('2026-07-07T00:00:00.000Z-0000-bbbbbbbbbbbbbbbb', 'transactions', 'from-desktop', 'acct', x'00')
+            """)
+        }
+
+        await store.notifyAboutSyncedTransactions()
+
+        // Read past the watermark, so the detector did see it.
+        let again = await store.detectNewTransactionsForNotification()
+        #expect(again.isEmpty)
+        #expect(store.unreviewedTransactions.isEmpty)
+    }
+
+    /// An account's first download is its history, so nothing in it is marked.
+    /// Tests about marks start from an account that has synced before.
+    private func markAlreadySynced(_ database: BudgetDatabase) async throws {
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "UPDATE accounts SET last_sync = '1600000000000' WHERE id = ?", arguments: [accountId])
+        }
+    }
+
+    @Test func anAccountsFirstDownloadIsNotMarkedNew() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-history", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "History"}
+        """))
+        store.markAllReviewed()
+
+        await store.runBankSync()
+
+        #expect(store.unreviewedTransactions.isEmpty)
+        // Nothing to review, so the toast doesn't offer to.
+        #expect(store.bankSyncNotice?.offersReview == false)
+    }
+
     @Test func aCleanSyncReportsThroughTheToastAndOffersReviewOnlyForImports() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
+        try await markAlreadySynced(database)
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
         {"id": "sf-toast", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Toast"}
         """))
@@ -1464,6 +1517,7 @@ struct BudgetStoreBankSyncTests {
     @Test func theNewTransactionsListDropsMarksWhoseTransactionIsGone() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
+        try await markAlreadySynced(database)
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
         {"id": "sf-kept", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Kept"},
         {"id": "sf-gone", "posted": \(Self.daysAgo(3)), "amount": "-8.00", "payee": "Gone"}
