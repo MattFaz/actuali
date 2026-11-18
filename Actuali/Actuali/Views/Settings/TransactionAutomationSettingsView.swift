@@ -4,6 +4,7 @@ struct TransactionAutomationSettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     @State private var showingWalletImport = false
+    @State private var homeLocationFailed = false
 
     var body: some View {
         Form {
@@ -59,6 +60,18 @@ struct TransactionAutomationSettingsView: View {
                 if budgetStore.payeeLocationWritesEnabled {
                     Toggle(String(localized: "Record Payee Locations"), isOn: $budgetStore.recordPayeeLocations)
 
+                    if budgetStore.homeLocation == nil {
+                        Button(String(localized: "Set Home to Current Location")) {
+                            Task { homeLocationFailed = await !budgetStore.setHomeToCurrentLocation() }
+                        }
+                        .accessibilityIdentifier("transactionAutomation.setHomeLocation")
+                    } else {
+                        Button(String(localized: "Clear Home Location"), role: .destructive) {
+                            budgetStore.homeLocation = nil
+                        }
+                        .accessibilityIdentifier("transactionAutomation.clearHomeLocation")
+                    }
+
                     // Clearing needs the same >= 26.4.0 server, so this
                     // lives inside the gate too (GH #147).
                     NavigationLink(String(localized: "Payee Locations")) {
@@ -109,6 +122,8 @@ struct TransactionAutomationSettingsView: View {
                    budgetStore.currentBudgetId != nil,
                    budgetStore.isConnected {
                     Text(String(localized: "Payee locations require Actual Server 26.4.0 or later."))
+                } else if budgetStore.payeeLocationWritesEnabled {
+                    Text(String(localized: "Save Location starts off for new transactions entered near Home. Home stays on this device."))
                 }
             }
 
@@ -175,6 +190,11 @@ struct TransactionAutomationSettingsView: View {
         .readableWidth()
         .navigationTitle(String(localized: "Transactions & Automation"))
         .navigationBarTitleDisplayMode(.inline)
+        .alert(String(localized: "Couldn't Set Home Location"), isPresented: $homeLocationFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(String(localized: "Actuali could not get your current location. Allow location access in Settings, then try again."))
+        }
         .sheet(isPresented: $showingWalletImport) {
             WalletImportView()
                 .environmentObject(budgetStore)

@@ -276,6 +276,36 @@ final class SettingsNavigationUITests: XCTestCase {
         XCTAssertTrue(app.buttons["budget-selection-selected"].exists)
     }
 
+    /// An encrypted budget with no key on this device (never unlocked, or its
+    /// key was dropped after the password changed) asks for the password.
+    @MainActor
+    func testBudgetSelectionPickerAsksForPasswordOfEncryptedBudget() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-connectedServerSettings",
+            "-budgetSelectionFixture",
+            "-initialTab",
+            "4",
+        ]
+        app.launch()
+
+        let row = app.buttons["Connection & Data"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        let selected = app.buttons["budget-selection-selected"]
+        XCTAssertTrue(selected.waitForExistence(timeout: 5))
+        selected.tap()
+
+        let encrypted = app.buttons["Encrypted Budget"]
+        XCTAssertTrue(encrypted.waitForExistence(timeout: 5))
+        encrypted.tap()
+
+        XCTAssertTrue(app.navigationBars["Unlock Budget"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.secureTextFields["Encryption password"].exists)
+    }
+
     @MainActor
     func testBudgetSelectionLongPressShowsManagementActions() {
         let app = XCUIApplication()

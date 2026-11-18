@@ -1,6 +1,7 @@
 // Actuali/Actuali/Services/Sync/HLCTimestamp.swift
 
 import Foundation
+import Synchronization
 
 /// Hybrid Logical Clock timestamp
 /// Format: 2025-12-09T14:30:45.123Z-0000-9f66d38cba0ef956
@@ -12,6 +13,15 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
 
     // MARK: - Formatting
 
+    /// One formatter for every call: building one per timestamp dominated a
+    /// long sync. Behind a lock because `ISO8601DateFormatter`, unlike
+    /// `DateFormatter`, does no locking of its own.
+    private static let isoFormatter: Mutex<ISO8601DateFormatter> = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return Mutex(formatter)
+    }()
+
     var description: String {
         toString()
     }
@@ -21,17 +31,17 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
         let seconds = Double(millis) / 1000.0
         let date = Date(timeIntervalSince1970: seconds)
 
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let isoString = formatter.string(from: date)
+        let isoString = Self.isoFormatter.withLock { $0.string(from: date) }
 
         // Format counter as 4-digit uppercase hex
         let counterHex = String(format: "%04X", counter)
 
-        // Ensure node is 16 chars, padded with leading zeros
-        let paddedNode = String(repeating: "0", count: Swift.max(0, 16 - node.count)) + node.suffix(16)
-
         return "\(isoString)-\(counterHex)-\(paddedNode)"
+    }
+
+    /// The node as it is written out: 16 chars, padded with leading zeros.
+    private var paddedNode: String {
+        String(repeating: "0", count: Swift.max(0, 16 - node.count)) + node.suffix(16)
     }
 
     // MARK: - Parsing
@@ -47,12 +57,15 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
         // Reconstruct ISO date from first 3 parts
         let isoString = "\(parts[0])-\(parts[1])-\(parts[2])"
 
-        // Parse ISO date
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: String(isoString)) else { return nil }
-
-        let millis = Int64(date.timeIntervalSince1970 * 1000)
+        // Parse ISO date. Anything but the one shape upstream writes goes to
+        // the formatter, so what is accepted stays exactly what it was.
+        let millis: Int64
+        if let canonical = canonicalMillis(isoString) {
+            millis = canonical
+        } else {
+            guard let date = Self.isoFormatter.withLock({ $0.date(from: isoString) }) else { return nil }
+            millis = Int64(date.timeIntervalSince1970 * 1000)
+        }
 
         // Validate millis range (1970 to 9999)
         guard millis >= 0, millis < 253_402_300_800_000 else { return nil }
@@ -67,11 +80,44 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
         return HLCTimestamp(millis: millis, counter: counter, node: node)
     }
 
+    /// Milliseconds since the Unix epoch for `YYYY-MM-DDTHH:MM:SS.mmmZ`, the
+    /// shape JavaScript's `toISOString()` gives every upstream timestamp, read
+    /// off its fixed positions: `ISO8601DateFormatter` takes about 50 µs to
+    /// parse one, which was half of a long sync. Nil for any other shape and
+    /// for a date the calendar doesn't have, leaving those to the formatter.
+    private static func canonicalMillis(_ iso: String) -> Int64? {
+        let bytes = Array(iso.utf8)
+        guard bytes.count == 24 else { return nil }
+        for (index, separator) in zip([4, 7, 10, 13, 16, 19, 23], "--T::.Z".utf8) where bytes[index] != separator {
+            return nil
+        }
+        func field(_ range: Range<Int>) -> Int? {
+            var value = 0
+            for byte in bytes[range] {
+                guard byte >= 48, byte <= 57 else { return nil }
+                value = value * 10 + Int(byte - 48)
+            }
+            return value
+        }
+        guard let year = field(0..<4), let month = field(5..<7), let day = field(8..<10),
+              let hour = field(11..<13), let minute = field(14..<16), let second = field(17..<19),
+              let fraction = field(20..<23),
+              year >= 1970, (1...12).contains(month), hour < 24, minute < 60, second < 60
+        else { return nil }
+        let isLeapYear = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+        let daysInMonth = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+        guard (1...daysInMonth).contains(day) else { return nil }
+
+        let seconds = daysSinceEpoch(year: year, month: month, day: day) * 86400
+            + Int64(hour * 3600 + minute * 60 + second)
+        return seconds * 1000 + Int64(fraction)
+    }
+
     /// Minutes since the Unix epoch for a timestamp string, read straight off
     /// its ISO-8601 prefix (`YYYY-MM-DDTHH:MM`, always UTC).
     ///
-    /// `parse` builds an `ISO8601DateFormatter` per call, which dominates any
-    /// pass over a whole message log — and the Merkle trie only ever needs the
+    /// `parse` formats a date behind a shared lock, which a pass over a whole
+    /// message log still feels, and the Merkle trie only ever needs the
     /// minute (`MerkleTree` keys on `millis / 1000 / 60`), never the full
     /// timestamp. Returns nil if the prefix isn't well formed.
     static func minutesSinceEpoch(of string: String) -> Int64? {
@@ -116,8 +162,17 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
     // MARK: - Comparable
 
     static func < (lhs: HLCTimestamp, rhs: HLCTimestamp) -> Bool {
-        // Lexicographic comparison of string representation works correctly
-        lhs.toString() < rhs.toString()
+        // Upstream orders timestamps by their string form. Every field in it
+        // is fixed width, so comparing the fields in order gives the same
+        // answer without formatting a date per operand: sorting a first sync's
+        // tens of thousands of messages spent minutes building formatters.
+        if lhs.millis != rhs.millis {
+            return lhs.millis < rhs.millis
+        }
+        if lhs.counter != rhs.counter {
+            return lhs.counter < rhs.counter
+        }
+        return lhs.paddedNode < rhs.paddedNode
     }
 
     // MARK: - Hashing (for Merkle tree)

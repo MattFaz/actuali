@@ -112,7 +112,7 @@ final class AddTransactionTransferUITests: XCTestCase {
     }
 
     @MainActor
-    func testAnExistingTransferOpensAsATransferWithItsSignLocked() {
+    func testAnExistingTransferOpensAsATransferAndItsSignReversesIt() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-resetStatusFilterState", "-transactionDisplayMode", "flat"]
         app.launch()
@@ -120,10 +120,10 @@ final class AddTransactionTransferUITests: XCTestCase {
         let allAccounts = app.staticTexts["All Accounts"].firstMatch
         XCTAssertTrue(allAccounts.waitForExistence(timeout: 10))
         allAccounts.tap()
-        let searchField = app.searchFields.firstMatch
-        XCTAssertTrue(searchField.waitForExistence(timeout: 10))
-        searchField.tap()
-        searchField.typeText("Toyota")
+        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 10))
+        tapSearch(in: app, customButtonIdentifier: "transactions.search")
+        let searchField = activeSearchField(in: app, customFieldIdentifier: "transactions.searchField")
+        typeSearchText("Toyota", in: searchField)
 
         let transferRow = app.buttons.matching(NSPredicate(
             format: "identifier BEGINSWITH 'transactionRow.' AND label CONTAINS 'Toyota'"
@@ -134,8 +134,16 @@ final class AddTransactionTransferUITests: XCTestCase {
         let payee = app.buttons["addTransaction.payee"]
         XCTAssertTrue(payee.waitForExistence(timeout: 10))
         XCTAssertTrue(payee.label.contains("Transfer"), "opens as a transfer, got: \(payee.label)")
-        XCTAssertFalse(app.buttons["addTransaction.sign"].isEnabled,
-                       "an existing transfer's direction is fixed by its two legs")
+        // The sign reverses an existing transfer, as in Actual (GH #844).
+        let sign = app.buttons["addTransaction.sign"]
+        XCTAssertTrue(sign.isEnabled, "an existing transfer's sign reverses it")
+        let direction = try XCTUnwrap(sign.value as? String)
+        sign.tap()
+        let reversed = try XCTUnwrap(sign.value as? String)
+        XCTAssertNotEqual(reversed, direction)
+        XCTAssertTrue(reversed.hasPrefix("Transfer from "), "still a transfer, got: \(reversed)")
+        let accounts = { (value: String) in value.dropFirst("Transfer from ".count).components(separatedBy: " to ") }
+        XCTAssertEqual(accounts(reversed), accounts(direction).reversed(), "the two accounts swap")
         let originalPayee = payee.label
         payee.tap()
         let account = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'payeePicker.transfer.'")).firstMatch

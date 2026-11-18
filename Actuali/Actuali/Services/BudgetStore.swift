@@ -331,6 +331,27 @@ final class BudgetStore: ObservableObject {
         availableLoginMethods.contains { $0.method == "password" && $0.isActive }
     }
 
+    /// Whether the Connect button has anything to do. Once the server is known
+    /// to use password login, an empty password can only fail, so the button
+    /// stays off instead of appearing to do nothing. Before the probe answers
+    /// it stays available: tapping it is what discovers an OpenID-only server.
+    func canConnect(password: String) -> Bool {
+        !serverURL.isEmpty && !isLoading && !(passwordLoginActive && password.isEmpty)
+    }
+
+    /// Set by a fresh sign-in and consumed by the budget section, so the
+    /// "select a budget" prompt appears once per connection rather than on
+    /// every visit to the screen.
+    var budgetSelectionPromptPending = false
+
+    /// Whether to show the post-connect budget prompt now. Clears the pending
+    /// flag either way: a connection that had nothing to offer shouldn't
+    /// prompt later out of the blue.
+    func consumeBudgetSelectionPrompt() -> Bool {
+        defer { budgetSelectionPromptPending = false }
+        return budgetSelectionPromptPending && currentBudgetId == nil && !remoteBudgets.isEmpty
+    }
+
     /// Whether the configured server offers OpenID/OAuth login.
     var supportsOpenIDLogin: Bool {
         availableLoginMethods.contains { $0.method == "openid" }
@@ -1079,6 +1100,21 @@ final class BudgetStore: ObservableObject {
     @Published var recordPayeeLocations: Bool = true {
         didSet {
             UserDefaults.standard.set(recordPayeeLocations, forKey: "recordPayeeLocations")
+        }
+    }
+
+    /// Where Add Transaction defaults Save Location off (GH #845), so
+    /// entries made at home don't pin home to the payee. Device-only
+    /// UserDefaults, never synced and never a payee location.
+    @Published var homeLocation: Coordinates? {
+        didSet {
+            if let homeLocation {
+                UserDefaults.standard.set(
+                    [homeLocation.latitude, homeLocation.longitude], forKey: "homeLocation"
+                )
+            } else {
+                UserDefaults.standard.removeObject(forKey: "homeLocation")
+            }
         }
     }
 
@@ -2087,6 +2123,7 @@ final class BudgetStore: ObservableObject {
         _recordPayeeLocations = Published(
             initialValue: persistedBool("recordPayeeLocations", default: true)
         )
+        _homeLocation = Published(initialValue: Self.loadHomeLocation(from: defaults))
         // bool(forKey:) defaults to false — the correct opt-in default.
         _hideZeroBudgetCategories = Published(initialValue: defaults
             .bool(forKey: "hideZeroBudgetCategories"))
@@ -2095,7 +2132,17 @@ final class BudgetStore: ObservableObject {
         _hideClosedAccounts = Published(initialValue: defaults
             .bool(forKey: "hideClosedAccounts"))
 
-        let token = loadAndMigrateAuthToken()
+        var token = loadAndMigrateAuthToken()
+        // The Keychain outlives a deleted app and UserDefaults doesn't, so a
+        // token with no server URL is what a reinstall leaves behind. It can't
+        // reach any server, and the encryption keys beside it would open
+        // budgets without asking for their password. Drop both and start
+        // signed out.
+        if token != nil, serverURL.isEmpty {
+            try? Keychain.remove(for: "authToken")
+            EncryptionKeyManager.removeAll()
+            token = nil
+        }
 
         // Load local budget if available. The saved session is configured in
         // the same task, before the load, so the initial sync below is
@@ -2329,6 +2376,7 @@ final class BudgetStore: ObservableObject {
         do {
             let token = try await serverClient.login(password: password)
             try? Keychain.set(token, for: "authToken")
+            budgetSelectionPromptPending = true
             isConnected = true
             await fetchRemoteBudgets()
         } catch {
@@ -2424,6 +2472,7 @@ final class BudgetStore: ObservableObject {
 
             await serverClient.setToken(token)
             try? Keychain.set(token, for: "authToken")
+            budgetSelectionPromptPending = true
             isConnected = true
             await fetchRemoteBudgets()
         } catch OpenIDAuthError.cancelled {
@@ -2481,7 +2530,13 @@ final class BudgetStore: ObservableObject {
         }
 
         isConnected = false
+        budgetSelectionPromptPending = false
+        // A list request still in flight is for the server being left; the
+        // next sign-in must not join it.
+        remoteBudgetsFetch?.cancel()
+        remoteBudgetsFetch = nil
         remoteBudgets = []
+        remoteBudgetsLoadFailed = false
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
@@ -2601,11 +2656,38 @@ final class BudgetStore: ObservableObject {
             return
         }
         #endif
+        // Signing in and the budget section appearing both ask for the list
+        // at the same moment. Share one request, so the first to finish can't
+        // clear the spinner or the error out from under the other.
+        if let remoteBudgetsFetch {
+            return await remoteBudgetsFetch.value
+        }
+        let fetch = Task {
+            await loadRemoteBudgets()
+            // Cleared here, not by the caller: a refresh arriving before the
+            // caller resumed would join a fetch that has already finished. A
+            // cancelled fetch was dropped by logout and may have a successor.
+            if !Task.isCancelled {
+                remoteBudgetsFetch = nil
+            }
+        }
+        remoteBudgetsFetch = fetch
+        await fetch.value
+    }
+
+    private var remoteBudgetsFetch: Task<Void, Never>?
+
+    /// Whether the last request for the server's budget list failed, so the
+    /// budget section can tell "couldn't ask" apart from "the server has none".
+    @Published private(set) var remoteBudgetsLoadFailed = false
+
+    private func loadRemoteBudgets() async {
         isLoading = true
         error = nil
 
         do {
             let files = try await serverClient.listFiles()
+            try Task.checkCancellation()
             remoteBudgets = files.map { file in
                 RemoteBudget(
                     id: file.fileId,
@@ -2614,14 +2696,30 @@ final class BudgetStore: ObservableObject {
                     isEncrypted: file.encryptKeyId != nil
                 )
             }
+            remoteBudgetsLoadFailed = false
         } catch {
-            self.error = error.localizedDescription
+            // Cancelled by logout: this answer belongs to the old session.
+            if !Task.isCancelled {
+                self.error = error.localizedDescription
+                remoteBudgetsLoadFailed = true
+            }
         }
 
         isLoading = false
     }
 
     func downloadBudget(_ remoteBudget: RemoteBudget) async {
+        // Outside the download spinner: the budget is on screen from here, it
+        // just isn't caught up yet.
+        if await downloadAndOpen(remoteBudget) {
+            await runInitialSync()
+        }
+    }
+
+    /// Downloads, imports and loads a budget. Returns whether it actually got
+    /// opened, so the initial sync runs only when there is something to catch
+    /// up.
+    private func downloadAndOpen(_ remoteBudget: RemoteBudget) async -> Bool {
         isLoading = true
         downloadingBudgetId = remoteBudget.id
         error = nil
@@ -2632,8 +2730,6 @@ final class BudgetStore: ObservableObject {
         syncClient = nil
         database = nil
 
-        // Whether the budget actually got opened, so the initial sync below
-        // runs only when there is something to catch up.
         var opened = false
 
         do {
@@ -2643,7 +2739,7 @@ final class BudgetStore: ObservableObject {
                     self.error = String(localized: "This budget is encrypted. Enter its encryption password to open it.")
                     isLoading = false
                     downloadingBudgetId = nil
-                    return
+                    return false
                 }
                 loadedKey = key
             }
@@ -2662,7 +2758,7 @@ final class BudgetStore: ObservableObject {
                     self.error = String(localized: "This budget's encryption key has changed. Re-enter the password.")
                     isLoading = false
                     downloadingBudgetId = nil
-                    return
+                    return false
                 }
                 guard let iv = meta.iv, let authTag = meta.authTag else {
                     throw ActualServerError.invalidResponse
@@ -2691,12 +2787,7 @@ final class BudgetStore: ObservableObject {
 
         isLoading = false
         downloadingBudgetId = nil
-
-        // Outside the download spinner: the budget is on screen from here, it
-        // just isn't caught up yet.
-        if opened {
-            await runInitialSync()
-        }
+        return opened
     }
 
     /// The first sync after a budget is opened. A downloaded budget is a server
@@ -2722,8 +2813,19 @@ final class BudgetStore: ObservableObject {
         } catch {
             return error.localizedDescription
         }
-        await downloadBudget(remoteBudget)
-        return error // any download error surfaced by downloadBudget
+        // The sheet waits for the budget to open, not for its initial sync:
+        // that catch-up can run for minutes on a long history, and holding
+        // the sheet for it left the user on a frozen form with no way out.
+        if await downloadAndOpen(remoteBudget) {
+            Task { await runInitialSync() }
+        } else {
+            // Loading the budget reads the key back from the Keychain, so it
+            // has to be stored before the download — but a key that opened
+            // nothing must not stay behind, or the next attempt would skip
+            // the password and retry on its own.
+            try? EncryptionKeyManager.remove(fileId: remoteBudget.id)
+        }
+        return error // any download error surfaced by downloadAndOpen
     }
 
     /// Mirror of upstream's validateBudgetName (util/budget-name.ts:23),
@@ -5594,14 +5696,16 @@ final class BudgetStore: ObservableObject {
     /// Re-save an existing transfer: both legs take the new accounts, amount,
     /// date, notes and cleared state, with payees remapped to the (possibly
     /// re-targeted) accounts' transfer payees. `original` is whichever leg the
-    /// user opened; its partner is fetched through `transferId`. A category
-    /// survives only on an on-budget leg whose partner account is off-budget
+    /// user opened, on the source side when `openedLegIsSource`; its partner
+    /// is fetched through `transferId`. A category survives only on an
+    /// on-budget leg whose partner account is off-budget
     /// (Actual's rule — money leaving the budget still needs a category);
     /// every other configuration clears it.
     func updateTransfer(
         original: Transaction,
         fromAccountId: String,
         toAccountId: String,
+        openedLegIsSource: Bool,
         amountCents: Int,
         date: Int,
         notes: String?,
@@ -5638,8 +5742,9 @@ final class BudgetStore: ObservableObject {
             return leg.id == original.id ? categoryId : leg.categoryId
         }
 
-        // The opened row can be either leg; the negative one is the source.
-        let (sourceLeg, targetLeg) = original.amount < 0
+        // The form says which side the opened row is on, so a reversal flips
+        // the amounts in place as Actual's updateTransfer does (GH #844).
+        let (sourceLeg, targetLeg) = openedLegIsSource
             ? (original, partner) : (partner, original)
 
         var source = sourceLeg
@@ -5662,14 +5767,12 @@ final class BudgetStore: ObservableObject {
         target.notes = notes
         target.cleared = cleared
 
-        let sourceChanges = Self.changedFields(original: sourceLeg, updated: source)
-        if !sourceChanges.isEmpty {
-            try await syncClient.updateTransaction(source, changedFields: sourceChanges)
-        }
-        let targetChanges = Self.changedFields(original: targetLeg, updated: target)
-        if !targetChanges.isEmpty {
-            try await syncClient.updateTransaction(target, changedFields: targetChanges)
-        }
+        // One write for both legs: another device must never sync half a
+        // reversal or a transfer whose amounts disagree.
+        let updates = [(source, sourceLeg), (target, targetLeg)]
+            .map { (transaction: $0.0, changedFields: Self.changedFields(original: $0.1, updated: $0.0)) }
+            .filter { !$0.changedFields.isEmpty }
+        try await syncClient.updateTransactions(updates)
         await refreshDataOnly()
     }
 
@@ -6375,10 +6478,19 @@ final class BudgetStore: ObservableObject {
         /// transactions record: an edit happens wherever the phone is now,
         /// not where the transaction did (GH #794).
         var recordLocation: Bool = true
+        /// False skips recording when the phone is near Home (GH #845). The
+        /// form's at-home default can lose a race with a fast save, so the
+        /// recorder checks again; only a user who turned Save Location on
+        /// passes true. Defaults on so other callers are unchanged.
+        var recordLocationNearHome: Bool = true
         var reviewConfirmations: Set<PendingImportReviewRequirement> = []
         /// True for a picker choice or prefill; false for payee-history suggestions.
         var categoryIsExplicit: Bool = false
         var automaticCategoryPreview: AutomaticCategoryPreview?
+        /// For an existing transfer, whether the opened leg is the source. The
+        /// from/to pair can't say which end holds the opened row once both
+        /// accounts move, and the sign is the direction (GH #844).
+        var transferOpenedLegIsSource: Bool = true
 
         /// Category the rules pass starts from: an explicit pick stands, and an
         /// untouched preview reverts to its pre-rule source so rules run once.
@@ -6617,6 +6729,7 @@ final class BudgetStore: ObservableObject {
                     original: original,
                     fromAccountId: form.accountId,
                     toAccountId: toAccountId,
+                    openedLegIsSource: form.transferOpenedLegIsSource,
                     amountCents: amountCents,
                     date: date,
                     notes: notes,
@@ -6771,7 +6884,7 @@ final class BudgetStore: ObservableObject {
             await publishTransactionsImmediately([parent.id])
             await refreshDataOnly()
             if form.recordLocation, let payeeId {
-                recordPayeeLocationIfAppropriate(payeeId: payeeId)
+                recordPayeeLocationIfAppropriate(payeeId: payeeId, nearHome: form.recordLocationNearHome)
             }
             return nil
 
@@ -6846,7 +6959,7 @@ final class BudgetStore: ObservableObject {
                     showImpact: true
                 )
                 if form.recordLocation, let payeeId {
-                    recordPayeeLocationIfAppropriate(payeeId: payeeId)
+                    recordPayeeLocationIfAppropriate(payeeId: payeeId, nearHome: form.recordLocationNearHome)
                 }
                 return transaction.id
             }
@@ -7409,10 +7522,56 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Fixed radius for a first version: wide enough for indoor GPS drift,
+    /// narrow enough to spare the shop down the street.
+    static let homeRadiusMeters: Double = 150
+
+    static func loadHomeLocation(from defaults: UserDefaults) -> Coordinates? {
+        guard let pair = defaults.array(forKey: "homeLocation") as? [Double], pair.count == 2 else { return nil }
+        return Coordinates(latitude: pair[0], longitude: pair[1])
+    }
+
+    static func isNearHome(_ position: Coordinates, home: Coordinates?) -> Bool {
+        guard let home else { return false }
+        return LocationUtils.calculateDistanceMeters(
+            lat1: position.latitude, lon1: position.longitude,
+            lat2: home.latitude, lon2: home.longitude
+        ) <= homeRadiusMeters
+    }
+
+    /// Whether a new transaction should default Save Location off. Never
+    /// prompts for permission: without a Home there is nothing to check.
+    /// Skips the server gate on purpose: it settles only after budget load,
+    /// later than the Add form's first appearance, and hides the toggle anyway.
+    func isAtHome() async -> Bool {
+        guard recordPayeeLocations, let homeLocation else { return false }
+        let provider = payeeLocationProvider
+        guard await provider.authorizationStatus() == .granted,
+              let position = try? await provider.currentPosition() else {
+            return false
+        }
+        return Self.isNearHome(position, home: homeLocation)
+    }
+
+    /// Set Home to the current position, asking for permission on first
+    /// use. False when no valid fix is available.
+    func setHomeToCurrentLocation() async -> Bool {
+        let provider = payeeLocationProvider
+        if await provider.authorizationStatus() == .notDetermined {
+            _ = await provider.requestPermission()
+        }
+        guard let position = try? await provider.currentPosition(),
+              LocationUtils.isValidCoordinate(latitude: position.latitude, longitude: position.longitude) else {
+            return false
+        }
+        homeLocation = position
+        return true
+    }
+
     /// Fire-and-forget: attach the current position to `payeeId`. All guards
     /// and failures collapse to "do nothing" — recording a location must
     /// never affect the save that triggered it.
-    func recordPayeeLocationIfAppropriate(payeeId: String) {
+    func recordPayeeLocationIfAppropriate(payeeId: String, nearHome: Bool = true) {
         guard payeeLocationWritesEnabled, recordPayeeLocations else { return }
         payeeLocationTask = Task { [weak self] in
             guard let self else { return }
@@ -7422,6 +7581,7 @@ final class BudgetStore: ObservableObject {
                   LocationUtils.isValidCoordinate(
                       latitude: position.latitude, longitude: position.longitude
                   ),
+                  nearHome || !Self.isNearHome(position, home: self.homeLocation),
                   let database = self.database,
                   let existing = try? await database.fetchPayeeLocations(payeeId: payeeId),
                   Self.shouldRecordLocation(at: position, existing: existing),

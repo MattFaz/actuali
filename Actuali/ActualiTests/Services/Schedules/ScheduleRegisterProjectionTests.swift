@@ -60,8 +60,30 @@ struct ScheduleRegisterProjectionTests {
             today: today
         )
 
-        #expect(entries.map(\.schedule.id) == ["later", "tomorrow", "today-outflow", "today-inflow"])
-        #expect(entries.compactMap(\.runningBalance) == [1250, 1450, 950, 1050])
+        #expect(entries.map(\.schedule.id) == ["later", "tomorrow", "today-outflow", "today-inflow", "past"])
+        // Missed rows are display-only: no balance of their own, and none carried into later rows.
+        #expect(entries.map(\.runningBalance) == [1250, 1450, 950, 1050, nil])
+    }
+
+    @Test func missedRecurringOccurrencesStayMissedAndOutOfTheBalance() {
+        let start = today.adding(days: -14)
+        let weekly = schedule("weekly", date: start, amount: -100, repeats: RecurConfig(frequency: .weekly, start: start))
+        let statuses: [String: ScheduleStatus] = ["weekly": .missed]
+
+        let entries = ScheduleRegisterProjection.upcomingEntries(
+            schedules: [weekly],
+            statuses: statuses,
+            accountId: "account-1",
+            activeAccountIds: ["account-1"],
+            startingBalance: 1000,
+            upcomingLength: "7",
+            today: today
+        )
+
+        #expect(entries.map(\.date) == [7, 0, -7, -14].map { today.adding(days: $0) })
+        #expect(entries.map(\.runningBalance) == [800, 900, nil, nil])
+        // Upstream forceUpcoming only applies from today on, so past repeats keep the missed status.
+        #expect(entries.map { $0.status(in: statuses, today: today) } == [.upcoming, .upcoming, .missed, .missed])
     }
 
     @Test func nonPostingSchedulesAreIncluded() {
@@ -159,7 +181,23 @@ struct ScheduleRegisterProjectionTests {
         #expect(Set(entries.map(\.id)).count == 4)
         #expect(entries.compactMap(\.runningBalance) == [600, 700, 800, 900])
         // Only the schedule's own next date carries its status; later ones are upcoming, as upstream's forceUpcoming.
-        #expect(entries.map { $0.status(in: ["daily": .due]) } == [.upcoming, .upcoming, .upcoming, .due])
+        #expect(entries.map { $0.status(in: ["daily": .due], today: today) } == [.upcoming, .upcoming, .upcoming, .due])
+    }
+
+    @Test func longMissedRepeatsStartOneUpcomingWindowBack() {
+        let yearAgo = today.adding(days: -365)
+        let daily = schedule("daily", date: yearAgo, amount: -100, repeats: RecurConfig(frequency: .daily, start: yearAgo))
+
+        let entries = ScheduleRegisterProjection.upcomingEntries(
+            schedules: [daily],
+            statuses: ["daily": .missed],
+            activeAccountIds: ["account-1"],
+            upcomingLength: "7",
+            today: today
+        )
+
+        // The next date stays, since every row's actions target it; older repeats are dropped.
+        #expect(entries.map(\.date) == (-7...7).reversed().map { today.adding(days: $0) } + [yearAgo])
     }
 
     @Test func customUpcomingLengthOverridesTheBudgetWindowForRepeats() {

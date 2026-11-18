@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Synchronization
 import Testing
 @testable import Actuali
 
@@ -43,6 +44,59 @@ struct BudgetStoreLogoutTests {
 
     private func makeSyncClient() -> SyncClient {
         SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+    }
+
+    /// A list request to an unreachable server runs until it times out. If
+    /// the user disconnects meanwhile, the next sign-in must ask its own
+    /// server rather than join that request and show its answer.
+    @Test func dropsABudgetListRequestStillInFlight() async throws {
+        let savedBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
+        let savedToken = Keychain.get(for: "authToken")
+        defer {
+            UserDefaults.standard.set(savedBudgetId, forKey: "currentBudgetId")
+            if let savedToken {
+                try? Keychain.set(savedToken, for: "authToken")
+            }
+        }
+        let (store, _) = try makeIsolatedStore()
+        let files = try JSONEncoder().encode(ListFilesResponse(
+            status: "ok",
+            data: [.init(fileId: "cloud-file-1", groupId: "group-1", name: "Test Budget", deleted: 0, encryptKeyId: nil)]
+        ))
+        let requests = Mutex(0)
+        let firstRequestMayAnswer = DispatchSemaphore(value: 0)
+        defer { firstRequestMayAnswer.signal() }
+        let serverClient = ActualServerClient(session: StubTransport.session { _ in
+            let count = requests.withLock { count in
+                count += 1
+                return count
+            }
+            if count == 1 {
+                firstRequestMayAnswer.wait()
+            }
+            return StubTransport.Response(contentType: "application/json", body: files)
+        })
+        try await serverClient.configure(serverURL: "https://budget.example.com")
+        await serverClient.setToken("test-token")
+        store.setServerClientForTesting(serverClient)
+
+        let staleFetch = Task { await store.fetchRemoteBudgets() }
+        while requests.withLock({ $0 }) == 0 {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        await store.logout()
+        firstRequestMayAnswer.signal()
+        await staleFetch.value
+
+        #expect(store.remoteBudgets.isEmpty)
+        #expect(store.error == nil)
+        #expect(!store.remoteBudgetsLoadFailed)
+
+        await serverClient.setToken("test-token")
+        await store.fetchRemoteBudgets()
+
+        #expect(requests.withLock { $0 } == 2)
+        #expect(store.remoteBudgets.map(\.name) == ["Test Budget"])
     }
 
     @Test func deletesEveryLocalBudgetFromDisk() async throws {

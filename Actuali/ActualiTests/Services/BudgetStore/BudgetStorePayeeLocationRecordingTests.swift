@@ -74,4 +74,34 @@ struct BudgetStorePayeeLocationRecordingTests {
 
         #expect(try await database.fetchPayeeLocations(payeeId: payeeId).count == 1)
     }
+
+    /// A save can beat the form's at-home check (GH #845), so the recorder
+    /// skips Home itself unless the user turned Save Location on.
+    @Test(arguments: [
+        (atHome: true, userChoseOn: false, recorded: 0),
+        (atHome: true, userChoseOn: true, recorded: 1),
+        (atHome: false, userChoseOn: false, recorded: 1),
+    ])
+    func recordingNearHomeNeedsTheUsersChoice(atHome: Bool, userChoseOn: Bool, recorded: Int) async throws {
+        let (database, path) = try await makeTestDatabase(TestSchema.core)
+        defer {
+            cleanup(path)
+            UserDefaults.standard.removeObject(forKey: "homeLocation")
+        }
+        let store = try await makeTestStore(database: database)
+        store.setPayeeLocationWritesEnabledForTesting(true)
+        store.setLocationProviderForTesting(LocationProvider(
+            source: FixedPosition(position: Coordinates(latitude: -33.85, longitude: 151.21))
+        ))
+        // ~1.1 km north when away.
+        store.homeLocation = Coordinates(latitude: atHome ? -33.85 : -33.84, longitude: 151.21)
+
+        var save = form()
+        save.recordLocationNearHome = userChoseOn
+        try await store.saveTransaction(save, newId: "tx-1")
+        await store.payeeLocationTask?.value
+
+        let payeeId = try #require(store.payees.first { $0.name == "Market" }?.id)
+        #expect(try await database.fetchPayeeLocations(payeeId: payeeId).count == recorded)
+    }
 }
