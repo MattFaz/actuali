@@ -484,30 +484,34 @@ struct AccountsListView: View {
         }
         // A clean sync says so without stopping anyone; only problems get
         // the alert above.
-        // At the bottom: a tappable toast at the top would take the toolbar's
-        // taps for as long as it shows.
-        .overlay(alignment: .bottom) {
-            if let notice = budgetStore.bankSyncNotice {
-                if notice.offersReview {
-                    Button(action: showNewTransactions) {
-                        ToastView(text: notice.text, actionTitle: String(localized: "Review"), edge: .bottom)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("bankSync.review")
-                } else {
-                    ToastView(text: notice.text, edge: .bottom)
-                        .allowsHitTesting(false)
-                }
-            }
-        }
+        .overlay(alignment: .bottom) { bankSyncToast }
         .animation(AppAnimation.appearance, value: budgetStore.bankSyncNotice)
         // Only a sync someone asked for sets either of these, so the quiet
-        // Wallet imports on foregrounding stay quiet.
-        .sensoryFeedback(trigger: budgetStore.bankSyncNotice) { _, notice in
+        // Wallet imports on foregrounding stay quiet. The return types are
+        // spelled out because inferring them here times the type checker out.
+        .sensoryFeedback(trigger: budgetStore.bankSyncNotice) { _, notice -> SensoryFeedback? in
             notice == nil ? nil : .success
         }
-        .sensoryFeedback(trigger: budgetStore.bankSyncSummary) { _, summary in
+        .sensoryFeedback(trigger: budgetStore.bankSyncSummary) { _, summary -> SensoryFeedback? in
             summary == nil ? nil : .warning
+        }
+    }
+
+    /// At the bottom: a tappable toast at the top would take the toolbar's
+    /// taps for as long as it shows.
+    @ViewBuilder
+    private var bankSyncToast: some View {
+        if let notice = budgetStore.bankSyncNotice {
+            if notice.offersReview {
+                Button(action: showNewTransactions) {
+                    ToastView(text: notice.text, actionTitle: String(localized: "Review"), edge: .bottom)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("bankSync.review")
+            } else {
+                ToastView(text: notice.text, edge: .bottom)
+                    .allowsHitTesting(false)
+            }
         }
     }
 

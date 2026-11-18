@@ -1464,6 +1464,58 @@ struct BudgetStoreBankSyncTests {
         }
     }
 
+    @Test func eachUpstreamStatusWordGetsItsOwnMessage() {
+        func account(_ status: String?) -> BankSyncAccount {
+            BankSyncAccount(
+                id: "a", name: "A", externalAccountId: "ext",
+                syncSource: "simpleFin", offBudget: false, closed: false,
+                status: status
+            )
+        }
+        let words = [
+            "reauth-required", "attention-required",
+            "rate-limit-exceeded", "timed-out", "account-missing",
+        ]
+        let messages = words.compactMap { account($0).attentionMessage }
+        // A distinct message per word, so none of them fell to the generic text.
+        #expect(Set(messages).count == words.count)
+        #expect(messages.allSatisfy { $0 != account("failed").attentionMessage })
+        #expect(account("ok").attentionMessage == nil)
+        #expect(!account("ok").needsAttention)
+        #expect(account(nil).attentionMessage == nil)
+    }
+
+    @Test func marksPersistPerBudgetAndReloadOnSwitch() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try await markAlreadySynced(database)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-kept", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Kept"}
+        """))
+        // Budgets of this test's own: the suite's stores share one id, and
+        // with it one defaults key, while they run side by side.
+        let previousBudgetId = store.currentBudgetId
+        let budgetId = "marks-\(UUID().uuidString)"
+        let otherBudgetId = "marks-\(UUID().uuidString)"
+        store.currentBudgetId = budgetId
+        defer {
+            store.currentBudgetId = previousBudgetId
+            UserDefaults.standard.removeObject(forKey: "unreviewedTransactions.\(budgetId)")
+            UserDefaults.standard.removeObject(forKey: "unreviewedTransactions.\(otherBudgetId)")
+        }
+        store.markAllReviewed()
+
+        _ = try await store.syncBankAccounts()
+        let marked = store.unreviewedTransactions
+        #expect(!marked.isEmpty)
+        #expect(UserDefaults.standard.dictionary(forKey: "unreviewedTransactions.\(budgetId)") as? [String: String] == marked)
+
+        store.currentBudgetId = otherBudgetId
+        #expect(store.unreviewedTransactions.isEmpty)
+        store.currentBudgetId = budgetId
+        #expect(store.unreviewedTransactions == marked)
+    }
+
     @Test func anAccountsFirstDownloadIsNotMarkedNew() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
