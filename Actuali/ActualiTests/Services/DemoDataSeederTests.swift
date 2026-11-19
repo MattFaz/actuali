@@ -548,6 +548,25 @@ struct DemoDataSeederTests {
         #expect(store.lastViewedBudgetMonth == nil)
     }
 
+    /// New-transaction marks are keyed by transaction id, and a reseed mints
+    /// new ids, so marks from the last demo session must not survive it.
+    @Test func loadDemoDataForgetsNewTransactionMarks() async throws {
+        let key = "unreviewedTransactions.\(DemoDataSeeder.budgetId)"
+        UserDefaults.standard.set(["stale-transaction": "stale-account"], forKey: key)
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = DemoDataSeeder.budgetId
+        #expect(store.unreviewedTransactions == ["stale-transaction": "stale-account"])
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let pendingImports = PendingImportStore(fileURL: tempDir.appendingPathComponent("pending.json"))
+
+        await store.loadDemoData(pendingImports: pendingImports)
+
+        #expect(store.unreviewedTransactions.isEmpty)
+        #expect(UserDefaults.standard.dictionary(forKey: key)?.isEmpty ?? true)
+    }
+
     @Test func removeSamplePendingImportKeepsOtherDemoImports() throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)

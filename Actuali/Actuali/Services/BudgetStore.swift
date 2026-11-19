@@ -3391,6 +3391,9 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.removeObject(
                 forKey: Self.excludedFromSpentDefaultsKey(for: DemoDataSeeder.budgetId)
             )
+            // The reseed mints new transaction ids, so old marks would only
+            // inflate the tray count.
+            markAllReviewed()
             await loadLocalBudget(DemoDataSeeder.budgetId)
             do {
                 try DemoDataSeeder.seedPendingImports(store: pendingImports)
