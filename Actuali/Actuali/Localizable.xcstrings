@@ -3587,54 +3587,6 @@
         }
       }
     },
-    "Waiting for Approval" : {
-      "comment" : "Review sheet section: pending imports and held bank transactions that are not in the budget until approved",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wartet auf Genehmigung"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Waiting for Approval"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pendiente de aprobación"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "En attente d’approbation"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In attesa di approvazione"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wacht op goedkeuring"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aguardando aprovação"
-          }
-        }
-      }
-    },
     "Not in your budget yet." : {
       "comment" : "Footer under the Waiting for Approval section",
       "extractionState" : "stale",
@@ -3683,146 +3635,98 @@
         }
       }
     },
-    "Recently Imported" : {
-      "comment" : "Review sheet section: transactions a bank sync on this device imported and nobody has looked at yet",
+    "To Approve" : {
+      "comment" : "Review sheet tab: pending imports and held bank transactions that need approving",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kürzlich importiert"
+            "value" : "Zu genehmigen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Recently Imported"
+            "value" : "To Approve"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Importado recientemente"
+            "value" : "Por aprobar"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Importé récemment"
+            "value" : "À approuver"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Importato di recente"
+            "value" : "Da approvare"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Onlangs geïmporteerd"
+            "value" : "Goed te keuren"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Importado recentemente"
+            "value" : "Para aprovar"
           }
         }
       }
     },
-    "Matched to Existing" : {
-      "comment" : "Review sheet section: transactions the budget already had that a bank sync matched and updated",
+    "Matched to a transaction you already had" : {
+      "comment" : "Note under a transaction in the Review sheet that a bank sync matched and updated instead of creating",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mit vorhandenen abgeglichen"
+            "value" : "Mit einer vorhandenen Transaktion abgeglichen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Matched to Existing"
+            "value" : "Matched to a transaction you already had"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Emparejado con existentes"
+            "value" : "Emparejada con una transacción que ya tenías"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Associé à des transactions existantes"
+            "value" : "Associée à une transaction que vous aviez déjà"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abbinato a esistenti"
+            "value" : "Abbinata a una transazione che avevi già"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gekoppeld aan bestaande"
+            "value" : "Gekoppeld aan een transactie die je al had"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Correspondido com existentes"
-          }
-        }
-      }
-    },
-    "Transactions you already had, updated from the bank." : {
-      "comment" : "Footer under the Matched to Existing section",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transaktionen, die Sie bereits hatten, von der Bank aktualisiert."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transactions you already had, updated from the bank."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transacciones que ya tenías, actualizadas desde el banco."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transactions que vous aviez déjà, mises à jour depuis la banque."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transazioni che avevi già, aggiornate dalla banca."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transacties die je al had, bijgewerkt vanuit de bank."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transações que você já tinha, atualizadas pelo banco."
+            "value" : "Correspondida a uma transação que você já tinha"
           }
         }
       }
