@@ -61,17 +61,20 @@ struct PendingImportsView: View {
                 } else {
                     // An empty tab is never shown: with one kind only there
                     // is no picker, just that list.
+                    // The tab titles say which list this is; without them a
+                    // line under the list has to.
+                    let hasTabs = approvalCount > 0 && importedCount > 0
                     let tab: Tab = approvalCount == 0 ? .imported
                         : importedCount == 0 ? .toApprove
                         : pickedTab ?? .toApprove
                     Group {
                         switch tab {
-                        case .toApprove: approvalList(imports: visibleImports, staged: staged)
-                        case .imported: importedList
+                        case .toApprove: approvalList(imports: visibleImports, staged: staged, showsNote: !hasTabs)
+                        case .imported: importedList(showsNote: !hasTabs)
                         }
                     }
                     .safeAreaInset(edge: .top, spacing: 0) {
-                        if approvalCount > 0, importedCount > 0 {
+                        if hasTabs {
                             Picker(String(localized: "Review"), selection: Binding(
                                 get: { tab },
                                 set: { pickedTab = $0 }
@@ -158,7 +161,9 @@ struct PendingImportsView: View {
 
     /// Everything that isn't in the budget until approved: shared messages
     /// and, with "Approve Before Importing" on, what a bank sync downloaded.
-    private func approvalList(imports: [PendingImport], staged: [StagedBankTransaction]) -> some View {
+    private func approvalList(
+        imports: [PendingImport], staged: [StagedBankTransaction], showsNote: Bool
+    ) -> some View {
         List {
             Section {
                 ForEach(imports) { item in
@@ -190,14 +195,16 @@ struct PendingImportsView: View {
                     }
                 }
             } footer: {
-                Text(String(localized: "Not in your budget yet."))
+                if showsNote {
+                    Text(String(localized: "Not in your budget yet."))
+                }
             }
         }
     }
 
     /// What this device's bank sync already put in the budget. Nothing to
     /// decide: seeing the list is the review.
-    private var importedList: some View {
+    private func importedList(showsNote: Bool) -> some View {
         List {
             Section {
                 ForEach(newTransactions) { transaction in
@@ -221,7 +228,9 @@ struct PendingImportsView: View {
                     }
                 }
             } footer: {
-                Text(String(localized: "Already in your budget."))
+                if showsNote {
+                    Text(String(localized: "Already in your budget."))
+                }
             }
         }
         .onAppear { sawImported = true }
