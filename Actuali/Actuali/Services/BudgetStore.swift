@@ -3458,6 +3458,10 @@ final class BudgetStore: ObservableObject {
             // The reseed mints new transaction ids, so old marks would only
             // inflate the tray count.
             markAllReviewed()
+            // The reseeded accounts have new ids, so what was waiting on the
+            // old ones could never be approved.
+            stagedBankTransactions = []
+            rejectedBankImportIds = [:]
             await loadLocalBudget(DemoDataSeeder.budgetId)
             do {
                 try DemoDataSeeder.seedPendingImports(store: pendingImports)
