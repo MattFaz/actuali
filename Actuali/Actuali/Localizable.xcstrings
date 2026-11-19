@@ -3587,98 +3587,434 @@
         }
       }
     },
-    "New from Bank Sync" : {
-      "comment" : "Section of the pending imports sheet listing transactions this device's bank sync imported",
+    "Waiting for Approval" : {
+      "comment" : "Review sheet section: pending imports and held bank transactions that are not in the budget until approved",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Neu aus der Banksynchronisierung"
+            "value" : "Wartet auf Genehmigung"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "New from Bank Sync"
+            "value" : "Waiting for Approval"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nuevo de la sincronización bancaria"
+            "value" : "Pendiente de aprobación"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nouveautés de la synchronisation bancaire"
+            "value" : "En attente d’approbation"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Novità dalla sincronizzazione bancaria"
+            "value" : "In attesa di approvazione"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nieuw van banksynchronisatie"
+            "value" : "Wacht op goedkeuring"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Novidades da sincronização bancária"
+            "value" : "Aguardando aprovação"
           }
         }
       }
     },
-    "To Approve" : {
-      "comment" : "Section of the review sheet listing pending imports that still need approving",
+    "Not in your budget yet." : {
+      "comment" : "Footer under the Waiting for Approval section",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zu genehmigen"
+            "value" : "Noch nicht in Ihrem Budget."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "To Approve"
+            "value" : "Not in your budget yet."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Por aprobar"
+            "value" : "Aún no está en tu presupuesto."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "À approuver"
+            "value" : "Pas encore dans votre budget."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Da approvare"
+            "value" : "Non ancora nel tuo budget."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Goed te keuren"
+            "value" : "Nog niet in je budget."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Para aprovar"
+            "value" : "Ainda não está no seu orçamento."
+          }
+        }
+      }
+    },
+    "Recently Imported" : {
+      "comment" : "Review sheet section: transactions a bank sync on this device imported and nobody has looked at yet",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kürzlich importiert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recently Imported"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importado recientemente"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importé récemment"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importato di recente"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Onlangs geïmporteerd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importado recentemente"
+          }
+        }
+      }
+    },
+    "Already in your budget." : {
+      "comment" : "Footer under the Recently Imported section",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits in Ihrem Budget."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already in your budget."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya está en tu presupuesto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Déjà dans votre budget."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Già nel tuo budget."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al in je budget."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Já está no seu orçamento."
+          }
+        }
+      }
+    },
+    "Approve Before Importing" : {
+      "comment" : "Bank sync setting: hold new transactions for approval",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vor dem Import genehmigen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approve Before Importing"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aprobar antes de importar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approuver avant d’importer"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approva prima di importare"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Goedkeuren vóór importeren"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aprovar antes de importar"
+          }
+        }
+      }
+    },
+    "New transactions from a bank sync wait in Review until you approve them. Matches to transactions you already have still apply right away." : {
+      "comment" : "Footer under the Approve Before Importing toggle",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Transaktionen aus einer Banksynchronisierung warten unter „Prüfen“, bis Sie sie genehmigen. Zuordnungen zu bereits vorhandenen Transaktionen werden weiterhin sofort übernommen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New transactions from a bank sync wait in Review until you approve them. Matches to transactions you already have still apply right away."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las transacciones nuevas de una sincronización bancaria esperan en Revisar hasta que las apruebes. Las coincidencias con transacciones que ya tienes se siguen aplicando de inmediato."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les nouvelles transactions d’une synchronisation bancaire attendent dans Vérifier jusqu’à votre approbation. Les correspondances avec des transactions existantes s’appliquent toujours immédiatement."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le nuove transazioni di una sincronizzazione bancaria restano in Rivedi finché non le approvi. Le corrispondenze con transazioni già presenti vengono comunque applicate subito."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nieuwe transacties van een banksynchronisatie wachten in Controleren tot je ze goedkeurt. Overeenkomsten met transacties die je al hebt, worden nog steeds direct toegepast."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Novas transações de uma sincronização bancária aguardam em Revisar até você aprová-las. Correspondências com transações que você já tem continuam sendo aplicadas na hora."
+          }
+        }
+      }
+    },
+    "Reject" : {
+      "comment" : "Swipe action that turns down a bank transaction waiting for approval",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ablehnen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reject"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechazar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refuser"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rifiuta"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afwijzen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rejeitar"
+          }
+        }
+      }
+    },
+    "error.bankSyncAccountNotLinked" : {
+      "comment" : "Shown when approving a held bank transaction whose account is no longer linked",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Konto ist nicht mehr mit einer Bank verknüpft. Lehnen Sie die Transaktion ab oder verknüpfen Sie das Konto erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This account is no longer linked to a bank. Reject the transaction, or link the account again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta cuenta ya no está vinculada a un banco. Rechaza la transacción o vuelve a vincular la cuenta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce compte n’est plus lié à une banque. Refusez la transaction ou liez de nouveau le compte."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo conto non è più collegato a una banca. Rifiuta la transazione o collega di nuovo il conto."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze rekening is niet meer aan een bank gekoppeld. Wijs de transactie af of koppel de rekening opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta conta não está mais vinculada a um banco. Rejeite a transação ou vincule a conta novamente."
+          }
+        }
+      }
+    },
+    "%lld transactions waiting for approval." : {
+      "comment" : "Bank sync summary line; %lld is how many new transactions were held for approval",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zur Genehmigung wartend: %lld."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for approval: %lld."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pendientes de aprobación: %lld."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En attente d’approbation : %lld."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In attesa di approvazione: %lld."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wachtend op goedkeuring: %lld."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aguardando aprovação: %lld."
           }
         }
       }

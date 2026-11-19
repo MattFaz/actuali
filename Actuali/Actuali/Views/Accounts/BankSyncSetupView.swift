@@ -33,6 +33,12 @@ struct BankSyncSetupView: View {
                 }
                 .accessibilityIdentifier("bankSync.provider.simpleFIN")
             }
+            Section {
+                Toggle(String(localized: "Approve Before Importing"), isOn: $budgetStore.stagesBankImports)
+                    .accessibilityIdentifier("bankSync.stageImports")
+            } footer: {
+                Text(String(localized: "New transactions from a bank sync wait in Review until you approve them. Matches to transactions you already have still apply right away."))
+            }
             importStartSection
         }
         .navigationTitle("Bank Sync")
