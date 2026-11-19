@@ -130,22 +130,27 @@ struct PendingImportsView: View {
                             }
                         }
 
-                        if !newTransactions.isEmpty {
+                        let matched = newTransactions.filter { budgetStore.matchedTransactionIds.contains($0.id) }
+                        let imported = newTransactions.filter { !budgetStore.matchedTransactionIds.contains($0.id) }
+                        if !imported.isEmpty {
                             Section {
-                                ForEach(newTransactions) { transaction in
-                                    TransactionListRow(
-                                        transaction: transaction,
-                                        // No bulk actions here, so a long press selects nothing.
-                                        isSelectionMode: .constant(false),
-                                        editing: $editingTransaction
-                                    )
-                                }
+                                syncedRows(imported)
                             } header: {
                                 Text(String(localized: "Recently Imported"))
                             } footer: {
                                 Text(String(localized: "Already in your budget."))
                             }
                             .accessibilityIdentifier("pendingImports.newTransactions")
+                        }
+                        if !matched.isEmpty {
+                            Section {
+                                syncedRows(matched)
+                            } header: {
+                                Text(String(localized: "Matched to Existing"))
+                            } footer: {
+                                Text(String(localized: "Transactions you already had, updated from the bank."))
+                            }
+                            .accessibilityIdentifier("pendingImports.matchedTransactions")
                         }
                     }
                 }
@@ -187,6 +192,17 @@ struct PendingImportsView: View {
                 newTransactions = await budgetStore.fetchUnreviewedTransactions()
             }
             .onDisappear { budgetStore.markAllReviewed() }
+        }
+    }
+
+    private func syncedRows(_ transactions: [Transaction]) -> some View {
+        ForEach(transactions) { transaction in
+            TransactionListRow(
+                transaction: transaction,
+                // No bulk actions here, so a long press selects nothing.
+                isSelectionMode: .constant(false),
+                editing: $editingTransaction
+            )
         }
     }
 

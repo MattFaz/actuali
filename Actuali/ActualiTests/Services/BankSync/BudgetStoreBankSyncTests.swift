@@ -1464,6 +1464,52 @@ struct BudgetStoreBankSyncTests {
         }
     }
 
+    @Test func aMatchedTransactionIsMarkedApartFromNewOnes() async throws {
+        let (database, url) = try await makeDatabase(seedTransactions: true)
+        defer { cleanup(url) }
+        try await markAlreadySynced(database)
+        // The first matches the hand-entered tx-manual; the second is new.
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-match", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
+        {"id": "sf-new", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "New"}
+        """))
+        store.markAllReviewed()
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.updated == 1)
+        #expect(result.matchedTransactions == ["tx-manual": Self.accountId])
+        #expect(store.matchedTransactionIds == ["tx-manual"])
+        #expect(store.unreviewedTransactions["tx-manual"] == Self.accountId)
+        let created = try #require(result.importedTransactions.first)
+        #expect(store.unreviewedTransactions[created.id] == Self.accountId)
+        #expect(!store.matchedTransactionIds.contains(created.id))
+
+        // Seeing the account clears the match note along with the mark.
+        store.markAccountReviewed(Self.accountId)
+        #expect(store.matchedTransactionIds.isEmpty)
+
+        // Already matched, so the same download changes and marks nothing.
+        let again = try await store.syncBankAccounts()
+        #expect(again.matchedTransactions.isEmpty)
+        #expect(store.unreviewedTransactions.isEmpty)
+    }
+
+    @Test func matchesOnAnAccountsFirstDownloadAreNotMarked() async throws {
+        let (database, url) = try await makeDatabase(seedTransactions: true)
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-match", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+        """))
+        store.markAllReviewed()
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.updated == 1)
+        #expect(store.matchedTransactionIds.isEmpty)
+        #expect(store.unreviewedTransactions.isEmpty)
+    }
+
     // MARK: - Approve before importing
 
     /// A store on a budget id of its own: the queue persists per budget, and

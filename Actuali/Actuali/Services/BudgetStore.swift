@@ -383,7 +383,11 @@ final class BudgetStore: ObservableObject {
                 depositConfigs = [:]
                 cardAccountMappings = [:]
                 excludedFromSpentCategoryIds = Self.loadExcludedFromSpentCategoryIds(for: currentBudgetId)
+                // Before the marks: their didSet trims this to the ids still marked.
+                matchedTransactionIds = []
                 unreviewedTransactions = Self.loadUnreviewedTransactions(for: currentBudgetId)
+                matchedTransactionIds = Self.loadMatchedTransactionIds(for: currentBudgetId)
+                    .intersection(unreviewedTransactions.keys)
                 stagedBankTransactions = Self.loadStagedBankTransactions(for: currentBudgetId)
                 rejectedBankImportIds = Self.loadRejectedBankImportIds(for: currentBudgetId)
             }
@@ -443,6 +447,20 @@ final class BudgetStore: ObservableObject {
         didSet {
             guard let budgetId = currentBudgetId else { return }
             UserDefaults.standard.set(unreviewedTransactions, forKey: Self.unreviewedDefaultsKey(for: budgetId))
+            // A mark that is gone takes its "matched" note with it.
+            if !matchedTransactionIds.isSubset(of: unreviewedTransactions.keys) {
+                matchedTransactionIds.formIntersection(unreviewedTransactions.keys)
+            }
+        }
+    }
+
+    /// Which of `unreviewedTransactions` the bank sync didn't create but
+    /// matched: a transaction the budget already had, updated from the
+    /// download. Shown apart so a match is never silent.
+    @Published private(set) var matchedTransactionIds: Set<String> = [] {
+        didSet {
+            guard let budgetId = currentBudgetId, matchedTransactionIds != oldValue else { return }
+            UserDefaults.standard.set(matchedTransactionIds.sorted(), forKey: Self.matchedDefaultsKey(for: budgetId))
         }
     }
 
@@ -1112,6 +1130,15 @@ final class BudgetStore: ObservableObject {
         return stored.mapValues(Set.init)
     }
 
+    private static func matchedDefaultsKey(for budgetId: String) -> String {
+        "matchedTransactions.\(budgetId)"
+    }
+
+    private static func loadMatchedTransactionIds(for budgetId: String?) -> Set<String> {
+        guard let budgetId else { return [] }
+        return Set(UserDefaults.standard.stringArray(forKey: matchedDefaultsKey(for: budgetId)) ?? [])
+    }
+
     private static func unreviewedDefaultsKey(for budgetId: String) -> String {
         "unreviewedTransactions.\(budgetId)"
     }
@@ -1131,6 +1158,13 @@ final class BudgetStore: ObservableObject {
         let fresh = transactions.filter { $0.parentId == nil }.map { ($0.id, $0.accountId) }
         guard !fresh.isEmpty else { return }
         unreviewedTransactions.merge(fresh) { _, new in new }
+    }
+
+    /// Transactions a sync matched and updated, as transaction id → account id.
+    private func markMatched(_ matched: [String: String]) {
+        guard !matched.isEmpty else { return }
+        unreviewedTransactions.merge(matched) { _, new in new }
+        matchedTransactionIds.formUnion(matched.keys)
     }
 
     /// The account's screen has been seen, so nothing in it is new any more.
@@ -2165,6 +2199,9 @@ final class BudgetStore: ObservableObject {
         )
         _unreviewedTransactions = Published(
             initialValue: Self.loadUnreviewedTransactions(for: defaults.string(forKey: "currentBudgetId"))
+        )
+        _matchedTransactionIds = Published(
+            initialValue: Self.loadMatchedTransactionIds(for: defaults.string(forKey: "currentBudgetId"))
         )
         _stagedBankTransactions = Published(
             initialValue: Self.loadStagedBankTransactions(for: defaults.string(forKey: "currentBudgetId"))
@@ -4725,6 +4762,9 @@ final class BudgetStore: ObservableObject {
         /// the detector behind `notifyAboutSyncedTransactions` only sees rows
         /// authored by *other* devices, which imports made here are not.
         var importedTransactions: [Transaction] = []
+        /// Transactions the budget already had that this run matched and
+        /// updated, as transaction id → account id.
+        var matchedTransactions: [String: String] = [:]
         /// New transactions held for approval instead of imported.
         var staged = 0
         /// Anything worth telling the person about: a bank connection that
@@ -4907,6 +4947,7 @@ final class BudgetStore: ObservableObject {
                     text: result.summary.replacingOccurrences(of: "\n\n", with: " "),
                     offersReview: result.staged > 0
                         || result.importedTransactions.contains { unreviewedTransactions[$0.id] != nil }
+                        || result.matchedTransactions.keys.contains { unreviewedTransactions[$0] != nil }
                 ))
             } else {
                 bankSyncSummary = result.summary
@@ -5466,6 +5507,9 @@ final class BudgetStore: ObservableObject {
                     )
                 }
                 result.staged += outcome.staged
+                for id in outcome.matchedIds {
+                    result.matchedTransactions[id] = target.id
+                }
                 result.added += outcome.added
                 result.updated += outcome.updated
                 result.importedTransactions += outcome.inserted
@@ -5514,6 +5558,7 @@ final class BudgetStore: ObservableObject {
         try? await syncClient.recordBankSyncStatus(statuses)
 
         markUnreviewed(result.importedTransactions.filter { !firstSyncAccountIds.contains($0.accountId) })
+        markMatched(result.matchedTransactions.filter { !firstSyncAccountIds.contains($0.value) })
         await refreshDataOnly()
         return result
     }
@@ -5529,7 +5574,8 @@ final class BudgetStore: ObservableObject {
     }
 
     private typealias BankSyncImportOutcome = (
-        added: Int, updated: Int, inserted: [Transaction], rejectedConflicts: Int, staged: Int
+        added: Int, updated: Int, inserted: [Transaction], rejectedConflicts: Int, staged: Int,
+        matchedIds: Set<String>
     )
 
     /// Fold one account's download into the budget: match what we already
@@ -5562,7 +5608,7 @@ final class BudgetStore: ObservableObject {
         }
 
         guard !candidates.isEmpty || !download.rejectedIds.isEmpty || existingOldestDay == nil else {
-            return (0, 0, [], 0, 0)
+            return (0, 0, [], 0, 0, [])
         }
         let earliest = candidates.map(\.date).min() ?? startingDay
         let latest = candidates.map(\.date).max() ?? startingDay
@@ -5770,7 +5816,10 @@ final class BudgetStore: ObservableObject {
         }
 
         let added = materialized.inserted.count + (openingInsert == nil ? 0 : 1)
-        return (added, materialized.updatedCount, materialized.inserted, plan.rejectedConflicts, staged)
+        return (
+            added, materialized.updatedIds.count, materialized.inserted, plan.rejectedConflicts, staged,
+            materialized.updatedIds
+        )
     }
 
     /// Bring the approval queue in line with one account's download, and take

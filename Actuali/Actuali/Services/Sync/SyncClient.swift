@@ -1018,7 +1018,7 @@ actor SyncClient {
         openingUpdate: BankSyncOpeningUpdate?,
         expectedLink: ExpectedBankSyncLink,
         preparedRulesFingerprint: BankSyncRulesFingerprint
-    ) async throws -> (updatedCount: Int, inserted: [Transaction]) {
+    ) async throws -> (updatedIds: Set<String>, inserted: [Transaction]) {
         guard let database else { throw SyncError.notConfigured }
         var updateMessages: [CRDTMessage] = []
         for update in updates {
@@ -1047,12 +1047,12 @@ actor SyncClient {
             merkle = merkle.inserting(msg.timestamp)
         }
         guard !result.messages.isEmpty else {
-            return (result.updatedCount, result.inserted)
+            return (result.updatedIds, result.inserted)
         }
         merkle = merkle.pruned()
         try saveClock()
         scheduleAutomaticSync()
-        return (result.updatedCount, result.inserted)
+        return (result.updatedIds, result.inserted)
     }
 
     /// Create a category group (optimistic local-first). Placement, the
