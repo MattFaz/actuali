@@ -100,7 +100,6 @@ final class AccountIconCustomizationStore: ObservableObject {
             customization(for: budgetID, accountID: accountID)?.photoFilename == filename,
             let image = UIImage(data: data) else { return nil }
         cache(image, key: key, budgetID: budgetID)
-        revision &+= 1
         return image
     }
 

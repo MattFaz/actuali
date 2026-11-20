@@ -1050,7 +1050,8 @@ struct AccountDetailView: View {
         .contentMargins(.top, 8, for: .scrollContent)
         .listSectionSpacing(.compact)
         .readableWidth()
-        .navigationTitle("")
+        .navigationTitle(account.name)
+        .navigationBarTitleDisplayMode(.inline)
         .task(id: accountIconPhotoLoadID) {
             loadedAccountIconImage = nil
             guard let budgetID = budgetStore.currentBudgetId,
@@ -1084,6 +1085,7 @@ struct AccountDetailView: View {
                             customTintHex: customization?.tintHex,
                             customImage: loadedAccountIconImage
                         )
+                        .accessibilityHidden(true)
                     }
                     Text(account.name)
                         .font(.headline)

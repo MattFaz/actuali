@@ -67,6 +67,52 @@ struct AccountIconCustomizationStoreTests {
         #expect(store.image(for: "budget-b", accountID: "same-account") != nil)
     }
 
+    @Test func clearingBudgetRemovesOnlyThatBudgetsIconsAndPhotos() async {
+        let (store, defaults, root, suite) = makeStore()
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        store.setIconsEnabled(false, for: "budget-a")
+        store.setSymbol("star.fill", tintHex: "E34D59", budgetID: "budget-a", accountID: "symbol-account")
+        #expect(await store.setPhoto(makePhotoData(), budgetID: "budget-a", accountID: "photo-account"))
+        #expect(await store.setPhoto(makePhotoData(), budgetID: "budget-b", accountID: "photo-account"))
+
+        store.clear(budgetID: "budget-a")
+
+        #expect(store.iconsEnabled(for: "budget-a") == true)
+        #expect(store.customization(for: "budget-a", accountID: "symbol-account") == nil)
+        #expect(store.customization(for: "budget-a", accountID: "photo-account") == nil)
+        #expect(store.image(for: "budget-a", accountID: "photo-account") == nil)
+        #expect(!FileManager.default.fileExists(
+            atPath: store.photoFileURL(for: "budget-a", accountID: "photo-account").path
+        ))
+        #expect(store.customization(for: "budget-b", accountID: "photo-account")?.photoFilename != nil)
+        #expect(FileManager.default.fileExists(
+            atPath: store.photoFileURL(for: "budget-b", accountID: "photo-account").path
+        ))
+    }
+
+    @Test func choosingSymbolDeletesPreviousPhoto() async {
+        let (store, defaults, root, suite) = makeStore()
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        #expect(await store.setPhoto(makePhotoData(), budgetID: "budget-a", accountID: "account"))
+        let photoURL = store.photoFileURL(for: "budget-a", accountID: "account")
+        #expect(FileManager.default.fileExists(atPath: photoURL.path))
+
+        store.setSymbol("car.fill", tintHex: "28A879", budgetID: "budget-a", accountID: "account")
+
+        #expect(!FileManager.default.fileExists(atPath: photoURL.path))
+        #expect(store.image(for: "budget-a", accountID: "account") == nil)
+        #expect(store.customization(for: "budget-a", accountID: "account")
+            == AccountIconCustomization(symbolName: "car.fill", tintHex: "28A879", photoFilename: nil))
+    }
+
     private func makeStore() -> (AccountIconCustomizationStore, UserDefaults, URL, String) {
         let suite = "AccountIconCustomizationStoreTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

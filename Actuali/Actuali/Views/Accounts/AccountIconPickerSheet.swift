@@ -285,8 +285,8 @@ struct AccountIconPhotoCropView: View {
                     .onEnded { _ in dragOrigin = offset }
             )
             .simultaneousGesture(
-                MagnificationGesture()
-                    .onChanged { value in zoom = Double(min(4, max(1, CGFloat(startingZoom) * value))) }
+                MagnifyGesture()
+                    .onChanged { value in zoom = Double(min(4, max(1, CGFloat(startingZoom) * value.magnification))) }
                     .onEnded { _ in startingZoom = zoom }
             )
             .onAppear { cropViewportSide = side }
