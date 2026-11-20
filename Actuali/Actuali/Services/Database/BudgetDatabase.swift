@@ -1060,6 +1060,18 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// The live transactions among `ids`, newest first, with display names.
+    func fetchTransactions(ids: [String]) async throws -> [Transaction] {
+        guard !ids.isEmpty else { return [] }
+        return try await dbQueue.read { db in
+            let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ", ")
+            return try Row.fetchAll(db, sql: Self.transactionSelect + """
+             AND t.id IN (\(placeholders))
+            ORDER BY t.date DESC, t.sort_order DESC
+            """, arguments: StatementArguments(ids)).map(Self.mapTransaction)
+        }
+    }
+
     /// Rows per page in the transaction lists. One page is the default for
     /// `fetchTransactions`, and TransactionPager treats a shorter page as
     /// the end of the result set.
@@ -4263,6 +4275,27 @@ final class BudgetDatabase: Sendable {
                     closed: row["closed"] == 1
                 )
             }
+        }
+    }
+
+    /// What bank sync last stamped on each account: when a download last
+    /// completed and how the latest attempt ended. Keyed by account id, and
+    /// read apart from `fetchBankSyncAccounts` because Wallet links aren't in
+    /// the columns that query filters on but are stamped all the same.
+    func fetchBankSyncStamps() async throws -> [String: (lastSync: Date?, status: String?)] {
+        try await dbQueue.read { db in
+            let columns = try db.columns(in: "accounts").map(\.name)
+            guard columns.contains("last_sync"), columns.contains("bank_sync_status") else { return [:] }
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT id, last_sync, bank_sync_status FROM accounts
+            WHERE last_sync IS NOT NULL OR bank_sync_status IS NOT NULL
+            """)
+            return Dictionary(uniqueKeysWithValues: rows.map { row in
+                // Milliseconds since the epoch as a string, as upstream writes it.
+                let lastSync = (row["last_sync"] as String?).flatMap { Double($0) }
+                    .map { Date(timeIntervalSince1970: $0 / 1000) }
+                return (row["id"] as String, (lastSync: lastSync, status: row["bank_sync_status"] as String?))
+            })
         }
     }
 

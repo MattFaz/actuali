@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Sheet showing pending transaction imports queued from shared messages.
+/// Sheet showing pending transaction imports queued from shared messages,
+/// and below them what this device's bank sync imported since it was last open.
 /// Users can approve (logs to budget), edit (opens add-transaction form),
 /// or dismiss each import.
 struct PendingImportsView: View {
@@ -25,12 +26,17 @@ struct PendingImportsView: View {
     @State private var errorMessage: String?
     @State private var deferredFailureCount: Int?
     @State private var isProcessing = false
+    /// What this device's bank sync imported and nobody has looked at yet.
+    /// Already in the budget, so there is nothing to approve: seeing them
+    /// here is the review, and leaving clears the marks.
+    @State private var newTransactions: [Transaction] = []
+    @State private var editingTransaction: Transaction?
 
     var body: some View {
         NavigationStack {
             Group {
                 let visibleImports = store.visibleImports()
-                if visibleImports.isEmpty {
+                if visibleImports.isEmpty, budgetStore.unreviewedTransactions.isEmpty {
                     ContentUnavailableView(
                         "No Pending Imports",
                         systemImage: "tray",
@@ -38,31 +44,38 @@ struct PendingImportsView: View {
                     )
                 } else {
                     List {
-                        ForEach(visibleImports) { item in
-                            Button {
-                                editingItem = item
-                            } label: {
-                                PendingImportRow(item: item)
-                            }
-                            .buttonStyle(.plain)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    do { try store.remove(id: item.id) } catch {
-                                        errorMessage = PendingImportApprover.localizedErrorMessage(
-                                            for: error, locale: locale
-                                        )
-                                    }
-                                } label: {
-                                    Label("Dismiss", systemImage: "trash")
-                                }
-                            }
-                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        Section {
+                            ForEach(visibleImports) { item in
                                 Button {
-                                    approve(item)
+                                    editingItem = item
                                 } label: {
-                                    Label("Approve", systemImage: "checkmark")
+                                    PendingImportRow(item: item)
                                 }
-                                .tint(.green)
+                                .buttonStyle(.plain)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        do { try store.remove(id: item.id) } catch {
+                                            errorMessage = PendingImportApprover.localizedErrorMessage(
+                                                for: error, locale: locale
+                                            )
+                                        }
+                                    } label: {
+                                        Label("Dismiss", systemImage: "trash")
+                                    }
+                                }
+                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                    Button {
+                                        approve(item)
+                                    } label: {
+                                        Label("Approve", systemImage: "checkmark")
+                                    }
+                                    .tint(.green)
+                                }
+                            }
+                        } header: {
+                            // Only worth naming once there is a second kind below.
+                            if !visibleImports.isEmpty, !newTransactions.isEmpty {
+                                Text(String(localized: "To Approve"))
                             }
                         }
 
@@ -82,10 +95,25 @@ struct PendingImportsView: View {
                                 .disabled(isProcessing)
                             }
                         }
+
+                        if !newTransactions.isEmpty {
+                            Section(String(localized: "New from Bank Sync")) {
+                                ForEach(newTransactions) { transaction in
+                                    TransactionListRow(
+                                        transaction: transaction,
+                                        // No bulk actions here, so a long press selects nothing.
+                                        isSelectionMode: .constant(false),
+                                        editing: $editingTransaction
+                                    )
+                                }
+                            }
+                            .accessibilityIdentifier("pendingImports.newTransactions")
+                        }
                     }
                 }
             }
-            .navigationTitle("Pending Imports")
+            // Not "Pending Imports": what a bank sync brought in is listed here too.
+            .navigationTitle(String(localized: "Review"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -112,6 +140,15 @@ struct PendingImportsView: View {
                         .environmentObject(budgetStore)
                 }
             }
+            .sheet(item: $editingTransaction) { transaction in
+                AddTransactionView(editing: transaction)
+                    .environmentObject(budgetStore)
+            }
+            // An edit or delete bumps dataVersion, which is what re-reads the rows.
+            .task(id: budgetStore.dataVersion) {
+                newTransactions = await budgetStore.fetchUnreviewedTransactions()
+            }
+            .onDisappear { budgetStore.markAllReviewed() }
         }
     }
 

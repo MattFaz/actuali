@@ -1367,6 +1367,247 @@ struct BudgetStoreBankSyncTests {
         #expect((Int64(lastSync ?? "") ?? 0) > 1_700_000_000_000)
     }
 
+    @Test func aSyncShowsItsStampOnTheLinkedAccount() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.lastSync == nil)
+
+        let before = Date()
+        _ = try await store.syncBankAccounts()
+
+        let linked = try #require(store.bankSyncAccount(forAccountId: Self.accountId))
+        // The stamp is whole milliseconds, so allow for the truncation.
+        #expect(try #require(linked.lastSync) >= before.addingTimeInterval(-1))
+        #expect(linked.status == "ok")
+        #expect(!linked.needsAttention)
+        #expect(linked.attentionMessage == nil)
+    }
+
+    @Test func aFailedStatusMarksTheLinkedAccountWithoutLosingItsLastSync() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET last_sync = ?, bank_sync_status = 'failed' WHERE id = ?",
+                arguments: ["1600000000000", accountId]
+            )
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+
+        let linked = try #require(store.bankSyncAccount(forAccountId: accountId))
+        #expect(linked.lastSync == Date(timeIntervalSince1970: 1_600_000_000))
+        #expect(linked.needsAttention)
+        #expect(linked.attentionMessage != nil)
+    }
+
+    @Test func importedTransactionsStayUnreviewedUntilTheirAccountIsSeen() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try await markAlreadySynced(database)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-unreviewed", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Unreviewed"}
+        """))
+        // The marks persist per budget, so start from a known state.
+        store.markAccountReviewed(Self.accountId)
+
+        let result = try await store.syncBankAccounts()
+
+        let imported = try #require(result.importedTransactions.first)
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
+        #expect(store.unreviewedTransactions[imported.id] == Self.accountId)
+
+        // A second sync matches the same row instead of importing it again.
+        _ = try await store.syncBankAccounts()
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
+
+        store.markAccountReviewed("some-other-account")
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
+        store.markAccountReviewed(Self.accountId)
+        #expect(store.unreviewedTransactions[imported.id] == nil)
+    }
+
+    @Test func aTransactionSyncedFromAnotherDeviceIsNotMarkedNew() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        store.markAllReviewed()
+        // The first pass only sets the watermark.
+        _ = await store.detectNewTransactionsForNotification()
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "INSERT INTO transactions (id, acct, amount, date) VALUES ('from-desktop', ?, -1250, 20260707)",
+                arguments: [accountId]
+            )
+            try db.execute(sql: """
+            INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
+            VALUES ('2026-07-07T00:00:00.000Z-0000-bbbbbbbbbbbbbbbb', 'transactions', 'from-desktop', 'acct', x'00')
+            """)
+        }
+
+        await store.notifyAboutSyncedTransactions()
+
+        // Read past the watermark, so the detector did see it.
+        let again = await store.detectNewTransactionsForNotification()
+        #expect(again.isEmpty)
+        #expect(store.unreviewedTransactions.isEmpty)
+    }
+
+    /// An account's first download is its history, so nothing in it is marked.
+    /// Tests about marks start from an account that has synced before.
+    private func markAlreadySynced(_ database: BudgetDatabase) async throws {
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "UPDATE accounts SET last_sync = '1600000000000' WHERE id = ?", arguments: [accountId])
+        }
+    }
+
+    @Test func eachUpstreamStatusWordGetsItsOwnMessage() {
+        func account(_ status: String?) -> BankSyncAccount {
+            BankSyncAccount(
+                id: "a", name: "A", externalAccountId: "ext",
+                syncSource: "simpleFin", offBudget: false, closed: false,
+                status: status
+            )
+        }
+        let words = [
+            "reauth-required", "attention-required",
+            "rate-limit-exceeded", "timed-out", "account-missing",
+        ]
+        let messages = words.compactMap { account($0).attentionMessage }
+        // A distinct message per word, so none of them fell to the generic text.
+        #expect(Set(messages).count == words.count)
+        #expect(messages.allSatisfy { $0 != account("failed").attentionMessage })
+        #expect(account("ok").attentionMessage == nil)
+        #expect(!account("ok").needsAttention)
+        #expect(account(nil).attentionMessage == nil)
+    }
+
+    @Test func marksPersistPerBudgetAndReloadOnSwitch() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try await markAlreadySynced(database)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-kept", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Kept"}
+        """))
+        // Budgets of this test's own: the suite's stores share one id, and
+        // with it one defaults key, while they run side by side.
+        let previousBudgetId = store.currentBudgetId
+        let budgetId = "marks-\(UUID().uuidString)"
+        let otherBudgetId = "marks-\(UUID().uuidString)"
+        store.currentBudgetId = budgetId
+        defer {
+            store.currentBudgetId = previousBudgetId
+            UserDefaults.standard.removeObject(forKey: "unreviewedTransactions.\(budgetId)")
+            UserDefaults.standard.removeObject(forKey: "unreviewedTransactions.\(otherBudgetId)")
+        }
+        store.markAllReviewed()
+
+        _ = try await store.syncBankAccounts()
+        let marked = store.unreviewedTransactions
+        #expect(!marked.isEmpty)
+        #expect(UserDefaults.standard.dictionary(forKey: "unreviewedTransactions.\(budgetId)") as? [String: String] == marked)
+
+        store.currentBudgetId = otherBudgetId
+        #expect(store.unreviewedTransactions.isEmpty)
+        store.currentBudgetId = budgetId
+        #expect(store.unreviewedTransactions == marked)
+    }
+
+    @Test func anAccountsFirstDownloadIsNotMarkedNew() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-history", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "History"}
+        """))
+        store.markAllReviewed()
+
+        await store.runBankSync()
+
+        #expect(store.unreviewedTransactions.isEmpty)
+        // Nothing to review, so the toast doesn't offer to.
+        #expect(store.bankSyncNotice?.offersReview == false)
+    }
+
+    @Test func aCleanSyncReportsThroughTheToastAndOffersReviewOnlyForImports() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try await markAlreadySynced(database)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-toast", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Toast"}
+        """))
+
+        await store.runBankSync()
+
+        #expect(store.bankSyncSummary == nil)
+        let first = try #require(store.bankSyncNotice)
+        #expect(first.offersReview)
+        #expect(!first.text.contains("\n"))
+
+        // The same download again matches what is already there.
+        await store.runBankSync()
+        #expect(store.bankSyncNotice?.offersReview == false)
+
+        store.dismissBankSyncNotice()
+        #expect(store.bankSyncNotice == nil)
+    }
+
+    @Test func aSyncWithProblemsStillReportsThroughTheAlert() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        store.setSimpleFINAccessKeyForTesting(nil)
+
+        await store.runBankSync()
+
+        #expect(store.bankSyncSummary != nil)
+        #expect(store.bankSyncNotice == nil)
+    }
+
+    @Test func theNewTransactionsListDropsMarksWhoseTransactionIsGone() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try await markAlreadySynced(database)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-kept", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Kept"},
+        {"id": "sf-gone", "posted": \(Self.daysAgo(3)), "amount": "-8.00", "payee": "Gone"}
+        """))
+        store.markAllReviewed()
+        _ = try await store.syncBankAccounts()
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 2)
+
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "UPDATE transactions SET tombstone = 1 WHERE financial_id = 'sf-gone'")
+        }
+        let listed = await store.fetchUnreviewedTransactions()
+
+        #expect(listed.count == 1)
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
+
+        store.markAllReviewed()
+        #expect(store.unreviewedTransactions.isEmpty)
+        let afterReview = await store.fetchUnreviewedTransactions()
+        #expect(afterReview.isEmpty)
+    }
+
+    @Test func aRunningSyncNamesTheAccountsItIsDownloading() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-running", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Running"}
+        """))
+        var idsDuringSync: Set<String> = []
+        store.bankSyncBeforeMaterializationHook = { idsDuringSync = store.bankSyncingAccountIds }
+
+        _ = try await store.syncBankAccounts()
+
+        #expect(idsDuringSync == [Self.accountId])
+        #expect(store.bankSyncingAccountIds.isEmpty)
+        #expect(!store.isBankSyncing)
+    }
+
     /// A `YYYY-MM-DD` string the sync window will accept, however long this
     /// test lives.
     private static func isoDaysAgo(_ days: Int) -> String {

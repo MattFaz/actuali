@@ -380,6 +380,7 @@ final class BudgetStore: ObservableObject {
                 depositConfigs = [:]
                 cardAccountMappings = [:]
                 excludedFromSpentCategoryIds = Self.loadExcludedFromSpentCategoryIds(for: currentBudgetId)
+                unreviewedTransactions = Self.loadUnreviewedTransactions(for: currentBudgetId)
             }
         }
     }
@@ -424,6 +425,22 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Transactions this device's bank sync imported that haven't been
+    /// looked at yet, as transaction id → account id. What another device
+    /// synced in is left out: its owner already saw it there. Local to
+    /// the device and budget, like the notification watermark: what this
+    /// phone has shown its owner is not budget data.
+    // ponytail: ids are only checked against the database when the New
+    // Transactions list loads, so a transaction deleted before then stays
+    // counted until that list or its account is opened. Prune on refresh if
+    // that ever shows.
+    @Published private(set) var unreviewedTransactions: [String: String] = [:] {
+        didSet {
+            guard let budgetId = currentBudgetId else { return }
+            UserDefaults.standard.set(unreviewedTransactions, forKey: Self.unreviewedDefaultsKey(for: budgetId))
+        }
+    }
+
     /// Accounts wired up to a bank feed, refreshed alongside the rest of the
     /// budget so the accounts tab knows which rows can be synced.
     @Published private(set) var bankSyncAccounts: [BankSyncAccount] = []
@@ -432,7 +449,11 @@ final class BudgetStore: ObservableObject {
     @Published private(set) var isSimpleFINConfigured = SimpleFINCredentials.isConfigured
     /// True for the length of a bank sync, so the UI can show progress and
     /// keep a second sync from starting on top of the first.
-    @Published private(set) var isBankSyncing = false
+    /// The accounts a running bank sync is downloading; empty when none is.
+    @Published private(set) var bankSyncingAccountIds: Set<String> = []
+    var isBankSyncing: Bool {
+        !bankSyncingAccountIds.isEmpty
+    }
 
     #if DEBUG
     var bankSyncBeforeMaterializationHook: (() -> Void)?
@@ -1032,6 +1053,52 @@ final class BudgetStore: ObservableObject {
               let values = UserDefaults.standard.array(forKey: excludedFromSpentDefaultsKey(for: budgetId)) as? [String]
         else { return [] }
         return Set(values)
+    }
+
+    private static func unreviewedDefaultsKey(for budgetId: String) -> String {
+        "unreviewedTransactions.\(budgetId)"
+    }
+
+    private static func loadUnreviewedTransactions(for budgetId: String?) -> [String: String] {
+        guard let budgetId else { return [:] }
+        return UserDefaults.standard.dictionary(forKey: unreviewedDefaultsKey(for: budgetId)) as? [String: String] ?? [:]
+    }
+
+    /// How many of an account's transactions are waiting to be looked at.
+    func unreviewedCount(forAccountId accountId: String) -> Int {
+        unreviewedTransactions.values.filter { $0 == accountId }.count
+    }
+
+    /// Split children are left out: the parent is the row the register shows.
+    private func markUnreviewed(_ transactions: [Transaction]) {
+        let fresh = transactions.filter { $0.parentId == nil }.map { ($0.id, $0.accountId) }
+        guard !fresh.isEmpty else { return }
+        unreviewedTransactions.merge(fresh) { _, new in new }
+    }
+
+    /// The account's screen has been seen, so nothing in it is new any more.
+    func markAccountReviewed(_ accountId: String) {
+        guard unreviewedTransactions.values.contains(accountId) else { return }
+        unreviewedTransactions = unreviewedTransactions.filter { $0.value != accountId }
+    }
+
+    func markAllReviewed() {
+        guard !unreviewedTransactions.isEmpty else { return }
+        unreviewedTransactions = [:]
+    }
+
+    /// The transactions still marked new, newest first. Marks whose
+    /// transaction has since been deleted are dropped on the way.
+    func fetchUnreviewedTransactions() async -> [Transaction] {
+        let marked = unreviewedTransactions
+        guard let database,
+              let found = try? await database.fetchTransactions(ids: Array(marked.keys)) else { return [] }
+        let live = Set(found.map(\.id))
+        if live.count != marked.count {
+            // Only what this call looked up: a mark made during the read stays.
+            unreviewedTransactions = unreviewedTransactions.filter { marked[$0.key] == nil || live.contains($0.key) }
+        }
+        return found
     }
 
     /// Closed accounts the Accounts list should show — none when the hide
@@ -2035,6 +2102,9 @@ final class BudgetStore: ObservableObject {
         }
         _excludedFromSpentCategoryIds = Published(
             initialValue: Self.loadExcludedFromSpentCategoryIds(for: defaults.string(forKey: "currentBudgetId"))
+        )
+        _unreviewedTransactions = Published(
+            initialValue: Self.loadUnreviewedTransactions(for: defaults.string(forKey: "currentBudgetId"))
         )
         _currencyCode = Published(
             initialValue: defaults.string(forKey: "currencyCode") ?? "USD"
@@ -3321,6 +3391,9 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.removeObject(
                 forKey: Self.excludedFromSpentDefaultsKey(for: DemoDataSeeder.budgetId)
             )
+            // The reseed mints new transaction ids, so old marks would only
+            // inflate the tray count.
+            markAllReviewed()
             await loadLocalBudget(DemoDataSeeder.budgetId)
             do {
                 try DemoDataSeeder.seedPendingImports(store: pendingImports)
@@ -4654,6 +4727,34 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// A clean bank sync's outcome, shown as a toast that goes away by
+    /// itself. A sync with problems goes to `bankSyncSummary` instead, whose
+    /// alert waits to be read.
+    struct BankSyncNotice: Equatable {
+        let text: String
+        /// Whether the sync imported something it marked new.
+        let offersReview: Bool
+    }
+
+    @Published private(set) var bankSyncNotice: BankSyncNotice?
+    private var bankSyncNoticeDismissTask: Task<Void, Never>?
+
+    func dismissBankSyncNotice() {
+        bankSyncNoticeDismissTask?.cancel()
+        bankSyncNotice = nil
+    }
+
+    private func showBankSyncNotice(_ notice: BankSyncNotice) {
+        bankSyncNoticeDismissTask?.cancel()
+        bankSyncNotice = notice
+        bankSyncNoticeDismissTask = Task { [weak self] in
+            // Longer when there is something to tap.
+            try? await Task.sleep(for: .seconds(notice.offersReview ? 8 : 4))
+            guard !Task.isCancelled else { return }
+            self?.bankSyncNotice = nil
+        }
+    }
+
     /// The last bank sync's outcome, waiting to be shown. Held here rather
     /// than in a view because the sync is kicked off from a toolbar menu that
     /// is gone by the time it finishes.
@@ -4716,15 +4817,25 @@ final class BudgetStore: ObservableObject {
         return SimpleFINDirectProvider(client: simpleFINClient, accessKey: deviceKey)
     }
 
-    /// Run a sync and leave its outcome in `bankSyncSummary`. The button-shaped
-    /// entry point — `syncBankAccounts` is the one that throws.
+    /// Run a sync and leave its outcome in `bankSyncNotice`, or in
+    /// `bankSyncSummary` when something went wrong. The button-shaped entry
+    /// point — `syncBankAccounts` is the one that throws.
     func runBankSync(accountIds: [String] = []) async {
         // A tap that lands while a sync is already running does nothing — the
         // running sync posts its own summary, which would otherwise be
         // clobbered by this call's empty one.
         guard !isBankSyncing else { return }
         do {
-            bankSyncSummary = try await syncBankAccounts(accountIds: accountIds).summary
+            let result = try await syncBankAccounts(accountIds: accountIds)
+            if result.problems.isEmpty {
+                showBankSyncNotice(BankSyncNotice(
+                    // One line: the toast is a capsule.
+                    text: result.summary.replacingOccurrences(of: "\n\n", with: " "),
+                    offersReview: result.importedTransactions.contains { unreviewedTransactions[$0.id] != nil }
+                ))
+            } else {
+                bankSyncSummary = result.summary
+            }
         } catch {
             bankSyncSummary = error.localizedDescription
         }
@@ -4886,14 +4997,23 @@ final class BudgetStore: ObservableObject {
         let walletLinks = Dictionary(
             uniqueKeysWithValues: localLinks.map { ($0.accountId, $0.externalAccountId) }
         )
+        func stamped(_ linked: [BankSyncAccount]) async -> [BankSyncAccount] {
+            let stamps = await (try? database.fetchBankSyncStamps()) ?? [:]
+            return linked.map {
+                var account = $0
+                account.lastSync = stamps[$0.id]?.lastSync
+                account.status = stamps[$0.id]?.status
+                return account
+            }
+        }
         guard !walletLinks.isEmpty else {
+            let result = await stamped(synced)
             guard isCurrentRequest() else { return nil }
-            return synced
+            return result
         }
         let syncedById = Dictionary(uniqueKeysWithValues: synced.map { ($0.id, $0) })
         let budgetAccounts = await (try? database.fetchAccounts()) ?? fallbackAccounts ?? accounts
-        guard isCurrentRequest() else { return nil }
-        return budgetAccounts.compactMap { account in
+        let result = await stamped(budgetAccounts.compactMap { account in
             if let linked = syncedById[account.id] {
                 return linked
             }
@@ -4906,7 +5026,9 @@ final class BudgetStore: ObservableObject {
                 offBudget: account.offBudget,
                 closed: account.closed
             )
-        }
+        })
+        guard isCurrentRequest() else { return nil }
+        return result
     }
 
     /// The bank feed an account is wired up to, if any.
@@ -5076,8 +5198,10 @@ final class BudgetStore: ObservableObject {
         // Nothing may suspend between the isBankSyncing guard above and this
         // write — an await in that window would let a second call slip past
         // the guard and import everything twice.
-        isBankSyncing = true
-        defer { isBankSyncing = false }
+        bankSyncingAccountIds = Set((simpleFinTargets + walletTargets).map(\.id))
+        defer { bankSyncingAccountIds = [] }
+        // An account's first download is its history, not news.
+        let firstSyncAccountIds = Set(linked.filter { $0.lastSync == nil }.map(\.id))
 
         var result = BankSyncResult()
 
@@ -5310,6 +5434,7 @@ final class BudgetStore: ObservableObject {
         // failing the sync over — the transactions are already in.
         try? await syncClient.recordBankSyncStatus(statuses)
 
+        markUnreviewed(result.importedTransactions.filter { !firstSyncAccountIds.contains($0.accountId) })
         await refreshDataOnly()
         return result
     }
