@@ -154,7 +154,7 @@ struct ContextMenuHost: UIViewRepresentable {
         func contextMenuInteraction(
             _ interaction: UIContextMenuInteraction,
             willDisplayMenuFor configuration: UIContextMenuConfiguration,
-            animator: UIContextMenuInteractionAnimating?
+            animator: (any UIContextMenuInteractionAnimating)?
         ) {
             onLift(true)
         }
@@ -162,7 +162,7 @@ struct ContextMenuHost: UIViewRepresentable {
         func contextMenuInteraction(
             _ interaction: UIContextMenuInteraction,
             willEndFor configuration: UIContextMenuConfiguration,
-            animator: UIContextMenuInteractionAnimating?
+            animator: (any UIContextMenuInteractionAnimating)?
         ) {
             guard let animator else { return onLift(false) }
             animator.addCompletion { self.onLift(false) }
