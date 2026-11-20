@@ -5910,6 +5910,11 @@ final class BudgetStore: ObservableObject {
                     )
                 }
             } catch {
+                // The import writes in one transaction, so a failure left these
+                // out of the budget. The queue dropped them before the write.
+                let waiting = Set(stagedBankTransactions.map(\.id))
+                stagedBankTransactions = (stagedBankTransactions + staged.filter { !waiting.contains($0.id) })
+                    .sorted { ($0.date, $0.id) > ($1.date, $1.id) }
                 firstError = firstError ?? error
             }
         }

@@ -1612,6 +1612,55 @@ struct BudgetStoreBankSyncTests {
         #expect(try importedRows(url).count == 1)
     }
 
+    @Test func approvingMatchesATransactionEnteredInTheMeantime() async throws {
+        let (database, url) = try await makeDatabase(seedTransactions: true)
+        defer { cleanup(url) }
+        let (store, cleanUp) = try await makeStagingStore(database: database, transactions: """
+        {"id": "sf-later", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Later"}
+        """)
+        defer { cleanUp() }
+        _ = try await store.syncBankAccounts(stageNew: true)
+        let held = try #require(store.stagedBankTransactions.first)
+        let accountId = Self.accountId
+        let day = Self.expectedDay(2)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            INSERT INTO transactions (id, acct, date, amount, cleared, tombstone, sort_order)
+            VALUES ('tx-by-hand', ?, ?, -1200, 0, 0, 2)
+            """, arguments: [accountId, day])
+        }
+
+        try await store.approveStagedBankTransactions([held])
+
+        #expect(store.stagedBankTransactions.isEmpty)
+        let imported = try importedRows(url)
+        #expect(imported.count == 1)
+        #expect(imported.first?["id"] == "tx-by-hand")
+    }
+
+    @Test func aFailedApprovalLeavesTheTransactionWaiting() async throws {
+        let (database, url) = try await makeDatabase(seedTransactions: true)
+        defer { cleanup(url) }
+        let (store, cleanUp) = try await makeStagingStore(database: database, transactions: """
+        {"id": "sf-stuck", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Stuck"}
+        """)
+        defer { cleanUp() }
+        _ = try await store.syncBankAccounts(stageNew: true)
+        let held = try #require(store.stagedBankTransactions.first)
+        // Unlinked elsewhere after the store loaded its links, so the write fails.
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "UPDATE accounts SET account_id = NULL WHERE id = ?", arguments: [accountId])
+        }
+
+        await #expect(throws: (any Error).self) {
+            try await store.approveStagedBankTransactions([held])
+        }
+
+        #expect(store.stagedBankTransactions == [held])
+        #expect(try importedRows(url).isEmpty)
+    }
+
     @Test func anAccountsFirstDownloadIsImportedEvenWithApprovalOn() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }

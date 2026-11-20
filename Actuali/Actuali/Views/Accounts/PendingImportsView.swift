@@ -79,8 +79,8 @@ struct PendingImportsView: View {
                                 get: { tab },
                                 set: { pickedTab = $0 }
                             )) {
-                                Text("\(String(localized: "To Approve")) \(approvalCount)").tag(Tab.toApprove)
-                                Text("\(String(localized: "Imported")) \(importedCount)").tag(Tab.imported)
+                                Text(verbatim: "\(String(localized: "To Approve")) \(approvalCount)").tag(Tab.toApprove)
+                                Text(verbatim: "\(String(localized: "Imported")) \(importedCount)").tag(Tab.imported)
                             }
                             .pickerStyle(.segmented)
                             .padding(.horizontal)
@@ -98,7 +98,7 @@ struct PendingImportsView: View {
                                     if isProcessing {
                                         ProgressView()
                                     } else {
-                                        Text("\(String(localized: "Approve All")) (\(approvalCount))")
+                                        Text(verbatim: "\(String(localized: "Approve All")) (\(approvalCount))")
                                             .fontWeight(.semibold)
                                     }
                                 }
@@ -170,6 +170,7 @@ struct PendingImportsView: View {
                     ApprovalRow(
                         rejectTitle: "Dismiss",
                         rejectIdentifier: "review.dismiss.\(item.id)",
+                        approveIdentifier: "review.approve.\(item.id)",
                         isDisabled: isProcessing,
                         onApprove: { approve(item) },
                         onReject: { dismissImport(item) }
@@ -187,6 +188,7 @@ struct PendingImportsView: View {
                     ApprovalRow(
                         rejectTitle: "Reject",
                         rejectIdentifier: "review.reject.\(item.importedId)",
+                        approveIdentifier: "review.approve.\(item.importedId)",
                         isDisabled: isProcessing,
                         onApprove: { approveStaged([item]) },
                         onReject: { budgetStore.rejectStagedBankTransactions([item]) }
@@ -630,6 +632,7 @@ private struct PendingImportEditView: View {
 private struct ApprovalRow<Content: View>: View {
     let rejectTitle: LocalizedStringKey
     let rejectIdentifier: String
+    let approveIdentifier: String
     let isDisabled: Bool
     let onApprove: () -> Void
     let onReject: () -> Void
@@ -656,6 +659,7 @@ private struct ApprovalRow<Content: View>: View {
                     .background(Color.accentColor, in: Circle())
             }
             .accessibilityLabel("Approve")
+            .accessibilityIdentifier(approveIdentifier)
         }
         .font(.footnote.weight(.bold))
         .buttonStyle(.plain)
