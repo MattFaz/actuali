@@ -4438,7 +4438,7 @@ final class BudgetDatabase: Sendable {
         openingUpdate: BankSyncOpeningUpdate?,
         expectedLink: ExpectedBankSyncLink,
         rulesFingerprint: BankSyncRulesFingerprint
-    ) throws -> (updatedCount: Int, inserted: [Transaction], messages: [CRDTMessage]) {
+    ) throws -> (updatedIds: Set<String>, inserted: [Transaction], messages: [CRDTMessage]) {
         try dbQueue.write { db in
             if try Self.rulesFingerprint(db) != rulesFingerprint {
                 throw BankSyncDatabaseError.bankSyncRulesChanged
@@ -4553,7 +4553,7 @@ final class BudgetDatabase: Sendable {
                 }
                 allMessages += try Self.insertMessageRows(db, openingUpdate.messages)
             }
-            return (appliedIds.count, inserted, allMessages)
+            return (appliedIds, inserted, allMessages)
         }
     }
 

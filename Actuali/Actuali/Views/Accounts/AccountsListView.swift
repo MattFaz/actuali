@@ -957,7 +957,7 @@ struct AccountsListView: View {
                 }
                 // One way in for everything waiting to be looked at: imports to
                 // approve and what this device's bank sync brought in.
-                let pendingCount = pendingImportStore.count
+                let pendingCount = pendingImportStore.count + budgetStore.stagedBankTransactions.count
                 let newCount = budgetStore.unreviewedTransactions.count
                 if pendingCount + newCount > 0, !isReordering {
                     ToolbarItem(placement: .primaryAction) {
