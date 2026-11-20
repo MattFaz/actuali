@@ -1,8 +1,27 @@
 import AppIntents
+import Foundation
 
 struct CategoryEntity: AppEntity, Identifiable {
     let id: String
     let name: String
+
+    private static let separator = "|"
+
+    static func scopedID(budgetID: String, categoryID: String) -> String {
+        "\(budgetID)\(separator)\(categoryID)"
+    }
+
+    static func categoryID(
+        from entityID: String,
+        budgetID: String,
+        allowLegacyID: Bool
+    ) -> String? {
+        if let range = entityID.range(of: separator) {
+            guard String(entityID[..<range.lowerBound]) == budgetID else { return nil }
+            return String(entityID[range.upperBound...])
+        }
+        return allowLegacyID ? entityID : nil
+    }
 
     static let typeDisplayRepresentation = TypeDisplayRepresentation(
         name: LocalizedStringResource("Category")
@@ -16,19 +35,64 @@ struct CategoryEntity: AppEntity, Identifiable {
 }
 
 struct CategoryEntityQuery: EntityQuery {
+    @IntentParameterDependency<LogTransactionIntent>(\.$budget) var intent
+
+    @MainActor
+    private func selectedBudget() async -> (localID: String, scopeID: String)? {
+        let store = BudgetStore.shared
+        if let selectedBudget = intent?.budget {
+            guard let localID = try? await store.localBudgetIDForIntent(selectedBudget.id) else {
+                return nil
+            }
+            return (localID, selectedBudget.id)
+        }
+        guard !(store.isConnected && store.currentBudgetId == DemoDataSeeder.budgetId),
+              let currentBudgetID = store.currentBudgetId else {
+            return nil
+        }
+        return (currentBudgetID, currentBudgetID)
+    }
+
     @MainActor
     func entities(for identifiers: [CategoryEntity.ID]) async throws -> [CategoryEntity] {
-        let categories = await BudgetStore.shared.categoriesForIntent()
-        let byId = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
-        return identifiers.compactMap { id in
-            byId[id].map { CategoryEntity(id: $0.id, name: $0.name) }
+        let store = BudgetStore.shared
+        guard let selection = await selectedBudget() else { return [] }
+        let scoped = intent?.budget != nil
+        let categories = await store.categoriesForIntent(in: selection.localID)
+        let requestedIDs = Set(identifiers.compactMap { identifier in
+            CategoryEntity.categoryID(
+                from: identifier, budgetID: selection.scopeID, allowLegacyID: !scoped
+            ) ?? (scoped && selection.scopeID != selection.localID
+                ? CategoryEntity.categoryID(
+                    from: identifier, budgetID: selection.localID, allowLegacyID: false
+                )
+                : nil)
+        })
+        return categories.compactMap { category in
+            guard requestedIDs.contains(category.id) else { return nil }
+            return CategoryEntity(
+                id: scoped
+                    ? CategoryEntity.scopedID(budgetID: selection.scopeID, categoryID: category.id)
+                    : category.id,
+                name: category.name
+            )
         }
     }
 
     @MainActor
     func suggestedEntities() async throws -> [CategoryEntity] {
-        await BudgetStore.shared.categoriesForIntent()
+        let store = BudgetStore.shared
+        guard let selection = await selectedBudget() else { return [] }
+        let scoped = intent?.budget != nil
+        return await store.categoriesForIntent(in: selection.localID)
             .filter { !$0.hidden }
-            .map { CategoryEntity(id: $0.id, name: $0.name) }
+            .map { category in
+                CategoryEntity(
+                    id: scoped
+                        ? CategoryEntity.scopedID(budgetID: selection.scopeID, categoryID: category.id)
+                        : category.id,
+                    name: category.name
+                )
+            }
     }
 }
