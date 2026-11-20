@@ -1495,6 +1495,37 @@ struct BudgetStoreBankSyncTests {
         #expect(store.unreviewedTransactions.isEmpty)
     }
 
+    @Test func switchingBudgetsKeepsEachBudgetsMatchNotes() async throws {
+        let (database, url) = try await makeDatabase(seedTransactions: true)
+        defer { cleanup(url) }
+        try await markAlreadySynced(database)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+        {"id": "sf-match", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+        """))
+        let previousBudgetId = store.currentBudgetId
+        let budgetId = "matched-\(UUID().uuidString)"
+        let otherBudgetId = "matched-\(UUID().uuidString)"
+        // The other budget has a match note of its own waiting.
+        UserDefaults.standard.set(["tx-other": "acct-other"], forKey: "unreviewedTransactions.\(otherBudgetId)")
+        UserDefaults.standard.set(["tx-other"], forKey: "matchedTransactions.\(otherBudgetId)")
+        store.currentBudgetId = budgetId
+        defer {
+            store.currentBudgetId = previousBudgetId
+            for id in [budgetId, otherBudgetId] {
+                UserDefaults.standard.removeObject(forKey: "unreviewedTransactions.\(id)")
+                UserDefaults.standard.removeObject(forKey: "matchedTransactions.\(id)")
+            }
+        }
+        store.markAllReviewed()
+        _ = try await store.syncBankAccounts()
+        #expect(store.matchedTransactionIds == ["tx-manual"])
+
+        store.currentBudgetId = otherBudgetId
+        #expect(store.matchedTransactionIds == ["tx-other"])
+        store.currentBudgetId = budgetId
+        #expect(store.matchedTransactionIds == ["tx-manual"])
+    }
+
     @Test func matchesOnAnAccountsFirstDownloadAreNotMarked() async throws {
         let (database, url) = try await makeDatabase(seedTransactions: true)
         defer { cleanup(url) }
@@ -1659,6 +1690,25 @@ struct BudgetStoreBankSyncTests {
 
         #expect(store.stagedBankTransactions == [held])
         #expect(try importedRows(url).isEmpty)
+    }
+
+    @Test func aHeldRowTheBankStopsSendingLeavesTheQueue() async throws {
+        let (database, url) = try await makeDatabase(seedTransactions: true)
+        defer { cleanup(url) }
+        let (store, cleanUp) = try await makeStagingStore(database: database, transactions: """
+        {"id": "sf-pending", "posted": \(Self.daysAgo(3)), "amount": "-12.00", "payee": "Bakery"}
+        """)
+        defer { cleanUp() }
+        _ = try await store.syncBankAccounts(stageNew: true)
+        #expect(store.stagedBankTransactions.map(\.importedId) == ["sf-pending"])
+
+        // The charge posted under a new id, so the pending one is gone.
+        store.setSimpleFINClientForTesting(SimpleFINClient(session: bridgeSession(body: accountSet(transactions: """
+        {"id": "sf-posted", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Bakery"}
+        """))))
+        _ = try await store.syncBankAccounts(stageNew: true)
+
+        #expect(store.stagedBankTransactions.map(\.importedId) == ["sf-posted"])
     }
 
     @Test func anAccountsFirstDownloadIsImportedEvenWithApprovalOn() async throws {

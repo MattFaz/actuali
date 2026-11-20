@@ -3876,7 +3876,7 @@
       }
     },
     "Reject" : {
-      "comment" : "Swipe action that turns down a bank transaction waiting for approval",
+      "comment" : "Button that turns down a bank transaction waiting for approval",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
@@ -45149,6 +45149,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fonte de financiamento"
+          }
+        }
+      }
+    },
+    "Future bank syncs won't import this transaction." : {
+      "comment" : "Asks before rejecting a bank transaction waiting for approval; a rejected one is never imported again",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Künftige Banksynchronisierungen importieren diese Transaktion nicht."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Future bank syncs won't import this transaction."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las próximas sincronizaciones bancarias no importarán esta transacción."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les prochaines synchronisations bancaires n’importeront pas cette transaction."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le prossime sincronizzazioni bancarie non importeranno questa transazione."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toekomstige banksynchronisaties importeren deze transactie niet."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As próximas sincronizações bancárias não importarão esta transação."
           }
         }
       }

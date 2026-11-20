@@ -189,6 +189,7 @@ struct PendingImportsView: View {
                         rejectTitle: "Reject",
                         rejectIdentifier: "review.reject.\(item.importedId)",
                         approveIdentifier: "review.approve.\(item.importedId)",
+                        rejectConfirmation: "Future bank syncs won't import this transaction.",
                         isDisabled: isProcessing,
                         onApprove: { approveStaged([item]) },
                         onReject: { budgetStore.rejectStagedBankTransactions([item]) }
@@ -350,7 +351,9 @@ struct PendingImportsView: View {
             do {
                 try await budgetStore.approveStagedBankTransactions(staged)
             } catch {
-                failedCount += budgetStore.stagedBankTransactions.count
+                // What is still waiting failed; the rest went in or matched.
+                let waiting = Set(budgetStore.stagedBankTransactions.map(\.id))
+                failedCount += staged.count { waiting.contains($0.id) }
             }
             for item in items {
                 do {
@@ -633,10 +636,13 @@ private struct ApprovalRow<Content: View>: View {
     let rejectTitle: LocalizedStringKey
     let rejectIdentifier: String
     let approveIdentifier: String
+    /// Asked before rejecting, when rejecting can't be taken back.
+    var rejectConfirmation: LocalizedStringKey?
     let isDisabled: Bool
     let onApprove: () -> Void
     let onReject: () -> Void
     @ViewBuilder let content: Content
+    @State private var isConfirmingReject = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -644,7 +650,13 @@ private struct ApprovalRow<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             // One accent, not red against green: approving is the expected
             // answer, so it is the filled one.
-            Button(action: onReject) {
+            Button {
+                if rejectConfirmation == nil {
+                    onReject()
+                } else {
+                    isConfirmingReject = true
+                }
+            } label: {
                 Image(systemName: "xmark")
                     .foregroundStyle(.secondary)
                     .frame(width: 34, height: 34)
@@ -652,6 +664,11 @@ private struct ApprovalRow<Content: View>: View {
             }
             .accessibilityLabel(rejectTitle)
             .accessibilityIdentifier(rejectIdentifier)
+            .confirmationDialog(
+                rejectConfirmation ?? "", isPresented: $isConfirmingReject, titleVisibility: .visible
+            ) {
+                Button(rejectTitle, role: .destructive, action: onReject)
+            }
             Button(action: onApprove) {
                 Image(systemName: "checkmark")
                     .foregroundStyle(.white)

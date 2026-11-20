@@ -383,11 +383,10 @@ final class BudgetStore: ObservableObject {
                 depositConfigs = [:]
                 cardAccountMappings = [:]
                 excludedFromSpentCategoryIds = Self.loadExcludedFromSpentCategoryIds(for: currentBudgetId)
-                // Before the marks: their didSet trims this to the ids still marked.
-                matchedTransactionIds = []
+                // Read before either write: both didSets save under the new id.
+                let matched = Self.loadMatchedTransactionIds(for: currentBudgetId)
                 unreviewedTransactions = Self.loadUnreviewedTransactions(for: currentBudgetId)
-                matchedTransactionIds = Self.loadMatchedTransactionIds(for: currentBudgetId)
-                    .intersection(unreviewedTransactions.keys)
+                matchedTransactionIds = matched.intersection(unreviewedTransactions.keys)
                 stagedBankTransactions = Self.loadStagedBankTransactions(for: currentBudgetId)
                 rejectedBankImportIds = Self.loadRejectedBankImportIds(for: currentBudgetId)
             }
@@ -5664,7 +5663,7 @@ final class BudgetStore: ObservableObject {
         )
         let staged = settleStagedBankTransactions(
             plan: &plan, download: download, candidates: candidates,
-            target: target,
+            target: target, startingDay: startingDay,
             // An account's first download is its history and sets its opening
             // balance from what it inserts, so it is never held back.
             staging: staging == .holdNew && existingOldestDay == nil ? .importAll : staging
@@ -5830,6 +5829,7 @@ final class BudgetStore: ObservableObject {
         download: BankSyncDownload,
         candidates: [BankSyncCandidate],
         target: BankSyncAccount,
+        startingDay: Int,
         staging: BankSyncStaging
     ) -> Int {
         // Turned down once is turned down for good, whatever the setting is now.
@@ -5837,16 +5837,24 @@ final class BudgetStore: ObservableObject {
         plan.inserts.removeAll { rejected.contains($0.importedId) }
         let newIds = Set(plan.inserts.map(\.importedId))
         let downloadedIds = Set(candidates.map(\.importedId))
+        // A complete download lists everything the bank still has from
+        // `startingDay` on; an approval replays the queue, not the bank.
+        let complete = staging != .approving && download.status == "ok" && download.accountDataReceived
+        let sentIds = Set(download.candidates.map(\.importedId))
 
         var queue = stagedBankTransactions
         let waitingBefore = Set(queue.filter { $0.accountId == target.id }.map(\.importedId))
         // Gone from the queue: what the bank voided, what has since matched a
-        // transaction the budget has, and what is being inserted right now.
+        // transaction the budget has, what is being inserted right now, and
+        // what the bank stopped sending inside the stretch it covers. That
+        // last is most often a pending charge that posted under a new id;
+        // kept, approving both copies would import the charge twice.
         queue.removeAll {
             $0.accountId == target.id && (
                 download.rejectedIds.contains($0.importedId)
                     || (downloadedIds.contains($0.importedId) && !newIds.contains($0.importedId))
                     || (staging != .holdNew && newIds.contains($0.importedId))
+                    || (complete && $0.date > startingDay && !sentIds.contains($0.importedId))
             )
         }
         var newlyWaiting = 0
@@ -5868,7 +5876,7 @@ final class BudgetStore: ObservableObject {
         // ponytail: a rejected id is remembered until the bank stops sending
         // it, read off complete downloads only. A feed that drops a row and
         // later brings it back would offer it again.
-        if staging != .approving, download.status == "ok", download.accountDataReceived, !rejected.isEmpty {
+        if complete, !rejected.isEmpty {
             let stillSent = rejected.intersection(download.candidates.map(\.importedId))
             rejectedBankImportIds[target.id] = stillSent.isEmpty ? nil : stillSent
         }
