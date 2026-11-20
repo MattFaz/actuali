@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Value-based routes for the phone stack. Typed rather than a
 /// `NavigationPath` so a notification tap can reset the stack onto All
@@ -1539,6 +1540,9 @@ struct AccountTypeAvatar: View {
     var hasLoan: Bool = false
     var hasDeposit: Bool = false
     var hasCreditCard: Bool = false
+    var customSymbol: String?
+    var customTintHex: String?
+    var customImage: UIImage?
 
     // ponytail: icon derived from account.type and active configs only.
     // Ceiling: no vehicle/personal split for loans. Upgrade path: store
@@ -1603,7 +1607,7 @@ struct AccountTypeAvatar: View {
     }
 
     var body: some View {
-        let color = Self.iconColor(
+        let color = customTintHex.flatMap { Color(hex: $0) } ?? Self.iconColor(
             for: account.type,
             hasDeposit: hasDeposit,
             hasLoan: hasLoan,
@@ -1612,14 +1616,22 @@ struct AccountTypeAvatar: View {
         )
         ZStack {
             Circle().fill(color.opacity(0.18))
-            Image(systemName: Self.icon(
-                for: account.type,
-                hasDeposit: hasDeposit,
-                hasLoan: hasLoan,
-                hasCreditCard: hasCreditCard
-            ))
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(color)
+            if let customImage {
+                Image(uiImage: customImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+            } else {
+                Image(systemName: customSymbol ?? Self.icon(
+                    for: account.type,
+                    hasDeposit: hasDeposit,
+                    hasLoan: hasLoan,
+                    hasCreditCard: hasCreditCard
+                ))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(color)
+            }
         }
         .frame(width: 36, height: 36)
     }
@@ -1666,14 +1678,30 @@ struct BankSyncBadge: View {
 
 struct AccountRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @ObservedObject private var iconStore = AccountIconCustomizationStore.shared
     let account: Account
-    @AppStorage("showAccountTypeIcons") private var showAccountTypeIcons = true
 
     @State private var isCreatingGroup = false
     @State private var isRenamingAccount = false
     @State private var newGroupName = ""
     @State private var renameName = ""
     @State private var isClosing = false
+    @State private var iconPickerMode: AccountIconPickerSheet.Mode?
+    @State private var loadedAccountIconImage: UIImage?
+
+    private var showAccountTypeIcons: Bool {
+        iconStore.iconsEnabled(for: budgetStore.currentBudgetId)
+    }
+
+    private var iconCustomization: AccountIconCustomization? {
+        iconStore.customization(for: budgetStore.currentBudgetId, accountID: account.id)
+    }
+
+    private var photoLoadID: String? {
+        guard let budgetID = budgetStore.currentBudgetId,
+              let filename = iconCustomization?.photoFilename else { return nil }
+        return "\(budgetID)|\(account.id)|\(filename)|\(iconStore.photoRevision)"
+    }
 
     /// Share of payoff or term completed (0...1), or nil when the account has no tracking.
     /// Pure so tests can exercise all combinations of loan, deposit, and credit card configs.
@@ -1718,6 +1746,16 @@ struct AccountRow: View {
 
     var body: some View {
         row
+            .task(id: photoLoadID) {
+                loadedAccountIconImage = nil
+                guard let budgetID = budgetStore.currentBudgetId,
+                      iconCustomization?.photoFilename != nil else {
+                    return
+                }
+                let image = await iconStore.loadImage(for: budgetID, accountID: account.id)
+                guard !Task.isCancelled else { return }
+                loadedAccountIconImage = image
+            }
             .contextMenu {
                 Button {
                     renameName = account.name
@@ -1727,6 +1765,22 @@ struct AccountRow: View {
                 }
                 .accessibilityIdentifier("accountRename.action")
 
+                Menu {
+                    Button {
+                        iconPickerMode = .icons
+                    } label: {
+                        Label("Icons", systemImage: "square.grid.2x2")
+                    }
+                    Button {
+                        iconPickerMode = .upload
+                    } label: {
+                        Label("Upload", systemImage: "photo")
+                    }
+                } label: {
+                    Label("Pick Icon", systemImage: "paintpalette")
+                }
+                .accessibilityIdentifier("accountRow.pickIcon.\(account.id)")
+
                 if budgetStore.accountGroupWritesEnabled {
                     groupMenu
                 }
@@ -1735,6 +1789,13 @@ struct AccountRow: View {
             }
             .sheet(isPresented: $isClosing) {
                 CloseAccountSheet(account: account)
+            }
+            .sheet(item: $iconPickerMode) { mode in
+                AccountIconPickerSheet(
+                    mode: mode,
+                    budgetID: budgetStore.currentBudgetId,
+                    account: account
+                )
             }
     }
 
@@ -1815,7 +1876,10 @@ struct AccountRow: View {
                     account: account,
                     hasLoan: hasLoan,
                     hasDeposit: hasDeposit,
-                    hasCreditCard: hasCreditCard
+                    hasCreditCard: hasCreditCard,
+                    customSymbol: iconCustomization?.symbolName,
+                    customTintHex: iconCustomization?.tintHex,
+                    customImage: loadedAccountIconImage
                 )
                 .accessibilityHidden(true)
             }

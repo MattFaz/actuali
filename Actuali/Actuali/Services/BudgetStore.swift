@@ -2687,6 +2687,7 @@ final class BudgetStore: ObservableObject {
                     try? EncryptionKeyManager.remove(fileId: fileId)
                 }
                 try? fileManager.deleteBudget(local.id)
+                AccountIconCustomizationStore.shared.clear(budgetID: local.id)
                 forgetCachedCurrencyCode(for: local.id)
                 forgetAppleWalletLinks(for: local.id)
             }
@@ -2780,6 +2781,7 @@ final class BudgetStore: ObservableObject {
         }
 
         try? fileManager.deleteBudget(local.id)
+        AccountIconCustomizationStore.shared.clear(budgetID: local.id)
         forgetCachedCurrencyCode(for: local.id)
         forgetAppleWalletLinks(for: local.id)
     }
@@ -3258,6 +3260,9 @@ final class BudgetStore: ObservableObject {
             cardAccountMappings = fetchedCardMappings.merging(legacyCardMappings) { synced, _ in synced }
 
             accounts = fetchedAccounts
+            AccountIconCustomizationStore.shared.prune(
+                accounts: Set(fetchedAccounts.map(\.id)), budgetID: budgetId
+            )
             accountGroups = fetchedAccountGroups
             // Let observers establish their baseline before the transaction
             // publication is visible as a user change.

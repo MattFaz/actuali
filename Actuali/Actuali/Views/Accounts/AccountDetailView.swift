@@ -1,7 +1,9 @@
 import SwiftUI
+import UIKit
 
 struct AccountDetailView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @ObservedObject private var accountIconStore = AccountIconCustomizationStore.shared
     let account: Account
 
     @State private var pager: TransactionPager?
@@ -10,6 +12,7 @@ struct AccountDetailView: View {
     /// under state that was scoped to the previous one.
     @State private var pagerAccountId: String?
     @State private var breakdown: AccountBalanceBreakdown?
+    @State private var loadedAccountIconImage: UIImage?
     @State private var showingBreakdown = false
     @State private var showingBillingCycle = false
     @State private var showingLoanDetails = false
@@ -72,6 +75,13 @@ struct AccountDetailView: View {
             statusFilter: budgetStore.transactionStatusFilter,
             cycle: budgetStore.activeCreditCardCycle(for: account.id)
         )
+    }
+
+    private var accountIconPhotoLoadID: String? {
+        guard let budgetID = budgetStore.currentBudgetId,
+              let filename = accountIconStore.customization(for: budgetID, accountID: account.id)?.photoFilename
+        else { return nil }
+        return "\(budgetID)|\(account.id)|\(filename)|\(accountIconStore.photoRevision)"
     }
 
     private var statementDue: CreditCardCycle.StatementDue? {
@@ -1040,7 +1050,17 @@ struct AccountDetailView: View {
         .contentMargins(.top, 8, for: .scrollContent)
         .listSectionSpacing(.compact)
         .readableWidth()
-        .navigationTitle(account.name)
+        .navigationTitle("")
+        .task(id: accountIconPhotoLoadID) {
+            loadedAccountIconImage = nil
+            guard let budgetID = budgetStore.currentBudgetId,
+                  accountIconStore.customization(for: budgetID, accountID: account.id)?.photoFilename != nil else {
+                return
+            }
+            let image = await accountIconStore.loadImage(for: budgetID, accountID: account.id)
+            guard !Task.isCancelled else { return }
+            loadedAccountIconImage = image
+        }
         .onDemandSearch(
             text: $searchText,
             isPresented: $isTransactionSearchActive,
@@ -1049,6 +1069,28 @@ struct AccountDetailView: View {
             accessibilityPrefix: "accountDetails"
         )
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 8) {
+                    if accountIconStore.iconsEnabled(for: budgetStore.currentBudgetId) {
+                        let customization = accountIconStore.customization(
+                            for: budgetStore.currentBudgetId, accountID: account.id
+                        )
+                        AccountTypeAvatar(
+                            account: account,
+                            hasLoan: budgetStore.activeLoanConfig(for: account.id) != nil,
+                            hasDeposit: budgetStore.activeDepositConfig(for: account.id) != nil,
+                            hasCreditCard: budgetStore.activeCreditCardCycle(for: account.id) != nil,
+                            customSymbol: customization?.symbolName,
+                            customTintHex: customization?.tintHex,
+                            customImage: loadedAccountIconImage
+                        )
+                    }
+                    Text(account.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .combine)
+            }
             accountToolbarContent
             runningBalanceToolbarItem
         }
