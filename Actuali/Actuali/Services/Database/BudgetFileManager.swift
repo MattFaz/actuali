@@ -27,7 +27,7 @@ enum BudgetFileError: LocalizedError {
     }
 }
 
-struct BudgetMetadata: Codable {
+struct BudgetMetadata: Codable, Sendable {
     let id: String
     let budgetName: String?
     let cloudFileId: String?
@@ -35,6 +35,11 @@ struct BudgetMetadata: Codable {
     let resetClock: Bool?
     let lastUploaded: String?
     let encryptKeyId: String?
+
+    /// Restored cloud copies have no valid sync group until re-downloaded.
+    var canWriteToLocally: Bool {
+        cloudFileId == nil || groupId?.isEmpty == false
+    }
 }
 
 /// Immutable singleton: both stored properties are `let`, and FileManager.default

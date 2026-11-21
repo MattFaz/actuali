@@ -1674,10 +1674,28 @@ final class BudgetStore: ObservableObject {
     // MARK: - Private
 
     private var serverClient = ActualServerClient()
+    private var savedSessionTask: Task<Void, Never>?
+    private let intentWriterRegistry = BudgetTransactionWriterRegistry()
     private var diagnosticLog = DiagnosticLog.shared
     private var fileManager = BudgetFileManager.shared
+    /// The budget currently held by the published database and sync client.
+    /// currentBudgetId can change before its load completes, so it must not
+    /// decide whether the singleton connection is ready for a write.
+    private var loadedBudgetId: String?
+    /// Counts loads because refreshes and budget switches can overlap for one id.
+    private var budgetLoadCounts: [String: Int] = [:]
+    /// Budget files being replaced by a restore. Shortcuts must not reopen them
+    /// between releasing the old connection and publishing the restored one.
+    private var budgetFileReplacementsInProgress: Set<String> = []
+    /// Identity of the file currently assigned to database, including the
+    /// interval where its initial cache and SyncClient are still loading.
+    private var databaseBudgetId: String?
+
     private var database: BudgetDatabase? {
         didSet {
+            if database == nil {
+                databaseBudgetId = nil
+            }
             // The cached poster holds the database strongly; drop it whenever
             // the database identity changes so `database = nil` before a
             // re-import (downloadBudget) actually closes the GRDB connection.
@@ -1843,27 +1861,398 @@ final class BudgetStore: ObservableObject {
     /// in-flight load here (or start one if none is running) so the write path
     /// sees a fully configured store.
     func ensureBudgetReady() async {
-        if syncClient != nil {
+        guard let budgetId = currentBudgetId,
+              fileManager.budgetExists(budgetId),
+              !budgetFileReplacementsInProgress.contains(budgetId)
+        else { return }
+        if budgetLoadCounts[budgetId, default: 0] > 0 {
+            if let loadTask {
+                await loadTask.value
+            }
+            return
+        }
+        if loadedBudgetId == budgetId, database != nil, syncClient != nil {
             return
         }
         if let loadTask {
             await loadTask.value
-            // A completed load that produced no database *failed* — e.g. a
-            // transient SQLITE_BUSY when a cold headless launch raced the
-            // entity query's temporary connection (actios-tq4w). Never cache
-            // that failure for the process lifetime: fall through and retry,
-            // so every automation run gets a fresh attempt.
-            if database != nil {
+            // A completed load can belong to a budget that was switched away
+            // from while this caller was suspended. Only its matching writer
+            // makes this intent ready.
+            if currentBudgetId == budgetId, loadedBudgetId == budgetId,
+               database != nil, syncClient != nil {
                 return
             }
         }
-        // No in-flight load (e.g. a freshly spawned headless process where the
-        // init() Task hasn't been retained), or the last load failed. Start a
-        // fresh one and await it.
-        guard let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) else { return }
+        // A regular budget switch may be midway through opening this file;
+        // let that load finish rather than start a second connection to it.
+        if databaseBudgetId == budgetId {
+            return
+        }
+        guard currentBudgetId == budgetId else { return }
         let task = Task { await loadLocalBudget(budgetId) }
         loadTask = task
         await task.value
+    }
+
+    /// Resolve a shortcut's stable budget identifier to the local metadata ID
+    /// used by SQLite. A server-only budget is downloaded without changing selection.
+    func localBudgetIDForIntent(_ identifier: String) async throws -> String {
+        await ensureSavedSessionReady()
+        guard !(isConnected && identifier == DemoDataSeeder.budgetId) else {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
+
+        let localBudgets = fileManager.listLocalBudgets()
+        let candidates = localBudgets.filter {
+            $0.id == identifier || $0.cloudFileId == identifier
+        }
+        let local = candidates.first {
+            $0.cloudFileId == identifier
+                && fileManager.budgetExists($0.id)
+                && $0.canWriteToLocally
+        } ?? candidates.first {
+            $0.id == identifier
+                && fileManager.budgetExists($0.id)
+                && $0.canWriteToLocally
+        } ?? candidates.first
+        if let local, !local.canWriteToLocally {
+            // A restored copy contains local-only data. Only an explicit re-download
+            // from the app may replace it with the older server snapshot.
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
+        let fileID = local?.cloudFileId ?? identifier
+        if let local, fileManager.budgetExists(local.id), local.canWriteToLocally {
+            let encrypted = local.encryptKeyId != nil
+                || remoteBudgets.first(where: { $0.id == fileID })?.isEncrypted == true
+            if encrypted, EncryptionKeyManager.load(fileId: fileID) == nil {
+                throw TransactionLogger.LoggerError.noBudgetLoaded
+            }
+            // If a previous headless download failed its first sync, its
+            // snapshot may be stale. Resume catch-up before using it.
+            let initialSyncKey = Self.intentInitialSyncKey(for: fileID)
+            if UserDefaults.standard.bool(forKey: initialSyncKey) {
+                let writer = try await transactionWriter(for: local.id)
+                let caughtUp = await writer.catchUpDownloadedBudget()
+                await releaseTransactionWriter(for: local.id)
+                guard caughtUp else {
+                    throw TransactionLogger.LoggerError.noBudgetLoaded
+                }
+                UserDefaults.standard.removeObject(forKey: initialSyncKey)
+            }
+            return local.id
+        }
+
+        guard isConnected else { throw TransactionLogger.LoggerError.noBudgetLoaded }
+        // The local path above needs no network. A missing remote file needs
+        // just one list request, not two back-to-back requests.
+        await fetchRemoteBudgets()
+        guard let remote = remoteBudgets.first(where: { $0.id == fileID }),
+              remote.groupId?.isEmpty == false else {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
+        if remote.isEncrypted, EncryptionKeyManager.load(fileId: remote.id) == nil {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
+
+        let metadata = try await importRemoteBudgetForIntent(remote)
+        guard metadata.canWriteToLocally, fileManager.budgetExists(metadata.id) else {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
+        return metadata.id
+    }
+
+    /// Resolve the budget ID used by account/category references when a failure
+    /// notification is built before normal intent routing has resolved the budget.
+    func localBudgetIDForFailureNotification(_ identifier: String) async -> String? {
+        let localBudgets = fileManager.listLocalBudgets()
+        let localCopies = localBudgets.filter {
+            $0.cloudFileId == identifier && fileManager.budgetExists($0.id)
+        }
+
+        if let active = localCopies.first(where: { $0.id == loadedBudgetId || $0.id == currentBudgetId }) {
+            return active.id
+        }
+        if let local = localBudgets.first(where: {
+            $0.id == identifier && fileManager.budgetExists($0.id)
+        }) {
+            return local.id
+        }
+        if let local = localCopies.first {
+            return local.id
+        }
+
+        // Error reporting must never download or overwrite budget files.
+        return nil
+    }
+
+    private static func intentInitialSyncKey(for cloudFileID: String) -> String {
+        "shortcutInitialSync.\(cloudFileID)"
+    }
+
+    private var intentBudgetDownloads: [String: Task<BudgetMetadata, any Error>] = [:]
+
+    private func importRemoteBudgetForIntent(_ remote: RemoteBudget) async throws -> BudgetMetadata {
+        if let task = intentBudgetDownloads[remote.id] {
+            return try await task.value
+        }
+        let task = Task { try await self.downloadRemoteBudgetForIntent(remote) }
+        intentBudgetDownloads[remote.id] = task
+        do {
+            let metadata = try await task.value
+            intentBudgetDownloads[remote.id] = nil
+            return metadata
+        } catch {
+            intentBudgetDownloads[remote.id] = nil
+            throw error
+        }
+    }
+
+    private func downloadRemoteBudgetForIntent(_ remote: RemoteBudget) async throws -> BudgetMetadata {
+        var zipData = try await serverClient.downloadFile(fileId: remote.id)
+        if remote.isEncrypted {
+            guard let key = EncryptionKeyManager.load(fileId: remote.id) else {
+                throw TransactionLogger.LoggerError.noBudgetLoaded
+            }
+            let info = try await serverClient.getFileInfo(fileId: remote.id)
+            guard let encryption = info.encryptMeta else {
+                throw ActualServerError.invalidResponse
+            }
+            guard encryption.keyId == key.keyId else {
+                try? EncryptionKeyManager.remove(fileId: remote.id)
+                throw TransactionLogger.LoggerError.noBudgetLoaded
+            }
+            guard let iv = encryption.iv, let authTag = encryption.authTag else {
+                throw ActualServerError.invalidResponse
+            }
+            zipData = try SyncEncryption.decrypt(
+                ciphertext: zipData,
+                ivBase64: iv,
+                authTagBase64: authTag,
+                using: key.key
+            )
+        }
+        try Task.checkCancellation()
+        let initialSyncKey = Self.intentInitialSyncKey(for: remote.id)
+        // Set before importing so even termination during initial sync cannot
+        // leave a writable but stale snapshot on the next shortcut invocation.
+        UserDefaults.standard.set(true, forKey: initialSyncKey)
+        let metadata = try await fileManager.importBudget(
+            from: zipData, fileId: remote.id, groupId: remote.groupId
+        )
+        // A downloaded snapshot can lag behind the server message log. Catch it
+        // up before the account/category picker or a shortcut write reads it.
+        let writer = try await transactionWriter(for: metadata.id)
+        let caughtUp = await writer.catchUpDownloadedBudget()
+        await releaseTransactionWriter(for: metadata.id)
+        guard caughtUp else { throw TransactionLogger.LoggerError.noBudgetLoaded }
+        UserDefaults.standard.removeObject(forKey: initialSyncKey)
+        return metadata
+    }
+
+    func accountsForIntent(in budgetId: String) async -> [Account] {
+        guard !budgetFileReplacementsInProgress.contains(budgetId) else { return [] }
+        if budgetId == loadedBudgetId {
+            return await accountsForIntent()
+        }
+        guard fileManager.budgetExists(budgetId) else { return [] }
+        do {
+            let targetDatabase = try BudgetDatabase(path: fileManager.databasePath(for: budgetId))
+            return try await targetDatabase.fetchAccounts()
+        } catch {
+            logger.error(
+                "accountsForIntent target DB failed: \(error.localizedDescription, privacy: .public)"
+            )
+            return []
+        }
+    }
+
+    func categoriesForIntent(in budgetId: String) async -> [Category] {
+        guard !budgetFileReplacementsInProgress.contains(budgetId) else { return [] }
+        if budgetId == loadedBudgetId {
+            return await categoriesForIntent()
+        }
+        guard fileManager.budgetExists(budgetId) else { return [] }
+        do {
+            let targetDatabase = try BudgetDatabase(path: fileManager.databasePath(for: budgetId))
+            let groups = try await targetDatabase.fetchCategoryGroups()
+            return groups.flatMap(\.categories)
+        } catch {
+            logger.error(
+                "categoriesForIntent target DB failed: \(error.localizedDescription, privacy: .public)"
+            )
+            return []
+        }
+    }
+
+    func resolveAccountId(hint: String, in budgetId: String) async -> String? {
+        guard !budgetFileReplacementsInProgress.contains(budgetId) else { return nil }
+        if budgetId == loadedBudgetId {
+            return await resolveAccountId(hint: hint)
+        }
+        guard fileManager.budgetExists(budgetId) else { return nil }
+        do {
+            let targetDatabase = try BudgetDatabase(path: fileManager.databasePath(for: budgetId))
+            let targetAccounts = try await targetDatabase.fetchAccounts()
+            let fetchedMappings = try await targetDatabase.fetchCardAccountMappings()
+            let savedMappings = UserDefaults.standard.dictionary(
+                forKey: "cardAccountMappings_\(budgetId)"
+            ) as? [String: String] ?? [:]
+            var legacyMappings: [String: String] = [:]
+            for (keyword, accountId) in savedMappings {
+                let cleaned = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !cleaned.isEmpty, fetchedMappings[cleaned] == nil else { continue }
+                legacyMappings[cleaned] = accountId
+            }
+            let mappings = fetchedMappings.merging(legacyMappings) { synced, _ in synced }
+            return Self.resolveAccountId(
+                hint: hint, accounts: targetAccounts, cardMappings: mappings
+            )
+        } catch {
+            logger.error(
+                "resolveAccountId target DB failed: \(error.localizedDescription, privacy: .public)"
+            )
+            return nil
+        }
+    }
+
+    func defaultAccountId(for budgetId: String) -> String? {
+        UserDefaults.standard.string(forKey: "defaultAccountId_\(budgetId)")
+    }
+
+    /// Reuse the active writer, or cache one independent CRDT writer for a
+    /// locally available non-active budget without changing currentBudgetId.
+    func transactionWriter(for budgetId: String) async throws -> BudgetTransactionWriter {
+        try await transactionWriter(for: budgetId, retriesLeft: 1)
+    }
+
+    private func transactionWriter(
+        for budgetId: String, retriesLeft: Int
+    ) async throws -> BudgetTransactionWriter {
+        await ensureSavedSessionReady()
+        if budgetId == currentBudgetId {
+            await ensureBudgetReady()
+        }
+        guard !budgetFileReplacementsInProgress.contains(budgetId),
+              budgetLoadCounts[budgetId, default: 0] == 0
+        else {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
+        // During a budget switch currentBudgetId can move before loadLocalBudget
+        // replaces the published DB. Follow the connection owner, not selection.
+        if budgetId == loadedBudgetId {
+            guard let activeDatabase = database, let activeSyncClient = syncClient else {
+                throw TransactionLogger.LoggerError.noBudgetLoaded
+            }
+            let activeCurrencyCode = currencyCode
+            let activeNumberFormat = numberFormat
+            let categoryHistory = suggestCategoryFromPayeeHistory
+            let writer = try await intentWriterRegistry.writer(for: budgetId) {
+                BudgetTransactionWriter(
+                    database: activeDatabase,
+                    syncClient: activeSyncClient,
+                    budgetId: budgetId,
+                    currencyCode: activeCurrencyCode,
+                    numberFormat: activeNumberFormat,
+                    suggestCategoryFromPayeeHistory: categoryHistory,
+                    ownsResources: false
+                )
+            }
+            // Another load may have replaced the connection while this caller
+            // waited for the registry's shared open.
+            guard loadedBudgetId == budgetId,
+                  database === activeDatabase,
+                  syncClient === activeSyncClient else {
+                await intentWriterRegistry.close(budgetId: budgetId)
+                if currentBudgetId == budgetId {
+                    await ensureBudgetReady()
+                }
+                guard !budgetFileReplacementsInProgress.contains(budgetId),
+                      retriesLeft > 0
+                else {
+                    throw TransactionLogger.LoggerError.noBudgetLoaded
+                }
+                return try await transactionWriter(for: budgetId, retriesLeft: retriesLeft - 1)
+            }
+            await writer.updatePreferences(
+                currencyCode: activeCurrencyCode,
+                numberFormat: activeNumberFormat,
+                suggestCategoryFromPayeeHistory: categoryHistory
+            )
+            return writer
+        }
+
+        // Don't open a second SyncClient while loadLocalBudget already owns
+        // this same file but hasn't finished publishing its ready snapshot.
+        if databaseBudgetId == budgetId, loadedBudgetId != budgetId {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
+        guard let metadata = fileManager.listLocalBudgets().first(where: { $0.id == budgetId }),
+              fileManager.budgetExists(budgetId) else {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
+        let fileManager = self.fileManager
+        let serverClient = self.serverClient
+        let nodeId = Self.intentSyncNodeId()
+        let categoryHistory = suggestCategoryFromPayeeHistory
+        let cachedCurrencyCode = UserDefaults.standard.string(forKey: "currencyCode.\(budgetId)")
+        let writer = try await intentWriterRegistry.writer(for: budgetId) {
+            try await BudgetTransactionWriter.open(
+                metadata: metadata,
+                fileManager: fileManager,
+                serverClient: serverClient,
+                nodeId: nodeId,
+                cachedCurrencyCode: cachedCurrencyCode,
+                suggestCategoryFromPayeeHistory: categoryHistory
+            )
+        }
+        // The user may switch to this budget while its isolated connection is
+        // opening. Let the normal load own the file instead of returning both.
+        if currentBudgetId == budgetId {
+            await intentWriterRegistry.close(budgetId: budgetId)
+            await ensureBudgetReady()
+            guard !budgetFileReplacementsInProgress.contains(budgetId),
+                  retriesLeft > 0
+            else {
+                throw TransactionLogger.LoggerError.noBudgetLoaded
+            }
+            return try await transactionWriter(for: budgetId, retriesLeft: retriesLeft - 1)
+        }
+        await writer.updatePreferences(
+            currencyCode: nil,
+            numberFormat: nil,
+            suggestCategoryFromPayeeHistory: suggestCategoryFromPayeeHistory
+        )
+        return writer
+    }
+
+    /// Release the isolated SQLite/SyncClient owner once a headless intent ends.
+    /// An active writer instead borrows the store connection and stays open.
+    func releaseTransactionWriter(for budgetId: String) async {
+        await intentWriterRegistry.release(budgetId: budgetId)
+    }
+
+    private func ensureSavedSessionReady() async {
+        #if DEBUG
+        savedSessionWaitStartedForTesting?()
+        #endif
+        if let savedSessionTask {
+            await savedSessionTask.value
+        }
+    }
+
+    func refreshAfterIntentTransaction(in budgetId: String) async {
+        guard currentBudgetId == budgetId, loadedBudgetId == budgetId else { return }
+        await refreshDataOnly()
+    }
+
+    private static func intentSyncNodeId() -> String {
+        if let saved = UserDefaults.standard.string(forKey: "nodeId") {
+            return saved
+        }
+        let generated = HybridLogicalClock.generateNodeId()
+        UserDefaults.standard.set(generated, forKey: "nodeId")
+        return generated
     }
 
     func accountsForIntent() async -> [Account] {
@@ -1965,6 +2354,9 @@ final class BudgetStore: ObservableObject {
     }
 
     private var syncClient: SyncClient?
+    /// Catch-up sync started when a loaded budget contains durable local writes.
+    /// Teardown owns this caller task as well as the SyncClient's push/retry tasks.
+    private var budgetCatchUpTask: Task<Void, Never>?
 
     var canChangeBudgetType: Bool {
         currentBudgetId != nil && syncClient != nil
@@ -1994,7 +2386,7 @@ final class BudgetStore: ObservableObject {
     /// write path awaits this via `ensureBudgetReady()`.
     private var loadTask: Task<Void, Never>?
 
-    struct RemoteBudget: Identifiable {
+    struct RemoteBudget: Identifiable, Sendable {
         let id: String
         let name: String
         let groupId: String?
@@ -2063,11 +2455,12 @@ final class BudgetStore: ObservableObject {
     /// (e.g. `saveTransaction`) can be exercised end-to-end without the
     /// file-system and server plumbing in `loadLocalBudget`.
     func configureForTesting(database: BudgetDatabase, syncClient: SyncClient) {
-        // Not the simulator's saved setting: someone trying the toggle there
-        // would otherwise hold back every import the suite expects.
+        // Keep device-level staging preferences from affecting the test fixture.
         _stagesBankImports = Published(initialValue: false)
         self.database = database
         self.syncClient = syncClient
+        loadedBudgetId = currentBudgetId
+        databaseBudgetId = currentBudgetId
         subscribeToSyncState()
     }
 
@@ -2097,6 +2490,12 @@ final class BudgetStore: ObservableObject {
     func setServerClientForTesting(_ client: ActualServerClient) {
         serverClient = client
     }
+
+    func setSavedSessionTaskForTesting(_ task: Task<Void, Never>?) {
+        savedSessionTask = task
+    }
+
+    var savedSessionWaitStartedForTesting: (() -> Void)?
 
     /// Test-only: isolate diagnostic session state from the process-wide log.
     func setDiagnosticLogForTesting(_ log: DiagnosticLog) {
@@ -2136,12 +2535,22 @@ final class BudgetStore: ObservableObject {
         backupService = BackupService(fileManager: manager)
     }
 
+    func setBudgetFileReplacementInProgressForTesting(_ budgetId: String, inProgress: Bool) {
+        if inProgress {
+            budgetFileReplacementsInProgress.insert(budgetId)
+        } else {
+            budgetFileReplacementsInProgress.remove(budgetId)
+        }
+    }
+
     /// Test-only: whether loadLocalBudget wired a sync client (it must not
     /// for a budget detached by a backup restore).
     var isSyncConfiguredForTesting: Bool {
         syncClient != nil
     }
 
+    /// Test-only: pause immediately after a budget load claims its target id.
+    var budgetLoadStartedForTesting: (() async -> Void)?
     /// Test-only: pause a load after its month snapshots are fetched so a
     /// month request can race the final publish deterministically.
     var budgetMonthsFetchedForTesting: (() async -> Void)?
@@ -2155,6 +2564,24 @@ final class BudgetStore: ObservableObject {
     /// delete a budget's temp directory without unlinking db.sqlite out from
     /// under a live SQLite connection ("vnode unlinked while in use").
     func closeDatabaseForTesting() {
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
+        loadedBudgetId = nil
+        databaseBudgetId = nil
+    }
+
+    func closeTransactionWritersForTesting() async {
+        await intentWriterRegistry.closeAll()
+    }
+
+    /// Await writer and active sync teardown before a test removes its budget files.
+    func closeBudgetConnectionsForTesting() async {
+        // Tests may cache writers for several non-active budgets; the normal
+        // active-budget release list cannot discover those registry entries.
+        await intentWriterRegistry.closeAll()
+        await releaseBudgetConnections()
         syncStateCancellable?.cancel()
         syncStateCancellable = nil
         syncClient = nil
@@ -2314,17 +2741,24 @@ final class BudgetStore: ObservableObject {
             token = nil
         }
 
-        // Load local budget if available. The saved session is configured in
-        // the same task, before the load, so the initial sync below is
-        // authenticated.
+        // Configure the saved server session independently of the active-budget
+        // load. App Intents can target a different local budget before that load
+        // finishes, and its writer must not start syncing until credentials exist.
+        let savedSessionTask: Task<Void, Never>? = if let token {
+            Task { await configureSavedSession(token: token) }
+        } else {
+            nil
+        }
+        self.savedSessionTask = savedSessionTask
+
+        // Load local budget if available. The saved session is configured first,
+        // so the initial sync below is authenticated.
         if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
             // Set before the task so the very first render already knows the
             // numbers it is about to draw are provisional (GH #126).
             isInitialSyncing = true
             loadTask = Task {
-                if let token {
-                    await configureSavedSession(token: token)
-                }
+                await savedSessionTask?.value
                 await loadLocalBudget(budgetId)
                 // On a cold launch the scene becomes .active before
                 // loadLocalBudget has wired syncClient, so the scenePhase
@@ -2332,8 +2766,6 @@ final class BudgetStore: ObservableObject {
                 await syncOnForeground()
                 isInitialSyncing = false
             }
-        } else if let token {
-            Task { await configureSavedSession(token: token) }
         }
     }
 
@@ -2660,8 +3092,13 @@ final class BudgetStore: ObservableObject {
     ///   (the demo entry point clears the session without destroying data;
     ///   only an explicit Disconnect wipes it).
     func logout(clearLocalData: Bool = true) async {
-        if let syncClient {
-            await syncClient.cancelPendingSync()
+        // Cancel an in-flight push before closing writers that may be waiting
+        // for it; queued CRDT messages remain durable in SQLite.
+        await syncClient?.cancelPendingSync()
+        // Block new headless writers until every local budget file is safe to remove.
+        await intentWriterRegistry.closeAll(rejectNewWriters: true)
+        if let savedSessionTask {
+            await savedSessionTask.value
         }
         await serverClient.setToken(nil)
         await diagnosticLog.clear()
@@ -2674,7 +3111,7 @@ final class BudgetStore: ObservableObject {
         // "vnode unlinked" hazard downloadBudget also guards against), and a
         // live sync client would let the next foreground refresh republish
         // the wiped budget's data from that orphaned connection.
-        closeCurrentBudget()
+        await closeCurrentBudget()
 
         if clearLocalData {
             // Wipe every locally-synced budget's database and metadata from
@@ -2711,6 +3148,27 @@ final class BudgetStore: ObservableObject {
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
+        await intentWriterRegistry.allowNewWriters()
+    }
+
+    /// Close intent writers and cancel sync before releasing or replacing database files.
+    private func releaseBudgetConnections(alsoClosing budgetId: String? = nil) async {
+        let budgetIds = Set(
+            [loadedBudgetId, databaseBudgetId, currentBudgetId, budgetId].compactMap(\.self)
+        )
+        let syncClientToClose = syncClient
+        let catchUpTask = budgetCatchUpTask
+        budgetCatchUpTask = nil
+        loadedBudgetId = nil
+
+        catchUpTask?.cancel()
+        // A headless write can be awaiting its network push. Cancel that push
+        // before joining writer.close(), or an offline server stalls a switch.
+        await syncClientToClose?.cancelPendingSync()
+        for id in budgetIds {
+            await intentWriterRegistry.close(budgetId: id)
+        }
+        await catchUpTask?.value
     }
 
     /// Close whatever budget is open and return to the "select a budget" empty
@@ -2719,7 +3177,8 @@ final class BudgetStore: ObservableObject {
     /// everything loaded in memory, so nothing from the old budget lingers in
     /// the UI. The dataVersion bump makes views that cache their own fetches
     /// drop them.
-    private func closeCurrentBudget() {
+    private func closeCurrentBudget() async {
+        await releaseBudgetConnections()
         syncStateCancellable?.cancel()
         syncStateCancellable = nil
         syncClient = nil
@@ -2761,14 +3220,17 @@ final class BudgetStore: ObservableObject {
     /// can be downloaded again. Deleting the currently open budget closes it
     /// and returns the app to the "select a budget" empty state.
     func removeLocalBudget(cloudFileId: String) async {
-        // The derived encryption key must not outlive the budget — removed
-        // even without a local directory (a failed download can leave a key
-        // behind with nothing to unlock).
-        try? EncryptionKeyManager.remove(fileId: cloudFileId)
-
         guard let local = fileManager.listLocalBudgets().first(
             where: { $0.cloudFileId == cloudFileId }
-        ) else { return }
+        ) else {
+            try? EncryptionKeyManager.remove(fileId: cloudFileId)
+            return
+        }
+        // Reject new shortcut writers before closing the current one. Otherwise a
+        // caller waiting on an opening writer could reopen it just before deletion.
+        await intentWriterRegistry.closeAndReject(budgetId: local.id)
+        // The derived encryption key must not outlive the budget.
+        try? EncryptionKeyManager.remove(fileId: cloudFileId)
 
         if local.id == currentBudgetId {
             // Best-effort push of unsynced local edits before the database
@@ -2777,11 +3239,28 @@ final class BudgetStore: ObservableObject {
             // sync client — a closed budget's pending messages can't be sent.
             await flushPendingSync()
             // Close before deleting files — same vnode-unlink hazard as logout.
-            closeCurrentBudget()
+            await closeCurrentBudget()
+        } else if local.id == databaseBudgetId {
+            // currentBudgetId may already point at the next budget while the
+            // previous database is still attached during its load transition.
+            await releaseBudgetConnections(alsoClosing: local.id)
+            syncStateCancellable?.cancel()
+            syncStateCancellable = nil
+            syncClient = nil
+            database = nil
         }
 
-        try? fileManager.deleteBudget(local.id)
-        AccountIconCustomizationStore.shared.clear(budgetID: local.id)
+        do {
+            try fileManager.deleteBudget(local.id)
+            AccountIconCustomizationStore.shared.clear(budgetID: local.id)
+        } catch {
+            await intentWriterRegistry.allowWriters(for: local.id)
+            logger.error(
+                "Failed to remove local budget \(local.id, privacy: .private): \(error.localizedDescription, privacy: .public)"
+            )
+            return
+        }
+        await intentWriterRegistry.allowWriters(for: local.id)
         forgetCachedCurrencyCode(for: local.id)
         forgetAppleWalletLinks(for: local.id)
     }
@@ -2820,6 +3299,7 @@ final class BudgetStore: ObservableObject {
     // MARK: - Budget Management
 
     func fetchRemoteBudgets() async {
+        await ensureSavedSessionReady()
         #if DEBUG
         // This UI test seeds a connected session without a server behind it.
         // Keep the production view lifecycle intact while avoiding a request
@@ -2892,6 +3372,9 @@ final class BudgetStore: ObservableObject {
     /// opened, so the initial sync runs only when there is something to catch
     /// up.
     private func downloadAndOpen(_ remoteBudget: RemoteBudget) async -> Bool {
+        let targetLocalBudgetID = fileManager.listLocalBudgets()
+            .first(where: { $0.cloudFileId == remoteBudget.id })?.id
+        await releaseBudgetConnections(alsoClosing: targetLocalBudgetID)
         isLoading = true
         downloadingBudgetId = remoteBudget.id
         error = nil
@@ -3098,6 +3581,7 @@ final class BudgetStore: ObservableObject {
             }
 
             // Close the previous budget before switching, same as downloadBudget.
+            await releaseBudgetConnections()
             syncStateCancellable?.cancel()
             syncStateCancellable = nil
             syncClient = nil
@@ -3127,6 +3611,18 @@ final class BudgetStore: ObservableObject {
     }
 
     func loadLocalBudget(_ budgetId: String) async {
+        budgetLoadCounts[budgetId, default: 0] += 1
+        defer {
+            let remaining = (budgetLoadCounts[budgetId] ?? 1) - 1
+            budgetLoadCounts[budgetId] = remaining > 0 ? remaining : nil
+        }
+        #if DEBUG
+        await budgetLoadStartedForTesting?()
+        #endif
+        // Release both the previously active writer and any cached writer for
+        // this target before opening the file. A budget switch may have changed
+        // currentBudgetId while the old connection is still the loaded one.
+        await releaseBudgetConnections(alsoClosing: budgetId)
         if budgetId != DemoDataSeeder.budgetId {
             do {
                 try DemoDataSeeder.removeSamplePendingImport()
@@ -3148,6 +3644,7 @@ final class BudgetStore: ObservableObject {
             let openedDb = try BudgetDatabase(path: dbPath)
             db = openedDb
             database = openedDb
+            databaseBudgetId = budgetId
 
             // Fetch all data into locals first, then publish in one batch so
             // the UI never sees a torn snapshot if another load interleaves
@@ -3297,6 +3794,10 @@ final class BudgetStore: ObservableObject {
             // this, a fresh launch hides them until something else happens to
             // refresh the data.
             await loadBankSyncAccounts()
+            // A switch or close can happen while bank-link state is fetched.
+            // Do not let this stale load configure sync for a database that no
+            // longer belongs to the store.
+            guard database === openedDb else { return }
 
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
@@ -3344,6 +3845,9 @@ final class BudgetStore: ObservableObject {
                         encryptionKey: loadedKey?.key,
                         keyId: loadedKey?.keyId
                     )
+                    guard database === openedDb, self.syncClient === syncClient else {
+                        return
+                    }
                     logger.info("Sync configuration successful (encrypted: \(loadedKey != nil, privacy: .public))")
                 } else {
                     logger.error("Database is nil, cannot configure sync")
@@ -3352,6 +3856,21 @@ final class BudgetStore: ObservableObject {
                 subscribeToSyncState()
 
                 if let syncClient {
+                    // Resume durable local messages left by a non-active Wallet
+                    // write when this budget is next opened.
+                    let hasPendingWrites = await syncClient.hasPendingLocalWrites()
+                    // releaseBudgetConnections() may have run while the query
+                    // was crossing to the SyncClient actor. Never install a
+                    // catch-up task for a connection that has since been closed.
+                    guard database === openedDb, self.syncClient === syncClient else {
+                        return
+                    }
+                    if hasPendingWrites {
+                        budgetCatchUpTask = Task {
+                            guard !Task.isCancelled else { return }
+                            await syncClient.automaticSync()
+                        }
+                    }
                     var allWritten = true
                     for (accountId, config) in legacyConfigs {
                         do {
@@ -3359,6 +3878,9 @@ final class BudgetStore: ObservableObject {
                         } catch {
                             allWritten = false
                             logger.error("Credit card migration failed for \(accountId, privacy: .public): \(error.localizedDescription)")
+                        }
+                        guard database === openedDb, self.syncClient === syncClient else {
+                            return
                         }
                     }
                     // Erase the legacy keys once the synced table holds every card,
@@ -3374,9 +3896,15 @@ final class BudgetStore: ObservableObject {
                     if !legacyCardMappings.isEmpty {
                         do {
                             try await syncClient.setCardAccountMappings(cardAccountMappings, replacing: fetchedCardMappings)
+                            guard database === openedDb, self.syncClient === syncClient else {
+                                return
+                            }
                             UserDefaults.standard.removeObject(forKey: "cardAccountMappings_\(budgetId)")
                         } catch {
                             logger.error("Card mappings migration failed: \(error.localizedDescription, privacy: .public)")
+                        }
+                        guard database === openedDb, self.syncClient === syncClient else {
+                            return
                         }
                     } else if !savedCardMappings.isEmpty {
                         UserDefaults.standard.removeObject(forKey: "cardAccountMappings_\(budgetId)")
@@ -3393,12 +3921,17 @@ final class BudgetStore: ObservableObject {
                         } catch {
                             logger.error("Currency flag migration failed: \(error.localizedDescription, privacy: .public)")
                         }
+                        guard database === openedDb, self.syncClient === syncClient else {
+                            return
+                        }
                     }
                 }
             }
 
             refreshServerCapabilities()
             await scheduleCreditCardDueNotifications()
+            guard database === openedDb else { return }
+            loadedBudgetId = budgetId
 
         } catch {
             // If a concurrent load replaced our database mid-fetch, this
@@ -3406,6 +3939,8 @@ final class BudgetStore: ObservableObject {
             // error or clear its spinner.
             guard db == nil || database === db else { return }
             if !published {
+                loadedBudgetId = nil
+                database = nil
                 syncStateCancellable?.cancel()
                 syncStateCancellable = nil
                 syncClient = nil
@@ -3730,19 +4265,19 @@ final class BudgetStore: ObservableObject {
     }
 
     func restoreBackup(_ backupId: String) async {
-        guard let budgetId = currentBudgetId else { return }
+        guard let budgetId = currentBudgetId,
+              !budgetFileReplacementsInProgress.contains(budgetId)
+        else { return }
+        budgetFileReplacementsInProgress.insert(budgetId)
+        defer { budgetFileReplacementsInProgress.remove(budgetId) }
         isLoading = true
         error = nil
 
-        // Drop the sync client and database references before loadBackup swaps
-        // files. Any sync still running inside the old actor keeps the old
-        // database open: its baseline snapshot goes through that queue's write
-        // serialization (VACUUM INTO, never a raw file copy racing a write),
-        // and post-swap writes land on the now-unlinked old inode (harmlessly
-        // discarded). We deliberately do NOT flushPendingSync() here: that
-        // awaits the network push and would hang this local restore for the
-        // URLSession timeout when the server is unreachable.
+        // Close cached shortcut writers and cancel the old sync client before
+        // swapping files. Keep the DB reference for BackupService's serialized
+        // baseline snapshot; no network push is needed for a local restore.
         let openDatabase = database
+        await releaseBudgetConnections(alsoClosing: budgetId)
         syncStateCancellable?.cancel()
         syncStateCancellable = nil
         syncClient = nil
