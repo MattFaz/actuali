@@ -39,4 +39,18 @@ struct TransactionNotificationSettingsTests {
 
         #expect(TransactionNotificationSettings(defaults: defaults).includesOffBudget == false)
     }
+
+    @Test func shortcutSuccessNotificationIsEnabledByDefault() {
+        let settings = TransactionLogNotificationSettings(defaults: makeDefaults())
+
+        #expect(settings.showsSuccessNotification == true)
+    }
+
+    @Test func shortcutSuccessNotificationPreferencePersistsAcrossInstances() {
+        let defaults = makeDefaults()
+
+        TransactionLogNotificationSettings(defaults: defaults).showsSuccessNotification = false
+
+        #expect(TransactionLogNotificationSettings(defaults: defaults).showsSuccessNotification == false)
+    }
 }
