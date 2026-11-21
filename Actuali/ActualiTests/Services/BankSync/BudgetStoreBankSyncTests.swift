@@ -1426,6 +1426,28 @@ struct BudgetStoreBankSyncTests {
         #expect(store.unreviewedTransactions[imported.id] == nil)
     }
 
+    @Test func aLaterSyncAddsToTheMarksStillWaiting() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try await markAlreadySynced(database)
+        let first = """
+        {"id": "sf-first", "posted": \(Self.daysAgo(3)), "amount": "-12.00", "payee": "First"}
+        """
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: first))
+        store.markAllReviewed()
+        let firstId = try #require(try await store.syncBankAccounts().importedTransactions.first?.id)
+
+        // The bank now sends the old row and a new one; nothing was marked reviewed in between.
+        store.setSimpleFINClientForTesting(SimpleFINClient(session: bridgeSession(body: accountSet(transactions: """
+        \(first),
+        {"id": "sf-second", "posted": \(Self.daysAgo(1)), "amount": "-7.50", "payee": "Second"}
+        """), log: nil)))
+        let secondId = try #require(try await store.syncBankAccounts().importedTransactions.first?.id)
+
+        #expect(Set(store.unreviewedTransactions.keys) == [firstId, secondId])
+        #expect(await Set(store.fetchUnreviewedTransactions().map(\.id)) == [firstId, secondId])
+    }
+
     @Test func aTransactionSyncedFromAnotherDeviceIsNotMarkedNew() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
