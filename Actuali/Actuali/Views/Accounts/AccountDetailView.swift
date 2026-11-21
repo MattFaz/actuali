@@ -1,7 +1,9 @@
 import SwiftUI
+import UIKit
 
 struct AccountDetailView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @ObservedObject private var accountIconStore = AccountIconCustomizationStore.shared
     let account: Account
 
     @State private var pager: TransactionPager?
@@ -10,6 +12,7 @@ struct AccountDetailView: View {
     /// under state that was scoped to the previous one.
     @State private var pagerAccountId: String?
     @State private var breakdown: AccountBalanceBreakdown?
+    @State private var loadedAccountIconImage: UIImage?
     @State private var showingBreakdown = false
     @State private var showingBillingCycle = false
     @State private var showingLoanDetails = false
@@ -72,6 +75,13 @@ struct AccountDetailView: View {
             statusFilter: budgetStore.transactionStatusFilter,
             cycle: budgetStore.activeCreditCardCycle(for: account.id)
         )
+    }
+
+    private var accountIconPhotoLoadID: String? {
+        guard let budgetID = budgetStore.currentBudgetId,
+              let filename = accountIconStore.customization(for: budgetID, accountID: account.id)?.photoFilename
+        else { return nil }
+        return "\(budgetID)|\(account.id)|\(filename)|\(accountIconStore.photoRevision)"
     }
 
     private var statementDue: CreditCardCycle.StatementDue? {
@@ -510,6 +520,17 @@ struct AccountDetailView: View {
                 selectedTransactionIds.formSymmetricDifference([transaction.id])
             }
         )
+        // In the row's leading margin, the way Mail marks unread.
+        .overlay(alignment: .leading) {
+            if budgetStore.unreviewedTransactions[transaction.id] != nil {
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 7, height: 7)
+                    .offset(x: -12)
+                    .accessibilityLabel(String(localized: "\(1) new transactions"))
+                    .accessibilityIdentifier("transactionRow.unreviewed.\(transaction.id)")
+            }
+        }
     }
 
     private func balanceColumn(
@@ -605,6 +626,35 @@ struct AccountDetailView: View {
             ), let headroom {
                 breakdownRow(String(localized: "Available Credit"), amount: headroom.available)
                 breakdownRow(String(localized: "Credit Limit"), amount: headroom.limit)
+            }
+
+            if let linked = budgetStore.bankSyncAccount(forAccountId: account.id) {
+                let isSyncing = budgetStore.bankSyncingAccountIds.contains(account.id)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        BankSyncBadge(linked: linked, isSyncing: isSyncing)
+                        Text(String(localized: "Last Bank Sync"))
+                        Spacer()
+                        Group {
+                            if isSyncing {
+                                Text(String(localized: "Syncing..."))
+                            } else if let lastSync = linked.lastSync {
+                                Text(lastSync, format: .relative(presentation: .named))
+                            } else {
+                                Text(String(localized: "Never"))
+                            }
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    if !isSyncing, let message = linked.attentionMessage {
+                        Text(message)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .font(.footnote)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("accountBankSync.status")
             }
         }
     }
@@ -1001,6 +1051,17 @@ struct AccountDetailView: View {
         .listSectionSpacing(.compact)
         .readableWidth()
         .navigationTitle(account.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: accountIconPhotoLoadID) {
+            loadedAccountIconImage = nil
+            guard let budgetID = budgetStore.currentBudgetId,
+                  accountIconStore.customization(for: budgetID, accountID: account.id)?.photoFilename != nil else {
+                return
+            }
+            let image = await accountIconStore.loadImage(for: budgetID, accountID: account.id)
+            guard !Task.isCancelled else { return }
+            loadedAccountIconImage = image
+        }
         .onDemandSearch(
             text: $searchText,
             isPresented: $isTransactionSearchActive,
@@ -1009,6 +1070,29 @@ struct AccountDetailView: View {
             accessibilityPrefix: "accountDetails"
         )
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 8) {
+                    if accountIconStore.iconsEnabled(for: budgetStore.currentBudgetId) {
+                        let customization = accountIconStore.customization(
+                            for: budgetStore.currentBudgetId, accountID: account.id
+                        )
+                        AccountTypeAvatar(
+                            account: account,
+                            hasLoan: budgetStore.activeLoanConfig(for: account.id) != nil,
+                            hasDeposit: budgetStore.activeDepositConfig(for: account.id) != nil,
+                            hasCreditCard: budgetStore.activeCreditCardCycle(for: account.id) != nil,
+                            customSymbol: customization?.symbolName,
+                            customTintHex: customization?.tintHex,
+                            customImage: loadedAccountIconImage
+                        )
+                        .accessibilityHidden(true)
+                    }
+                    Text(account.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .combine)
+            }
             accountToolbarContent
             runningBalanceToolbarItem
         }
@@ -1101,7 +1185,11 @@ struct AccountDetailView: View {
             CreditCardStatementDetailView(account: account, statement: statement)
                 .environmentObject(budgetStore)
         }
-        .onChange(of: account.id) { _, _ in
+        // Cleared on the way out, not in: the marks are what there is to
+        // review while the screen is up.
+        .onDisappear { budgetStore.markAccountReviewed(account.id) }
+        .onChange(of: account.id) { previousId, _ in
+            budgetStore.markAccountReviewed(previousId)
             // Search belongs to the selected account; don't carry a hidden filter
             // or an open search field into the next account in the iPad split view.
             isTransactionSearchActive = false

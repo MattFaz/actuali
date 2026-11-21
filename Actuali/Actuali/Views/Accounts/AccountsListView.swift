@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Value-based routes for the phone stack. Typed rather than a
 /// `NavigationPath` so a notification tap can reset the stack onto All
@@ -308,6 +309,9 @@ struct AccountsListView: View {
                     isBackgroundClear: accountGroupBackgroundIsClear(group.id),
                     allowsCollapse: !isSearchingAccounts && !isReordering,
                     totalTrailingPadding: linked ? 24 : 0,
+                    unreviewedCount: bucket.accounts.reduce(0) {
+                        $0 + budgetStore.unreviewedCount(forAccountId: $1.id)
+                    },
                     action: { toggleAccountGroup(group.id) }
                 )
                 .moveDisabled(!isReordering || !budgetStore.canReorderAccountGroups)
@@ -329,6 +333,12 @@ struct AccountsListView: View {
                     .moveDisabled(!isReordering)
             }
         }
+    }
+
+    /// What a sync brought in is gone through where pending imports are.
+    private func showNewTransactions() {
+        budgetStore.dismissBankSyncNotice()
+        showingPendingImports = true
     }
 
     /// Phone rows push the account; iPad sidebar rows drive the selection.
@@ -472,6 +482,37 @@ struct AccountsListView: View {
             Button(String(localized: "common.ok"), role: .cancel) { budgetStore.bankSyncSummary = nil }
         } message: {
             Text(budgetStore.bankSyncSummary ?? "")
+        }
+        // A clean sync says so without stopping anyone; only problems get
+        // the alert above.
+        .overlay(alignment: .bottom) { bankSyncToast }
+        .animation(AppAnimation.appearance, value: budgetStore.bankSyncNotice)
+        // Only a sync someone asked for sets either of these, so the quiet
+        // Wallet imports on foregrounding stay quiet. The return types are
+        // spelled out because inferring them here times the type checker out.
+        .sensoryFeedback(trigger: budgetStore.bankSyncNotice) { _, notice -> SensoryFeedback? in
+            notice == nil ? nil : .success
+        }
+        .sensoryFeedback(trigger: budgetStore.bankSyncSummary) { _, summary -> SensoryFeedback? in
+            summary == nil ? nil : .warning
+        }
+    }
+
+    /// At the bottom: a tappable toast at the top would take the toolbar's
+    /// taps for as long as it shows.
+    @ViewBuilder
+    private var bankSyncToast: some View {
+        if let notice = budgetStore.bankSyncNotice {
+            if notice.offersReview {
+                Button(action: showNewTransactions) {
+                    ToastView(text: notice.text, actionTitle: String(localized: "Review"), edge: .bottom)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("bankSync.review")
+            } else {
+                ToastView(text: notice.text, edge: .bottom)
+                    .allowsHitTesting(false)
+            }
         }
     }
 
@@ -915,14 +956,18 @@ struct AccountsListView: View {
                     .accessibilityHint(String(localized: "Account list display options"))
                     .accessibilityIdentifier("accounts.optionsMenu")
                 }
-                if pendingImportStore.count > 0, !isReordering {
+                // One way in for everything waiting to be looked at: imports to
+                // approve and what this device's bank sync brought in.
+                let pendingCount = pendingImportStore.count + budgetStore.stagedBankTransactions.count
+                let newCount = budgetStore.unreviewedTransactions.count
+                if pendingCount + newCount > 0, !isReordering {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             showingPendingImports = true
                         } label: {
                             Image(systemName: "tray.and.arrow.down")
                                 .overlay(alignment: .topTrailing) {
-                                    Text("\(pendingImportStore.count)")
+                                    Text("\(pendingCount + newCount)")
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(.white)
                                         .padding(3)
@@ -930,8 +975,12 @@ struct AccountsListView: View {
                                         .offset(x: 6, y: -6)
                                 }
                         }
-                        .accessibilityLabel("Pending imports")
-                        .accessibilityValue(String(localized: "\(pendingImportStore.count) pending"))
+                        .accessibilityLabel(String(localized: "Review"))
+                        .accessibilityValue([
+                            pendingCount > 0 ? String(localized: "\(pendingCount) pending") : nil,
+                            newCount > 0 ? String(localized: "\(newCount) new transactions") : nil,
+                        ].compactMap(\.self).joined(separator: ", "))
+                        .accessibilityIdentifier("accounts.pendingImports")
                     }
                 }
             }
@@ -1380,6 +1429,9 @@ private struct AccountGroupListHeader: View {
     /// Sidebar rows have no NavigationLink chevron, so they pass zero to keep
     /// group totals aligned with the account balances below.
     var totalTrailingPadding: CGFloat = 24
+    /// New transactions across the group's accounts, shown while it is
+    /// collapsed and their own rows can't say so.
+    let unreviewedCount: Int
     let action: () -> Void
 
     var body: some View {
@@ -1393,6 +1445,9 @@ private struct AccountGroupListHeader: View {
                 Text(group.name)
                     .font(.body.weight(.bold))
                     .foregroundStyle(isExpanded ? .secondary : .primary)
+                if !isExpanded, unreviewedCount > 0 {
+                    UnreviewedCountBadge(count: unreviewedCount)
+                }
                 Spacer()
                 AccountGroupTotal(totalText: totalText, total: total)
                     .padding(.trailing, totalTrailingPadding)
@@ -1485,6 +1540,9 @@ struct AccountTypeAvatar: View {
     var hasLoan: Bool = false
     var hasDeposit: Bool = false
     var hasCreditCard: Bool = false
+    var customSymbol: String?
+    var customTintHex: String?
+    var customImage: UIImage?
 
     // ponytail: icon derived from account.type and active configs only.
     // Ceiling: no vehicle/personal split for loans. Upgrade path: store
@@ -1549,7 +1607,7 @@ struct AccountTypeAvatar: View {
     }
 
     var body: some View {
-        let color = Self.iconColor(
+        let color = customTintHex.flatMap { Color(hex: $0) } ?? Self.iconColor(
             for: account.type,
             hasDeposit: hasDeposit,
             hasLoan: hasLoan,
@@ -1558,29 +1616,92 @@ struct AccountTypeAvatar: View {
         )
         ZStack {
             Circle().fill(color.opacity(0.18))
-            Image(systemName: Self.icon(
-                for: account.type,
-                hasDeposit: hasDeposit,
-                hasLoan: hasLoan,
-                hasCreditCard: hasCreditCard
-            ))
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(color)
+            if let customImage {
+                Image(uiImage: customImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+            } else {
+                Image(systemName: customSymbol ?? Self.icon(
+                    for: account.type,
+                    hasDeposit: hasDeposit,
+                    hasLoan: hasLoan,
+                    hasCreditCard: hasCreditCard
+                ))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(color)
+            }
         }
         .frame(width: 36, height: 36)
     }
 }
 
+/// How many new transactions sit behind a row, the way Mail counts unread.
+struct UnreviewedCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text(count, format: .number)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.accentColor, in: Capsule())
+            .accessibilityLabel(String(localized: "\(count) new transactions"))
+    }
+}
+
+/// Marks an account as fed by a bank: which feed, whether its last sync went
+/// wrong, and a spinner while one is running.
+struct BankSyncBadge: View {
+    let linked: BankSyncAccount
+    let isSyncing: Bool
+
+    var body: some View {
+        if isSyncing {
+            ProgressView()
+                .controlSize(.mini)
+                .accessibilityLabel(String(localized: "Syncing..."))
+        } else {
+            // A different shape, not only a different color, when it failed.
+            Image(systemName: linked.needsAttention
+                ? "exclamationmark.triangle.fill"
+                : linked.source == .financeKit ? "wallet.pass" : "building.columns")
+                .foregroundStyle(linked.needsAttention ? Color.red : Color.secondary)
+                .accessibilityLabel(linked.needsAttention
+                    ? String(localized: "Bank sync needs attention")
+                    : String(localized: "Bank Sync"))
+        }
+    }
+}
+
 struct AccountRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @ObservedObject private var iconStore = AccountIconCustomizationStore.shared
     let account: Account
-    @AppStorage("showAccountTypeIcons") private var showAccountTypeIcons = true
 
     @State private var isCreatingGroup = false
     @State private var isRenamingAccount = false
     @State private var newGroupName = ""
     @State private var renameName = ""
     @State private var isClosing = false
+    @State private var iconPickerMode: AccountIconPickerSheet.Mode?
+    @State private var loadedAccountIconImage: UIImage?
+
+    private var showAccountTypeIcons: Bool {
+        iconStore.iconsEnabled(for: budgetStore.currentBudgetId)
+    }
+
+    private var iconCustomization: AccountIconCustomization? {
+        iconStore.customization(for: budgetStore.currentBudgetId, accountID: account.id)
+    }
+
+    private var photoLoadID: String? {
+        guard let budgetID = budgetStore.currentBudgetId,
+              let filename = iconCustomization?.photoFilename else { return nil }
+        return "\(budgetID)|\(account.id)|\(filename)|\(iconStore.photoRevision)"
+    }
 
     /// Share of payoff or term completed (0...1), or nil when the account has no tracking.
     /// Pure so tests can exercise all combinations of loan, deposit, and credit card configs.
@@ -1625,6 +1746,16 @@ struct AccountRow: View {
 
     var body: some View {
         row
+            .task(id: photoLoadID) {
+                loadedAccountIconImage = nil
+                guard let budgetID = budgetStore.currentBudgetId,
+                      iconCustomization?.photoFilename != nil else {
+                    return
+                }
+                let image = await iconStore.loadImage(for: budgetID, accountID: account.id)
+                guard !Task.isCancelled else { return }
+                loadedAccountIconImage = image
+            }
             .contextMenu {
                 Button {
                     renameName = account.name
@@ -1634,6 +1765,22 @@ struct AccountRow: View {
                 }
                 .accessibilityIdentifier("accountRename.action")
 
+                Menu {
+                    Button {
+                        iconPickerMode = .icons
+                    } label: {
+                        Label("Icons", systemImage: "square.grid.2x2")
+                    }
+                    Button {
+                        iconPickerMode = .upload
+                    } label: {
+                        Label("Upload", systemImage: "photo")
+                    }
+                } label: {
+                    Label("Pick Icon", systemImage: "paintpalette")
+                }
+                .accessibilityIdentifier("accountRow.pickIcon.\(account.id)")
+
                 if budgetStore.accountGroupWritesEnabled {
                     groupMenu
                 }
@@ -1642,6 +1789,13 @@ struct AccountRow: View {
             }
             .sheet(isPresented: $isClosing) {
                 CloseAccountSheet(account: account)
+            }
+            .sheet(item: $iconPickerMode) { mode in
+                AccountIconPickerSheet(
+                    mode: mode,
+                    budgetID: budgetStore.currentBudgetId,
+                    account: account
+                )
             }
     }
 
@@ -1714,6 +1868,7 @@ struct AccountRow: View {
             creditCardDues: budgetStore.creditCardStatementDues[account.id],
             creditCardCycle: creditCardCycle
         )
+        let unreviewedCount = budgetStore.unreviewedCount(forAccountId: account.id)
 
         return HStack(alignment: .center, spacing: 12) {
             if showAccountTypeIcons {
@@ -1721,7 +1876,10 @@ struct AccountRow: View {
                     account: account,
                     hasLoan: hasLoan,
                     hasDeposit: hasDeposit,
-                    hasCreditCard: hasCreditCard
+                    hasCreditCard: hasCreditCard,
+                    customSymbol: iconCustomization?.symbolName,
+                    customTintHex: iconCustomization?.tintHex,
+                    customImage: loadedAccountIconImage
                 )
                 .accessibilityHidden(true)
             }
@@ -1730,6 +1888,20 @@ struct AccountRow: View {
                 HStack {
                     Text(account.name)
                         .font(.body)
+                        .fontWeight(unreviewedCount > 0 ? .semibold : .regular)
+                    if unreviewedCount > 0 {
+                        UnreviewedCountBadge(count: unreviewedCount)
+                            .accessibilityIdentifier("accountRow.unreviewed.\(account.id)")
+                    }
+                    // Only when there is something to say: a healthy link's
+                    // icon on every row is noise next to the name.
+                    if let linked = budgetStore.bankSyncAccount(forAccountId: account.id),
+                       case let isSyncing = budgetStore.bankSyncingAccountIds.contains(account.id),
+                       isSyncing || linked.needsAttention {
+                        BankSyncBadge(linked: linked, isSyncing: isSyncing)
+                            .font(.caption)
+                            .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
+                    }
                     Spacer()
                     Text(balance)
                         .foregroundStyle(balanceColor(for: account.balance))

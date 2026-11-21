@@ -79,9 +79,16 @@ let currencyOptions = [
 struct DisplaySettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
+    @ObservedObject private var accountIconStore = AccountIconCustomizationStore.shared
     @State private var dashboardPages: [DashboardPage] = []
-    @AppStorage("showAccountTypeIcons") private var showAccountTypeIcons = true
     @AppStorage(SideMargin.storageKey) private var sideMargin = SideMargin.standard
+
+    private var showAccountTypeIcons: Binding<Bool> {
+        Binding(
+            get: { accountIconStore.iconsEnabled(for: budgetStore.currentBudgetId) },
+            set: { accountIconStore.setIconsEnabled($0, for: budgetStore.currentBudgetId) }
+        )
+    }
 
     /// Routes the picker's selection through `setCurrencyCode`, which
     /// persists the choice into the budget's own `preferences` table (not
@@ -149,7 +156,7 @@ struct DisplaySettingsView: View {
                     }
                 }
 
-                Toggle("Show Account Icons", isOn: $showAccountTypeIcons)
+                Toggle("Show Account Icons", isOn: showAccountTypeIcons)
 
                 // This list moves as the slider does, which is the preview.
                 VStack(alignment: .leading) {
