@@ -301,6 +301,13 @@ actor BudgetTransactionWriter {
         return writer
     }
 
+    /// A newly downloaded snapshot must catch up with the server before a
+    /// shortcut reads account/category state or applies transaction rules.
+    func catchUpDownloadedBudget() async -> Bool {
+        guard !isClosing, let syncClient else { return false }
+        return await syncClient.automaticSync()
+    }
+
     private func resumePendingLocalWrites() async {
         guard let syncClient, await syncClient.hasPendingLocalWrites() else { return }
         catchUpTask = Task {
@@ -404,12 +411,14 @@ actor BudgetTransactionWriter {
         let ownsResources = self.ownsResources
         self.catchUpTask = nil
         let task = Task { [weak self] in
-            await self?.waitForInFlightWrites()
-            catchUpTask?.cancel()
-            await catchUpTask?.value
+            // Flush waits for a network push. Cancel it before waiting for any
+            // in-flight write to finish, so offline switches cannot hang.
             if ownsResources {
                 await syncClient?.cancelPendingSync()
             }
+            catchUpTask?.cancel()
+            await catchUpTask?.value
+            await self?.waitForInFlightWrites()
             await self?.releaseResources()
         }
         closeTask = task
@@ -439,6 +448,9 @@ actor BudgetTransactionWriterRegistry {
     }
 
     private var entries: [String: Entry] = [:]
+    // Each resolved intent owns a lease. Two overlapping Wallet taps must not
+    // close a shared writer while the second tap is still resolving its account.
+    private var leases: [String: Int] = [:]
     private var isRejectingNewWriters = false
     private var rejectedBudgetIds: Set<String> = []
 
@@ -452,6 +464,7 @@ actor BudgetTransactionWriterRegistry {
             }
             switch entries[budgetId] {
             case .some(.ready(let writer)):
+                leases[budgetId, default: 0] += 1
                 return writer
             case .some(.opening(let token, let task)):
                 let writer = try await task.value
@@ -461,9 +474,11 @@ actor BudgetTransactionWriterRegistry {
                 switch entries[budgetId] {
                 case .some(.opening(let currentToken, _)) where currentToken == token:
                     entries[budgetId] = .ready(writer)
+                    leases[budgetId, default: 0] += 1
                     return writer
                 case .some(.ready(let readyWriter)):
                     // Another waiter may have finished registering this same shared open.
+                    leases[budgetId, default: 0] += 1
                     return readyWriter
                 default:
                     throw TransactionLogger.LoggerError.noBudgetLoaded
@@ -486,9 +501,11 @@ actor BudgetTransactionWriterRegistry {
                     switch entries[budgetId] {
                     case .some(.opening(let currentToken, _)) where currentToken == token:
                         entries[budgetId] = .ready(writer)
+                        leases[budgetId, default: 0] += 1
                         return writer
                     case .some(.ready(let readyWriter)):
                         // A concurrent waiter may have registered the shared open first.
+                        leases[budgetId, default: 0] += 1
                         return readyWriter
                     default:
                         throw TransactionLogger.LoggerError.noBudgetLoaded
@@ -504,7 +521,19 @@ actor BudgetTransactionWriterRegistry {
         }
     }
 
+    /// Close only after the last overlapping intent releases its claim.
+    func release(budgetId: String) async {
+        guard let count = leases[budgetId] else { return }
+        if count > 1 {
+            leases[budgetId] = count - 1
+        } else {
+            leases[budgetId] = nil
+            await close(budgetId: budgetId)
+        }
+    }
+
     func close(budgetId: String) async {
+        leases[budgetId] = nil
         switch entries[budgetId] {
         case .some(.ready(let writer)):
             let token = UUID()

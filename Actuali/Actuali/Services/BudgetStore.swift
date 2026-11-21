@@ -1922,22 +1922,30 @@ final class BudgetStore: ObservableObject {
             throw TransactionLogger.LoggerError.noBudgetLoaded
         }
         let fileID = local?.cloudFileId ?? identifier
-        if isConnected,
-           local?.cloudFileId != nil || local == nil,
-           !remoteBudgets.contains(where: { $0.id == fileID }) {
-            await fetchRemoteBudgets()
-        }
-
         if let local, fileManager.budgetExists(local.id), local.canWriteToLocally {
             let encrypted = local.encryptKeyId != nil
                 || remoteBudgets.first(where: { $0.id == fileID })?.isEncrypted == true
             if encrypted, EncryptionKeyManager.load(fileId: fileID) == nil {
                 throw TransactionLogger.LoggerError.noBudgetLoaded
             }
+            // If a previous headless download failed its first sync, its
+            // snapshot may be stale. Resume catch-up before using it.
+            let initialSyncKey = Self.intentInitialSyncKey(for: fileID)
+            if UserDefaults.standard.bool(forKey: initialSyncKey) {
+                let writer = try await transactionWriter(for: local.id)
+                let caughtUp = await writer.catchUpDownloadedBudget()
+                await releaseTransactionWriter(for: local.id)
+                guard caughtUp else {
+                    throw TransactionLogger.LoggerError.noBudgetLoaded
+                }
+                UserDefaults.standard.removeObject(forKey: initialSyncKey)
+            }
             return local.id
         }
 
         guard isConnected else { throw TransactionLogger.LoggerError.noBudgetLoaded }
+        // The local path above needs no network. A missing remote file needs
+        // just one list request, not two back-to-back requests.
         await fetchRemoteBudgets()
         guard let remote = remoteBudgets.first(where: { $0.id == fileID }),
               remote.groupId?.isEmpty == false else {
@@ -1974,7 +1982,12 @@ final class BudgetStore: ObservableObject {
             return local.id
         }
 
-        return try? await localBudgetIDForIntent(identifier)
+        // Error reporting must never download or overwrite budget files.
+        return nil
+    }
+
+    private static func intentInitialSyncKey(for cloudFileID: String) -> String {
+        "shortcutInitialSync.\(cloudFileID)"
     }
 
     private var intentBudgetDownloads: [String: Task<BudgetMetadata, any Error>] = [:]
@@ -2020,9 +2033,21 @@ final class BudgetStore: ObservableObject {
             )
         }
         try Task.checkCancellation()
-        return try await fileManager.importBudget(
+        let initialSyncKey = Self.intentInitialSyncKey(for: remote.id)
+        // Set before importing so even termination during initial sync cannot
+        // leave a writable but stale snapshot on the next shortcut invocation.
+        UserDefaults.standard.set(true, forKey: initialSyncKey)
+        let metadata = try await fileManager.importBudget(
             from: zipData, fileId: remote.id, groupId: remote.groupId
         )
+        // A downloaded snapshot can lag behind the server message log. Catch it
+        // up before the account/category picker or a shortcut write reads it.
+        let writer = try await transactionWriter(for: metadata.id)
+        let caughtUp = await writer.catchUpDownloadedBudget()
+        await releaseTransactionWriter(for: metadata.id)
+        guard caughtUp else { throw TransactionLogger.LoggerError.noBudgetLoaded }
+        UserDefaults.standard.removeObject(forKey: initialSyncKey)
+        return metadata
     }
 
     func accountsForIntent(in budgetId: String) async -> [Account] {
@@ -2199,6 +2224,12 @@ final class BudgetStore: ObservableObject {
             suggestCategoryFromPayeeHistory: suggestCategoryFromPayeeHistory
         )
         return writer
+    }
+
+    /// Release the isolated SQLite/SyncClient owner once a headless intent ends.
+    /// An active writer instead borrows the store connection and stays open.
+    func releaseTransactionWriter(for budgetId: String) async {
+        await intentWriterRegistry.release(budgetId: budgetId)
     }
 
     private func ensureSavedSessionReady() async {
@@ -3061,11 +3092,11 @@ final class BudgetStore: ObservableObject {
     ///   (the demo entry point clears the session without destroying data;
     ///   only an explicit Disconnect wipes it).
     func logout(clearLocalData: Bool = true) async {
+        // Cancel an in-flight push before closing writers that may be waiting
+        // for it; queued CRDT messages remain durable in SQLite.
+        await syncClient?.cancelPendingSync()
         // Block new headless writers until every local budget file is safe to remove.
         await intentWriterRegistry.closeAll(rejectNewWriters: true)
-        if let syncClient {
-            await syncClient.cancelPendingSync()
-        }
         if let savedSessionTask {
             await savedSessionTask.value
         }
@@ -3131,11 +3162,13 @@ final class BudgetStore: ObservableObject {
         loadedBudgetId = nil
 
         catchUpTask?.cancel()
+        // A headless write can be awaiting its network push. Cancel that push
+        // before joining writer.close(), or an offline server stalls a switch.
+        await syncClientToClose?.cancelPendingSync()
         for id in budgetIds {
             await intentWriterRegistry.close(budgetId: id)
         }
         await catchUpTask?.value
-        await syncClientToClose?.cancelPendingSync()
     }
 
     /// Close whatever budget is open and return to the "select a budget" empty
@@ -3267,7 +3300,6 @@ final class BudgetStore: ObservableObject {
 
     func fetchRemoteBudgets() async {
         await ensureSavedSessionReady()
-        guard isConnected else { return }
         #if DEBUG
         // This UI test seeds a connected session without a server behind it.
         // Keep the production view lifecycle intact while avoiding a request

@@ -604,9 +604,10 @@ struct TransactionLoggerSyncOutcomeTests {
         }
 
         var intent = LogTransactionIntent()
-        intent.budget = BudgetEntity(id: "business-budget", name: "Business")
+        // The picker serializes the stable cloud ID, not the local file ID.
+        intent.budget = BudgetEntity(id: "business-cloud-file", name: "Business")
         intent.account = AccountEntity(
-            id: AccountEntity.scopedID(budgetID: "business-budget", accountID: "business-account"),
+            id: AccountEntity.scopedID(budgetID: "business-cloud-file", accountID: "business-account"),
             name: "Business Checking"
         )
         intent.amount = "8.20"
@@ -677,6 +678,44 @@ struct TransactionLoggerSyncOutcomeTests {
         #expect(store.currentBudgetId == nil)
 
         await store.closeBudgetConnectionsForTesting()
+    }
+
+    @Test func overlappingShortcutWritersStayOpenUntilTheLastLeaseIsReleased() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let serverClient = try await makeServerClient(server: SyncServer(), reachable: false)
+        let syncClient = try await makeTransactionWriter(
+            database: database, serverClient: serverClient
+        )
+        let writer = BudgetTransactionWriter(
+            database: database,
+            syncClient: syncClient,
+            budgetId: "shared-budget",
+            currencyCode: "USD",
+            numberFormat: .commaDot,
+            suggestCategoryFromPayeeHistory: true,
+            ownsResources: true
+        )
+        let registry = BudgetTransactionWriterRegistry()
+        let first = try await registry.writer(for: "shared-budget") { writer }
+        let second = try await registry.writer(for: "shared-budget") { writer }
+        #expect(first === second)
+
+        // The first Wallet run completes while the second is still resolving.
+        await registry.release(budgetId: "shared-budget")
+        let stillOpen = try await registry.writer(for: "shared-budget") {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
+        #expect(stillOpen === writer)
+
+        await registry.release(budgetId: "shared-budget")
+        await registry.release(budgetId: "shared-budget")
+        await #expect(throws: TransactionLogger.LoggerError.noBudgetLoaded) {
+            try await writer.logTransaction(
+                accountId: "acct-1", amountCents: -100,
+                rawMerchant: "Coffee", notes: nil, date: Date()
+            )
+        }
     }
 
     @Test func registryCloseAndRejectBlocksSubsequentWriters() async throws {
