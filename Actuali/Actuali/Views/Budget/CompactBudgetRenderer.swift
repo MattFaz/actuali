@@ -51,7 +51,9 @@ final class CompactDockTracker: ObservableObject {
 
     private func publish() {
         guard let summaryBottom else {
-            if dock != nil { dock = nil }
+            if dock != nil {
+                dock = nil
+            }
             return
         }
         // Touching: the header's top is near the summary's bottom edge,
@@ -63,7 +65,7 @@ final class CompactDockTracker: ObservableObject {
             // ponytail: -4...12 accommodates the native List section-header inset.
             // Ceiling: a different runtime or list style may use a larger inset.
             // Upgrade path: measure the hosting inset directly if this diverges.
-            guard (-4 ... 12).contains(offset) else { continue }
+            guard (-4...12).contains(offset) else { continue }
             if closestID != nil {
                 let isCloser = abs(offset) < abs(closestOffset)
                 let isTie = abs(offset) == abs(closestOffset) && id < (closestID ?? "")
