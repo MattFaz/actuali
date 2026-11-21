@@ -169,7 +169,9 @@ final class SettingsNavigationUITests: XCTestCase {
         if !control.isHittable {
             for _ in 0..<12 {
                 app.swipeUp(velocity: .slow)
-                if control.isHittable { break }
+                if control.isHittable {
+                    break
+                }
             }
         }
         XCTAssertTrue(control.isHittable, "Settings control not hittable after scrolling")
