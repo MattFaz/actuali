@@ -130,6 +130,32 @@ struct LogTransactionIntent: AppIntent {
             throw mapped
         }
 
+        do {
+            let result = try await performWrite(
+                using: store,
+                writer: writer,
+                targetBudgetId: targetBudgetId,
+                parsedAmount: parsedAmount
+            )
+            if targetBudgetId != store.currentBudgetId {
+                await store.releaseTransactionWriter(for: targetBudgetId)
+            }
+            return result
+        } catch {
+            if targetBudgetId != store.currentBudgetId {
+                await store.releaseTransactionWriter(for: targetBudgetId)
+            }
+            throw error
+        }
+    }
+
+    @MainActor
+    private func performWrite(
+        using store: BudgetStore,
+        writer: BudgetTransactionWriter,
+        targetBudgetId: String,
+        parsedAmount: Double
+    ) async throws -> some IntentResult & ProvidesDialog {
         // A saved account/category ID must belong to the chosen budget. Legacy
         // unscoped IDs remain valid only for shortcuts that don't choose a budget.
         let isBudgetScoped = budget != nil
@@ -236,7 +262,8 @@ struct LogTransactionIntent: AppIntent {
                 currencyCode: writerCurrencyCode,
                 narrowSymbol: store.useNarrowCurrencySymbol,
                 synced: written.synced,
-                numberFormat: writerNumberFormat
+                numberFormat: writerNumberFormat,
+                needsOpeningBudget: targetBudgetId != store.currentBudgetId
             )
 
             let amountString = CurrencyAmountFormat.string(
@@ -380,6 +407,7 @@ struct LogTransactionIntent: AppIntent {
                 accountId: accountId,
                 payee: payee,
                 amountCents: amountCents,
+                budgetId: targetBudgetId ?? budget?.id,
                 date: date ?? Date(),
                 notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
                 categoryId: categoryId,

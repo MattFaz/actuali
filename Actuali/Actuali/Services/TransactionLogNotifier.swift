@@ -26,6 +26,7 @@ enum TransactionLogNotifier {
     static func notifySuccess(payee: String, amountCents: Int, currencyCode: String,
                               narrowSymbol: Bool = false, synced: Bool = true,
                               numberFormat: ActualNumberFormat = .commaDot,
+                              needsOpeningBudget: Bool = false,
                               settings: TransactionLogNotificationSettings = .init(),
                               center: any NotificationPosting = UNUserNotificationCenter.current()) async {
         // A locally saved row still needs its warning when ordinary
@@ -47,9 +48,12 @@ enum TransactionLogNotifier {
             : String(localized: "Saved locally")
         content.body = composeSuccessBody(payee: payee, amountCents: amountCents,
                                           currencyCode: currencyCode, narrowSymbol: narrowSymbol,
-                                          synced: synced, numberFormat: numberFormat)
-        // No sound — quiet success banner that auto-dismisses.
-        content.userInfo = TransactionLoggedMarker.userInfo
+                                          synced: synced, numberFormat: numberFormat,
+                                          needsOpeningBudget: needsOpeningBudget)
+        // A non-active budget must not route a tap to the active account list.
+        if !needsOpeningBudget {
+            content.userInfo = TransactionLoggedMarker.userInfo
+        }
 
         let request = UNNotificationRequest(
             identifier: "com.mfazz.Actuali.logTransactionSuccess.\(UUID().uuidString)",
@@ -130,7 +134,8 @@ enum TransactionLogNotifier {
     static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
                                    narrowSymbol: Bool, synced: Bool = true,
                                    locale: Locale = .autoupdatingCurrent,
-                                   numberFormat: ActualNumberFormat = .commaDot) -> String {
+                                   numberFormat: ActualNumberFormat = .commaDot,
+                                   needsOpeningBudget: Bool = false) -> String {
         let amountString = CurrencyAmountFormat.string(cents: amountCents,
                                                        currencyCode: currencyCode,
                                                        narrowSymbol: narrowSymbol,
@@ -143,7 +148,9 @@ enum TransactionLogNotifier {
             return String(
                 format: String(localized: "%@. %@", locale: locale),
                 prefix,
-                String(localized: "Couldn't reach your server — it will sync when you open Actuali.", locale: locale)
+                needsOpeningBudget
+                    ? String(localized: "Open Actuali and select a budget first.", locale: locale)
+                    : String(localized: "Couldn't reach your server — it will sync when you open Actuali.", locale: locale)
             )
         }
         return prefix

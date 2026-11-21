@@ -67,7 +67,15 @@ struct ContentView: View {
                 Text(budgetStore.error ?? "")
             }
             .sheet(item: $notificationRouter.pendingPrefill) { prefill in
-                if let accountId = resolvedAccountId(for: prefill) {
+                if !prefill.canOpen(in: budgetStore.currentBudgetId) {
+                    // The sheet is presented on the active budget. Never
+                    // recover a shortcut targeting another budget into it.
+                    ContentUnavailableView(
+                        "Budget",
+                        systemImage: "tray.full",
+                        description: Text("Open Actuali and select a budget first.")
+                    )
+                } else if let accountId = resolvedAccountId(for: prefill) {
                     AddTransactionView(
                         accountId: accountId,
                         payee: prefill.payee,

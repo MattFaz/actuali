@@ -8,6 +8,8 @@ struct TransactionPrefill: Identifiable, Equatable {
     private static let kind = "com.mfazz.Actuali.transactionPrefill"
 
     let accountId: String?
+    /// The intended destination; nil only for notifications from older builds.
+    let budgetId: String?
     let payee: String
     let amountCents: Int?
     let date: Date
@@ -24,6 +26,7 @@ struct TransactionPrefill: Identifiable, Equatable {
         accountId: String?,
         payee: String,
         amountCents: Int?,
+        budgetId: String? = nil,
         date: Date,
         notes: String = "",
         categoryId: String? = nil,
@@ -31,6 +34,7 @@ struct TransactionPrefill: Identifiable, Equatable {
         cleared: Bool = false
     ) {
         self.accountId = accountId
+        self.budgetId = budgetId
         self.payee = payee
         self.amountCents = amountCents
         self.date = date
@@ -44,6 +48,7 @@ struct TransactionPrefill: Identifiable, Equatable {
         guard userInfo["kind"] as? String == Self.kind,
               let timestamp = userInfo["date"] as? Double else { return nil }
         self.accountId = userInfo["accountId"] as? String
+        self.budgetId = userInfo["budgetId"] as? String
         self.payee = userInfo["payee"] as? String ?? ""
         self.amountCents = userInfo["amountCents"] as? Int
         self.date = Date(timeIntervalSince1970: timestamp)
@@ -53,6 +58,11 @@ struct TransactionPrefill: Identifiable, Equatable {
         self.categoryId = userInfo["categoryId"] as? String
         self.isIncome = userInfo["isIncome"] as? Bool ?? false
         self.cleared = userInfo["cleared"] as? Bool ?? false
+    }
+
+    /// A failure for budget B must never open a form that saves into budget A.
+    func canOpen(in activeBudgetId: String?) -> Bool {
+        budgetId == nil || budgetId == activeBudgetId
     }
 
     var userInfo: [AnyHashable: Any] {
@@ -65,6 +75,9 @@ struct TransactionPrefill: Identifiable, Equatable {
         ]
         if let accountId {
             info["accountId"] = accountId
+        }
+        if let budgetId {
+            info["budgetId"] = budgetId
         }
         if let amountCents {
             info["amountCents"] = amountCents

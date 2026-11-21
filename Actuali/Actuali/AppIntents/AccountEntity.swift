@@ -78,7 +78,11 @@ struct BudgetEntityQuery: EntityQuery {
         isConnected: Bool
     ) {
         let store = BudgetStore.shared
-        await store.fetchRemoteBudgets()
+        // Only a connected store needs the server list. An unconditional guard
+        // inside fetchRemoteBudgets would break existing test/preview callers.
+        if store.isConnected {
+            await store.fetchRemoteBudgets()
+        }
 
         let fileManager = BudgetFileManager.shared
         let localBudgets = fileManager.listLocalBudgets()

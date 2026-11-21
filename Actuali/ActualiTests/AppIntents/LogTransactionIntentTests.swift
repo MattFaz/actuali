@@ -257,6 +257,24 @@ struct LogTransactionIntentTests {
         ) == "groceries")
     }
 
+    @Test func failureNotificationRetainsTargetBudgetAndRejectsWrongActiveBudget() throws {
+        let prefill = TransactionPrefill(
+            accountId: nil,
+            payee: "Shop",
+            amountCents: -650,
+            budgetId: "travel-budget",
+            date: Date(timeIntervalSince1970: 1_750_000_000)
+        )
+        let decoded = try #require(TransactionPrefill(userInfo: prefill.userInfo))
+        #expect(decoded.budgetId == "travel-budget")
+        #expect(!decoded.canOpen(in: "home-budget"))
+        #expect(decoded.canOpen(in: "travel-budget"))
+        #expect(TransactionPrefill(userInfo: [
+            "kind": "com.mfazz.Actuali.transactionPrefill",
+            "date": 1_750_000_000.0,
+        ])?.canOpen(in: "home-budget") == true)
+    }
+
     @Test func failureNotificationDoesNotPrefillIDsFromAnotherBudget() {
         let otherBudget = LogTransactionIntent.failurePrefillIDs(
             targetBudgetId: "budget-b",
@@ -306,6 +324,20 @@ struct LogTransactionIntentTests {
         )
         #expect(syncedBudget.accountId == "checking")
         #expect(syncedBudget.categoryId == "groceries")
+    }
+
+    @Test func inactiveOfflineBudgetNotificationDoesNotPromiseAutomaticSync() {
+        let body = TransactionLogNotifier.composeSuccessBody(
+            payee: "Coffee",
+            amountCents: -650,
+            currencyCode: "USD",
+            narrowSymbol: false,
+            synced: false,
+            locale: Locale(identifier: "en_US"),
+            needsOpeningBudget: true
+        )
+        #expect(body.contains("select a budget"))
+        #expect(!body.contains("will sync when you open Actuali"))
     }
 
     @Test func silentByDefaultSoAutomationsDoNotShowADialog() {
