@@ -571,19 +571,8 @@ struct TransactionRow: View {
     var body: some View {
         HStack(spacing: 10) {
             if isSelectionMode {
-                // No button needed: the row itself toggles selection. The
-                // cleared dot stays in view — the bulk bar acts on it.
-                HStack(spacing: 6) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 20))
-                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                    ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
-                }
-                .frame(width: 48, height: 28)
-                .accessibilityLabel(TransactionsListLocalization.selectionLabel(
-                    isSelected: isSelected,
-                    locale: locale
-                ))
+                ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
+                    .frame(width: 28, height: 28)
             } else if let onToggleCleared {
                 Button {
                     if transaction.reconciled {
@@ -654,6 +643,16 @@ struct TransactionRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            if isSelectionMode {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    .frame(width: 28, height: 28)
+                    .accessibilityLabel(TransactionsListLocalization.selectionLabel(
+                        isSelected: isSelected,
+                        locale: locale
+                    ))
             }
         }
         .padding(.vertical, 2)
