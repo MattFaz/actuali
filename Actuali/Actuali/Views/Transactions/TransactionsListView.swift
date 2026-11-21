@@ -645,7 +645,7 @@ struct TransactionRow: View {
                 }
             }
             if isSelectionMode {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
                     .font(.system(size: 20))
                     .foregroundStyle(isSelected ? Color.accentColor : .secondary)
                     .frame(width: 28, height: 28)
