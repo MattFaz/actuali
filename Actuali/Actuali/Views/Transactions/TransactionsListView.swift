@@ -570,10 +570,7 @@ struct TransactionRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if isSelectionMode {
-                ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
-                    .frame(width: 28, height: 28)
-            } else if let onToggleCleared {
+            if let onToggleCleared, !isSelectionMode {
                 Button {
                     if transaction.reconciled {
                         confirmingUnlock = true
@@ -598,8 +595,7 @@ struct TransactionRow: View {
                     Button("Unlock") { onToggleCleared() }
                 }
             } else {
-                // Same footprint as the tappable variant so mixed lists
-                // (split children under parents) keep their columns aligned.
+                // Selection mode keeps the status visible but inert; split children also keep their columns aligned.
                 ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
                     .frame(width: 28, height: 28)
             }
@@ -649,6 +645,7 @@ struct TransactionRow: View {
                     .font(.system(size: 20))
                     .foregroundStyle(isSelected ? Color.accentColor : .secondary)
                     .frame(width: 28, height: 28)
+                    .accessibilityIdentifier("transaction.select.\(transaction.id)")
                     .accessibilityLabel(TransactionsListLocalization.selectionLabel(
                         isSelected: isSelected,
                         locale: locale
