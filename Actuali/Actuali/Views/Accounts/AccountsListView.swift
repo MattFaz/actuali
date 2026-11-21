@@ -1884,20 +1884,16 @@ struct AccountRow: View {
                     customImage: loadedAccountIconImage
                 )
                 .accessibilityHidden(true)
-                // The spinner takes the icon's place, so it sits in the same
-                // spot on every row whatever the name's length.
-                .opacity(isSyncing ? 0 : 1)
-                .overlay {
-                    if isSyncing {
-                        ProgressView()
-                            .accessibilityLabel(String(localized: "Syncing..."))
-                            .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
-                    }
-                }
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
+                    // Before the name, so it sits in the same spot on every
+                    // row whatever the name's length.
+                    if let linked, isSyncing {
+                        BankSyncBadge(linked: linked, isSyncing: true)
+                            .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
+                    }
                     Text(account.name)
                         .font(.body)
                         .fontWeight(unreviewedCount > 0 ? .semibold : .regular)
@@ -1906,11 +1902,9 @@ struct AccountRow: View {
                             .accessibilityIdentifier("accountRow.unreviewed.\(account.id)")
                     }
                     // Only when there is something to say: a healthy link's
-                    // icon on every row is noise next to the name. With icons
-                    // on, the spinner is over the icon instead.
-                    if let linked, case let spinsHere = isSyncing && !showAccountTypeIcons,
-                       spinsHere || linked.needsAttention {
-                        BankSyncBadge(linked: linked, isSyncing: spinsHere)
+                    // icon on every row is noise next to the name.
+                    if let linked, !isSyncing, linked.needsAttention {
+                        BankSyncBadge(linked: linked, isSyncing: false)
                             .font(.caption)
                             .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
                     }
