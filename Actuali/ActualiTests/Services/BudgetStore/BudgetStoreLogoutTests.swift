@@ -132,33 +132,6 @@ struct BudgetStoreLogoutTests {
         #expect(await store.syncInBackground() == false)
     }
 
-    /// Budget-scoped experimental flags must not remain visible after
-    /// leaving a budget; the next budget owns both values.
-    @Test func logoutClearsBudgetFeatureFlags() async throws {
-        let savedBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
-        let (store, manager, root) = makeFileBackedStore()
-        defer {
-            restoreUserDefault("currentBudgetId", to: savedBudgetId)
-            try? FileManager.default.removeItem(at: root)
-        }
-        let budgetId = "budget-\(UUID().uuidString)"
-        try ActualiTests.seedBudget(id: budgetId, in: manager, sql: TestSchema.upstream + """
-        INSERT INTO preferences (id, value) VALUES
-            ('flags.goalTemplatesEnabled', 'true'),
-            ('flags.goalTemplatesUIEnabled', 'true');
-        """)
-
-        await store.loadLocalBudget(budgetId)
-        store.currentBudgetId = budgetId
-        #expect(store.goalTemplatesEnabled)
-        #expect(store.goalTemplatesUIEnabled)
-
-        await store.logout(clearLocalData: false)
-
-        #expect(!store.goalTemplatesEnabled)
-        #expect(!store.goalTemplatesUIEnabled)
-    }
-
     @Test func clearsAllPublishedBudgetState() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }

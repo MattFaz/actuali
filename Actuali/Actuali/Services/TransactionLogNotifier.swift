@@ -19,25 +19,6 @@ enum TransactionLoggedMarker {
 }
 
 @MainActor
-protocol TransactionLogNotificationCenter {
-    func requestAuthorization() async throws -> Bool
-    func add(_ request: UNNotificationRequest) async throws
-}
-
-@MainActor
-private struct SystemTransactionLogNotificationCenter: TransactionLogNotificationCenter {
-    private let center = UNUserNotificationCenter.current()
-
-    func requestAuthorization() async throws -> Bool {
-        try await center.requestAuthorization(options: [.alert, .sound])
-    }
-
-    func add(_ request: UNNotificationRequest) async throws {
-        try await center.add(request)
-    }
-}
-
-@MainActor
 enum TransactionLogNotifier {
     /// - Parameter synced: false when the row is written locally but hasn't
     ///   reached the server yet, which the banner says outright — otherwise the
@@ -46,14 +27,14 @@ enum TransactionLogNotifier {
                               narrowSymbol: Bool = false, synced: Bool = true,
                               numberFormat: ActualNumberFormat = .commaDot,
                               settings: TransactionLogNotificationSettings = .init(),
-                              notificationCenter: (any TransactionLogNotificationCenter)? = nil) async {
-        guard settings.showsSuccessNotification else { return }
-
-        let center = notificationCenter ?? SystemTransactionLogNotificationCenter()
+                              center: any NotificationPosting = UNUserNotificationCenter.current()) async {
+        // A locally saved row still needs its warning when ordinary
+        // Shortcut success confirmations are disabled.
+        guard !synced || settings.showsSuccessNotification else { return }
 
         let granted: Bool
         do {
-            granted = try await center.requestAuthorization()
+            granted = try await center.requestAuthorization(options: [.alert, .sound])
         } catch {
             notifLog.error("Notification authorization failed: \(error.localizedDescription, privacy: .public)")
             return
@@ -87,15 +68,14 @@ enum TransactionLogNotifier {
                               currencyCode: String, narrowSymbol: Bool = false,
                               prefill: TransactionPrefill? = nil,
                               numberFormat: ActualNumberFormat = .commaDot,
-                              notificationCenter: (any TransactionLogNotificationCenter)? = nil) async {
-        let center = notificationCenter ?? SystemTransactionLogNotificationCenter()
+                              center: any NotificationPosting = UNUserNotificationCenter.current()) async {
 
         // Request permission lazily on first call. Quietly ignore denial — without
         // permission we can't notify, but we still want the AppIntent to throw a
         // banner-visible error so the user isn't left in the dark.
         let granted: Bool
         do {
-            granted = try await center.requestAuthorization()
+            granted = try await center.requestAuthorization(options: [.alert, .sound])
         } catch {
             notifLog.error("Notification authorization failed: \(error.localizedDescription, privacy: .public)")
             return
