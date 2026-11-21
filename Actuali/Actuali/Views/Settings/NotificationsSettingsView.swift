@@ -7,6 +7,7 @@ struct NotificationsSettingsView: View {
     @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
     @State private var offBudgetNotificationsIncluded = TransactionNotificationSettings().includesOffBudget
     @State private var creditCardDueNotificationsEnabled = CreditCardNotificationSettings().isEnabled
+    @AppStorage(TransactionLogNotificationSettings.key) private var shortcutTransactionConfirmationEnabled = true
     @State private var notificationPermissionDenied = false
 
     /// Persists the opt-in and requests permission on enable. Background
@@ -73,6 +74,17 @@ struct NotificationsSettingsView: View {
                     Text(String(localized: "New transaction alerts require Background App Refresh. Credit card due reminders are sent 7, 5, 3, and 1 days before payment is due for cards with an unpaid balance."))
                 }
             }
+            Section {
+                Toggle(String(localized: "Shortcut Transaction Confirmation"), isOn: $shortcutTransactionConfirmationEnabled)
+                    .accessibilityIdentifier("notifications.shortcutTransactionConfirmation")
+                    .onChange(of: shortcutTransactionConfirmationEnabled) { _, enabled in
+                        if enabled {
+                            Task { await enableTransactionNotifications() }
+                        }
+                    }
+            } footer: {
+                Text(String(localized: "Show a notification after an iOS Shortcut logs a transaction."))
+            }
         }
         .readableWidth()
         .navigationTitle(String(localized: "Notifications"))
@@ -89,7 +101,9 @@ struct NotificationsSettingsView: View {
     /// Permission can change in the Settings app while we're backgrounded;
     /// re-check whenever the screen appears.
     private func refreshNotificationPermissionState() async {
-        guard transactionNotificationsEnabled || creditCardDueNotificationsEnabled else { return }
+        guard transactionNotificationsEnabled
+            || creditCardDueNotificationsEnabled
+            || shortcutTransactionConfirmationEnabled else { return }
         let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
         notificationPermissionDenied = status == .denied
     }

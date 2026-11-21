@@ -26,3 +26,20 @@ struct TransactionNotificationSettings {
         nonmutating set { defaults.set(newValue, forKey: Self.includesOffBudgetKey) }
     }
 }
+
+/// Controls the success banner shown after an iOS Shortcut logs a transaction.
+/// This is separate from background transaction alerts and defaults on.
+struct TransactionLogNotificationSettings {
+    static let key = "transactionLogSuccessNotificationEnabled"
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    var showsSuccessNotification: Bool {
+        get { defaults.object(forKey: Self.key) as? Bool ?? true }
+        nonmutating set { defaults.set(newValue, forKey: Self.key) }
+    }
+}
