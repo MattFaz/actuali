@@ -3,14 +3,17 @@ import Testing
 import UserNotifications
 @testable import Actuali
 
-@MainActor
-private final class RecordingTransactionLogNotificationCenter: TransactionLogNotificationCenter {
+private final class RecordingTransactionLogNotificationCenter: NotificationPosting, @unchecked Sendable {
     private(set) var authorizationRequestCount = 0
     private(set) var addedRequests: [UNNotificationRequest] = []
     var authorizationGranted = true
     var authorizationError: Error?
 
-    func requestAuthorization() async throws -> Bool {
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        authorizationGranted ? .authorized : .denied
+    }
+
+    func requestAuthorization(options _: UNAuthorizationOptions) async throws -> Bool {
         authorizationRequestCount += 1
         if let authorizationError {
             throw authorizationError
@@ -21,6 +24,8 @@ private final class RecordingTransactionLogNotificationCenter: TransactionLogNot
     func add(_ request: UNNotificationRequest) async throws {
         addedRequests.append(request)
     }
+
+    func removePendingNotificationRequests(withIdentifiers _: [String]) {}
 }
 
 @MainActor
@@ -47,11 +52,29 @@ struct TransactionLogNotifierTests {
             amountCents: -450,
             currencyCode: "USD",
             settings: makeSettings(showsSuccessNotification: false),
-            notificationCenter: center
+            center: center
         )
 
         #expect(center.authorizationRequestCount == 0)
         #expect(center.addedRequests.isEmpty)
+    }
+
+    @Test func disabledConfirmationStillPostsUnsyncedWarning() async {
+        let center = RecordingTransactionLogNotificationCenter()
+
+        await TransactionLogNotifier.notifySuccess(
+            payee: "Coffee Shop",
+            amountCents: -450,
+            currencyCode: "USD",
+            synced: false,
+            settings: makeSettings(showsSuccessNotification: false),
+            center: center
+        )
+
+        #expect(center.authorizationRequestCount == 1)
+        #expect(center.addedRequests.count == 1)
+        #expect(center.addedRequests.first?.content.title == String(localized: "Saved locally"))
+        #expect(center.addedRequests.first?.content.body.contains("sync when you open Actuali") == true)
     }
 
     @Test func enabledShortcutSuccessNotificationIsDelivered() async {
@@ -62,7 +85,7 @@ struct TransactionLogNotifierTests {
             amountCents: -450,
             currencyCode: "USD",
             settings: makeSettings(showsSuccessNotification: true),
-            notificationCenter: center
+            center: center
         )
 
         #expect(center.authorizationRequestCount == 1)
@@ -83,7 +106,7 @@ struct TransactionLogNotifierTests {
             amountCents: -450,
             currencyCode: "USD",
             settings: makeSettings(showsSuccessNotification: true),
-            notificationCenter: center
+            center: center
         )
 
         #expect(center.authorizationRequestCount == 1)
@@ -99,7 +122,7 @@ struct TransactionLogNotifierTests {
             amountCents: -450,
             currencyCode: "USD",
             settings: makeSettings(showsSuccessNotification: true),
-            notificationCenter: center
+            center: center
         )
 
         #expect(center.authorizationRequestCount == 1)
@@ -115,14 +138,14 @@ struct TransactionLogNotifierTests {
             amountCents: -450,
             currencyCode: "USD",
             settings: settings,
-            notificationCenter: center
+            center: center
         )
         await TransactionLogNotifier.notifyFailure(
             message: "Couldn't save",
             payee: "Coffee Shop",
             amountCents: -450,
             currencyCode: "USD",
-            notificationCenter: center
+            center: center
         )
 
         #expect(center.authorizationRequestCount == 1)

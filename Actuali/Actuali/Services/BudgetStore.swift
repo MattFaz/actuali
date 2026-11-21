@@ -2314,21 +2314,10 @@ final class BudgetStore: ObservableObject {
             token = nil
         }
 
-        // A -loadDemoData UI-test launch is explicitly replacing the saved
-        // budget. Skip its initial load instead of briefly publishing stale
-        // preferences from the previous demo before the fresh fixture lands.
-        #if DEBUG
-        let shouldLoadPersistedBudget = !CommandLine.arguments.contains("-loadDemoData")
-        #else
-        let shouldLoadPersistedBudget = true
-        #endif
-
         // Load local budget if available. The saved session is configured in
         // the same task, before the load, so the initial sync below is
         // authenticated.
-        if shouldLoadPersistedBudget,
-           let budgetId = currentBudgetId,
-           fileManager.budgetExists(budgetId) {
+        if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
             // Set before the task so the very first render already knows the
             // numbers it is about to draw are provisional (GH #126).
             isInitialSyncing = true
@@ -2343,7 +2332,7 @@ final class BudgetStore: ObservableObject {
                 await syncOnForeground()
                 isInitialSyncing = false
             }
-        } else if shouldLoadPersistedBudget, let token {
+        } else if let token {
             Task { await configureSavedSession(token: token) }
         }
     }
@@ -2752,10 +2741,6 @@ final class BudgetStore: ObservableObject {
         tagSummaries = []
         schedulesLoaded = false
         scheduleLoadError = nil
-        // These are budget-scoped synced preferences. Don't show the old
-        // budget's feature availability while another budget is loading.
-        goalTemplatesEnabled = false
-        goalTemplatesUIEnabled = false
         syncStatus.state = .idle
         syncStatus.lastSyncTime = nil
         // No budget left to catch up — an in-flight initial sync's banner must
