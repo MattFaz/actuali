@@ -1185,11 +1185,7 @@ struct AccountDetailView: View {
             CreditCardStatementDetailView(account: account, statement: statement)
                 .environmentObject(budgetStore)
         }
-        // Cleared on the way out, not in: the marks are what there is to
-        // review while the screen is up.
-        .onDisappear { budgetStore.markAccountReviewed(account.id) }
-        .onChange(of: account.id) { previousId, _ in
-            budgetStore.markAccountReviewed(previousId)
+        .onChange(of: account.id) {
             // Search belongs to the selected account; don't carry a hidden filter
             // or an open search field into the next account in the iPad split view.
             isTransactionSearchActive = false

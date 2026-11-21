@@ -27,16 +27,13 @@ struct PendingImportsView: View {
     @State private var deferredFailureCount: Int?
     @State private var isProcessing = false
     /// What this device's bank sync imported and nobody has looked at yet.
-    /// Already in the budget, so there is nothing to approve: seeing them
-    /// here is the review, and leaving clears the marks.
+    /// Already in the budget, so there is nothing to approve. The marks stay
+    /// until Mark All Reviewed: closing the sheet is not a decision.
     @State private var newTransactions: [Transaction] = []
     @State private var editingTransaction: Transaction?
     /// The tab the person picked; until they do, whichever has something
     /// to decide comes first.
     @State private var pickedTab: Tab?
-    /// Whether the Imported list was actually on screen, so closing the
-    /// sheet from the other tab doesn't clear marks nobody saw.
-    @State private var sawImported = false
 
     /// Two tabs, because the sheet holds two kinds of thing: rows that need a
     /// decision before they enter the budget, and rows that are already in.
@@ -111,6 +108,23 @@ struct PendingImportsView: View {
                             .padding(.vertical, 8)
                             .background(.bar)
                             .accessibilityIdentifier("review.approveAll")
+                        } else if tab == .imported {
+                            Button {
+                                budgetStore.markAllReviewed()
+                                if approvalCount == 0 {
+                                    dismiss()
+                                }
+                            } label: {
+                                Text(String(localized: "Mark All Reviewed"))
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .background(.bar)
+                            .accessibilityIdentifier("review.markAllReviewed")
                         }
                     }
                 }
@@ -150,11 +164,6 @@ struct PendingImportsView: View {
             // An edit or delete bumps dataVersion, which is what re-reads the rows.
             .task(id: budgetStore.dataVersion) {
                 newTransactions = await budgetStore.fetchUnreviewedTransactions()
-            }
-            .onDisappear {
-                if sawImported {
-                    budgetStore.markAllReviewed()
-                }
             }
         }
     }
@@ -205,8 +214,8 @@ struct PendingImportsView: View {
         }
     }
 
-    /// What this device's bank sync already put in the budget. Nothing to
-    /// decide: seeing the list is the review.
+    /// What this device's bank sync already put in the budget, listed until
+    /// Mark All Reviewed.
     private func importedList(showsNote: Bool) -> some View {
         List {
             Section {
@@ -236,7 +245,6 @@ struct PendingImportsView: View {
                 }
             }
         }
-        .onAppear { sawImported = true }
         .accessibilityIdentifier("pendingImports.newTransactions")
     }
 

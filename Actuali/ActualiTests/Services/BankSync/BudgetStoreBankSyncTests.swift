@@ -1402,7 +1402,7 @@ struct BudgetStoreBankSyncTests {
         #expect(linked.attentionMessage != nil)
     }
 
-    @Test func importedTransactionsStayUnreviewedUntilTheirAccountIsSeen() async throws {
+    @Test func importedTransactionsStayUnreviewedUntilMarkedReviewed() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await markAlreadySynced(database)
@@ -1410,7 +1410,7 @@ struct BudgetStoreBankSyncTests {
         {"id": "sf-unreviewed", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Unreviewed"}
         """))
         // The marks persist per budget, so start from a known state.
-        store.markAccountReviewed(Self.accountId)
+        store.markAllReviewed()
 
         let result = try await store.syncBankAccounts()
 
@@ -1422,9 +1422,7 @@ struct BudgetStoreBankSyncTests {
         _ = try await store.syncBankAccounts()
         #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
 
-        store.markAccountReviewed("some-other-account")
-        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
-        store.markAccountReviewed(Self.accountId)
+        store.markAllReviewed()
         #expect(store.unreviewedTransactions[imported.id] == nil)
     }
 
@@ -1485,8 +1483,8 @@ struct BudgetStoreBankSyncTests {
         #expect(store.unreviewedTransactions[created.id] == Self.accountId)
         #expect(!store.matchedTransactionIds.contains(created.id))
 
-        // Seeing the account clears the match note along with the mark.
-        store.markAccountReviewed(Self.accountId)
+        // Marking reviewed clears the match note along with the mark.
+        store.markAllReviewed()
         #expect(store.matchedTransactionIds.isEmpty)
 
         // Already matched, so the same download changes and marks nothing.
