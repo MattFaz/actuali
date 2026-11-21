@@ -69,7 +69,6 @@ enum TransactionLogNotifier {
                               prefill: TransactionPrefill? = nil,
                               numberFormat: ActualNumberFormat = .commaDot,
                               center: any NotificationPosting = UNUserNotificationCenter.current()) async {
-
         // Request permission lazily on first call. Quietly ignore denial — without
         // permission we can't notify, but we still want the AppIntent to throw a
         // banner-visible error so the user isn't left in the dark.
