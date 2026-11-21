@@ -646,6 +646,31 @@ struct TransactionLoggerSyncOutcomeTests {
         await store.closeBudgetConnectionsForTesting()
     }
 
+    @Test func activeWriterLeasesReleaseWithoutClosingTheStoresSyncClient() async throws {
+        let savedBudgetId = UserDefaults.standard.object(forKey: "currentBudgetId")
+        defer { restoreUserDefault("currentBudgetId", to: savedBudgetId) }
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let serverClient = try await makeServerClient(server: SyncServer(), reachable: true)
+        let syncClient = try await makeTransactionWriter(database: database, serverClient: serverClient)
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = "active-budget"
+        store.configureForTesting(database: database, syncClient: syncClient)
+
+        let first = try await store.transactionWriter(for: "active-budget")
+        let second = try await store.transactionWriter(for: "active-budget")
+        await store.releaseTransactionWriter(for: "active-budget")
+        await store.releaseTransactionWriter(for: "active-budget")
+
+        let reopened = try await store.transactionWriter(for: "active-budget")
+        #expect(first === second)
+        #expect(first !== reopened)
+        let result = try await log(using: reopened, merchant: "ACTIVE AFTER CLOSE")
+        #expect(try await database.fetchTransaction(id: result.transactionId) != nil)
+        await store.releaseTransactionWriter(for: "active-budget")
+        await store.closeBudgetConnectionsForTesting()
+    }
+
     @Test func rapidTapsToDifferentBudgetsUseIndependentWriters() async throws {
         let (store, fileManager, root) = makeFileBackedStore()
         defer { cleanup(root) }
@@ -716,6 +741,57 @@ struct TransactionLoggerSyncOutcomeTests {
                 rawMerchant: "Coffee", notes: nil, date: Date()
             )
         }
+    }
+
+    @Test func incorrectBudgetScopedCategoryFailsWithoutSaving() async throws {
+        let (store, fileManager, root) = makeFileBackedStore()
+        defer { cleanup(root) }
+        try seedBudget(id: "target-budget", in: fileManager, sql: makeTargetBudgetSchema())
+        let serverClient = try await makeServerClient(server: SyncServer(), reachable: false)
+        store.setServerClientForTesting(serverClient)
+
+        var intent = LogTransactionIntent()
+        intent.budget = BudgetEntity(id: "target-budget", name: "Target")
+        intent.account = AccountEntity(
+            id: AccountEntity.scopedID(budgetID: "target-budget", accountID: "acct-1"),
+            name: "Checking"
+        )
+        intent.category = CategoryEntity(
+            id: CategoryEntity.scopedID(budgetID: "other-budget", categoryID: "cat-1"),
+            name: "Daily"
+        )
+        intent.amount = "8.20"
+        intent.payee = "Coffee"
+
+        do {
+            _ = try await intent.perform(using: store)
+            Issue.record("A category belonging to another budget must reject the shortcut")
+        } catch LogTransactionError.categoryUnavailable {
+            // The explicit category must never be silently replaced by payee history.
+        } catch {
+            Issue.record("Unexpected shortcut error: \(error)")
+        }
+
+        let db = try BudgetDatabase(path: fileManager.databasePath(for: "target-budget"))
+        #expect(try await db.fetchTransactions().isEmpty)
+        await store.closeBudgetConnectionsForTesting()
+    }
+
+    @Test func notificationRecoverySwitchesOnlyOnExplicitRequest() async throws {
+        let (store, fileManager, root) = makeFileBackedStore()
+        defer { cleanup(root) }
+        try seedBudget(id: "recovery-budget", in: fileManager, sql: makeTargetBudgetSchema())
+        #expect(store.currentBudgetId == nil)
+        #expect(store.nameForShortcutRecoveryBudget("recovery-budget") != nil)
+        #expect(!store.isReadyForShortcutRecovery(in: "recovery-budget"))
+
+        let switched = await store.switchToShortcutRecoveryBudget("recovery-budget")
+        #expect(switched)
+        #expect(store.currentBudgetId == "recovery-budget")
+        #expect(store.isReadyForShortcutRecovery(in: "recovery-budget"))
+        #expect(!store.isReadyForShortcutRecovery(in: "another-budget"))
+
+        await store.closeBudgetConnectionsForTesting()
     }
 
     @Test func registryCloseAndRejectBlocksSubsequentWriters() async throws {

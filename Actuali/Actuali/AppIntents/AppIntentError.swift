@@ -8,6 +8,7 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
     case noBudgetLoaded
     case noAccountSelected
     case accountUnavailable
+    case categoryUnavailable
     case invalidAmount(received: String)
     case noAmountReceived
     case transactionAlreadyExists
@@ -58,6 +59,8 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
             return LocalizedStringResource("intent.error.noAccountSelected", locale: locale, bundle: bundle)
         case .accountUnavailable:
             return LocalizedStringResource("intent.error.accountUnavailable", locale: locale, bundle: bundle)
+        case .categoryUnavailable:
+            return LocalizedStringResource("intent.error.categoryNotFound", locale: locale, bundle: bundle)
         case .invalidAmount(let received):
             let shown = received.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40)
             return LocalizedStringResource("intent.error.invalidAmount \(shown)", locale: locale, bundle: bundle)

@@ -67,14 +67,29 @@ struct ContentView: View {
                 Text(budgetStore.error ?? "")
             }
             .sheet(item: $notificationRouter.pendingPrefill) { prefill in
-                if !prefill.canOpen(in: budgetStore.currentBudgetId) {
-                    // The sheet is presented on the active budget. Never
-                    // recover a shortcut targeting another budget into it.
-                    ContentUnavailableView(
-                        "Budget",
-                        systemImage: "tray.full",
-                        description: Text("Open Actuali and select a budget first.")
-                    )
+                if !prefill.canOpen(in: budgetStore.currentBudgetId)
+                    || !budgetStore.isReadyForShortcutRecovery(in: prefill.budgetId) {
+                    VStack(spacing: 16) {
+                        ContentUnavailableView(
+                            "Select the Correct Budget",
+                            systemImage: "tray.full",
+                            description: Text("Switch to the transaction's budget to finish adding it.")
+                        )
+                        if let id = prefill.budgetId,
+                           let name = budgetStore.nameForShortcutRecoveryBudget(id) {
+                            Button {
+                                Task { await budgetStore.switchToShortcutRecoveryBudget(id) }
+                            } label: {
+                                Text("Switch to \(name)")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(budgetStore.isLoading)
+                        } else {
+                            Text("Open Connection & Data to download the missing budget, then retry.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 } else if let accountId = resolvedAccountId(for: prefill) {
                     AddTransactionView(
                         accountId: accountId,

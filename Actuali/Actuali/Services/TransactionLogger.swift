@@ -419,6 +419,11 @@ actor BudgetTransactionWriter {
             catchUpTask?.cancel()
             await catchUpTask?.value
             await self?.waitForInFlightWrites()
+            // An in-flight write can schedule a fresh push after the first
+            // cancellation. Drain it before dropping the database connection.
+            if ownsResources {
+                await syncClient?.cancelPendingSync()
+            }
             await self?.releaseResources()
         }
         closeTask = task

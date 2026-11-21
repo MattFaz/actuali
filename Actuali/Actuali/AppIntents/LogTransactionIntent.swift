@@ -137,14 +137,10 @@ struct LogTransactionIntent: AppIntent {
                 targetBudgetId: targetBudgetId,
                 parsedAmount: parsedAmount
             )
-            if targetBudgetId != store.currentBudgetId {
-                await store.releaseTransactionWriter(for: targetBudgetId)
-            }
+            await store.releaseTransactionWriter(for: targetBudgetId)
             return result
         } catch {
-            if targetBudgetId != store.currentBudgetId {
-                await store.releaseTransactionWriter(for: targetBudgetId)
-            }
+            await store.releaseTransactionWriter(for: targetBudgetId)
             throw error
         }
     }
@@ -205,6 +201,10 @@ struct LogTransactionIntent: AppIntent {
                     from: category.id, budgetID: targetBudgetId, allowLegacyID: false
                 )
                 : nil)
+            guard selectedID != nil else {
+                await reportFailure(.categoryUnavailable, store: store, budgetId: targetBudgetId, writer: writer)
+                throw LogTransactionError.categoryUnavailable
+            }
             let availableCategories = await store.categoriesForIntent(in: targetBudgetId)
             categoryId = selectedID.flatMap { id in
                 availableCategories.contains(where: { $0.id == id }) ? id : nil
@@ -293,9 +293,11 @@ struct LogTransactionIntent: AppIntent {
         categoryEntityId: String?,
         availableAccountIDs: Set<String>,
         availableCategoryIDs: Set<String>,
-        allowLegacyIDs: Bool
+        allowLegacyIDs: Bool,
+        allowInactiveBudget: Bool = false
     ) -> (accountId: String?, categoryId: String?) {
-        guard let targetBudgetId, targetBudgetId == activeBudgetId else {
+        guard let targetBudgetId,
+              allowInactiveBudget || targetBudgetId == activeBudgetId else {
             return (nil, nil)
         }
         let scopeBudgetId = entityBudgetId ?? targetBudgetId
@@ -339,9 +341,10 @@ struct LogTransactionIntent: AppIntent {
         }
         let amountCents = AmountParser.parse(amount).flatMap { Transaction.cents(fromDollars: $0) }
 
-        let prefillBudgetId = targetBudgetId.flatMap {
-            $0 == store.currentBudgetId ? $0 : nil
-        }
+        // The notification now carries the destination budget and the UI
+        // blocks saves until that budget is selected. Preserve the valid
+        // account/category selections there instead of dropping them.
+        let prefillBudgetId = targetBudgetId
         let availableAccounts: [Account]
         let availableCategories: [Category]
         if let prefillBudgetId {
@@ -360,7 +363,8 @@ struct LogTransactionIntent: AppIntent {
             categoryEntityId: category?.id,
             availableAccountIDs: Set(availableAccounts.map(\.id)),
             availableCategoryIDs: Set(availableCategories.map(\.id)),
-            allowLegacyIDs: budget == nil
+            allowLegacyIDs: budget == nil,
+            allowInactiveBudget: budget != nil
         )
         let accountId: String?
         if account != nil {

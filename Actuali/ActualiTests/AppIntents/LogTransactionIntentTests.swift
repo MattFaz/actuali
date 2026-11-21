@@ -275,6 +275,15 @@ struct LogTransactionIntentTests {
         ])?.canOpen(in: "home-budget") == true)
     }
 
+    @Test func recoveryGuardRequiresTheRightBudget() {
+        let prefill = TransactionPrefill(
+            accountId: "checking", payee: "Coffee", amountCents: -500,
+            budgetId: "budget-b", date: Date()
+        )
+        #expect(!prefill.canOpen(in: "budget-a"))
+        #expect(prefill.canOpen(in: "budget-b"))
+    }
+
     @Test func failureNotificationDoesNotPrefillIDsFromAnotherBudget() {
         let otherBudget = LogTransactionIntent.failurePrefillIDs(
             targetBudgetId: "budget-b",
@@ -291,6 +300,25 @@ struct LogTransactionIntentTests {
         )
         #expect(otherBudget.accountId == nil)
         #expect(otherBudget.categoryId == nil)
+
+        // A notification for a deliberately selected inactive budget may
+        // retain validated IDs because the recovery sheet requires switching.
+        let inactiveRecovery = LogTransactionIntent.failurePrefillIDs(
+            targetBudgetId: "budget-b",
+            activeBudgetId: "budget-a",
+            accountEntityId: AccountEntity.scopedID(
+                budgetID: "budget-b", accountID: "checking"
+            ),
+            categoryEntityId: CategoryEntity.scopedID(
+                budgetID: "budget-b", categoryID: "groceries"
+            ),
+            availableAccountIDs: ["checking"],
+            availableCategoryIDs: ["groceries"],
+            allowLegacyIDs: false,
+            allowInactiveBudget: true
+        )
+        #expect(inactiveRecovery.accountId == "checking")
+        #expect(inactiveRecovery.categoryId == "groceries")
 
         let activeBudget = LogTransactionIntent.failurePrefillIDs(
             targetBudgetId: "budget-a",

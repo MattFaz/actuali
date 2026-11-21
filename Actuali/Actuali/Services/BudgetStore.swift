@@ -1918,7 +1918,7 @@ final class BudgetStore: ObservableObject {
     /// used by SQLite. A server-only budget is downloaded without changing selection.
     func localBudgetIDForIntent(_ identifier: String) async throws -> String {
         await ensureSavedSessionReady()
-        guard !(isConnected && identifier == DemoDataSeeder.budgetId) else {
+        guard !isEndingServerSession, !(isConnected && identifier == DemoDataSeeder.budgetId) else {
             throw TransactionLogger.LoggerError.noBudgetLoaded
         }
 
@@ -1962,11 +1962,14 @@ final class BudgetStore: ObservableObject {
             return local.id
         }
 
-        guard isConnected else { throw TransactionLogger.LoggerError.noBudgetLoaded }
+        guard isConnected, !isEndingServerSession else {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
         // The local path above needs no network. A missing remote file needs
         // just one list request, not two back-to-back requests.
         await fetchRemoteBudgets()
-        guard let remote = remoteBudgets.first(where: { $0.id == fileID }),
+        guard !isEndingServerSession,
+              let remote = remoteBudgets.first(where: { $0.id == fileID }),
               remote.groupId?.isEmpty == false else {
             throw TransactionLogger.LoggerError.noBudgetLoaded
         }
@@ -2010,8 +2013,34 @@ final class BudgetStore: ObservableObject {
     }
 
     private var intentBudgetDownloads: [String: Task<BudgetMetadata, any Error>] = [:]
+    /// Set synchronously at logout's entry, before the first suspension. A
+    /// resumed shortcut may not import files into a session being cleared.
+    private var isEndingServerSession = false
+    private var localBudgetsBeingRemoved: Set<String> = []
+
+    private func cancelIntentBudgetDownload(for cloudFileId: String) async {
+        guard let task = intentBudgetDownloads[cloudFileId] else { return }
+        task.cancel()
+        _ = await task.result
+        intentBudgetDownloads[cloudFileId] = nil
+    }
+
+    private func cancelIntentBudgetDownloads() async {
+        let tasks = Array(intentBudgetDownloads.values)
+        tasks.forEach { $0.cancel() }
+        // The importer performs file operations after its network awaits. Join
+        // every task before logout can delete the budgets it may have created.
+        for task in tasks {
+            _ = await task.result
+        }
+        intentBudgetDownloads.removeAll()
+    }
 
     private func importRemoteBudgetForIntent(_ remote: RemoteBudget) async throws -> BudgetMetadata {
+        guard !isEndingServerSession, downloadingBudgetId != remote.id,
+              !localBudgetsBeingRemoved.contains(remote.id) else {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
         if let task = intentBudgetDownloads[remote.id] {
             return try await task.value
         }
@@ -2020,6 +2049,9 @@ final class BudgetStore: ObservableObject {
         do {
             let metadata = try await task.value
             intentBudgetDownloads[remote.id] = nil
+            guard !isEndingServerSession else {
+                throw TransactionLogger.LoggerError.noBudgetLoaded
+            }
             return metadata
         } catch {
             intentBudgetDownloads[remote.id] = nil
@@ -2052,19 +2084,37 @@ final class BudgetStore: ObservableObject {
             )
         }
         try Task.checkCancellation()
+        guard !isEndingServerSession, downloadingBudgetId != remote.id,
+              !localBudgetsBeingRemoved.contains(remote.id) else {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
         let initialSyncKey = Self.intentInitialSyncKey(for: remote.id)
         // Set before importing so even termination during initial sync cannot
         // leave a writable but stale snapshot on the next shortcut invocation.
         UserDefaults.standard.set(true, forKey: initialSyncKey)
+        #if DEBUG
+        await intentDownloadReadyToImportForTesting?()
+        #endif
+        try Task.checkCancellation()
+        guard !isEndingServerSession, downloadingBudgetId != remote.id,
+              !localBudgetsBeingRemoved.contains(remote.id) else {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
+        // The archive's local ID is not trusted to choose an existing file.
+        // Unlike an explicit UI re-download, headless import is create-only.
         let metadata = try await fileManager.importBudget(
-            from: zipData, fileId: remote.id, groupId: remote.groupId
+            from: zipData, fileId: remote.id, groupId: remote.groupId,
+            replaceExisting: false
         )
         // A downloaded snapshot can lag behind the server message log. Catch it
         // up before the account/category picker or a shortcut write reads it.
         let writer = try await transactionWriter(for: metadata.id)
         let caughtUp = await writer.catchUpDownloadedBudget()
         await releaseTransactionWriter(for: metadata.id)
-        guard caughtUp else { throw TransactionLogger.LoggerError.noBudgetLoaded }
+        try Task.checkCancellation()
+        guard caughtUp, !isEndingServerSession else {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
         UserDefaults.standard.removeObject(forKey: initialSyncKey)
         return metadata
     }
@@ -2142,7 +2192,10 @@ final class BudgetStore: ObservableObject {
     /// Reuse the active writer, or cache one independent CRDT writer for a
     /// locally available non-active budget without changing currentBudgetId.
     func transactionWriter(for budgetId: String) async throws -> BudgetTransactionWriter {
-        try await transactionWriter(for: budgetId, retriesLeft: 1)
+        guard !isEndingServerSession else {
+            throw TransactionLogger.LoggerError.noBudgetLoaded
+        }
+        return try await transactionWriter(for: budgetId, retriesLeft: 1)
     }
 
     private func transactionWriter(
@@ -2424,6 +2477,29 @@ final class BudgetStore: ObservableObject {
         currentLocalBudget?.cloudFileId
     }
 
+    func nameForShortcutRecoveryBudget(_ budgetId: String) -> String? {
+        guard let local = fileManager.listLocalBudgets().first(where: { $0.id == budgetId }),
+              fileManager.budgetExists(local.id), local.canWriteToLocally else { return nil }
+        return local.budgetName ?? String(localized: "Budget")
+    }
+
+    func isReadyForShortcutRecovery(in budgetId: String?) -> Bool {
+        guard isBudgetLoaded, let currentBudgetId, loadedBudgetId == currentBudgetId else {
+            return false
+        }
+        return budgetId == nil || budgetId == currentBudgetId
+    }
+
+    /// Called only by the explicit "Switch to Budget" action on a failed
+    /// transaction's notification. Never switches budgets in the App Intent.
+    func switchToShortcutRecoveryBudget(_ budgetId: String) async -> Bool {
+        guard !isEndingServerSession,
+              nameForShortcutRecoveryBudget(budgetId) != nil else { return false }
+        currentBudgetId = budgetId
+        await loadLocalBudget(budgetId)
+        return currentBudgetId == budgetId && loadedBudgetId == budgetId && isBudgetLoaded
+    }
+
     /// Keeps the selected local budget visible while the server list is stale
     /// or unavailable.
     func selectedRemoteBudget() -> RemoteBudget? {
@@ -2570,6 +2646,10 @@ final class BudgetStore: ObservableObject {
 
     /// Test-only: pause immediately after a budget load claims its target id.
     var budgetLoadStartedForTesting: (() async -> Void)?
+    /// Test-only: pause an intent download just before it imports a snapshot.
+    var intentDownloadReadyToImportForTesting: (() async -> Void)?
+    var logoutStartedForTesting: (() -> Void)?
+
     /// Test-only: pause a load after its month snapshots are fetched so a
     /// month request can race the final publish deterministically.
     var budgetMonthsFetchedForTesting: (() async -> Void)?
@@ -3112,6 +3192,11 @@ final class BudgetStore: ObservableObject {
     ///   (the demo entry point clears the session without destroying data;
     ///   only an explicit Disconnect wipes it).
     func logout(clearLocalData: Bool = true) async {
+        isEndingServerSession = true
+        #if DEBUG
+        logoutStartedForTesting?()
+        #endif
+        await cancelIntentBudgetDownloads()
         // Cancel an in-flight push before closing writers that may be waiting
         // for it; queued CRDT messages remain durable in SQLite.
         await syncClient?.cancelPendingSync()
@@ -3169,6 +3254,7 @@ final class BudgetStore: ObservableObject {
         availableLoginMethods = []
         ownerExists = true
         await intentWriterRegistry.allowNewWriters()
+        isEndingServerSession = false
     }
 
     /// Close intent writers and cancel sync before releasing or replacing database files.
@@ -3240,6 +3326,9 @@ final class BudgetStore: ObservableObject {
     /// can be downloaded again. Deleting the currently open budget closes it
     /// and returns the app to the "select a budget" empty state.
     func removeLocalBudget(cloudFileId: String) async {
+        localBudgetsBeingRemoved.insert(cloudFileId)
+        defer { localBudgetsBeingRemoved.remove(cloudFileId) }
+        await cancelIntentBudgetDownload(for: cloudFileId)
         guard let local = fileManager.listLocalBudgets().first(
             where: { $0.cloudFileId == cloudFileId }
         ) else {
@@ -3392,11 +3481,18 @@ final class BudgetStore: ObservableObject {
     /// opened, so the initial sync runs only when there is something to catch
     /// up.
     private func downloadAndOpen(_ remoteBudget: RemoteBudget) async -> Bool {
+        guard !isEndingServerSession else { return false }
+        // An explicit UI download supersedes any headless download of this
+        // file. Wait for it to release the importer before replacing the DB.
+        downloadingBudgetId = remoteBudget.id
+        if let task = intentBudgetDownloads[remoteBudget.id] {
+            task.cancel()
+            _ = await task.result
+        }
         let targetLocalBudgetID = fileManager.listLocalBudgets()
             .first(where: { $0.cloudFileId == remoteBudget.id })?.id
         await releaseBudgetConnections(alsoClosing: targetLocalBudgetID)
         isLoading = true
-        downloadingBudgetId = remoteBudget.id
         error = nil
 
         // Close existing database before importing (prevents "vnode unlinked" error)

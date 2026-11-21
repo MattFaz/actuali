@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import ZIPFoundation
 
 enum BudgetFileError: LocalizedError {
@@ -8,6 +9,7 @@ enum BudgetFileError: LocalizedError {
     case extractionFailed(any Error)
     case metadataParsingFailed
     case unsafeArchive(String)
+    case budgetAlreadyExists
 
     var errorDescription: String? {
         switch self {
@@ -23,6 +25,8 @@ enum BudgetFileError: LocalizedError {
             String(localized: "Failed to parse budget metadata")
         case .unsafeArchive(let error):
             String(localized: "The archive failed a safety check: \(error)")
+        case .budgetAlreadyExists:
+            String(localized: "This budget already has a local copy. Open Actuali to manage it.")
         }
     }
 }
@@ -48,6 +52,8 @@ final class BudgetFileManager: @unchecked Sendable {
     static let shared = BudgetFileManager()
 
     private let fileManager = FileManager.default
+    /// Serialize replacement checks with installation across concurrent downloads.
+    private let budgetImportLock = Mutex<Void>(())
 
     /// Non-nil only in tests: roots budgetsDirectory somewhere disposable.
     private let rootDirectoryOverride: URL?
@@ -350,7 +356,10 @@ final class BudgetFileManager: @unchecked Sendable {
 
     // MARK: - Import
 
-    func importBudget(from zipData: Data, fileId: String, groupId: String?) async throws -> BudgetMetadata {
+    func importBudget(
+        from zipData: Data, fileId: String, groupId: String?,
+        replaceExisting: Bool = true
+    ) async throws -> BudgetMetadata {
         // Create a temporary file for the ZIP
         let tempURL = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
         try zipData.write(to: tempURL)
@@ -364,37 +373,50 @@ final class BudgetFileManager: @unchecked Sendable {
             try? fileManager.removeItem(at: extracted.databaseURL)
         }
 
-        // Update metadata with cloud info
-        let updatedMetadata = BudgetMetadata(
-            id: extracted.metadata.id,
-            budgetName: extracted.metadata.budgetName,
-            cloudFileId: fileId,
-            groupId: groupId,
-            resetClock: extracted.metadata.resetClock,
-            lastUploaded: extracted.metadata.lastUploaded,
-            encryptKeyId: extracted.metadata.encryptKeyId
-        )
+        // The new snapshot's local ID comes from an untrusted archive.
+        // Check ownership and install atomically so two concurrent downloads
+        // cannot both pass a check for the same directory.
+        return try budgetImportLock.withLock { _ in
+            // Update metadata with cloud info
+            let updatedMetadata = BudgetMetadata(
+                id: extracted.metadata.id,
+                budgetName: extracted.metadata.budgetName,
+                cloudFileId: fileId,
+                groupId: groupId,
+                resetClock: extracted.metadata.resetClock,
+                lastUploaded: extracted.metadata.lastUploaded,
+                encryptKeyId: extracted.metadata.encryptKeyId
+            )
 
-        // Replace only the live files — deleting the whole directory here used to be harmless,
-        // but it would now silently destroy backups/ on every re-download. A fresh download does,
-        // however, supersede any revert baseline.
-        let budgetDir = budgetDirectory(for: extracted.metadata.id)
-        try fileManager.createDirectory(at: budgetDir, withIntermediateDirectories: true)
-        try? fileManager.removeItem(at: latestDatabasePath(for: extracted.metadata.id))
-        try? fileManager.removeItem(at: latestMetadataPath(for: extracted.metadata.id))
+            // Replace only the live files — deleting the whole directory here used to be harmless,
+            // but it would now silently destroy backups/ on every re-download. A fresh download does,
+            // however, supersede any revert baseline.
+            let budgetDir = budgetDirectory(for: extracted.metadata.id)
+            if fileManager.fileExists(atPath: budgetDir.path) {
+                guard replaceExisting,
+                      let existingData = try? Data(contentsOf: metadataPath(for: extracted.metadata.id)),
+                      let existing = try? JSONDecoder().decode(BudgetMetadata.self, from: existingData),
+                      existing.cloudFileId == fileId else {
+                    throw BudgetFileError.budgetAlreadyExists
+                }
+            }
+            try fileManager.createDirectory(at: budgetDir, withIntermediateDirectories: true)
+            try? fileManager.removeItem(at: latestDatabasePath(for: extracted.metadata.id))
+            try? fileManager.removeItem(at: latestMetadataPath(for: extracted.metadata.id))
 
-        let dbPath = databasePath(for: extracted.metadata.id)
-        for suffix in ["-wal", "-shm"] {
-            try? fileManager.removeItem(at: URL(fileURLWithPath: dbPath.path + suffix))
+            let dbPath = databasePath(for: extracted.metadata.id)
+            for suffix in ["-wal", "-shm"] {
+                try? fileManager.removeItem(at: URL(fileURLWithPath: dbPath.path + suffix))
+            }
+            try? fileManager.removeItem(at: dbPath)
+            try fileManager.moveItem(at: extracted.databaseURL, to: dbPath)
+
+            // Write updated metadata
+            let updatedMetadataData = try JSONEncoder().encode(updatedMetadata)
+            try updatedMetadataData.write(to: metadataPath(for: extracted.metadata.id))
+
+            return updatedMetadata
         }
-        try? fileManager.removeItem(at: dbPath)
-        try fileManager.moveItem(at: extracted.databaseURL, to: dbPath)
-
-        // Write updated metadata
-        let updatedMetadataData = try JSONEncoder().encode(updatedMetadata)
-        try updatedMetadataData.write(to: metadataPath(for: extracted.metadata.id))
-
-        return updatedMetadata
     }
 
     // MARK: - Delete
