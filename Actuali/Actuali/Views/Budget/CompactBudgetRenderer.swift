@@ -1,4 +1,100 @@
+import Combine
 import SwiftUI
+
+/// The summary and every group header are rounded cards. Where a pinned header
+/// docks against the summary, the edge they share goes square so the two read
+/// as one card (the summary draws the single divider between them).
+enum CompactBudgetCard {
+    static let cornerRadius: CGFloat = 12
+    static let morph = Animation.easeOut(duration: 0.15)
+
+    static func shape(topSquare: Bool = false, bottomSquare: Bool = false) -> UnevenRoundedRectangle {
+        let top = topSquare ? 0 : cornerRadius
+        let bottom = bottomSquare ? 0 : cornerRadius
+        return UnevenRoundedRectangle(
+            topLeadingRadius: top,
+            bottomLeadingRadius: bottom,
+            bottomTrailingRadius: bottom,
+            topTrailingRadius: top,
+            style: .continuous
+        )
+    }
+}
+
+/// Finds the header touching the summary. Geometry changes update this tracker,
+/// and only a change of touching header invalidates an observing view.
+@MainActor
+final class CompactDockTracker: ObservableObject {
+    struct Dock: Equatable {
+        let id: String
+    }
+
+    @Published private(set) var dock: Dock?
+    private var summaryBottom: CGFloat?
+    private var headerTops: [String: CGFloat] = [:]
+
+    func setSummaryBottom(_ y: CGFloat) {
+        summaryBottom = y
+        publish()
+    }
+
+    func setHeaderTop(_ y: CGFloat, for id: String) {
+        guard headerTops[id] != y else { return }
+        headerTops[id] = y
+        publish()
+    }
+
+    func removeHeader(_ id: String) {
+        guard headerTops.removeValue(forKey: id) != nil else { return }
+        publish()
+    }
+
+    private func publish() {
+        guard let summaryBottom else {
+            if dock != nil { dock = nil }
+            return
+        }
+        // Touching: the header's top is near the summary's bottom edge,
+        // allowing for the small native List section-header inset.
+        var closestID: String?
+        var closestOffset: CGFloat = 0
+        for (id, top) in headerTops {
+            let offset = top - summaryBottom
+            // ponytail: -4...12 accommodates the native List section-header inset.
+            // Ceiling: a different runtime or list style may use a larger inset.
+            // Upgrade path: measure the hosting inset directly if this diverges.
+            guard (-4 ... 12).contains(offset) else { continue }
+            if closestID != nil {
+                let isCloser = abs(offset) < abs(closestOffset)
+                let isTie = abs(offset) == abs(closestOffset) && id < (closestID ?? "")
+                guard isCloser || isTie else { continue }
+            }
+            closestID = id
+            closestOffset = offset
+        }
+        let next = closestID.map { Dock(id: $0) }
+        if next != dock {
+            dock = next
+        }
+    }
+}
+
+/// Re-renders only its own content when the docking changes. The tracker is
+/// deliberately not observed by BudgetView: a docking change there would
+/// rebuild the whole table on a scroll frame.
+struct DockObserver<Content: View>: View {
+    @ObservedObject var tracker: CompactDockTracker
+    let content: (CompactDockTracker.Dock?) -> Content
+
+    init(_ tracker: CompactDockTracker, @ViewBuilder content: @escaping (CompactDockTracker.Dock?) -> Content) {
+        self.tracker = tracker
+        self.content = content
+    }
+
+    var body: some View {
+        content(tracker.dock)
+    }
+}
 
 struct CompactBudgetSummary: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -8,6 +104,7 @@ struct CompactBudgetSummary: View {
     let budget: BudgetMonth
     let showsSpent: Bool
     let showsBudgeted: Bool
+    var isHeaderDocked = false
 
     private var overview: CompactBudgetOverview {
         CompactBudgetOverview(
@@ -78,10 +175,16 @@ struct CompactBudgetSummary: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(Color(.secondarySystemBackground))
+        .background(
+            Color(.secondarySystemBackground),
+            in: CompactBudgetCard.shape(bottomSquare: isHeaderDocked)
+        )
         .overlay(alignment: .bottom) {
-            Divider()
+            if isHeaderDocked {
+                Divider()
+            }
         }
+        .animation(CompactBudgetCard.morph, value: isHeaderDocked)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
             dynamicTypeSize.isAccessibilitySize
@@ -197,6 +300,10 @@ struct CompactBudgetGroupHeader: View {
     let showsSpent: Bool
     let showsBudgeted: Bool
     let onToggleCollapse: () -> Void
+    /// Docked against the summary: the top corners go square.
+    var isConnectedToSummary = false
+    var dockID = ""
+    var dockTracker: CompactDockTracker?
 
     private var presentation: CompactBudgetGroupHeaderPresentation {
         CompactBudgetGroupHeaderPresentation(totals: totals, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
@@ -230,7 +337,17 @@ struct CompactBudgetGroupHeader: View {
         let actions = menuActions
         headerContent
             .foregroundStyle(.primary)
-            .background(Color(.secondarySystemBackground))
+            .background(
+                Color(.secondarySystemBackground),
+                in: CompactBudgetCard.shape(topSquare: isConnectedToSummary)
+            )
+            .animation(CompactBudgetCard.morph, value: isConnectedToSummary)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
+                dockTracker?.setHeaderTop($0, for: dockID)
+            }
+            .onDisappear {
+                dockTracker?.removeHeader(dockID)
+            }
             .opacity(isLifted ? 0 : isHidden ? 0.5 : 1)
             .overlay {
                 ContextMenuHost(actions: actions, onTap: onToggleCollapse, onLift: { isLifted = $0 })
@@ -589,6 +706,10 @@ struct CompactIncomeGroupHeader: View {
     let showsSpent: Bool
     let showsBudgeted: Bool
     var onToggleCollapse: () -> Void = {}
+    /// Docked against the summary: the top corners go square.
+    var isConnectedToSummary = false
+    var dockID = ""
+    var dockTracker: CompactDockTracker?
 
     private var layout: CompactBudgetTableLayout {
         CompactBudgetTableLayout(isTrackingBudget: isTrackingBudget, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
@@ -619,7 +740,17 @@ struct CompactIncomeGroupHeader: View {
         let actions = menuActions
         headerContent
             .foregroundStyle(.primary)
-            .background(Color(.secondarySystemBackground))
+            .background(
+                Color(.secondarySystemBackground),
+                in: CompactBudgetCard.shape(topSquare: isConnectedToSummary)
+            )
+            .animation(CompactBudgetCard.morph, value: isConnectedToSummary)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
+                dockTracker?.setHeaderTop($0, for: dockID)
+            }
+            .onDisappear {
+                dockTracker?.removeHeader(dockID)
+            }
             .opacity(isLifted ? 0 : isHidden ? 0.5 : 1)
             .overlay {
                 ContextMenuHost(actions: actions, onTap: onToggleCollapse, onLift: { isLifted = $0 })
