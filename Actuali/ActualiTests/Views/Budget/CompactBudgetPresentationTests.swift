@@ -8,6 +8,29 @@ struct CompactBudgetPresentationTests {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
 
+    @Test @MainActor func compactDockTracksScrollingAndHeaderRemoval() {
+        let tracker = CompactDockTracker()
+        tracker.setSummaryBottom(100)
+        tracker.setHeaderTop(100, for: "first")
+        #expect(tracker.dock?.id == "first")
+
+        tracker.setHeaderTop(140, for: "first")
+        tracker.setHeaderTop(108, for: "second")
+        #expect(tracker.dock?.id == "second")
+
+        tracker.setSummaryBottom(140)
+        #expect(tracker.dock?.id == "first")
+
+        tracker.removeHeader("first")
+        #expect(tracker.dock == nil)
+
+        tracker.setHeaderTop(140, for: "second")
+        #expect(tracker.dock?.id == "second")
+
+        tracker.removeHeader("second")
+        #expect(tracker.dock == nil)
+    }
+
     @Test @MainActor func groupHeaderHeightDoesNotDependOnTotalsVisibility() throws {
         let store = BudgetStore.previewInstance()
         let totals = CategoryGroupTotals([
@@ -351,6 +374,107 @@ struct CompactBudgetPresentationTests {
 
         #expect(balanceColor(underfunded, goalsEnabled: true, zero: .secondary) == .orange)
         #expect(balanceColor(underfunded, goalsEnabled: false, zero: .secondary) == .green)
+    }
+
+    // MARK: - Rounded cards that fuse where a header docks against the summary
+
+    @Test @MainActor func trackerDocksOnlyAHeaderAtTheSummaryBottom() {
+        let tracker = CompactDockTracker()
+        tracker.setHeaderTop(140, for: "a")
+        #expect(tracker.dock == nil) // summary bottom unknown yet
+
+        tracker.setSummaryBottom(140)
+        #expect(tracker.dock == .init(id: "a")) // flush
+
+        tracker.setHeaderTop(138, for: "a")
+        #expect(tracker.dock == .init(id: "a")) // small overlap
+
+        tracker.setHeaderTop(146, for: "a")
+        #expect(tracker.dock == .init(id: "a")) // native List hosting inset
+
+        tracker.setHeaderTop(160, for: "a")
+        #expect(tracker.dock == nil) // real gap
+
+        tracker.setHeaderTop(110, for: "a")
+        #expect(tracker.dock == nil) // well under the summary
+
+        tracker.setHeaderTop(100, for: "a")
+        tracker.setHeaderTop(142, for: "b")
+        #expect(tracker.dock == .init(id: "b")) // closest one wins
+
+        tracker.removeHeader("b")
+        #expect(tracker.dock == nil) // header left the tree
+    }
+
+    @Test func cardShapeSquaresOnlyTheEdgeThatDocks() {
+        let radius = CompactBudgetCard.cornerRadius
+
+        let header = CompactBudgetCard.shape(topSquare: true).cornerRadii
+        #expect([header.topLeading, header.topTrailing] == [0, 0])
+        #expect([header.bottomLeading, header.bottomTrailing] == [radius, radius])
+
+        let summary = CompactBudgetCard.shape(bottomSquare: true).cornerRadii
+        #expect([summary.bottomLeading, summary.bottomTrailing] == [0, 0])
+        #expect([summary.topLeading, summary.topTrailing] == [radius, radius])
+
+        let apart = CompactBudgetCard.shape().cornerRadii
+        #expect([apart.topLeading, apart.topTrailing, apart.bottomLeading, apart.bottomTrailing]
+            == [radius, radius, radius, radius])
+    }
+
+    /// Fusing squares corners, never the card's size. The corners themselves are
+    /// asserted in `cardShapeSquaresOnlyTheEdgeThatDocks`; a pixel diff of the
+    /// header isn't reliable under `ImageRenderer`.
+    @Test @MainActor func dockedHeaderKeepsItsHeightAndSquaresItsCorners() throws {
+        let store = BudgetStore.previewInstance()
+        let totals = CategoryGroupTotals([
+            category(budgeted: 50000, spent: -31500, available: 18500),
+        ])
+
+        let images = try [false, true].map { isConnected in
+            try renderedImage(
+                CompactBudgetGroupHeader(
+                    name: "Emergency Savings",
+                    isCollapsed: false,
+                    totals: totals,
+                    showsSpent: true,
+                    showsBudgeted: true,
+                    onToggleCollapse: {},
+                    isConnectedToSummary: isConnected
+                )
+                .environmentObject(store)
+                .frame(width: 390)
+            )
+        }
+
+        #expect(images[0].height == images[1].height)
+    }
+
+    @Test @MainActor func summaryKeepsItsHeightWhenAHeaderDocks() throws {
+        let store = BudgetStore.previewInstance()
+        let budget = BudgetMonth(
+            month: "2026-08",
+            categoryBudgets: [
+                category(budgeted: 50000, spent: -31500, available: 18500),
+            ],
+            toBudget: 12500
+        )
+
+        let images = try [false, true].map { isConnected in
+            try renderedImage(
+                CompactBudgetSummary(
+                    budget: budget,
+                    showsSpent: true,
+                    showsBudgeted: true,
+                    isHeaderDocked: isConnected
+                )
+                .environmentObject(store)
+                .frame(width: 390)
+            )
+        }
+
+        #expect(images[0].height == images[1].height)
+        #expect(images[0].dataProvider?.data as Data? != images[1].dataProvider?.data as Data?)
     }
 
     private func category(id: String = "category", budgeted: Int, spent: Int, available: Int) -> CategoryBudget {
