@@ -1869,6 +1869,8 @@ struct AccountRow: View {
             creditCardCycle: creditCardCycle
         )
         let unreviewedCount = budgetStore.unreviewedCount(forAccountId: account.id)
+        let linked = budgetStore.bankSyncAccount(forAccountId: account.id)
+        let isSyncing = linked != nil && budgetStore.bankSyncingAccountIds.contains(account.id)
 
         return HStack(alignment: .center, spacing: 12) {
             if showAccountTypeIcons {
@@ -1882,6 +1884,16 @@ struct AccountRow: View {
                     customImage: loadedAccountIconImage
                 )
                 .accessibilityHidden(true)
+                // The spinner takes the icon's place, so it sits in the same
+                // spot on every row whatever the name's length.
+                .opacity(isSyncing ? 0 : 1)
+                .overlay {
+                    if isSyncing {
+                        ProgressView()
+                            .accessibilityLabel(String(localized: "Syncing..."))
+                            .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
+                    }
+                }
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -1894,11 +1906,11 @@ struct AccountRow: View {
                             .accessibilityIdentifier("accountRow.unreviewed.\(account.id)")
                     }
                     // Only when there is something to say: a healthy link's
-                    // icon on every row is noise next to the name.
-                    if let linked = budgetStore.bankSyncAccount(forAccountId: account.id),
-                       case let isSyncing = budgetStore.bankSyncingAccountIds.contains(account.id),
-                       isSyncing || linked.needsAttention {
-                        BankSyncBadge(linked: linked, isSyncing: isSyncing)
+                    // icon on every row is noise next to the name. With icons
+                    // on, the spinner is over the icon instead.
+                    if let linked, case let spinsHere = isSyncing && !showAccountTypeIcons,
+                       spinsHere || linked.needsAttention {
+                        BankSyncBadge(linked: linked, isSyncing: spinsHere)
                             .font(.caption)
                             .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
                     }

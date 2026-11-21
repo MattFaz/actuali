@@ -1165,8 +1165,13 @@ final class BudgetStore: ObservableObject {
         matchedTransactionIds.formUnion(matched.keys)
     }
 
-    /// The only way a mark is cleared: opening an account or closing Review
-    /// doesn't mean every new transaction in it was seen.
+    /// Marks are only cleared on purpose, here or below: opening an account
+    /// or closing Review doesn't mean every new transaction in it was seen.
+    func markReviewed(_ transactionId: String) {
+        guard unreviewedTransactions[transactionId] != nil else { return }
+        unreviewedTransactions[transactionId] = nil
+    }
+
     func markAllReviewed() {
         guard !unreviewedTransactions.isEmpty else { return }
         unreviewedTransactions = [:]

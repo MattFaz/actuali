@@ -1446,6 +1446,11 @@ struct BudgetStoreBankSyncTests {
 
         #expect(Set(store.unreviewedTransactions.keys) == [firstId, secondId])
         #expect(await Set(store.fetchUnreviewedTransactions().map(\.id)) == [firstId, secondId])
+
+        // Marking one reviewed leaves the other waiting.
+        store.markReviewed(firstId)
+        #expect(Set(store.unreviewedTransactions.keys) == [secondId])
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
     }
 
     @Test func aTransactionSyncedFromAnotherDeviceIsNotMarkedNew() async throws {

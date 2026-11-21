@@ -28,7 +28,7 @@ struct PendingImportsView: View {
     @State private var isProcessing = false
     /// What this device's bank sync imported and nobody has looked at yet.
     /// Already in the budget, so there is nothing to approve. The marks stay
-    /// until Mark All Reviewed: closing the sheet is not a decision.
+    /// until marked reviewed: closing the sheet is not a decision.
     @State private var newTransactions: [Transaction] = []
     @State private var editingTransaction: Transaction?
     /// The tab the person picked; until they do, whichever has something
@@ -215,7 +215,7 @@ struct PendingImportsView: View {
     }
 
     /// What this device's bank sync already put in the budget, listed until
-    /// Mark All Reviewed.
+    /// marked reviewed: one by a swipe, or all at once.
     private func importedList(showsNote: Bool) -> some View {
         List {
             Section {
@@ -237,6 +237,17 @@ struct PendingImportsView: View {
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("review.matched.\(transaction.id)")
                         }
+                    }
+                    // Leading, the way Mail marks read; the row's own
+                    // actions are on the trailing edge.
+                    .swipeActions(edge: .leading) {
+                        Button {
+                            budgetStore.markReviewed(transaction.id)
+                        } label: {
+                            Label(String(localized: "Reviewed"), systemImage: "checkmark")
+                        }
+                        .tint(.accentColor)
+                        .accessibilityIdentifier("review.markReviewed.\(transaction.id)")
                     }
                 }
             } footer: {
