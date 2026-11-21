@@ -29,6 +29,12 @@ struct ActualiApp: App {
             status.lastScheduleAttempt = nil
             status.lastScheduleError = nil
         }
+        // Start the shortcut-confirmation persistence UI test from a known
+        // enabled state without toggling on (which would prompt iOS for
+        // notification permission during the test).
+        if CommandLine.arguments.contains("-resetShortcutTransactionConfirmationForUITest") {
+            TransactionLogNotificationSettings().showsSuccessNotification = true
+        }
         #endif
     }
 
