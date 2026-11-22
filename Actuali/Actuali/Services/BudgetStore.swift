@@ -2309,7 +2309,7 @@ final class BudgetStore: ObservableObject {
         await intentWriterRegistry.release(budgetId: budgetId)
     }
 
-    // Entity queries also await saved credentials before deciding a cold launch is offline.
+    /// Entity queries also await saved credentials before deciding a cold launch is offline.
     func ensureSavedSessionReady() async {
         #if DEBUG
         savedSessionWaitStartedForTesting?()

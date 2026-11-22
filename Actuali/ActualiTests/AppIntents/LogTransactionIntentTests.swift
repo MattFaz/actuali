@@ -79,7 +79,8 @@ struct LogTransactionIntentTests {
         store.setFileManagerForTesting(manager)
 
         #expect(store.nameForShortcutRecoveryBudget(budgetID) == nil)
-        #expect(!(await store.switchToShortcutRecoveryBudget(budgetID)))
+        let switched = await store.switchToShortcutRecoveryBudget(budgetID)
+        #expect(!switched)
         #expect(store.currentBudgetId == nil)
         await #expect(throws: TransactionLogger.LoggerError.noBudgetLoaded) {
             try await store.localBudgetIDForIntent(budgetID)
