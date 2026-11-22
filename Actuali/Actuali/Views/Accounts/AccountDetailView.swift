@@ -531,6 +531,11 @@ struct AccountDetailView: View {
                     .accessibilityIdentifier("transactionRow.unreviewed.\(transaction.id)")
             }
         }
+        .swipeActions(edge: .leading) {
+            if budgetStore.unreviewedTransactions[transaction.id] != nil {
+                MarkReviewedButton(transactionId: transaction.id)
+            }
+        }
     }
 
     private func balanceColumn(
@@ -990,6 +995,16 @@ struct AccountDetailView: View {
                 } label: {
                     Label("Import from Wallet", systemImage: "wallet.pass")
                 }
+            }
+        }
+        if budgetStore.unreviewedCount(forAccountId: account.id) > 0 {
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    budgetStore.markAccountReviewed(account.id)
+                } label: {
+                    Label(String(localized: "Mark All Reviewed"), systemImage: "checkmark.circle")
+                }
+                .accessibilityIdentifier("accountDetail.markAllReviewed")
             }
         }
         if budgetStore.bankSyncAccount(forAccountId: account.id) != nil {

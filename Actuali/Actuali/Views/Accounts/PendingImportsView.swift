@@ -61,9 +61,7 @@ struct PendingImportsView: View {
                     // The tab titles say which list this is; without them a
                     // line under the list has to.
                     let hasTabs = approvalCount > 0 && importedCount > 0
-                    let tab: Tab = approvalCount == 0 ? .imported
-                        : importedCount == 0 ? .toApprove
-                        : pickedTab ?? .toApprove
+                    let tab = currentTab(approvalCount: approvalCount, importedCount: importedCount)
                     Group {
                         switch tab {
                         case .toApprove: approvalList(imports: visibleImports, staged: staged, showsNote: !hasTabs)
@@ -108,23 +106,6 @@ struct PendingImportsView: View {
                             .padding(.vertical, 8)
                             .background(.bar)
                             .accessibilityIdentifier("review.approveAll")
-                        } else if tab == .imported {
-                            Button {
-                                budgetStore.markAllReviewed()
-                                if approvalCount == 0 {
-                                    dismiss()
-                                }
-                            } label: {
-                                Text(String(localized: "Mark All Reviewed"))
-                                    .fontWeight(.semibold)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 6)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
-                            .background(.bar)
-                            .accessibilityIdentifier("review.markAllReviewed")
                         }
                     }
                 }
@@ -135,6 +116,22 @@ struct PendingImportsView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                }
+                // A plain toolbar button, not a filled one like Approve All:
+                // clearing marks tidies up, it doesn't change the budget.
+                let approvalCount = store.visibleImports().count + budgetStore.stagedBankTransactions.count
+                let importedCount = budgetStore.unreviewedTransactions.count
+                if importedCount > 0,
+                   currentTab(approvalCount: approvalCount, importedCount: importedCount) == .imported {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button(String(localized: "Mark All Reviewed")) {
+                            budgetStore.markAllReviewed()
+                            if approvalCount == 0 {
+                                dismiss()
+                            }
+                        }
+                        .accessibilityIdentifier("review.markAllReviewed")
+                    }
                 }
             }
             .alert("Import Failed", isPresented: Binding(
@@ -214,12 +211,20 @@ struct PendingImportsView: View {
         }
     }
 
+    private func currentTab(approvalCount: Int, importedCount: Int) -> Tab {
+        approvalCount == 0 ? .imported
+            : importedCount == 0 ? .toApprove
+            : pickedTab ?? .toApprove
+    }
+
     /// What this device's bank sync already put in the budget, listed until
     /// marked reviewed: one by a swipe, or all at once.
     private func importedList(showsNote: Bool) -> some View {
         List {
             Section {
-                ForEach(newTransactions) { transaction in
+                // Filtered by the live marks: the fetched list only reloads
+                // on a data change, and clearing a mark isn't one.
+                ForEach(Self.stillUnreviewed(newTransactions, marks: budgetStore.unreviewedTransactions)) { transaction in
                     VStack(alignment: .leading, spacing: 4) {
                         TransactionListRow(
                             transaction: transaction,
@@ -241,13 +246,7 @@ struct PendingImportsView: View {
                     // Leading, the way Mail marks read; the row's own
                     // actions are on the trailing edge.
                     .swipeActions(edge: .leading) {
-                        Button {
-                            budgetStore.markReviewed(transaction.id)
-                        } label: {
-                            Label(String(localized: "Reviewed"), systemImage: "checkmark")
-                        }
-                        .tint(.accentColor)
-                        .accessibilityIdentifier("review.markReviewed.\(transaction.id)")
+                        MarkReviewedButton(transactionId: transaction.id)
                     }
                 }
             } footer: {
@@ -417,6 +416,10 @@ struct PendingImportsView: View {
         deferredFailureCount = nil
         editingItem = nil
         errorMessage = Self.approvalFailureMessage(count: count, locale: locale)
+    }
+
+    nonisolated static func stillUnreviewed(_ transactions: [Transaction], marks: [String: String]) -> [Transaction] {
+        transactions.filter { marks[$0.id] != nil }
     }
 
     nonisolated static func bulkApprovalDisposition(

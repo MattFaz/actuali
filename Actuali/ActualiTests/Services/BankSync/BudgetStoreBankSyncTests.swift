@@ -1422,7 +1422,10 @@ struct BudgetStoreBankSyncTests {
         _ = try await store.syncBankAccounts()
         #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
 
-        store.markAllReviewed()
+        // The account screen's Mark All Reviewed clears that account only.
+        store.markAccountReviewed("some-other-account")
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
+        store.markAccountReviewed(Self.accountId)
         #expect(store.unreviewedTransactions[imported.id] == nil)
     }
 

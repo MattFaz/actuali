@@ -1172,6 +1172,12 @@ final class BudgetStore: ObservableObject {
         unreviewedTransactions[transactionId] = nil
     }
 
+    /// From the account's own screen, where only its transactions are in view.
+    func markAccountReviewed(_ accountId: String) {
+        guard unreviewedTransactions.values.contains(accountId) else { return }
+        unreviewedTransactions = unreviewedTransactions.filter { $0.value != accountId }
+    }
+
     func markAllReviewed() {
         guard !unreviewedTransactions.isEmpty else { return }
         unreviewedTransactions = [:]
