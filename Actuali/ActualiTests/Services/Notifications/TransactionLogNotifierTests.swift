@@ -39,7 +39,7 @@ struct TransactionLogNotifierTests {
         let name = "TransactionLogNotifierTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
-        var settings = TransactionLogNotificationSettings(defaults: defaults)
+        let settings = TransactionLogNotificationSettings(defaults: defaults)
         settings.showsSuccessNotification = showsSuccessNotification
         return settings
     }

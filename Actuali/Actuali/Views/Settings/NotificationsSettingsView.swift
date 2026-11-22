@@ -22,7 +22,7 @@ struct NotificationsSettingsView: View {
                 if enabled {
                     Task { await enableTransactionNotifications() }
                 } else {
-                    notificationPermissionDenied = false
+                    Task { await refreshNotificationPermissionState() }
                 }
             }
         )
@@ -78,8 +78,12 @@ struct NotificationsSettingsView: View {
                 Toggle(String(localized: "Shortcut Transaction Confirmation"), isOn: $shortcutTransactionConfirmationEnabled)
                     .accessibilityIdentifier("notifications.shortcutTransactionConfirmation")
                     .onChange(of: shortcutTransactionConfirmationEnabled) { _, enabled in
-                        if enabled {
-                            Task { await enableTransactionNotifications() }
+                        Task {
+                            if enabled {
+                                await enableTransactionNotifications()
+                            } else {
+                                await refreshNotificationPermissionState()
+                            }
                         }
                     }
             } footer: {
@@ -103,7 +107,10 @@ struct NotificationsSettingsView: View {
     private func refreshNotificationPermissionState() async {
         guard transactionNotificationsEnabled
             || creditCardDueNotificationsEnabled
-            || shortcutTransactionConfirmationEnabled else { return }
+            || shortcutTransactionConfirmationEnabled else {
+            notificationPermissionDenied = false
+            return
+        }
         let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
         notificationPermissionDenied = status == .denied
     }

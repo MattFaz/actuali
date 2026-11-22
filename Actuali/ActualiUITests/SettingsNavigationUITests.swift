@@ -162,21 +162,6 @@ final class SettingsNavigationUITests: XCTestCase {
         return (goalTemplates, automationsEditor)
     }
 
-    /// A Form may not expose a row until it scrolls into view. Wait for the
-    /// destination to load, then scroll only until the control is tappable.
-    @MainActor
-    private func scrollToHittable(_ control: XCUIElement, in app: XCUIApplication) {
-        if !control.isHittable {
-            for _ in 0..<12 {
-                app.swipeUp(velocity: .slow)
-                if control.isHittable {
-                    break
-                }
-            }
-        }
-        XCTAssertTrue(control.isHittable, "Settings control not hittable after scrolling")
-    }
-
     @MainActor
     func testShortcutTransactionConfirmationTogglePersistsAcrossLaunches() {
         let app = XCUIApplication()
@@ -184,14 +169,6 @@ final class SettingsNavigationUITests: XCTestCase {
         app.launchArguments = demoLaunchArguments + [
             "-resetShortcutTransactionConfirmationForUITest",
         ]
-        defer {
-            // The UI-test preference is process-persistent. Restore it even
-            // when an assertion fails so subsequent tests start clean.
-            app.terminate()
-            app.launchArguments = ["-resetShortcutTransactionConfirmationForUITest"]
-            app.launch()
-            app.terminate()
-        }
         app.launch()
 
         let settingsRow = rowOnHub("Notifications", in: app)
@@ -200,7 +177,7 @@ final class SettingsNavigationUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 5))
         let toggle = app.switches["notifications.shortcutTransactionConfirmation"]
-        scrollToHittable(toggle, in: app)
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         XCTAssertEqual(toggle.value as? String, "1", "The test fixture should start enabled")
 
         // Only turn the setting off. Enabling it would open the system
@@ -221,7 +198,7 @@ final class SettingsNavigationUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 5))
         let reopenedToggle = app.switches["notifications.shortcutTransactionConfirmation"]
-        scrollToHittable(reopenedToggle, in: app)
+        XCTAssertTrue(reopenedToggle.waitForExistence(timeout: 5))
         XCTAssertEqual(reopenedToggle.value as? String, "0")
     }
 
@@ -266,9 +243,11 @@ final class SettingsNavigationUITests: XCTestCase {
         let row = rowOnHub("Transactions & Automation", in: app)
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
-        XCTAssertTrue(app.navigationBars["Transactions & Automation"].waitForExistence(timeout: 5))
         let toggle = app.switches["transactionAutomation.showBalanceImpact"]
-        scrollToHittable(toggle, in: app)
+        for _ in 0..<8 where !toggle.exists {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         XCTAssertEqual(toggle.value as? String, "1", "launch argument seeds Show Balance Impact on")
         tapControl(toggle) { toggle.value as? String == "0" }
     }
