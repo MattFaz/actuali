@@ -7,6 +7,10 @@ import SwiftUI
 enum CompactBudgetCard {
     static let cornerRadius: CGFloat = 12
     static let morph = Animation.easeOut(duration: 0.15)
+    /// In light mode secondarySystemBackground is the same grey as the
+    /// systemGroupedBackground behind the cards, which hides their corners,
+    /// so light mode uses a step darker. Dark mode keeps its old fill.
+    static let fill = UIColor { $0.userInterfaceStyle == .dark ? .secondarySystemBackground : .systemGray5 }
 
     static func shape(topSquare: Bool = false, bottomSquare: Bool = false) -> UnevenRoundedRectangle {
         let top = topSquare ? 0 : cornerRadius
@@ -160,7 +164,7 @@ struct CompactBudgetSummary: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(
-            Color(.secondarySystemBackground),
+            Color(CompactBudgetCard.fill),
             in: CompactBudgetCard.shape(bottomSquare: isHeaderDocked)
         )
         .overlay(alignment: .bottom) {
@@ -322,7 +326,7 @@ struct CompactBudgetGroupHeader: View {
         headerContent
             .foregroundStyle(.primary)
             .background(
-                Color(.secondarySystemBackground),
+                Color(CompactBudgetCard.fill),
                 in: CompactBudgetCard.shape(topSquare: isConnectedToSummary)
             )
             .animation(CompactBudgetCard.morph, value: isConnectedToSummary)
@@ -725,7 +729,7 @@ struct CompactIncomeGroupHeader: View {
         headerContent
             .foregroundStyle(.primary)
             .background(
-                Color(.secondarySystemBackground),
+                Color(CompactBudgetCard.fill),
                 in: CompactBudgetCard.shape(topSquare: isConnectedToSummary)
             )
             .animation(CompactBudgetCard.morph, value: isConnectedToSummary)

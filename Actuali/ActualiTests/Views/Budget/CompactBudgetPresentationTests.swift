@@ -402,6 +402,16 @@ struct CompactBudgetPresentationTests {
             == [radius, radius, radius, radius])
     }
 
+    @Test func cardFillStandsOutFromTheBackdropInBothAppearances() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            #expect(
+                CompactBudgetCard.fill.resolvedColor(with: traits)
+                    != UIColor.systemGroupedBackground.resolvedColor(with: traits)
+            )
+        }
+    }
+
     /// Fusing squares corners, never the card's size. The corners themselves are
     /// asserted in `cardShapeSquaresOnlyTheEdgeThatDocks`; a pixel diff of the
     /// header isn't reliable under `ImageRenderer`.
