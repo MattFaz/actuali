@@ -487,7 +487,7 @@ struct TransactionLoggerSyncOutcomeTests {
         await store.closeBudgetConnectionsForTesting()
     }
 
-    @Test func selectedBudgetCannotOpenASecondWriterWhileItsLoadIsInProgress() async throws {
+    @Test func selectedBudgetWaitsForItsLoadInsteadOfOpeningSecondWriter() async throws {
         let originalCurrentBudget = UserDefaults.standard.object(forKey: "currentBudgetId")
         defer { restoreUserDefault("currentBudgetId", to: originalCurrentBudget) }
         let (store, fileManager, root) = makeFileBackedStore()
@@ -497,17 +497,49 @@ struct TransactionLoggerSyncOutcomeTests {
         store.setServerClientForTesting(serverClient)
 
         let gate = AsyncGate()
+        let waitStarted = Gate()
         store.budgetLoadStartedForTesting = { await gate.pause() }
+        store.budgetReadinessWaitStartedForTesting = { waitStarted.open() }
         store.currentBudgetId = "loading-budget"
         let loadTask = Task { await store.loadLocalBudget("loading-budget") }
         await gate.waitUntilEntered()
 
-        await #expect(throws: TransactionLogger.LoggerError.noBudgetLoaded) {
-            try await store.transactionWriter(for: "loading-budget")
-        }
-
+        let writerTask = Task { try await store.transactionWriter(for: "loading-budget") }
+        await waitStarted.wait()
         await gate.release()
+        let writer = try await writerTask.value
+        let second = try await store.transactionWriter(for: "loading-budget")
+        #expect(writer === second)
+        await store.releaseTransactionWriter(for: "loading-budget")
+        await store.releaseTransactionWriter(for: "loading-budget")
         await loadTask.value
+        await store.closeBudgetConnectionsForTesting()
+    }
+
+    @Test func readinessWaitsForItsBudgetLoadToFinish() async throws {
+        let originalCurrentBudget = UserDefaults.standard.object(forKey: "currentBudgetId")
+        defer { restoreUserDefault("currentBudgetId", to: originalCurrentBudget) }
+        let (store, fileManager, root) = makeFileBackedStore()
+        defer { cleanup(root) }
+        try seedBudget(id: "loading-budget", in: fileManager, sql: makeTargetBudgetSchema())
+        let serverClient = try await makeServerClient(server: SyncServer(), reachable: false)
+        store.setServerClientForTesting(serverClient)
+        let loadGate = AsyncGate()
+        let waitStarted = Gate()
+        store.budgetLoadStartedForTesting = { await loadGate.pause() }
+        store.budgetReadinessWaitStartedForTesting = { waitStarted.open() }
+        store.currentBudgetId = "loading-budget"
+
+        let load = Task { await store.loadLocalBudget("loading-budget") }
+        await loadGate.waitUntilEntered()
+        let readiness = Task {
+            await store.ensureBudgetReady()
+            return store.isReadyForShortcutRecovery(in: "loading-budget")
+        }
+        await waitStarted.wait()
+        await loadGate.release()
+        #expect(await readiness.value)
+        await load.value
         await store.closeBudgetConnectionsForTesting()
     }
 
@@ -772,6 +804,39 @@ struct TransactionLoggerSyncOutcomeTests {
             Issue.record("Unexpected shortcut error: \(error)")
         }
 
+        let db = try BudgetDatabase(path: fileManager.databasePath(for: "target-budget"))
+        #expect(try await db.fetchTransactions().isEmpty)
+        await store.closeBudgetConnectionsForTesting()
+    }
+
+    @Test func deletedBudgetScopedCategoryFailsWithoutSaving() async throws {
+        let (store, fileManager, root) = makeFileBackedStore()
+        defer { cleanup(root) }
+        try seedBudget(id: "target-budget", in: fileManager, sql: makeTargetBudgetSchema())
+        let serverClient = try await makeServerClient(server: SyncServer(), reachable: false)
+        store.setServerClientForTesting(serverClient)
+
+        var intent = LogTransactionIntent()
+        intent.budget = BudgetEntity(id: "target-budget", name: "Target")
+        intent.account = AccountEntity(
+            id: AccountEntity.scopedID(budgetID: "target-budget", accountID: "acct-1"),
+            name: "Checking"
+        )
+        intent.category = CategoryEntity(
+            id: CategoryEntity.scopedID(budgetID: "target-budget", categoryID: "deleted-category"),
+            name: "Deleted"
+        )
+        intent.amount = "8.20"
+        intent.payee = "Coffee"
+
+        do {
+            _ = try await intent.perform(using: store)
+            Issue.record("A deleted explicitly selected category must reject the shortcut")
+        } catch LogTransactionError.categoryUnavailable {
+            // Keep the old unscoped fallback, but reject stale scoped choices.
+        } catch {
+            Issue.record("Unexpected shortcut error: \(error)")
+        }
         let db = try BudgetDatabase(path: fileManager.databasePath(for: "target-budget"))
         #expect(try await db.fetchTransactions().isEmpty)
         await store.closeBudgetConnectionsForTesting()

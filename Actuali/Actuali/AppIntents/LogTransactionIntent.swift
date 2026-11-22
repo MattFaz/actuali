@@ -201,13 +201,20 @@ struct LogTransactionIntent: AppIntent {
                     from: category.id, budgetID: targetBudgetId, allowLegacyID: false
                 )
                 : nil)
-            guard selectedID != nil else {
+            guard let selectedID else {
                 await reportFailure(.categoryUnavailable, store: store, budgetId: targetBudgetId, writer: writer)
                 throw LogTransactionError.categoryUnavailable
             }
             let availableCategories = await store.categoriesForIntent(in: targetBudgetId)
-            categoryId = selectedID.flatMap { id in
-                availableCategories.contains(where: { $0.id == id }) ? id : nil
+            if availableCategories.contains(where: { $0.id == selectedID }) {
+                categoryId = selectedID
+            } else if isBudgetScoped {
+                // An explicit selection must not silently become another
+                // payee-history or rules category when its category was deleted.
+                await reportFailure(.categoryUnavailable, store: store, budgetId: targetBudgetId, writer: writer)
+                throw LogTransactionError.categoryUnavailable
+            } else {
+                categoryId = nil
             }
         } else {
             categoryId = nil

@@ -37,6 +37,55 @@ struct LogTransactionIntentTests {
         #expect(BudgetEntity.canWriteToLocally(connectedCloudBudget))
     }
 
+    @MainActor @Test func savedLocalBudgetEntityNeedsNoRemoteFetch() {
+        let local = BudgetMetadata(
+            id: "local-budget", budgetName: "Offline", cloudFileId: "cloud-file",
+            groupId: "sync-group", resetClock: nil, lastUploaded: nil, encryptKeyId: nil
+        )
+        let entries = BudgetEntity.availableEntities(
+            localBudgets: [local], remoteBudgets: [], isConnected: true
+        )
+        #expect(!BudgetEntityQuery.needsRemoteFetch(
+            identifiers: ["cloud-file"], entities: entries, localBudgets: [local],
+            isConnected: true
+        ))
+        #expect(BudgetEntityQuery.needsRemoteFetch(
+            identifiers: ["server-only-file"], entities: entries, localBudgets: [local],
+            isConnected: true
+        ))
+        #expect(!BudgetEntityQuery.needsRemoteFetch(
+            identifiers: ["server-only-file"], entities: entries, localBudgets: [local],
+            isConnected: false
+        ))
+    }
+
+    @MainActor @Test func encryptedBudgetWithoutKeyCannotBeOpenedFromRecovery() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manager = BudgetFileManager(rootDirectoryForTesting: root)
+        let budgetID = "encrypted-recovery"
+        let fileID = UUID().uuidString
+        try FileManager.default.createDirectory(
+            at: manager.budgetDirectory(for: budgetID), withIntermediateDirectories: true
+        )
+        try Data().write(to: manager.databasePath(for: budgetID))
+        try JSONEncoder().encode(BudgetMetadata(
+            id: budgetID, budgetName: "Locked", cloudFileId: fileID,
+            groupId: "sync-group", resetClock: nil, lastUploaded: nil,
+            encryptKeyId: "missing-encryption-key"
+        )).write(to: manager.metadataPath(for: budgetID))
+        let store = BudgetStore.previewInstance()
+        store.setFileManagerForTesting(manager)
+
+        #expect(store.nameForShortcutRecoveryBudget(budgetID) == nil)
+        #expect(!(await store.switchToShortcutRecoveryBudget(budgetID)))
+        #expect(store.currentBudgetId == nil)
+        await #expect(throws: TransactionLogger.LoggerError.noBudgetLoaded) {
+            try await store.localBudgetIDForIntent(budgetID)
+        }
+    }
+
     @MainActor @Test func shortcutWriterRefusesBudgetWhileBackupRestoreIsReplacingFiles() async {
         let store = BudgetStore.previewInstance()
         store.setBudgetFileReplacementInProgressForTesting("restoring-budget", inProgress: true)

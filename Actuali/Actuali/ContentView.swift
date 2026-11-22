@@ -80,12 +80,12 @@ struct ContentView: View {
                             Button {
                                 Task { await budgetStore.switchToShortcutRecoveryBudget(id) }
                             } label: {
-                                Text("Switch to \(name)")
+                                Text(String(format: String(localized: "Switch to %@"), name))
                             }
                             .buttonStyle(.borderedProminent)
                             .disabled(budgetStore.isLoading)
                         } else {
-                            Text("Open Connection & Data to download the missing budget, then retry.")
+                            Text("Open Connection & Data to download or unlock the budget, then retry.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }

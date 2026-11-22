@@ -358,7 +358,7 @@ final class BudgetFileManager: @unchecked Sendable {
 
     func importBudget(
         from zipData: Data, fileId: String, groupId: String?,
-        replaceExisting: Bool = true
+        encryptionKeyId: String? = nil, replaceExisting: Bool = true
     ) async throws -> BudgetMetadata {
         // Create a temporary file for the ZIP
         let tempURL = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
@@ -385,7 +385,7 @@ final class BudgetFileManager: @unchecked Sendable {
                 groupId: groupId,
                 resetClock: extracted.metadata.resetClock,
                 lastUploaded: extracted.metadata.lastUploaded,
-                encryptKeyId: extracted.metadata.encryptKeyId
+                encryptKeyId: encryptionKeyId ?? extracted.metadata.encryptKeyId
             )
 
             // Replace only the live files — deleting the whole directory here used to be harmless,

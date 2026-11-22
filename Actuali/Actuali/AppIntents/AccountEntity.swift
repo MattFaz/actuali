@@ -72,15 +72,16 @@ struct BudgetEntity: AppEntity, Identifiable {
 
 struct BudgetEntityQuery: EntityQuery {
     @MainActor
-    private func available() async -> (
+    private func available(fetchRemote: Bool = true) async -> (
         entities: [BudgetEntity],
         localBudgets: [BudgetMetadata],
         isConnected: Bool
     ) {
         let store = BudgetStore.shared
-        // Only a connected store needs the server list. An unconditional guard
-        // inside fetchRemoteBudgets would break existing test/preview callers.
-        if store.isConnected {
+        await store.ensureSavedSessionReady()
+        // Saved shortcuts resolve from disk; only discovery or missing IDs
+        // require a network request.
+        if fetchRemote, store.isConnected {
             await store.fetchRemoteBudgets()
         }
 
@@ -96,8 +97,30 @@ struct BudgetEntityQuery: EntityQuery {
     }
 
     @MainActor
+    static func needsRemoteFetch(
+        identifiers: [BudgetEntity.ID],
+        entities: [BudgetEntity],
+        localBudgets: [BudgetMetadata],
+        isConnected: Bool
+    ) -> Bool {
+        guard isConnected else { return false }
+        return identifiers.contains { identifier in
+            !entities.contains(where: { $0.id == identifier })
+                && !localBudgets.contains(where: { $0.id == identifier })
+        }
+    }
+
+    @MainActor
     func entities(for identifiers: [BudgetEntity.ID]) async throws -> [BudgetEntity] {
-        let result = await available()
+        var result = await available(fetchRemote: false)
+        if Self.needsRemoteFetch(
+            identifiers: identifiers,
+            entities: result.entities,
+            localBudgets: result.localBudgets,
+            isConnected: result.isConnected
+        ) {
+            result = await available()
+        }
         var seen = Set<String>()
         var entities: [BudgetEntity] = []
 

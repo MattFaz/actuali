@@ -111,9 +111,15 @@ struct BudgetFileManagerCreateTests {
         try FileManager.default.removeItem(at: localDirectory)
         let imported = try await manager.importBudget(
             from: archiveData, fileId: "remote-cloud-file",
-            groupId: "remote-group", replaceExisting: false
+            groupId: "remote-group", encryptionKeyId: "persisted-key-id",
+            replaceExisting: false
         )
         #expect(imported.cloudFileId == "remote-cloud-file")
+        #expect(imported.encryptKeyId == "persisted-key-id")
+        let reloaded = try JSONDecoder().decode(
+            BudgetMetadata.self, from: Data(contentsOf: manager.metadataPath(for: imported.id))
+        )
+        #expect(reloaded.encryptKeyId == "persisted-key-id")
         #expect(try Data(contentsOf: manager.databasePath(for: "shared-local-id"))
             == Data("remote snapshot".utf8))
     }

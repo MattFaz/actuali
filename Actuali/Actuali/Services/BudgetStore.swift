@@ -1703,6 +1703,7 @@ final class BudgetStore: ObservableObject {
     private var loadedBudgetId: String?
     /// Counts loads because refreshes and budget switches can overlap for one id.
     private var budgetLoadCounts: [String: Int] = [:]
+    private var budgetLoadWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
     /// Budget files being replaced by a restore. Shortcuts must not reopen them
     /// between releasing the old connection and publishing the restored one.
     private var budgetFileReplacementsInProgress: Set<String> = []
@@ -1885,15 +1886,18 @@ final class BudgetStore: ObservableObject {
               !budgetFileReplacementsInProgress.contains(budgetId)
         else { return }
         if budgetLoadCounts[budgetId, default: 0] > 0 {
-            if let loadTask {
-                await loadTask.value
+            #if DEBUG
+            budgetReadinessWaitStartedForTesting?()
+            #endif
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                budgetLoadWaiters[budgetId, default: []].append(continuation)
             }
             return
         }
         if loadedBudgetId == budgetId, database != nil, syncClient != nil {
             return
         }
-        if let loadTask {
+        if let loadTask, loadTaskBudgetId == budgetId {
             await loadTask.value
             // A completed load can belong to a budget that was switched away
             // from while this caller was suspended. Only its matching writer
@@ -1910,6 +1914,7 @@ final class BudgetStore: ObservableObject {
         }
         guard currentBudgetId == budgetId else { return }
         let task = Task { await loadLocalBudget(budgetId) }
+        loadTaskBudgetId = budgetId
         loadTask = task
         await task.value
     }
@@ -1942,9 +1947,7 @@ final class BudgetStore: ObservableObject {
         }
         let fileID = local?.cloudFileId ?? identifier
         if let local, fileManager.budgetExists(local.id), local.canWriteToLocally {
-            let encrypted = local.encryptKeyId != nil
-                || remoteBudgets.first(where: { $0.id == fileID })?.isEncrypted == true
-            if encrypted, EncryptionKeyManager.load(fileId: fileID) == nil {
+            guard hasShortcutBudgetEncryptionKey(local) else {
                 throw TransactionLogger.LoggerError.noBudgetLoaded
             }
             // If a previous headless download failed its first sync, its
@@ -2061,10 +2064,12 @@ final class BudgetStore: ObservableObject {
 
     private func downloadRemoteBudgetForIntent(_ remote: RemoteBudget) async throws -> BudgetMetadata {
         var zipData = try await serverClient.downloadFile(fileId: remote.id)
+        var encryptionKeyId: String?
         if remote.isEncrypted {
             guard let key = EncryptionKeyManager.load(fileId: remote.id) else {
                 throw TransactionLogger.LoggerError.noBudgetLoaded
             }
+            encryptionKeyId = key.keyId
             let info = try await serverClient.getFileInfo(fileId: remote.id)
             guard let encryption = info.encryptMeta else {
                 throw ActualServerError.invalidResponse
@@ -2104,7 +2109,7 @@ final class BudgetStore: ObservableObject {
         // Unlike an explicit UI re-download, headless import is create-only.
         let metadata = try await fileManager.importBudget(
             from: zipData, fileId: remote.id, groupId: remote.groupId,
-            replaceExisting: false
+            encryptionKeyId: encryptionKeyId, replaceExisting: false
         )
         // A downloaded snapshot can lag behind the server message log. Catch it
         // up before the account/category picker or a shortcut write reads it.
@@ -2304,7 +2309,8 @@ final class BudgetStore: ObservableObject {
         await intentWriterRegistry.release(budgetId: budgetId)
     }
 
-    private func ensureSavedSessionReady() async {
+    // Entity queries also await saved credentials before deciding a cold launch is offline.
+    func ensureSavedSessionReady() async {
         #if DEBUG
         savedSessionWaitStartedForTesting?()
         #endif
@@ -2457,6 +2463,7 @@ final class BudgetStore: ObservableObject {
     /// can run before that background load has wired `syncClient`, so the headless
     /// write path awaits this via `ensureBudgetReady()`.
     private var loadTask: Task<Void, Never>?
+    private var loadTaskBudgetId: String?
 
     struct RemoteBudget: Identifiable, Sendable {
         let id: String
@@ -2477,9 +2484,18 @@ final class BudgetStore: ObservableObject {
         currentLocalBudget?.cloudFileId
     }
 
+    /// Shortcut writes and notification recovery share the encryption-key check.
+    private func hasShortcutBudgetEncryptionKey(_ metadata: BudgetMetadata) -> Bool {
+        let fileID = metadata.cloudFileId ?? metadata.id
+        let encrypted = metadata.encryptKeyId != nil
+            || remoteBudgets.first(where: { $0.id == fileID })?.isEncrypted == true
+        return !encrypted || EncryptionKeyManager.load(fileId: fileID) != nil
+    }
+
     func nameForShortcutRecoveryBudget(_ budgetId: String) -> String? {
         guard let local = fileManager.listLocalBudgets().first(where: { $0.id == budgetId }),
-              fileManager.budgetExists(local.id), local.canWriteToLocally else { return nil }
+              fileManager.budgetExists(local.id), local.canWriteToLocally,
+              hasShortcutBudgetEncryptionKey(local) else { return nil }
         return local.budgetName ?? String(localized: "Budget")
     }
 
@@ -2577,6 +2593,7 @@ final class BudgetStore: ObservableObject {
     /// Test-only: install an already-completed load task that produced no
     /// database, simulating an init()-time load that failed (actios-tq4w).
     func simulateFailedInitialLoadForTesting() {
+        loadTaskBudgetId = currentBudgetId
         loadTask = Task {}
     }
 
@@ -2645,6 +2662,7 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Test-only: pause immediately after a budget load claims its target id.
+    var budgetReadinessWaitStartedForTesting: (() -> Void)?
     var budgetLoadStartedForTesting: (() async -> Void)?
     /// Test-only: pause an intent download just before it imports a snapshot.
     var intentDownloadReadyToImportForTesting: (() async -> Void)?
@@ -2857,6 +2875,7 @@ final class BudgetStore: ObservableObject {
             // Set before the task so the very first render already knows the
             // numbers it is about to draw are provisional (GH #126).
             isInitialSyncing = true
+            loadTaskBudgetId = budgetId
             loadTask = Task {
                 await savedSessionTask?.value
                 await loadLocalBudget(budgetId)
@@ -3540,7 +3559,8 @@ final class BudgetStore: ObservableObject {
             }
 
             let metadata = try await fileManager.importBudget(
-                from: zipData, fileId: remoteBudget.id, groupId: remoteBudget.groupId
+                from: zipData, fileId: remoteBudget.id, groupId: remoteBudget.groupId,
+                encryptionKeyId: loadedKey?.keyId
             )
             currentBudgetId = metadata.id
             isInitialSyncing = true
@@ -3730,7 +3750,13 @@ final class BudgetStore: ObservableObject {
         budgetLoadCounts[budgetId, default: 0] += 1
         defer {
             let remaining = (budgetLoadCounts[budgetId] ?? 1) - 1
-            budgetLoadCounts[budgetId] = remaining > 0 ? remaining : nil
+            if remaining > 0 {
+                budgetLoadCounts[budgetId] = remaining
+            } else {
+                budgetLoadCounts[budgetId] = nil
+                let waiters = budgetLoadWaiters.removeValue(forKey: budgetId) ?? []
+                waiters.forEach { $0.resume() }
+            }
         }
         #if DEBUG
         await budgetLoadStartedForTesting?()
