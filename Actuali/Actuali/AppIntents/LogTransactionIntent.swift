@@ -156,6 +156,7 @@ struct LogTransactionIntent: AppIntent {
         // unscoped IDs remain valid only for shortcuts that don't choose a budget.
         let isBudgetScoped = budget != nil
         let availableAccounts = await writer.accountsForIntent()
+        let cardMappings = await writer.cardMappingsForIntent()
         let resolvedAccountId: String
         if let account {
             let entityBudgetId = budget?.id ?? targetBudgetId
@@ -170,7 +171,7 @@ struct LogTransactionIntent: AppIntent {
         } else if !cardHint.isEmpty,
                   let matchedId = store.resolveAccountId(
                       hint: cardHint, accounts: availableAccounts,
-                      cardMappings: await writer.cardMappingsForIntent(), in: targetBudgetId
+                      cardMappings: cardMappings, in: targetBudgetId
                   ) {
             resolvedAccountId = matchedId
         } else if let defaultId = store.defaultAccountId(for: targetBudgetId) {
@@ -373,14 +374,18 @@ struct LogTransactionIntent: AppIntent {
         if account != nil {
             accountId = prefillIDs.accountId
         } else if let prefillBudgetId {
-            let resolvedHint: String?
-            if let writer {
-                resolvedHint = store.resolveAccountId(
+            let mapped: [String: String] = if let writer {
+                await writer.cardMappingsForIntent()
+            } else {
+                [:]
+            }
+            let resolvedHint: String? = if writer != nil {
+                store.resolveAccountId(
                     hint: cardHint, accounts: availableAccounts,
-                    cardMappings: await writer.cardMappingsForIntent(), in: prefillBudgetId
+                    cardMappings: mapped, in: prefillBudgetId
                 )
             } else {
-                resolvedHint = await store.resolveAccountId(hint: cardHint, in: prefillBudgetId)
+                await store.resolveAccountId(hint: cardHint, in: prefillBudgetId)
             }
             let suggestedID = resolvedHint ?? store.defaultAccountId(for: prefillBudgetId)
             accountId = suggestedID.flatMap { id in
