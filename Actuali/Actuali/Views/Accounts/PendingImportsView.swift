@@ -45,10 +45,6 @@ struct PendingImportsView: View {
     var body: some View {
         NavigationStack {
             Group {
-                let visibleImports = store.visibleImports()
-                let staged = budgetStore.stagedBankTransactions
-                let approvalCount = visibleImports.count + staged.count
-                let importedCount = budgetStore.unreviewedTransactions.count
                 if approvalCount == 0, importedCount == 0 {
                     ContentUnavailableView(
                         "No Pending Imports",
@@ -61,10 +57,14 @@ struct PendingImportsView: View {
                     // The tab titles say which list this is; without them a
                     // line under the list has to.
                     let hasTabs = approvalCount > 0 && importedCount > 0
-                    let tab = currentTab(approvalCount: approvalCount, importedCount: importedCount)
+                    let tab = currentTab
                     Group {
                         switch tab {
-                        case .toApprove: approvalList(imports: visibleImports, staged: staged, showsNote: !hasTabs)
+                        case .toApprove: approvalList(
+                                imports: store.visibleImports(),
+                                staged: budgetStore.stagedBankTransactions,
+                                showsNote: !hasTabs
+                            )
                         case .imported: importedList(showsNote: !hasTabs)
                         }
                     }
@@ -119,10 +119,7 @@ struct PendingImportsView: View {
                 }
                 // A plain toolbar button, not a filled one like Approve All:
                 // clearing marks tidies up, it doesn't change the budget.
-                let approvalCount = store.visibleImports().count + budgetStore.stagedBankTransactions.count
-                let importedCount = budgetStore.unreviewedTransactions.count
-                if importedCount > 0,
-                   currentTab(approvalCount: approvalCount, importedCount: importedCount) == .imported {
+                if importedCount > 0, currentTab == .imported {
                     ToolbarItem(placement: .bottomBar) {
                         Button(String(localized: "Mark All Reviewed")) {
                             budgetStore.markAllReviewed()
@@ -211,7 +208,17 @@ struct PendingImportsView: View {
         }
     }
 
-    private func currentTab(approvalCount: Int, importedCount: Int) -> Tab {
+    /// One derivation of each count, read by both the body and the toolbar,
+    /// so the two can't disagree about which tab is showing.
+    private var approvalCount: Int {
+        store.visibleImports().count + budgetStore.stagedBankTransactions.count
+    }
+
+    private var importedCount: Int {
+        budgetStore.unreviewedTransactions.count
+    }
+
+    private var currentTab: Tab {
         approvalCount == 0 ? .imported
             : importedCount == 0 ? .toApprove
             : pickedTab ?? .toApprove

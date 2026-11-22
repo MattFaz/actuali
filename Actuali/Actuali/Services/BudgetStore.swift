@@ -441,6 +441,11 @@ final class BudgetStore: ObservableObject {
     // ponytail: ids are only checked against the database when the New
     // Transactions list loads, so a transaction deleted before then stays
     // counted until that list is opened. Prune on refresh if that ever shows.
+    // ponytail: marks are kept until cleared on purpose, so nothing bounds
+    // them for someone who never reviews. Each change rewrites the whole
+    // dictionary to UserDefaults and each account row scans it for its
+    // count: fine for hundreds, not for tens of thousands. If it shows,
+    // age out the oldest marks past a cap.
     @Published private(set) var unreviewedTransactions: [String: String] = [:] {
         didSet {
             guard let budgetId = currentBudgetId else { return }

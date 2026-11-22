@@ -1637,23 +1637,6 @@ struct AccountTypeAvatar: View {
     }
 }
 
-/// How many new transactions sit behind a row, the way Mail counts unread.
-struct UnreviewedCountBadge: View {
-    let count: Int
-
-    var body: some View {
-        Text(count, format: .number)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.accentColor, in: Capsule())
-            .accessibilityLabel(String(localized: "\(count) new transactions"))
-    }
-}
-
-/// Marks an account as fed by a bank: which feed, whether its last sync went
-/// wrong, and a spinner while one is running.
 /// The leading swipe that clears one transaction's new mark, shared by
 /// Review and the account screen.
 struct MarkReviewedButton: View {
@@ -1671,6 +1654,23 @@ struct MarkReviewedButton: View {
     }
 }
 
+/// How many new transactions sit behind a row, the way Mail counts unread.
+struct UnreviewedCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text(count, format: .number)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.accentColor, in: Capsule())
+            .accessibilityLabel(String(localized: "\(count) new transactions"))
+    }
+}
+
+/// Marks an account as fed by a bank: which feed, whether its last sync went
+/// wrong, and a spinner while one is running.
 struct BankSyncBadge: View {
     let linked: BankSyncAccount
     let isSyncing: Bool
