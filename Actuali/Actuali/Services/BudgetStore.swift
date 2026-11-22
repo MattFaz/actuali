@@ -4448,13 +4448,15 @@ final class BudgetStore: ObservableObject {
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
-        statusFilter: TransactionStatusFilter = .all
+        statusFilter: TransactionStatusFilter = .all,
+        runningBalanceStartingAt: Int? = nil
     ) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(
                 accountId: accountId, accountIds: accountIds,
                 limit: limit, offset: offset, search: search,
-                statusFilter: statusFilter
+                statusFilter: statusFilter,
+                runningBalanceStartingAt: runningBalanceStartingAt
             ) ?? []
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a superseded .task(id:)

@@ -23,16 +23,13 @@ struct AccountDetailEmptyStateTests {
         ) == "No transactions")
     }
 
-    @Test func runningBalanceNeedsAnUnfilteredLoad() {
-        #expect(AccountDetailView.allowsRunningBalance(
-            isSearching: false, statusFilter: .all
-        ))
-        #expect(!AccountDetailView.allowsRunningBalance(
-            isSearching: true, statusFilter: .all
-        ))
-        for filter in TransactionStatusFilter.allCases where filter != .all {
-            #expect(!AccountDetailView.allowsRunningBalance(
+    @Test func runningBalanceAllowsStatusFiltersButNotSearch() {
+        for filter in TransactionStatusFilter.allCases {
+            #expect(AccountDetailView.allowsRunningBalance(
                 isSearching: false, statusFilter: filter
+            ))
+            #expect(!AccountDetailView.allowsRunningBalance(
+                isSearching: true, statusFilter: filter
             ))
         }
     }

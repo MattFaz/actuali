@@ -47,6 +47,7 @@ struct AccountDetailView: View {
     @AppStorage("showUpcomingScheduledTransactions") private var showUpcomingSchedules = true
     @AppStorage("showAccountRunningBalance") private var showRunningBalance = true
     @State private var loadedFullHistory = false
+    @State private var loadedStatusFilter: TransactionStatusFilter = .all
     /// What the last `.task` run saw, so only a changed query debounces: a
     /// data-version bump mid-search must not wait on the typing delay.
     @State private var previousSearchText = ""
@@ -58,12 +59,15 @@ struct AccountDetailView: View {
     /// layout reuses this view across selections; `dataVersion` covers every
     /// mutation (row toggles, deletes, sheet edits, sync, scheduled posts), so
     /// those sites carry no reload calls of their own; the cycle replaces a
-    /// separate statement-day observer.
+    /// separate statement-day observer. The running-balance preference also
+    /// reloads the page because filtered fetches only calculate balances when
+    /// the column is enabled.
     private struct ReloadID: Equatable {
         let accountId: String
         let dataVersion: Int
         let search: String
         let statusFilter: TransactionStatusFilter
+        let showRunningBalance: Bool
         let cycle: CreditCardCycle?
     }
 
@@ -73,6 +77,7 @@ struct AccountDetailView: View {
             dataVersion: budgetStore.dataVersion,
             search: searchText,
             statusFilter: budgetStore.transactionStatusFilter,
+            showRunningBalance: showRunningBalance,
             cycle: budgetStore.activeCreditCardCycle(for: account.id)
         )
     }
@@ -93,9 +98,8 @@ struct AccountDetailView: View {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
     }
 
-    /// Running balances are shown only when the loaded page is the unfiltered
-    /// register (no search, no status chip). The flag snapshots the state
-    /// that the loaded page was fetched under.
+    /// Running balances are shown for the unsearched register, including
+    /// status-filtered rows. The flag snapshots the state the page used.
     private var shouldShowRunningBalance: Bool {
         showRunningBalance && loadedFullHistory
     }
@@ -105,12 +109,38 @@ struct AccountDetailView: View {
         isSearching: Bool,
         statusFilter: TransactionStatusFilter
     ) -> Bool {
-        !isSearching && statusFilter == .all
+        !isSearching
+    }
+
+    nonisolated static func runningBalanceAnchor(
+        showRunningBalance: Bool,
+        isSearching: Bool,
+        statusFilter: TransactionStatusFilter,
+        currentBalance: Int
+    ) -> Int? {
+        guard showRunningBalance, !isSearching, statusFilter != .all else { return nil }
+        return currentBalance
+    }
+
+    nonisolated static func transactionsWithRunningBalancesIfNeeded(
+        _ transactions: [Transaction],
+        showRunningBalance: Bool,
+        isSearching: Bool,
+        statusFilter: TransactionStatusFilter,
+        currentBalance: Int
+    ) -> [Transaction] {
+        guard showRunningBalance, !isSearching, statusFilter == .all else { return transactions }
+        return transactions.withRunningBalances(startingAt: currentBalance)
     }
 
     private var transactionsForDisplay: [Transaction] {
-        guard shouldShowRunningBalance else { return pager?.transactions ?? [] }
-        return (pager?.transactions ?? []).withRunningBalances(startingAt: currentBalance)
+        Self.transactionsWithRunningBalancesIfNeeded(
+            pager?.transactions ?? [],
+            showRunningBalance: showRunningBalance,
+            isSearching: !loadedFullHistory,
+            statusFilter: loadedStatusFilter,
+            currentBalance: currentBalance
+        )
     }
 
     /// Limit and headroom for a tracked card with a limit set, else nil. Read
@@ -186,10 +216,20 @@ struct AccountDetailView: View {
         }
         let store = budgetStore
         let accountId = account.id
+        let showRunningBalance = $showRunningBalance
         let created = TransactionPager { offset, limit, search in
-            await store.fetchTransactions(
+            let statusFilter = store.transactionStatusFilter
+            let currentBalance = store.accounts.first { $0.id == accountId }?.balance ?? account.balance
+            let runningBalanceStartingAt = Self.runningBalanceAnchor(
+                showRunningBalance: showRunningBalance.wrappedValue,
+                isSearching: search != nil,
+                statusFilter: statusFilter,
+                currentBalance: currentBalance
+            )
+            return await store.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
-                statusFilter: store.transactionStatusFilter
+                statusFilter: statusFilter,
+                runningBalanceStartingAt: runningBalanceStartingAt
             )
         }
         pager = created
@@ -205,6 +245,7 @@ struct AccountDetailView: View {
             isSearching: searchQuery != nil,
             statusFilter: budgetStore.transactionStatusFilter
         )
+        let statusFilter = budgetStore.transactionStatusFilter
         async let newBreakdown = budgetStore.balanceBreakdown(accountId: account.id)
         async let newNote = budgetStore.fetchNote(id: EntityNote.accountNoteId(account.id))
         async let newCycleSpend = fetchCycleSpend()
@@ -218,6 +259,7 @@ struct AccountDetailView: View {
         recentStatements = result.3
         // Keep the previous column visible until the replacement page lands.
         loadedFullHistory = fullHistory
+        loadedStatusFilter = statusFilter
     }
 
     private func fetchCycleSpend() async -> Int {
