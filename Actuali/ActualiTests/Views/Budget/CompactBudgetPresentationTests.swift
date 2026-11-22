@@ -8,29 +8,6 @@ struct CompactBudgetPresentationTests {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
 
-    @Test @MainActor func compactDockTracksScrollingAndHeaderRemoval() {
-        let tracker = CompactDockTracker()
-        tracker.setSummaryBottom(100)
-        tracker.setHeaderTop(100, for: "first")
-        #expect(tracker.dock?.id == "first")
-
-        tracker.setHeaderTop(140, for: "first")
-        tracker.setHeaderTop(108, for: "second")
-        #expect(tracker.dock?.id == "second")
-
-        tracker.setSummaryBottom(140)
-        #expect(tracker.dock?.id == "first")
-
-        tracker.removeHeader("first")
-        #expect(tracker.dock == nil)
-
-        tracker.setHeaderTop(140, for: "second")
-        #expect(tracker.dock?.id == "second")
-
-        tracker.removeHeader("second")
-        #expect(tracker.dock == nil)
-    }
-
     @Test @MainActor func groupHeaderHeightDoesNotDependOnTotalsVisibility() throws {
         let store = BudgetStore.previewInstance()
         let totals = CategoryGroupTotals([
@@ -381,29 +358,32 @@ struct CompactBudgetPresentationTests {
     @Test @MainActor func trackerDocksOnlyAHeaderAtTheSummaryBottom() {
         let tracker = CompactDockTracker()
         tracker.setHeaderTop(140, for: "a")
-        #expect(tracker.dock == nil) // summary bottom unknown yet
+        #expect(tracker.dockedID == nil) // summary bottom unknown yet
 
         tracker.setSummaryBottom(140)
-        #expect(tracker.dock == .init(id: "a")) // flush
+        #expect(tracker.dockedID == "a") // flush
 
         tracker.setHeaderTop(138, for: "a")
-        #expect(tracker.dock == .init(id: "a")) // small overlap
+        #expect(tracker.dockedID == "a") // small overlap
 
         tracker.setHeaderTop(146, for: "a")
-        #expect(tracker.dock == .init(id: "a")) // native List hosting inset
+        #expect(tracker.dockedID == "a") // native List hosting inset
 
         tracker.setHeaderTop(160, for: "a")
-        #expect(tracker.dock == nil) // real gap
+        #expect(tracker.dockedID == nil) // real gap
 
         tracker.setHeaderTop(110, for: "a")
-        #expect(tracker.dock == nil) // well under the summary
+        #expect(tracker.dockedID == nil) // well under the summary
 
         tracker.setHeaderTop(100, for: "a")
         tracker.setHeaderTop(142, for: "b")
-        #expect(tracker.dock == .init(id: "b")) // closest one wins
+        #expect(tracker.dockedID == "b") // closest one wins
 
-        tracker.removeHeader("b")
-        #expect(tracker.dock == nil) // header left the tree
+        tracker.setSummaryBottom(100)
+        #expect(tracker.dockedID == "a") // the summary edge moved
+
+        tracker.removeHeader("a")
+        #expect(tracker.dockedID == nil) // header left the tree
     }
 
     @Test func cardShapeSquaresOnlyTheEdgeThatDocks() {
@@ -425,7 +405,7 @@ struct CompactBudgetPresentationTests {
     /// Fusing squares corners, never the card's size. The corners themselves are
     /// asserted in `cardShapeSquaresOnlyTheEdgeThatDocks`; a pixel diff of the
     /// header isn't reliable under `ImageRenderer`.
-    @Test @MainActor func dockedHeaderKeepsItsHeightAndSquaresItsCorners() throws {
+    @Test @MainActor func dockedHeaderKeepsItsHeight() throws {
         let store = BudgetStore.previewInstance()
         let totals = CategoryGroupTotals([
             category(budgeted: 50000, spent: -31500, available: 18500),

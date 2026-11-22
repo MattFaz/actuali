@@ -25,11 +25,8 @@ enum CompactBudgetCard {
 /// and only a change of touching header invalidates an observing view.
 @MainActor
 final class CompactDockTracker: ObservableObject {
-    struct Dock: Equatable {
-        let id: String
-    }
-
-    @Published private(set) var dock: Dock?
+    /// The id of the header touching the summary, if any.
+    @Published private(set) var dockedID: String?
     private var summaryBottom: CGFloat?
     private var headerTops: [String: CGFloat] = [:]
 
@@ -50,33 +47,18 @@ final class CompactDockTracker: ObservableObject {
     }
 
     private func publish() {
-        guard let summaryBottom else {
-            if dock != nil {
-                dock = nil
-            }
-            return
+        // Touching: the header's top is near the summary's bottom edge.
+        // ponytail: -4...12 accommodates the native List section-header inset.
+        // Ceiling: a different runtime or list style may use a larger inset.
+        // Upgrade path: measure the hosting inset directly if this diverges.
+        let next = summaryBottom.flatMap { bottom in
+            headerTops
+                .filter { (-4...12).contains($0.value - bottom) }
+                .min { (abs($0.value - bottom), $0.key) < (abs($1.value - bottom), $1.key) }?
+                .key
         }
-        // Touching: the header's top is near the summary's bottom edge,
-        // allowing for the small native List section-header inset.
-        var closestID: String?
-        var closestOffset: CGFloat = 0
-        for (id, top) in headerTops {
-            let offset = top - summaryBottom
-            // ponytail: -4...12 accommodates the native List section-header inset.
-            // Ceiling: a different runtime or list style may use a larger inset.
-            // Upgrade path: measure the hosting inset directly if this diverges.
-            guard (-4...12).contains(offset) else { continue }
-            if closestID != nil {
-                let isCloser = abs(offset) < abs(closestOffset)
-                let isTie = abs(offset) == abs(closestOffset) && id < (closestID ?? "")
-                guard isCloser || isTie else { continue }
-            }
-            closestID = id
-            closestOffset = offset
-        }
-        let next = closestID.map { Dock(id: $0) }
-        if next != dock {
-            dock = next
+        if next != dockedID {
+            dockedID = next
         }
     }
 }
@@ -86,15 +68,15 @@ final class CompactDockTracker: ObservableObject {
 /// rebuild the whole table on a scroll frame.
 struct DockObserver<Content: View>: View {
     @ObservedObject var tracker: CompactDockTracker
-    let content: (CompactDockTracker.Dock?) -> Content
+    let content: (String?) -> Content
 
-    init(_ tracker: CompactDockTracker, @ViewBuilder content: @escaping (CompactDockTracker.Dock?) -> Content) {
+    init(_ tracker: CompactDockTracker, @ViewBuilder content: @escaping (String?) -> Content) {
         self.tracker = tracker
         self.content = content
     }
 
     var body: some View {
-        content(tracker.dock)
+        content(tracker.dockedID)
     }
 }
 

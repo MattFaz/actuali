@@ -361,7 +361,7 @@ struct BudgetView: View {
                     showsSpent: budgetStore.showCompactSpentColumn,
                     showsBudgeted: budgetStore.showBudgetedAmounts,
                     onToggleCollapse: { toggleCollapsed(group.id) },
-                    isConnectedToSummary: docked?.id == group.id && budgetStore.showCompactBudgetOverview,
+                    isConnectedToSummary: docked == group.id && budgetStore.showCompactBudgetOverview,
                     dockID: group.id,
                     dockTracker: dock
                 )
@@ -411,7 +411,7 @@ struct BudgetView: View {
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
                     },
-                    isConnectedToSummary: docked?.id == Self.incomeGroupCollapseID && budgetStore.showCompactBudgetOverview,
+                    isConnectedToSummary: docked == Self.incomeGroupCollapseID && budgetStore.showCompactBudgetOverview,
                     dockID: Self.incomeGroupCollapseID,
                     dockTracker: dock
                 )
