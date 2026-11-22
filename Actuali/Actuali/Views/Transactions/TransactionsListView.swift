@@ -595,7 +595,10 @@ struct TransactionRow: View {
                     Button("Unlock") { onToggleCleared() }
                 }
             } else {
-                // Selection mode keeps the status visible but inert; split children also keep their columns aligned.
+                // Selection mode needs no button: the row itself toggles
+                // selection and the bulk bar acts on cleared status. Same
+                // footprint as the tappable variant so mixed lists (split
+                // children under parents) keep their columns aligned.
                 ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
                     .frame(width: 28, height: 28)
             }
