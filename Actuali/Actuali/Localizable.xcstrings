@@ -5797,6 +5797,102 @@
         }
       }
     },
+    "Shortcut Transaction Confirmation" : {
+      "comment" : "Settings toggle for success notifications after Shortcut transaction logging",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bestätigung für Shortcut-Transaktionen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shortcut Transaction Confirmation"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmación de transacciones mediante atajos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmation des transactions par raccourci"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conferma delle transazioni tramite Comandi Rapidi"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bevestiging van shortcuttransacties"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmação de transações por Atalhos"
+          }
+        }
+      }
+    },
+    "Show a notification after an iOS Shortcut logs a transaction." : {
+      "comment" : "Footer text describing Shortcut transaction notifications",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeige eine Mitteilung an, nachdem ein iOS-Kurzbefehl eine Transaktion erfasst hat."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show a notification after an iOS Shortcut logs a transaction."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar una notificación después de que un atajo de iOS registre una transacción."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher une notification après l’enregistrement d’une transaction par un raccourci iOS."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra una notifica dopo che un comando rapido iOS registra una transazione."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toon een melding nadat een iOS-opdracht een transactie heeft geregistreerd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar uma notificação depois que um Atalho do iOS registrar uma transação."
+          }
+        }
+      }
+    },
     "Show Account Icons" : {
       "comment" : "Settings toggle for showing account type icons on the Accounts tab",
       "localizations" : {
