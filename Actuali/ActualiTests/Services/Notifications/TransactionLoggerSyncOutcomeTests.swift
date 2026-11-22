@@ -543,6 +543,58 @@ struct TransactionLoggerSyncOutcomeTests {
         await store.closeBudgetConnectionsForTesting()
     }
 
+    @Test func selectedWriterServesShortcutAccountAndCategoryReads() async throws {
+        let (store, fileManager, root) = makeFileBackedStore()
+        defer { cleanup(root) }
+        try seedBudget(id: "intent-reads", in: fileManager, sql: makeTargetBudgetSchema())
+        let client = try await makeServerClient(server: SyncServer(), reachable: false)
+        store.setServerClientForTesting(client)
+
+        let writer = try await store.transactionWriter(for: "intent-reads")
+        let accounts = await writer.accountsForIntent()
+        let categories = await writer.categoriesForIntent()
+        let mappings = await writer.cardMappingsForIntent()
+        #expect(accounts.map(\.id) == ["acct-1"])
+        #expect(categories.contains(where: { $0.id == "cat-1" }))
+        #expect(mappings.isEmpty)
+        #expect(store.currentBudgetId == nil)
+
+        await store.releaseTransactionWriter(for: "intent-reads")
+        await store.closeBudgetConnectionsForTesting()
+    }
+
+    @Test func successfulForegroundSyncClearsHeadlessInitialSyncMarker() async throws {
+        let originalCurrentBudget = UserDefaults.standard.object(forKey: "currentBudgetId")
+        defer { restoreUserDefault("currentBudgetId", to: originalCurrentBudget) }
+        let (store, fileManager, root) = makeFileBackedStore()
+        defer { cleanup(root) }
+        let budgetID = "sync-recovery"
+        let cloudID = "cloud-\(UUID().uuidString)"
+        let flag = "shortcutInitialSync.\(cloudID)"
+        defer { UserDefaults.standard.removeObject(forKey: flag) }
+        try seedBudget(id: budgetID, in: fileManager, sql: makeTargetBudgetSchema())
+        try JSONEncoder().encode(BudgetMetadata(
+            id: budgetID, budgetName: "Recovered", cloudFileId: cloudID,
+            groupId: "group-1", resetClock: nil, lastUploaded: nil, encryptKeyId: nil
+        )).write(to: fileManager.metadataPath(for: budgetID))
+
+        let server = SyncServer()
+        let online = try await makeServerClient(server: server, reachable: true)
+        store.setServerClientForTesting(online)
+        UserDefaults.standard.set(true, forKey: flag)
+        store.currentBudgetId = budgetID
+        await store.loadLocalBudget(budgetID)
+        #expect(UserDefaults.standard.bool(forKey: flag))
+
+        await store.syncOnForeground()
+        #expect(!UserDefaults.standard.bool(forKey: flag))
+
+        let offline = try await makeServerClient(server: server, reachable: false)
+        store.setServerClientForTesting(offline)
+        #expect(try await store.localBudgetIDForIntent(cloudID) == budgetID)
+        await store.closeBudgetConnectionsForTesting()
+    }
+
     @Test func nonActiveBudgetWritesOnlyToItsOwnLocalFile() async throws {
         let (store, fileManager, root) = makeFileBackedStore()
         defer { cleanup(root) }

@@ -60,6 +60,19 @@ struct BudgetStoreNumberFormatTests {
         )
     }
 
+    @Test func inactiveFailureNotificationReadsStoredNumberFormat() async throws {
+        let (store, manager, id, root) = makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(
+            id: id, numberFormat: ActualNumberFormat.dotComma.rawValue, in: manager
+        )
+        store.numberFormat = .commaDot
+
+        let preferences = await store.cachedDisplayPreferences(for: id)
+        #expect(preferences.currencyCode == "USD")
+        #expect(preferences.numberFormat == .dotComma)
+    }
+
     @Test func loadAppliesStoredNumberFormat() async throws {
         let (store, manager, id, root) = makeStore()
         defer {

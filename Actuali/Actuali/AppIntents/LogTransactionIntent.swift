@@ -155,22 +155,23 @@ struct LogTransactionIntent: AppIntent {
         // A saved account/category ID must belong to the chosen budget. Legacy
         // unscoped IDs remain valid only for shortcuts that don't choose a budget.
         let isBudgetScoped = budget != nil
+        let availableAccounts = await writer.accountsForIntent()
         let resolvedAccountId: String
         if let account {
             let entityBudgetId = budget?.id ?? targetBudgetId
-            guard let id = AccountEntity.accountID(
-                from: account.id, budgetID: entityBudgetId, allowLegacyID: !isBudgetScoped
-            ) ?? (isBudgetScoped && entityBudgetId != targetBudgetId
-                ? AccountEntity.accountID(
-                    from: account.id, budgetID: targetBudgetId, allowLegacyID: false
-                )
-                : nil) else {
+            guard let id = ScopedEntityID.rowID(
+                account.id, entityBudgetID: entityBudgetId,
+                localBudgetID: targetBudgetId, allowLegacyID: !isBudgetScoped
+            ) else {
                 await reportFailure(.accountUnavailable, store: store, budgetId: targetBudgetId, writer: writer)
                 throw LogTransactionError.accountUnavailable
             }
             resolvedAccountId = id
         } else if !cardHint.isEmpty,
-                  let matchedId = await store.resolveAccountId(hint: cardHint, in: targetBudgetId) {
+                  let matchedId = store.resolveAccountId(
+                      hint: cardHint, accounts: availableAccounts,
+                      cardMappings: await writer.cardMappingsForIntent(), in: targetBudgetId
+                  ) {
             resolvedAccountId = matchedId
         } else if let defaultId = store.defaultAccountId(for: targetBudgetId) {
             resolvedAccountId = defaultId
@@ -179,7 +180,6 @@ struct LogTransactionIntent: AppIntent {
             throw LogTransactionError.noAccountSelected
         }
 
-        let availableAccounts = await store.accountsForIntent(in: targetBudgetId)
         guard let activeAccount = availableAccounts.first(where: {
             $0.id == resolvedAccountId && !$0.closed
         }) else {
@@ -192,20 +192,15 @@ struct LogTransactionIntent: AppIntent {
             categoryId = nil
         } else if let category {
             let entityBudgetId = budget?.id ?? targetBudgetId
-            let selectedID = CategoryEntity.categoryID(
-                from: category.id,
-                budgetID: entityBudgetId,
-                allowLegacyID: !isBudgetScoped
-            ) ?? (isBudgetScoped && entityBudgetId != targetBudgetId
-                ? CategoryEntity.categoryID(
-                    from: category.id, budgetID: targetBudgetId, allowLegacyID: false
-                )
-                : nil)
+            let selectedID = ScopedEntityID.rowID(
+                category.id, entityBudgetID: entityBudgetId,
+                localBudgetID: targetBudgetId, allowLegacyID: !isBudgetScoped
+            )
             guard let selectedID else {
                 await reportFailure(.categoryUnavailable, store: store, budgetId: targetBudgetId, writer: writer)
                 throw LogTransactionError.categoryUnavailable
             }
-            let availableCategories = await store.categoriesForIntent(in: targetBudgetId)
+            let availableCategories = await writer.categoriesForIntent()
             if availableCategories.contains(where: { $0.id == selectedID }) {
                 categoryId = selectedID
             } else if isBudgetScoped {
@@ -310,20 +305,18 @@ struct LogTransactionIntent: AppIntent {
         let scopeBudgetId = entityBudgetId ?? targetBudgetId
         let accountId = accountEntityId
             .flatMap {
-                AccountEntity.accountID(
-                    from: $0, budgetID: scopeBudgetId, allowLegacyID: allowLegacyIDs
-                ) ?? (scopeBudgetId != targetBudgetId
-                    ? AccountEntity.accountID(from: $0, budgetID: targetBudgetId, allowLegacyID: false)
-                    : nil)
+                ScopedEntityID.rowID(
+                    $0, entityBudgetID: scopeBudgetId,
+                    localBudgetID: targetBudgetId, allowLegacyID: allowLegacyIDs
+                )
             }
             .flatMap { availableAccountIDs.contains($0) ? $0 : nil }
         let categoryId = categoryEntityId
             .flatMap {
-                CategoryEntity.categoryID(
-                    from: $0, budgetID: scopeBudgetId, allowLegacyID: allowLegacyIDs
-                ) ?? (scopeBudgetId != targetBudgetId
-                    ? CategoryEntity.categoryID(from: $0, budgetID: targetBudgetId, allowLegacyID: false)
-                    : nil)
+                ScopedEntityID.rowID(
+                    $0, entityBudgetID: scopeBudgetId,
+                    localBudgetID: targetBudgetId, allowLegacyID: allowLegacyIDs
+                )
             }
             .flatMap { availableCategoryIDs.contains($0) ? $0 : nil }
         return (accountId, categoryId)
@@ -354,7 +347,10 @@ struct LogTransactionIntent: AppIntent {
         let prefillBudgetId = targetBudgetId
         let availableAccounts: [Account]
         let availableCategories: [Category]
-        if let prefillBudgetId {
+        if let writer {
+            availableAccounts = await writer.accountsForIntent().filter { !$0.closed }
+            availableCategories = await writer.categoriesForIntent()
+        } else if let prefillBudgetId {
             availableAccounts = await store.accountsForIntent(in: prefillBudgetId)
                 .filter { !$0.closed }
             availableCategories = await store.categoriesForIntent(in: prefillBudgetId)
@@ -377,9 +373,16 @@ struct LogTransactionIntent: AppIntent {
         if account != nil {
             accountId = prefillIDs.accountId
         } else if let prefillBudgetId {
-            let suggestedID = await store.resolveAccountId(
-                hint: cardHint, in: prefillBudgetId
-            ) ?? store.defaultAccountId(for: prefillBudgetId)
+            let resolvedHint: String?
+            if let writer {
+                resolvedHint = store.resolveAccountId(
+                    hint: cardHint, accounts: availableAccounts,
+                    cardMappings: await writer.cardMappingsForIntent(), in: prefillBudgetId
+                )
+            } else {
+                resolvedHint = await store.resolveAccountId(hint: cardHint, in: prefillBudgetId)
+            }
+            let suggestedID = resolvedHint ?? store.defaultAccountId(for: prefillBudgetId)
             accountId = suggestedID.flatMap { id in
                 availableAccounts.contains(where: { $0.id == id }) ? id : nil
             }
@@ -397,10 +400,9 @@ struct LogTransactionIntent: AppIntent {
             currencyCode = store.currencyCode
             numberFormat = store.numberFormat
         } else if let targetBudgetId {
-            currencyCode = UserDefaults.standard.string(
-                forKey: "currencyCode.\(targetBudgetId)"
-            ) ?? "USD"
-            numberFormat = .commaDot
+            let preferences = await store.cachedDisplayPreferences(for: targetBudgetId)
+            currencyCode = preferences.currencyCode
+            numberFormat = preferences.numberFormat
         } else {
             currencyCode = store.currencyCode
             numberFormat = store.numberFormat

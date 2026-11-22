@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 import ZIPFoundation
 
 enum BudgetFileError: LocalizedError {
@@ -52,9 +51,6 @@ final class BudgetFileManager: @unchecked Sendable {
     static let shared = BudgetFileManager()
 
     private let fileManager = FileManager.default
-    /// Serialize replacement checks with installation across concurrent downloads.
-    private let budgetImportLock = Mutex<Void>(())
-
     /// Non-nil only in tests: roots budgetsDirectory somewhere disposable.
     private let rootDirectoryOverride: URL?
 
@@ -373,50 +369,50 @@ final class BudgetFileManager: @unchecked Sendable {
             try? fileManager.removeItem(at: extracted.databaseURL)
         }
 
-        // The new snapshot's local ID comes from an untrusted archive.
-        // Check ownership and install atomically so two concurrent downloads
-        // cannot both pass a check for the same directory.
-        return try budgetImportLock.withLock { _ in
-            // Update metadata with cloud info
-            let updatedMetadata = BudgetMetadata(
-                id: extracted.metadata.id,
-                budgetName: extracted.metadata.budgetName,
-                cloudFileId: fileId,
-                groupId: groupId,
-                resetClock: extracted.metadata.resetClock,
-                lastUploaded: extracted.metadata.lastUploaded,
-                encryptKeyId: encryptionKeyId ?? extracted.metadata.encryptKeyId
-            )
+        // The archive's ID is untrusted. Both production callers are MainActor
+        // isolated, and there is no suspension between ownership check and install.
+        // ponytail: keep this block await-free; a future cross-actor caller needs
+        // its own serialization before importing.
 
-            // Replace only the live files — deleting the whole directory here used to be harmless,
-            // but it would now silently destroy backups/ on every re-download. A fresh download does,
-            // however, supersede any revert baseline.
-            let budgetDir = budgetDirectory(for: extracted.metadata.id)
-            if fileManager.fileExists(atPath: budgetDir.path) {
-                guard replaceExisting,
-                      let existingData = try? Data(contentsOf: metadataPath(for: extracted.metadata.id)),
-                      let existing = try? JSONDecoder().decode(BudgetMetadata.self, from: existingData),
-                      existing.cloudFileId == fileId else {
-                    throw BudgetFileError.budgetAlreadyExists
-                }
+        // Update metadata with cloud info
+        let updatedMetadata = BudgetMetadata(
+            id: extracted.metadata.id,
+            budgetName: extracted.metadata.budgetName,
+            cloudFileId: fileId,
+            groupId: groupId,
+            resetClock: extracted.metadata.resetClock,
+            lastUploaded: extracted.metadata.lastUploaded,
+            encryptKeyId: encryptionKeyId ?? extracted.metadata.encryptKeyId
+        )
+
+        // Replace only the live files — deleting the whole directory here used to be harmless,
+        // but it would now silently destroy backups/ on every re-download. A fresh download does,
+        // however, supersede any revert baseline.
+        let budgetDir = budgetDirectory(for: extracted.metadata.id)
+        if fileManager.fileExists(atPath: budgetDir.path) {
+            guard replaceExisting,
+                  let existingData = try? Data(contentsOf: metadataPath(for: extracted.metadata.id)),
+                  let existing = try? JSONDecoder().decode(BudgetMetadata.self, from: existingData),
+                  existing.cloudFileId == fileId else {
+                throw BudgetFileError.budgetAlreadyExists
             }
-            try fileManager.createDirectory(at: budgetDir, withIntermediateDirectories: true)
-            try? fileManager.removeItem(at: latestDatabasePath(for: extracted.metadata.id))
-            try? fileManager.removeItem(at: latestMetadataPath(for: extracted.metadata.id))
-
-            let dbPath = databasePath(for: extracted.metadata.id)
-            for suffix in ["-wal", "-shm"] {
-                try? fileManager.removeItem(at: URL(fileURLWithPath: dbPath.path + suffix))
-            }
-            try? fileManager.removeItem(at: dbPath)
-            try fileManager.moveItem(at: extracted.databaseURL, to: dbPath)
-
-            // Write updated metadata
-            let updatedMetadataData = try JSONEncoder().encode(updatedMetadata)
-            try updatedMetadataData.write(to: metadataPath(for: extracted.metadata.id))
-
-            return updatedMetadata
         }
+        try fileManager.createDirectory(at: budgetDir, withIntermediateDirectories: true)
+        try? fileManager.removeItem(at: latestDatabasePath(for: extracted.metadata.id))
+        try? fileManager.removeItem(at: latestMetadataPath(for: extracted.metadata.id))
+
+        let dbPath = databasePath(for: extracted.metadata.id)
+        for suffix in ["-wal", "-shm"] {
+            try? fileManager.removeItem(at: URL(fileURLWithPath: dbPath.path + suffix))
+        }
+        try? fileManager.removeItem(at: dbPath)
+        try fileManager.moveItem(at: extracted.databaseURL, to: dbPath)
+
+        // Write updated metadata
+        let updatedMetadataData = try JSONEncoder().encode(updatedMetadata)
+        try updatedMetadataData.write(to: metadataPath(for: extracted.metadata.id))
+
+        return updatedMetadata
     }
 
     // MARK: - Delete

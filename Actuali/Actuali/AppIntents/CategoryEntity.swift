@@ -5,10 +5,8 @@ struct CategoryEntity: AppEntity, Identifiable {
     let id: String
     let name: String
 
-    private static let separator = "|"
-
     static func scopedID(budgetID: String, categoryID: String) -> String {
-        "\(budgetID)\(separator)\(categoryID)"
+        ScopedEntityID.make(budgetID: budgetID, rowID: categoryID)
     }
 
     static func categoryID(
@@ -16,11 +14,10 @@ struct CategoryEntity: AppEntity, Identifiable {
         budgetID: String,
         allowLegacyID: Bool
     ) -> String? {
-        if let range = entityID.range(of: separator) {
-            guard String(entityID[..<range.lowerBound]) == budgetID else { return nil }
-            return String(entityID[range.upperBound...])
-        }
-        return allowLegacyID ? entityID : nil
+        ScopedEntityID.rowID(
+            entityID, entityBudgetID: budgetID, localBudgetID: budgetID,
+            allowLegacyID: allowLegacyID
+        )
     }
 
     static let typeDisplayRepresentation = TypeDisplayRepresentation(
@@ -60,13 +57,10 @@ struct CategoryEntityQuery: EntityQuery {
         let scoped = intent?.budget != nil
         let categories = await store.categoriesForIntent(in: selection.localID)
         let requestedIDs = Set(identifiers.compactMap { identifier in
-            CategoryEntity.categoryID(
-                from: identifier, budgetID: selection.scopeID, allowLegacyID: !scoped
-            ) ?? (scoped && selection.scopeID != selection.localID
-                ? CategoryEntity.categoryID(
-                    from: identifier, budgetID: selection.localID, allowLegacyID: false
-                )
-                : nil)
+            ScopedEntityID.rowID(
+                identifier, entityBudgetID: selection.scopeID,
+                localBudgetID: selection.localID, allowLegacyID: !scoped
+            )
         })
         return categories.compactMap { category in
             guard requestedIDs.contains(category.id) else { return nil }

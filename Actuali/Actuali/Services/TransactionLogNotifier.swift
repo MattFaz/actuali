@@ -109,10 +109,10 @@ enum TransactionLogNotifier {
         }
     }
 
-    static func composeBody(message: String, payee: String?, amountCents: Int?,
-                            currencyCode: String, narrowSymbol: Bool = false,
-                            locale: Locale = .autoupdatingCurrent,
-                            numberFormat: ActualNumberFormat = .commaDot) -> String {
+    nonisolated static func composeBody(message: String, payee: String?, amountCents: Int?,
+                                        currencyCode: String, narrowSymbol: Bool = false,
+                                        locale: Locale = .autoupdatingCurrent,
+                                        numberFormat: ActualNumberFormat = .commaDot) -> String {
         var parts: [String] = []
         if let amountCents {
             let amountString = CurrencyAmountFormat.string(cents: amountCents,
@@ -131,11 +131,11 @@ enum TransactionLogNotifier {
             : String(format: String(localized: "%@. %@", locale: locale), prefix, message)
     }
 
-    static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
-                                   narrowSymbol: Bool, synced: Bool = true,
-                                   locale: Locale = .autoupdatingCurrent,
-                                   numberFormat: ActualNumberFormat = .commaDot,
-                                   needsOpeningBudget: Bool = false) -> String {
+    nonisolated static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
+                                               narrowSymbol: Bool, synced: Bool = true,
+                                               locale: Locale = .autoupdatingCurrent,
+                                               numberFormat: ActualNumberFormat = .commaDot,
+                                               needsOpeningBudget: Bool = false) -> String {
         let amountString = CurrencyAmountFormat.string(cents: amountCents,
                                                        currencyCode: currencyCode,
                                                        narrowSymbol: narrowSymbol,

@@ -398,6 +398,22 @@ actor BudgetTransactionWriter {
         )
     }
 
+    /// Read through the writer's existing SQLite connection while resolving a shortcut.
+    func accountsForIntent() async -> [Account] {
+        guard !isClosing, let database else { return [] }
+        return (try? await database.fetchAccounts()) ?? []
+    }
+
+    func categoriesForIntent() async -> [Category] {
+        guard !isClosing, let database else { return [] }
+        return (try? await database.fetchCategoryGroups().flatMap(\.categories)) ?? []
+    }
+
+    func cardMappingsForIntent() async -> [String: String] {
+        guard !isClosing, let database else { return [:] }
+        return (try? await database.fetchCardAccountMappings()) ?? [:]
+    }
+
     /// Wait for in-flight writes before releasing the DB connection. Offline
     /// messages remain durable in SQLite and will sync when the budget is opened.
     func close() async {

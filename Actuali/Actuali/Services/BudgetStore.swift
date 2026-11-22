@@ -606,6 +606,27 @@ final class BudgetStore: ObservableObject {
         UserDefaults.standard.string(forKey: Self.currencyCodeCacheKey(for: budgetId))
     }
 
+    /// Failure notifications can precede loading the selected budget.
+    func cachedDisplayPreferences(
+        for budgetId: String
+    ) async -> (currencyCode: String, numberFormat: ActualNumberFormat) {
+        if budgetId == loadedBudgetId {
+            return (currencyCode, numberFormat)
+        }
+        let cachedCurrency = cachedCurrencyCode(for: budgetId) ?? "USD"
+        guard fileManager.budgetExists(budgetId) else {
+            return (cachedCurrency, .commaDot)
+        }
+        do {
+            let db = try BudgetDatabase(path: fileManager.databasePath(for: budgetId))
+            let code = try await db.fetchCurrencyCode() ?? cachedCurrency
+            let format = try await db.fetchPreference(id: "numberFormat")
+            return (code, format.flatMap(ActualNumberFormat.init(rawValue:)) ?? .commaDot)
+        } catch {
+            return (cachedCurrency, .commaDot)
+        }
+    }
+
     private func cacheCurrencyCode(_ code: String, for budgetId: String) {
         // Keep an explicit empty value too: it is Actual's meaningful "None"
         // preference, distinct from a budget we have never cached.
@@ -2015,6 +2036,14 @@ final class BudgetStore: ObservableObject {
         "shortcutInitialSync.\(cloudFileID)"
     }
 
+    /// A completed normal sync replaces the headless first-sync guard.
+    private func clearShortcutInitialSyncAfterSuccessfulSync(for budgetId: String?) {
+        guard let budgetId, loadedBudgetId == budgetId,
+              let metadata = fileManager.listLocalBudgets().first(where: { $0.id == budgetId }),
+              let fileId = metadata.cloudFileId else { return }
+        UserDefaults.standard.removeObject(forKey: Self.intentInitialSyncKey(for: fileId))
+    }
+
     private var intentBudgetDownloads: [String: Task<BudgetMetadata, any Error>] = [:]
     /// Set synchronously at logout's entry, before the first suspension. A
     /// resumed shortcut may not import files into a session being cleared.
@@ -2094,9 +2123,6 @@ final class BudgetStore: ObservableObject {
             throw TransactionLogger.LoggerError.noBudgetLoaded
         }
         let initialSyncKey = Self.intentInitialSyncKey(for: remote.id)
-        // Set before importing so even termination during initial sync cannot
-        // leave a writable but stale snapshot on the next shortcut invocation.
-        UserDefaults.standard.set(true, forKey: initialSyncKey)
         #if DEBUG
         await intentDownloadReadyToImportForTesting?()
         #endif
@@ -2105,12 +2131,22 @@ final class BudgetStore: ObservableObject {
               !localBudgetsBeingRemoved.contains(remote.id) else {
             throw TransactionLogger.LoggerError.noBudgetLoaded
         }
-        // The archive's local ID is not trusted to choose an existing file.
-        // Unlike an explicit UI re-download, headless import is create-only.
-        let metadata = try await fileManager.importBudget(
-            from: zipData, fileId: remote.id, groupId: remote.groupId,
-            encryptionKeyId: encryptionKeyId, replaceExisting: false
-        )
+        // Mark before installing so termination cannot leave an unchecked snapshot.
+        // Undo a new marker if the installer rejects the archive.
+        let wasMarked = UserDefaults.standard.bool(forKey: initialSyncKey)
+        UserDefaults.standard.set(true, forKey: initialSyncKey)
+        let metadata: BudgetMetadata
+        do {
+            metadata = try await fileManager.importBudget(
+                from: zipData, fileId: remote.id, groupId: remote.groupId,
+                encryptionKeyId: encryptionKeyId, replaceExisting: false
+            )
+        } catch {
+            if !wasMarked {
+                UserDefaults.standard.removeObject(forKey: initialSyncKey)
+            }
+            throw error
+        }
         // A downloaded snapshot can lag behind the server message log. Catch it
         // up before the account/category picker or a shortcut write reads it.
         let writer = try await transactionWriter(for: metadata.id)
@@ -2169,18 +2205,9 @@ final class BudgetStore: ObservableObject {
             let targetDatabase = try BudgetDatabase(path: fileManager.databasePath(for: budgetId))
             let targetAccounts = try await targetDatabase.fetchAccounts()
             let fetchedMappings = try await targetDatabase.fetchCardAccountMappings()
-            let savedMappings = UserDefaults.standard.dictionary(
-                forKey: "cardAccountMappings_\(budgetId)"
-            ) as? [String: String] ?? [:]
-            var legacyMappings: [String: String] = [:]
-            for (keyword, accountId) in savedMappings {
-                let cleaned = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !cleaned.isEmpty, fetchedMappings[cleaned] == nil else { continue }
-                legacyMappings[cleaned] = accountId
-            }
-            let mappings = fetchedMappings.merging(legacyMappings) { synced, _ in synced }
-            return Self.resolveAccountId(
-                hint: hint, accounts: targetAccounts, cardMappings: mappings
+            return resolveAccountId(
+                hint: hint, accounts: targetAccounts,
+                cardMappings: fetchedMappings, in: budgetId
             )
         } catch {
             logger.error(
@@ -2188,6 +2215,23 @@ final class BudgetStore: ObservableObject {
             )
             return nil
         }
+    }
+
+    /// Keep saved card hints when the server has no mapping, but prefer synced values.
+    func resolveAccountId(
+        hint: String, accounts: [Account],
+        cardMappings: [String: String], in budgetId: String
+    ) -> String? {
+        let saved = UserDefaults.standard.dictionary(
+            forKey: "cardAccountMappings_\(budgetId)"
+        ) as? [String: String] ?? [:]
+        var mappings = cardMappings
+        for (keyword, accountId) in saved {
+            let cleaned = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty, mappings[cleaned] == nil else { continue }
+            mappings[cleaned] = accountId
+        }
+        return Self.resolveAccountId(hint: hint, accounts: accounts, cardMappings: mappings)
     }
 
     func defaultAccountId(for budgetId: String) -> String? {
@@ -8753,12 +8797,17 @@ final class BudgetStore: ObservableObject {
         // hosting scroll view goes away (tab switch). Run the pipeline in an
         // unstructured task so a UI-driven cancellation can't abort a sync
         // mid-flight or poison the refresh reads with CancellationError.
+        let syncBudgetId = currentBudgetId
+        let client = syncClient
         let work = Task {
             logger.info("sync() called")
-            if syncClient == nil {
+            if client == nil {
                 logger.notice("syncClient is nil, cannot sync!")
             }
-            await syncClient?.syncNow()
+            let success = await client?.syncNow() ?? false
+            if success, currentBudgetId == syncBudgetId, syncClient === client {
+                clearShortcutInitialSyncAfterSuccessfulSync(for: syncBudgetId)
+            }
             syncStatus.lastSyncTime = Date()
             logger.debug("sync() completed, refreshing data...")
             await refreshDataOnly()
@@ -8808,6 +8857,7 @@ final class BudgetStore: ObservableObject {
             logger.debug("syncOnForeground() skipped - no budget loaded")
             return
         }
+        let syncBudgetId = currentBudgetId
         logger.info("syncOnForeground() - app became active, syncing...")
         let success = await client.automaticSync()
         syncStatus.lastSyncTime = Date()
@@ -8816,6 +8866,9 @@ final class BudgetStore: ObservableObject {
         // successful sync: posting against stale data risks double-posting
         // an occurrence another client already covered.
         if success {
+            if syncBudgetId == currentBudgetId, syncClient === client {
+                clearShortcutInitialSyncAfterSuccessfulSync(for: syncBudgetId)
+            }
             await postDueSchedulesIfNeeded()
         }
         await refreshDataOnly()

@@ -291,6 +291,31 @@ struct LogTransactionIntentTests {
         ) == "checking")
     }
 
+    @Test func scopedIDsResolveCloudAndLocalWithoutLeakingAcrossBudgets() {
+        #expect(ScopedEntityID.rowID(
+            "cloud-file|checking", entityBudgetID: "cloud-file",
+            localBudgetID: "local-budget", allowLegacyID: false
+        ) == "checking")
+        #expect(ScopedEntityID.rowID(
+            "local-budget|checking", entityBudgetID: "cloud-file",
+            localBudgetID: "local-budget", allowLegacyID: false
+        ) == "checking")
+        #expect(ScopedEntityID.rowID(
+            "other-budget|checking", entityBudgetID: "cloud-file",
+            localBudgetID: "local-budget", allowLegacyID: false
+        ) == nil)
+        #expect(ScopedEntityID.rowID(
+            "checking", entityBudgetID: "cloud-file",
+            localBudgetID: "local-budget", allowLegacyID: false
+        ) == nil)
+        #expect(ScopedEntityID.rowID(
+            "checking", entityBudgetID: "cloud-file",
+            localBudgetID: "local-budget", allowLegacyID: true
+        ) == "checking")
+        #expect(ScopedEntityID.make(budgetID: "cloud-file", rowID: "groceries")
+            == "cloud-file|groceries")
+    }
+
     @Test func categoryIdentifiersCannotCrossBudgets() {
         let saved = CategoryEntity.scopedID(budgetID: "budget-a", categoryID: "groceries")
         #expect(CategoryEntity.categoryID(

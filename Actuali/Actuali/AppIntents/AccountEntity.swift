@@ -152,14 +152,36 @@ struct BudgetEntityQuery: EntityQuery {
     }
 }
 
+/// A row identifier is scoped to the selected cloud budget (or its local file ID).
+/// Legacy IDs are accepted only when no budget parameter was supplied.
+enum ScopedEntityID {
+    private static let separator = "|"
+
+    static func make(budgetID: String, rowID: String) -> String {
+        "\(budgetID)\(separator)\(rowID)"
+    }
+
+    static func rowID(
+        _ entityID: String,
+        entityBudgetID: String,
+        localBudgetID: String,
+        allowLegacyID: Bool
+    ) -> String? {
+        if let range = entityID.range(of: separator) {
+            let prefix = String(entityID[..<range.lowerBound])
+            guard prefix == entityBudgetID || prefix == localBudgetID else { return nil }
+            return String(entityID[range.upperBound...])
+        }
+        return allowLegacyID ? entityID : nil
+    }
+}
+
 struct AccountEntity: AppEntity, Identifiable {
     let id: String
     let name: String
 
-    private static let separator = "|"
-
     static func scopedID(budgetID: String, accountID: String) -> String {
-        "\(budgetID)\(separator)\(accountID)"
+        ScopedEntityID.make(budgetID: budgetID, rowID: accountID)
     }
 
     static func accountID(
@@ -167,11 +189,10 @@ struct AccountEntity: AppEntity, Identifiable {
         budgetID: String,
         allowLegacyID: Bool
     ) -> String? {
-        if let range = entityID.range(of: separator) {
-            guard String(entityID[..<range.lowerBound]) == budgetID else { return nil }
-            return String(entityID[range.upperBound...])
-        }
-        return allowLegacyID ? entityID : nil
+        ScopedEntityID.rowID(
+            entityID, entityBudgetID: budgetID, localBudgetID: budgetID,
+            allowLegacyID: allowLegacyID
+        )
     }
 
     static let typeDisplayRepresentation = TypeDisplayRepresentation(
@@ -211,13 +232,10 @@ struct AccountEntityQuery: EntityQuery {
         let scoped = intent?.budget != nil
         let accounts = await store.accountsForIntent(in: selection.localID)
         let requestedIDs = Set(identifiers.compactMap { identifier in
-            AccountEntity.accountID(
-                from: identifier, budgetID: selection.scopeID, allowLegacyID: !scoped
-            ) ?? (scoped && selection.scopeID != selection.localID
-                ? AccountEntity.accountID(
-                    from: identifier, budgetID: selection.localID, allowLegacyID: false
-                )
-                : nil)
+            ScopedEntityID.rowID(
+                identifier, entityBudgetID: selection.scopeID,
+                localBudgetID: selection.localID, allowLegacyID: !scoped
+            )
         })
         return accounts.compactMap { account in
             guard requestedIDs.contains(account.id) else { return nil }
