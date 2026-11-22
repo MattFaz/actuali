@@ -57,6 +57,23 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         return [rows.element(boundBy: 0), rows.element(boundBy: 1)]
     }
 
+    /// The selection box sits on the trailing edge, away from the cleared
+    /// dot on the leading edge, and tracks the row's selected state.
+    @MainActor
+    func testSelectionIndicatorSitsTrailingAndTracksSelection() {
+        let app = XCUIApplication()
+        let rows = openAllAccountsSelecting(app)
+        let id = rows[0].identifier.replacingOccurrences(of: "transactionRow.", with: "")
+        let box = app.descendants(matching: .any)["transaction.select.\(id)"]
+
+        XCTAssertTrue(box.waitForExistence(timeout: 5), "selection mode shows the indicator")
+        XCTAssertEqual(box.label, "Not selected")
+        XCTAssertGreaterThan(box.frame.minX, rows[0].frame.midX, "the indicator is on the trailing edge")
+
+        rows[0].tap()
+        XCTAssertEqual(box.label, "Selected")
+    }
+
     /// One selected transaction keeps the single-row bar; a second grows it
     /// into a card with the count and total.
     @MainActor

@@ -570,21 +570,7 @@ struct TransactionRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if isSelectionMode {
-                // No button needed: the row itself toggles selection. The
-                // cleared dot stays in view — the bulk bar acts on it.
-                HStack(spacing: 6) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 20))
-                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                    ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
-                }
-                .frame(width: 48, height: 28)
-                .accessibilityLabel(TransactionsListLocalization.selectionLabel(
-                    isSelected: isSelected,
-                    locale: locale
-                ))
-            } else if let onToggleCleared {
+            if let onToggleCleared, !isSelectionMode {
                 Button {
                     if transaction.reconciled {
                         confirmingUnlock = true
@@ -609,8 +595,10 @@ struct TransactionRow: View {
                     Button("Unlock") { onToggleCleared() }
                 }
             } else {
-                // Same footprint as the tappable variant so mixed lists
-                // (split children under parents) keep their columns aligned.
+                // Selection mode needs no button: the row itself toggles
+                // selection and the bulk bar acts on cleared status. Same
+                // footprint as the tappable variant so mixed lists (split
+                // children under parents) keep their columns aligned.
                 ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
                     .frame(width: 28, height: 28)
             }
@@ -654,6 +642,17 @@ struct TransactionRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            if isSelectionMode {
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 20))
+                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    .frame(width: 28, height: 28)
+                    .accessibilityIdentifier("transaction.select.\(transaction.id)")
+                    .accessibilityLabel(TransactionsListLocalization.selectionLabel(
+                        isSelected: isSelected,
+                        locale: locale
+                    ))
             }
         }
         .padding(.vertical, 2)
