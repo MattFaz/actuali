@@ -1402,7 +1402,7 @@ struct BudgetStoreBankSyncTests {
         #expect(linked.attentionMessage != nil)
     }
 
-    @Test func importedTransactionsStayUnreviewedUntilTheirAccountIsSeen() async throws {
+    @Test func importedTransactionsStayUnreviewedUntilMarkedReviewed() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
         try await markAlreadySynced(database)
@@ -1410,7 +1410,7 @@ struct BudgetStoreBankSyncTests {
         {"id": "sf-unreviewed", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Unreviewed"}
         """))
         // The marks persist per budget, so start from a known state.
-        store.markAccountReviewed(Self.accountId)
+        store.markAllReviewed()
 
         let result = try await store.syncBankAccounts()
 
@@ -1422,10 +1422,38 @@ struct BudgetStoreBankSyncTests {
         _ = try await store.syncBankAccounts()
         #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
 
+        // The account screen's Mark All Reviewed clears that account only.
         store.markAccountReviewed("some-other-account")
         #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
         store.markAccountReviewed(Self.accountId)
         #expect(store.unreviewedTransactions[imported.id] == nil)
+    }
+
+    @Test func aLaterSyncAddsToTheMarksStillWaiting() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try await markAlreadySynced(database)
+        let first = """
+        {"id": "sf-first", "posted": \(Self.daysAgo(3)), "amount": "-12.00", "payee": "First"}
+        """
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: first))
+        store.markAllReviewed()
+        let firstId = try #require(try await store.syncBankAccounts().importedTransactions.first?.id)
+
+        // The bank now sends the old row and a new one; nothing was marked reviewed in between.
+        store.setSimpleFINClientForTesting(SimpleFINClient(session: bridgeSession(body: accountSet(transactions: """
+        \(first),
+        {"id": "sf-second", "posted": \(Self.daysAgo(1)), "amount": "-7.50", "payee": "Second"}
+        """), log: nil)))
+        let secondId = try #require(try await store.syncBankAccounts().importedTransactions.first?.id)
+
+        #expect(Set(store.unreviewedTransactions.keys) == [firstId, secondId])
+        #expect(await Set(store.fetchUnreviewedTransactions().map(\.id)) == [firstId, secondId])
+
+        // Marking one reviewed leaves the other waiting.
+        store.markReviewed(firstId)
+        #expect(Set(store.unreviewedTransactions.keys) == [secondId])
+        #expect(store.unreviewedCount(forAccountId: Self.accountId) == 1)
     }
 
     @Test func aTransactionSyncedFromAnotherDeviceIsNotMarkedNew() async throws {
@@ -1485,8 +1513,8 @@ struct BudgetStoreBankSyncTests {
         #expect(store.unreviewedTransactions[created.id] == Self.accountId)
         #expect(!store.matchedTransactionIds.contains(created.id))
 
-        // Seeing the account clears the match note along with the mark.
-        store.markAccountReviewed(Self.accountId)
+        // Marking reviewed clears the match note along with the mark.
+        store.markAllReviewed()
         #expect(store.matchedTransactionIds.isEmpty)
 
         // Already matched, so the same download changes and marks nothing.

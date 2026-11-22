@@ -440,8 +440,12 @@ final class BudgetStore: ObservableObject {
     /// phone has shown its owner is not budget data.
     // ponytail: ids are only checked against the database when the New
     // Transactions list loads, so a transaction deleted before then stays
-    // counted until that list or its account is opened. Prune on refresh if
-    // that ever shows.
+    // counted until that list is opened. Prune on refresh if that ever shows.
+    // ponytail: marks are kept until cleared on purpose, so nothing bounds
+    // them for someone who never reviews. Each change rewrites the whole
+    // dictionary to UserDefaults and each account row scans it for its
+    // count: fine for hundreds, not for tens of thousands. If it shows,
+    // age out the oldest marks past a cap.
     @Published private(set) var unreviewedTransactions: [String: String] = [:] {
         didSet {
             guard let budgetId = currentBudgetId else { return }
@@ -1166,7 +1170,14 @@ final class BudgetStore: ObservableObject {
         matchedTransactionIds.formUnion(matched.keys)
     }
 
-    /// The account's screen has been seen, so nothing in it is new any more.
+    /// Marks are only cleared on purpose, here or below: opening an account
+    /// or closing Review doesn't mean every new transaction in it was seen.
+    func markReviewed(_ transactionId: String) {
+        guard unreviewedTransactions[transactionId] != nil else { return }
+        unreviewedTransactions[transactionId] = nil
+    }
+
+    /// From the account's own screen, where only its transactions are in view.
     func markAccountReviewed(_ accountId: String) {
         guard unreviewedTransactions.values.contains(accountId) else { return }
         unreviewedTransactions = unreviewedTransactions.filter { $0.value != accountId }

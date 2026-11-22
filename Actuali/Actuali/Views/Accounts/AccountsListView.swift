@@ -1637,6 +1637,23 @@ struct AccountTypeAvatar: View {
     }
 }
 
+/// The leading swipe that clears one transaction's new mark, shared by
+/// Review and the account screen.
+struct MarkReviewedButton: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    let transactionId: String
+
+    var body: some View {
+        Button {
+            budgetStore.markReviewed(transactionId)
+        } label: {
+            Label(String(localized: "Reviewed"), systemImage: "checkmark")
+        }
+        .tint(.accentColor)
+        .accessibilityIdentifier("review.markReviewed.\(transactionId)")
+    }
+}
+
 /// How many new transactions sit behind a row, the way Mail counts unread.
 struct UnreviewedCountBadge: View {
     let count: Int
@@ -1869,6 +1886,8 @@ struct AccountRow: View {
             creditCardCycle: creditCardCycle
         )
         let unreviewedCount = budgetStore.unreviewedCount(forAccountId: account.id)
+        let linked = budgetStore.bankSyncAccount(forAccountId: account.id)
+        let isSyncing = linked != nil && budgetStore.bankSyncingAccountIds.contains(account.id)
 
         return HStack(alignment: .center, spacing: 12) {
             if showAccountTypeIcons {
@@ -1895,17 +1914,24 @@ struct AccountRow: View {
                     }
                     // Only when there is something to say: a healthy link's
                     // icon on every row is noise next to the name.
-                    if let linked = budgetStore.bankSyncAccount(forAccountId: account.id),
-                       case let isSyncing = budgetStore.bankSyncingAccountIds.contains(account.id),
-                       isSyncing || linked.needsAttention {
-                        BankSyncBadge(linked: linked, isSyncing: isSyncing)
+                    if let linked, !isSyncing, linked.needsAttention {
+                        BankSyncBadge(linked: linked, isSyncing: false)
                             .font(.caption)
                             .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
                     }
                     Spacer()
+                    // Beside the balance, the figure a bank sync is about to
+                    // change, and in the row's free space: next to the name
+                    // it pushed the name out of line with its neighbours.
+                    if let linked, isSyncing {
+                        BankSyncBadge(linked: linked, isSyncing: true)
+                            .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
+                    }
                     Text(balance)
                         .foregroundStyle(balanceColor(for: account.balance))
                         .animatedAmount(balance)
+                        // Still readable, but marked as about to change.
+                        .opacity(isSyncing ? 0.5 : 1)
                 }
                 if let p = progress {
                     ProgressView(value: p)
