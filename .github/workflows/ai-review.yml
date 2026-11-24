@@ -66,6 +66,9 @@ jobs:
           # blocks every fork PR. Safe to waive here: the job's token is the
           # capped GITHUB_TOKEN and checkout never touches PR-head code.
           allowed_non_write_users: "*"
+          # v1 now defaults this to false and silently skips fork PRs (the step
+          # still passes). Safe for the same reason as above: no PR code runs.
+          allow_fork_prs: "true"
           # Unpinned third-party plugin: its content loads into the agent's
           # context each run, so we're trusting the author's future updates.
           # Token is capped and checkout stays on base, so worst case is a bad
