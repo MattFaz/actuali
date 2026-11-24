@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import Actuali
 
@@ -103,6 +104,12 @@ struct WidgetSnapshotTests {
         let picked = sampleSnapshot().categories(matching: ["a", "b", "c"], limit: 2)
 
         #expect(picked.map(\.id) == ["a", "b"])
+    }
+
+    @Test func availableColorIsOrangeOnlyWhenFullySpent() {
+        let colors = sampleSnapshot().categories.map(\.availableColor)
+
+        #expect(colors == [.green, .red, .orange])
     }
 
     @Test func relativeDateUsesExplicitLocale() {

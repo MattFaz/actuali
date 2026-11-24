@@ -145,13 +145,9 @@ struct CategoryBalanceWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    /// Matches the Budget tab's row semantics: red when overspent, green
-    /// otherwise — muted to neutral when balances are hidden so the mask
-    /// doesn't leak the sign.
+    /// Muted to neutral when balances are hidden so the mask doesn't leak
+    /// the sign.
     private func amountColor(for category: WidgetCategoryBalance) -> Color {
-        if entry.balancesHidden {
-            return .primary
-        }
-        return category.isOverspent ? .red : .green
+        entry.balancesHidden ? .primary : category.availableColor
     }
 }
