@@ -5710,6 +5710,48 @@ final class BudgetStore: ObservableObject {
         try await makeBankSyncProvider().accounts()
     }
 
+    func enableBankingStatus() async throws -> Bool? {
+        try await serverClient.enableBankingStatus()
+    }
+
+    func enableBankingRedirectURL() async -> URL? {
+        await serverClient.enableBankingRedirectURL()
+    }
+
+    func enableBankingBanks(country: String) async throws -> [EnableBankingBank] {
+        try await serverClient.enableBankingBanks(country: country)
+    }
+
+    func startEnableBankingAuthorization(
+        bank: EnableBankingBank,
+        psuType: String
+    ) async throws -> EnableBankingAuthorization {
+        try await serverClient.enableBankingStartAuthorization(bank: bank, psuType: psuType)
+    }
+
+    private static let enableBankingPollPause: Duration = .seconds(1)
+    private static let enableBankingPollDeadline: Duration = .seconds(600)
+
+    /// Waits for the person to finish at their bank. Retries on transport
+    /// failures because approval often happens in a banking app: iOS suspends
+    /// this app meanwhile and the open request can die. The server keeps a
+    /// finished result for 30 s, so asking again on return usually still
+    /// collects it. A request that simply times out client-side (280 s) is
+    /// retried the same way. Anything else, including cancellation, propagates.
+    func awaitEnableBankingAuthorization(state: String) async throws -> [BankSyncRemoteAccount] {
+        let deadline = ContinuousClock.now.advanced(by: Self.enableBankingPollDeadline)
+        while true {
+            do {
+                return try await serverClient.enableBankingPollAuthorization(state: state)
+                    .map(\.remoteAccount)
+            } catch let error as URLError where error.code != .cancelled {
+                guard ContinuousClock.now < deadline else { throw EnableBankingAuthError.timedOut }
+                // Also ends the loop if the task is cancelled during the pause.
+                try await Task.sleep(for: Self.enableBankingPollPause)
+            }
+        }
+    }
+
     func loadBankSyncAccounts() async {
         if let fetched = await fetchBankSyncAccounts() {
             assignIfChanged(\.bankSyncAccounts, fetched)

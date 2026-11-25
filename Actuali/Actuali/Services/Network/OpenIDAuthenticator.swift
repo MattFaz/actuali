@@ -96,10 +96,23 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
     /// - Parameter authorizationURL: the OP authorization URL returned by the server.
     /// - Returns: the Actual session token from the callback's `token` query item.
     func authenticate(authorizationURL: URL) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
+        try await Self.extractToken(from: open(authorizationURL, callbackScheme: Self.callbackScheme))
+    }
+
+    /// Present `url` in the system's authentication sheet and wait for it to
+    /// redirect to `callbackScheme`.
+    ///
+    /// Enable Banking's bank authorization uses this too, though it never
+    /// redirects anywhere this app can catch: the bank sends the browser back
+    /// to the Actual server, and the app learns the outcome by polling. There
+    /// the sheet only ends through `cancel()` or the person closing it, and
+    /// either way this throws `OpenIDAuthError.cancelled`.
+    func open(_ url: URL, callbackScheme: String) async throws -> URL {
+        defer { session = nil }
+        return try await withCheckedThrowingContinuation { continuation in
             let session = ASWebAuthenticationSession(
-                url: authorizationURL,
-                callbackURLScheme: Self.callbackScheme
+                url: url,
+                callbackURLScheme: callbackScheme
             ) { callbackURL, error in
                 if let error {
                     if let authError = error as? ASWebAuthenticationSessionError,
@@ -116,12 +129,7 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
                     return
                 }
 
-                do {
-                    let token = try Self.extractToken(from: callbackURL)
-                    continuation.resume(returning: token)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
+                continuation.resume(returning: callbackURL)
             }
             session.presentationContextProvider = self
             // Share Safari's session so a user already signed in to their identity
@@ -136,6 +144,13 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
                 ))
             }
         }
+    }
+
+    /// Dismiss the sheet. The pending `open` then throws
+    /// `OpenIDAuthError.cancelled`, as if the person had closed it. Does
+    /// nothing when no sheet is up.
+    func cancel() {
+        session?.cancel()
     }
 
     /// Parse the `token` (or `error`) query item out of the server's callback URL,
