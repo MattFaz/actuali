@@ -133,8 +133,8 @@ struct EnableBankingClientTests {
             psuType: "business"
         )
 
-        let bodies = try captured.all.withLock { requests in
-            try requests.map { try #require(JSONSerialization.jsonObject(with: $0.body) as? [String: Any]) }
+        let bodies = try captured.all.withLock { $0.map(\.body) }.map {
+            try #require(JSONSerialization.jsonObject(with: $0) as? [String: Any])
         }
         #expect(bodies.count == 2)
         #expect(bodies.allSatisfy { $0["maxConsentValidity"] == nil })

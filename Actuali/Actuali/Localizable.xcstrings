@@ -8000,6 +8000,54 @@
         }
       }
     },
+    "Your bank didn't confirm in time. Try again." : {
+      "comment" : "Error when the bank never reported back after the user started granting consent",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Bank hat nicht rechtzeitig bestätigt. Versuche es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your bank didn't confirm in time. Try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu banco no confirmó a tiempo. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre banque n'a pas confirmé à temps. Réessayez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tua banca non ha confermato in tempo. Riprova."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je bank heeft niet op tijd bevestigd. Probeer het opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu banco não confirmou a tempo. Tente novamente."
+          }
+        }
+      }
+    },
     "Your bank's permission has expired. Authorize the bank again to keep syncing." : {
       "comment" : "Account detail explanation when the bank's read-access consent has expired",
       "extractionState" : "stale",
@@ -20724,6 +20772,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Contas bancárias"
+          }
+        }
+      }
+    },
+    "Bank authorization failed: %@" : {
+      "comment" : "Error when granting the bank's read-access consent fails; placeholder is the server's reason",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bankautorisierung fehlgeschlagen: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank authorization failed: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Falló la autorización del banco: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Échec de l'autorisation de la banque : %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorizzazione della banca non riuscita: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bankautorisatie mislukt: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Falha na autorização do banco: %@"
           }
         }
       }
@@ -40037,6 +40133,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ativar automação"
+          }
+        }
+      }
+    },
+    "Enable Banking needs your Actual server to use https." : {
+      "comment" : "Error when the Actual server is reached over plain http and Enable Banking requires https",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking setzt voraus, dass dein Actual-Server https verwendet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking needs your Actual server to use https."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking requiere que tu servidor Actual use https."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking nécessite que votre serveur Actual utilise https."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking richiede che il tuo server Actual usi https."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking vereist dat je Actual-server https gebruikt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Enable Banking exige que seu servidor Actual use https."
           }
         }
       }
