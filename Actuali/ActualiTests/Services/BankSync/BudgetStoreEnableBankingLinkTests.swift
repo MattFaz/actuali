@@ -34,11 +34,7 @@ struct BudgetStoreEnableBankingLinkTests {
     /// A budget with one account, optionally already linked via Enable Banking
     /// under uid-A with a `last_sync`.
     private func makeDatabase(linked: Bool = false) async throws -> (BudgetDatabase, URL) {
-        var statements = TestSchema.core + [TestSchema.preferences, TestSchema.rules, """
-        CREATE TABLE banks (
-            id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
-        )
-        """]
+        var statements = TestSchema.core + [TestSchema.preferences, TestSchema.rules]
         if linked {
             statements.append("INSERT INTO banks (id, bank_id, name) VALUES ('bank-old', 'uid-A', 'ING')")
             statements.append("""
