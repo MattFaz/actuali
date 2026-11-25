@@ -91,6 +91,16 @@ struct BudgetStoreEnableBankingSyncTests {
         return try await makeTestDatabase(statements)
     }
 
+    private static func defaultsSuite(for database: BudgetDatabase) -> String {
+        "BudgetStoreEnableBankingSyncTests-\(URL(fileURLWithPath: database.dbQueueForTesting.path).lastPathComponent)"
+    }
+
+    private func cleanup(_ url: URL) {
+        UserDefaults(suiteName: "BudgetStoreEnableBankingSyncTests-\(url.lastPathComponent)")?
+            .removePersistentDomain(forName: "BudgetStoreEnableBankingSyncTests-\(url.lastPathComponent)")
+        try? FileManager.default.removeItem(at: url)
+    }
+
     /// A store whose server answers by path; a path with no body is a 404.
     private func makeServerStore(
         database: BudgetDatabase,
@@ -98,6 +108,11 @@ struct BudgetStoreEnableBankingSyncTests {
         log: EnableBankingRequestLog? = nil
     ) async throws -> BudgetStore {
         let store = try await makeTestStore(database: database)
+        // A budget id and private defaults, as `BudgetStoreBankSyncTests` gives
+        // its stores: without an id `setBankSyncImportStartDay` does nothing,
+        // and with the shared defaults it would leak into other suites.
+        let defaults = try #require(UserDefaults(suiteName: Self.defaultsSuite(for: database)))
+        store.configureAppleWalletLinksForTesting(defaults: defaults, budgetId: "enable-banking-tests")
         store.setSimpleFINAccessKeyForTesting(nil)
 
         let serverClient = ActualServerClient(session: StubTransport.session { request in
@@ -238,8 +253,9 @@ struct BudgetStoreEnableBankingSyncTests {
         let result = try await store.syncBankAccounts()
 
         #expect(try rows(path: url, where: "financial_id = 'sf-1'").count == 1)
-        #expect(result.accountsSynced == 1)
         #expect(!result.problems.isEmpty)
+        let account = try #require(try accountRow(path: url, id: Self.ebAccountId))
+        #expect(account["bank_sync_status"] == "failed")
     }
 
     @Test func aServerWithoutTheRouteReportsThatItDoesntOfferEnableBanking() async throws {
@@ -252,8 +268,10 @@ struct BudgetStoreEnableBankingSyncTests {
         let message = String(
             localized: "Your Actual server doesn't offer Enable Banking. Update the server, then try again."
         )
-        #expect(result.accountsSynced == 0)
         #expect(result.problems.contains { $0.contains(message) })
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").isEmpty)
+        let account = try #require(try accountRow(path: url, id: Self.ebAccountId))
+        #expect(account["bank_sync_status"] == "failed")
     }
 
     // MARK: - Messages and accounts
