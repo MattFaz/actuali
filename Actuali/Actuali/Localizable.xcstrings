@@ -7259,6 +7259,54 @@
         }
       }
     },
+    "Your bank's permission has expired. Authorize the bank again to keep syncing." : {
+      "comment" : "Account detail explanation when the bank's read-access consent has expired",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Berechtigung deiner Bank ist abgelaufen. Autorisiere die Bank erneut, um die Synchronisierung fortzusetzen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your bank's permission has expired. Authorize the bank again to keep syncing."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El permiso de tu banco ha caducado. Autoriza el banco de nuevo para seguir sincronizando."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'autorisation de votre banque a expiré. Autorisez de nouveau la banque pour continuer la synchronisation."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'autorizzazione della tua banca è scaduta. Autorizza di nuovo la banca per continuare a sincronizzare."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De toestemming van je bank is verlopen. Autoriseer de bank opnieuw om te blijven synchroniseren."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A permissão do seu banco expirou. Autorize o banco novamente para continuar sincronizando."
+          }
+        }
+      }
+    },
     "Your payment" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -20077,6 +20125,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sincronização bancária (SimpleFIN e Wallet)"
+          }
+        }
+      }
+    },
+    "Bank sync isn't set up on your Actual server." : {
+      "comment" : "Account bank sync error when the Actual server has no bank sync credentials configured",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Banksynchronisierung ist auf deinem Actual-Server nicht eingerichtet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank sync isn't set up on your Actual server."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sincronización bancaria no está configurada en tu servidor Actual."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La synchronisation bancaire n'est pas configurée sur votre serveur Actual."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sincronizzazione bancaria non è configurata sul tuo server Actual."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Banksynchronisatie is niet ingesteld op je Actual-server."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A sincronização bancária não está configurada no seu servidor Actual."
           }
         }
       }
@@ -90634,6 +90730,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Suas contas permanecem vinculadas e mantêm as transações já importadas. Para sincronizar novamente a partir deste dispositivo, você precisará de um novo token de configuração."
+          }
+        }
+      }
+    },
+    "Your Actual server doesn't offer Enable Banking. Update the server, then try again." : {
+      "comment" : "Error when the Actual server is too old to support Enable Banking",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Actual-Server unterstützt Enable Banking nicht. Aktualisiere den Server und versuche es dann erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Actual server doesn't offer Enable Banking. Update the server, then try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu servidor Actual no ofrece Enable Banking. Actualiza el servidor e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre serveur Actual ne propose pas Enable Banking. Mettez le serveur à jour, puis réessayez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo server Actual non offre Enable Banking. Aggiorna il server, poi riprova."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je Actual-server biedt geen Enable Banking. Werk de server bij en probeer het dan opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu servidor Actual não oferece o Enable Banking. Atualize o servidor e tente novamente."
           }
         }
       }
