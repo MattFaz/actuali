@@ -5488,11 +5488,9 @@ final class BudgetStore: ObservableObject {
             guard let download = downloaded.byAccount[target.externalAccountId] else {
                 // A connection-level problem already explains why nothing came
                 // back; don't also tell them to relink an account that's fine.
-                let sourceHasProblems = switch target.source {
-                case .financeKit: !walletProblems.isEmpty
-                case .simpleFin: !simpleFinProblems.isEmpty
-                default: false
-                }
+                // Only SimpleFIN targets read this; both checks below exclude
+                // Wallet, and Enable Banking always has a download entry.
+                let sourceHasProblems = !simpleFinProblems.isEmpty
                 if target.source == .simpleFin, !sourceHasProblems {
                     result.problems.append(
                         "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
