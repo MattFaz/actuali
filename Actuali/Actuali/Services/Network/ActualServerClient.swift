@@ -1234,6 +1234,193 @@ actor ActualServerClient {
         return data
     }
 
+    /// Whether the server has Enable Banking credentials, or nil when it has
+    /// no `/enablebanking` routes (an Actual release that predates them).
+    func enableBankingStatus() async throws -> Bool? {
+        let response: SimpleFINStatusResponse? = try await postBankSync(
+            path: "/enablebanking/status", body: EmptyBody(), fileId: nil
+        )
+        return response?.data?.configured
+    }
+
+    /// The banks Enable Banking offers in a country (upper-case ISO code).
+    func enableBankingBanks(country: String) async throws -> [EnableBankingBank] {
+        guard let response: EnableBankingBanksResponse = try await postBankSync(
+            path: "/enablebanking/aspsps", body: EnableBankingBanksRequest(country: country), fileId: nil
+        ) else { throw ActualServerError.invalidResponse }
+        if let message = response.data?.error {
+            throw ActualServerError.httpError(statusCode: 200, message: message)
+        }
+        return response.data?.banks ?? []
+    }
+
+    /// The address Enable Banking sends the person back to, which has to match
+    /// the one whitelisted in the Enable Banking application. Built from the
+    /// configured primary, not `serverURL`: after a failover `serverURL` may be
+    /// the fallback address, which is not the whitelisted one.
+    func enableBankingRedirectURL() -> URL? {
+        configuredPrimaryURL?.appendingPathComponent("enablebanking/auth_callback")
+    }
+
+    func enableBankingStartAuthorization(
+        bank: EnableBankingBank,
+        psuType: String
+    ) async throws -> EnableBankingAuthorization {
+        guard let redirectURL = enableBankingRedirectURL() else { throw ActualServerError.invalidURL }
+        // Enable Banking only redirects to https.
+        guard redirectURL.scheme == "https" else { throw EnableBankingAuthError.insecureServer }
+
+        // Upstream's loot-core only sends a validity inside this range.
+        let validity = bank.maximumConsentValidity.flatMap { (1 ... 315_360_000).contains($0) ? $0 : nil }
+        let body = EnableBankingStartRequest(
+            aspsp: .init(name: bank.name, country: bank.country),
+            redirectUrl: redirectURL.absoluteString,
+            psuType: psuType,
+            maxConsentValidity: validity,
+            // False on purpose: with true the server's finish page tries to open
+            // `actualbudget://`, the official app's URL scheme. This app learns
+            // the outcome from `poll-auth` instead.
+            returnToApp: false
+        )
+        guard let response: EnableBankingStartResponse = try await postBankSync(
+            path: "/enablebanking/start-auth", body: body, fileId: nil
+        ), let data = response.data else { throw ActualServerError.invalidResponse }
+        if let reason = data.failureReason { throw EnableBankingAuthError.failed(reason) }
+        guard let url = data.url, let state = data.state else { throw ActualServerError.invalidResponse }
+        return EnableBankingAuthorization(url: url, state: state)
+    }
+
+    /// Waits for the person to finish at their bank: the server holds this
+    /// request open for up to 300 s. Goes around `send` on purpose — `send`
+    /// treats a transport failure as an unreachable server and can swap to the
+    /// fallback address, but a poll that dies while iOS has the app suspended
+    /// is neither. A `URLError` therefore propagates untouched, for the caller
+    /// to retry.
+    func enableBankingPollAuthorization(state: String) async throws -> [EnableBankingRemoteAccount] {
+        guard let serverURL else { throw ActualServerError.invalidURL }
+        guard let token else { throw ActualServerError.unauthorized }
+
+        var request = makeRequest(serverURL.appendingPathComponent("/enablebanking/poll-auth"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
+        request.httpBody = try JSONEncoder().encode(EnableBankingPollRequest(state: state))
+        // Just under the session's 300 s resource cap.
+        request.timeoutInterval = 280
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ActualServerError.invalidResponse
+        }
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw ActualServerError.httpError(
+                statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8)
+            )
+        }
+        let poll: EnableBankingPollResponse
+        do {
+            poll = try JSONDecoder().decode(EnableBankingPollResponse.self, from: data)
+        } catch {
+            throw ActualServerError.decodingError(error)
+        }
+        guard let result = poll.data else { throw ActualServerError.invalidResponse }
+        if let reason = result.failureReason {
+            throw result.error == "Polling timed out"
+                ? EnableBankingAuthError.timedOut : EnableBankingAuthError.failed(reason)
+        }
+        return result.accounts ?? []
+    }
+
+    private struct EnableBankingBanksRequest: Encodable {
+        let country: String
+    }
+
+    /// `data` is a bare array of banks or `{aspsps: [...]}`, or `{error}`.
+    private struct EnableBankingBanksResponse: Decodable {
+        let data: BanksData?
+
+        struct BanksData: Decodable {
+            let banks: [EnableBankingBank]?
+            let error: String?
+
+            init(from decoder: any Decoder) throws {
+                if let array = try? [EnableBankingBank](from: decoder) {
+                    banks = array
+                    error = nil
+                    return
+                }
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                banks = try container.decodeIfPresent([EnableBankingBank].self, forKey: .aspsps)
+                error = try? container.decodeIfPresent(String.self, forKey: .error)
+            }
+
+            private enum CodingKeys: String, CodingKey { case aspsps, error }
+        }
+    }
+
+    private struct EnableBankingStartRequest: Encodable {
+        let aspsp: Bank
+        let redirectUrl: String
+        let psuType: String
+        let maxConsentValidity: Int?
+        let returnToApp: Bool
+
+        struct Bank: Encodable {
+            let name: String
+            let country: String
+        }
+    }
+
+    private struct EnableBankingStartResponse: Decodable {
+        let data: StartData?
+
+        struct StartData: Decodable {
+            let url: URL?
+            let state: String?
+            let error: String?
+            let errorCode: String?
+            let errorType: String?
+
+            var failureReason: String? {
+                error ?? errorType ?? errorCode
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case url, state, error
+                case errorCode = "error_code"
+                case errorType = "error_type"
+            }
+        }
+    }
+
+    private struct EnableBankingPollRequest: Encodable {
+        let state: String
+    }
+
+    private struct EnableBankingPollResponse: Decodable {
+        let data: PollData?
+
+        struct PollData: Decodable {
+            let accounts: [EnableBankingRemoteAccount]?
+            let error: String?
+            let errorCode: String?
+            let errorType: String?
+
+            var failureReason: String? {
+                error ?? errorType ?? errorCode
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case accounts, error
+                case errorCode = "error_code"
+                case errorType = "error_type"
+            }
+        }
+    }
+
     private struct EmptyBody: Encodable {}
 
     private struct EnableBankingTransactionsRequest: Encodable {
