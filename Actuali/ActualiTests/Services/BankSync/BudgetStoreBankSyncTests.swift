@@ -176,10 +176,6 @@ struct BudgetStoreBankSyncTests {
         accountId: String = Self.accountId
     ) async throws -> (BudgetDatabase, URL) {
         try await makeTestDatabase(TestSchema.core + [TestSchema.preferences, TestSchema.rules, """
-        CREATE TABLE banks (
-            id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
-        )
-        """, """
         INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order,
                               account_id, account_sync_source)
         VALUES ('\(accountId)', 'Checking', 'checking', 0, 0, 0, 1, '\(Self.externalAccountId)', 'simpleFin')

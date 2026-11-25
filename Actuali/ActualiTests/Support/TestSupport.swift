@@ -36,6 +36,11 @@ enum TestSchema {
         tombstone INTEGER DEFAULT 0
     )
     """
+    static let banks = """
+    CREATE TABLE banks (
+        id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
+    )
+    """
     static let payeeMapping = "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)"
     static let categories = """
     CREATE TABLE categories (
@@ -102,7 +107,7 @@ enum TestSchema {
 
     /// The tables every transaction-writing suite needs.
     static let core = [
-        accounts, transactions, payees, payeeMapping, categories, categoryGroups,
+        accounts, banks, transactions, payees, payeeMapping, categories, categoryGroups,
         categoryMapping, messagesCrdt,
     ]
 

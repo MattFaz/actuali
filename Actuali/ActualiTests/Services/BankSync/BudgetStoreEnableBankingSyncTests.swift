@@ -61,19 +61,11 @@ struct BudgetStoreEnableBankingSyncTests {
 
     /// A budget with an Enable Banking account (bank "ING") and, on request,
     /// a SimpleFIN one.
-    private func makeDatabase(
-        withBanksTable: Bool = true,
-        withSimpleFin: Bool = false
-    ) async throws -> (BudgetDatabase, URL) {
-        var statements = TestSchema.core + [TestSchema.preferences, TestSchema.rules]
-        if withBanksTable {
-            statements.append("""
-            CREATE TABLE banks (
-                id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
-            )
-            """)
-            statements.append("INSERT INTO banks (id, bank_id, name) VALUES ('bank-1', 'bank-1', 'ING')")
-        }
+    private func makeDatabase(withSimpleFin: Bool = false) async throws -> (BudgetDatabase, URL) {
+        var statements = TestSchema.core + [
+            TestSchema.preferences, TestSchema.rules,
+            "INSERT INTO banks (id, bank_id, name) VALUES ('bank-1', 'bank-1', 'ING')",
+        ]
         statements.append("""
         INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order,
                               account_id, account_sync_source, bank)
@@ -294,15 +286,5 @@ struct BudgetStoreEnableBankingSyncTests {
         let accounts = try await database.fetchBankSyncAccounts()
 
         #expect(accounts.map(\.institutionName) == ["ING"])
-    }
-
-    @Test func linkedAccountsStillLoadWhenTheBudgetHasNoBanksTable() async throws {
-        let (database, url) = try await makeDatabase(withBanksTable: false)
-        defer { cleanup(url) }
-
-        let accounts = try await database.fetchBankSyncAccounts()
-
-        #expect(accounts.map(\.id) == [Self.ebAccountId])
-        #expect(accounts[0].institutionName == nil)
     }
 }

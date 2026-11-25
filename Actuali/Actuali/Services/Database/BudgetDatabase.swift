@@ -4288,15 +4288,9 @@ final class BudgetDatabase: Sendable {
         try await dbQueue.read { db in
             let columns = try db.columns(in: "accounts").map(\.name)
             guard columns.contains("account_sync_source") else { return [] }
-            // Several test schemas have no `banks` table, and the store reads
-            // this with `try?`, so a failing query would silently empty the list.
-            let hasBanks = try db.tableExists("banks")
-            let bankName = hasBanks && columns.contains("bank")
-                ? "(SELECT name FROM banks WHERE banks.id = accounts.bank)"
-                : "NULL"
             return try Row.fetchAll(db, sql: """
             SELECT id, name, account_id, account_sync_source, offbudget, closed,
-                   \(bankName) AS institution_name
+                   (SELECT name FROM banks WHERE banks.id = accounts.bank) AS institution_name
             FROM accounts
             WHERE (tombstone = 0 OR tombstone IS NULL)
               AND account_id IS NOT NULL AND account_id <> ''
