@@ -133,7 +133,7 @@ struct EnableBankingClientTests {
             psuType: "business"
         )
 
-        let bodies = try captured.all.withLock { $0.map(\.body) }.map {
+        let bodies = try captured.all.withLock { $0.map { $0.body } }.map {
             try #require(JSONSerialization.jsonObject(with: $0) as? [String: Any])
         }
         #expect(bodies.count == 2)

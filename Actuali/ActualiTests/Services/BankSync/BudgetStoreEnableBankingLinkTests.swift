@@ -4,6 +4,23 @@ import Synchronization
 import Testing
 @testable import Actuali
 
+/// A class, because a noncopyable `Mutex` can't be captured by an escaping closure.
+private final class CallCounter: Sendable {
+    private let count = Mutex(0)
+
+    var value: Int {
+        count.withLock { $0 }
+    }
+
+    @discardableResult
+    func increment() -> Int {
+        count.withLock { total in
+            total += 1
+            return total
+        }
+    }
+}
+
 @MainActor
 struct BudgetStoreEnableBankingLinkTests {
     private static let accountId = "acct-eb"
@@ -66,22 +83,19 @@ struct BudgetStoreEnableBankingLinkTests {
     @Test func pollingRetriesAfterATransportFailure() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let calls = Mutex(0)
+        let calls = CallCounter()
+        let success = Data(Self.pollSuccess.utf8)
         let store = try await makeStore(database: database) { request in
             guard request.url?.path == "/enablebanking/poll-auth" else {
                 return StubTransport.Response(status: 404)
             }
-            let call = calls.withLock { count in
-                count += 1
-                return count
-            }
-            if call == 1 { throw URLError(.networkConnectionLost) }
-            return StubTransport.Response(body: Data(Self.pollSuccess.utf8))
+            if calls.increment() == 1 { throw URLError(.networkConnectionLost) }
+            return StubTransport.Response(body: success)
         }
 
         let accounts = try await store.awaitEnableBankingAuthorization(state: "state-1")
 
-        #expect(calls.withLock { $0 } == 2)
+        #expect(calls.value == 2)
         #expect(accounts.count == 1)
         #expect(accounts[0].id == "uid-B")
         #expect(accounts[0].institutionId == accounts[0].id)
@@ -92,16 +106,16 @@ struct BudgetStoreEnableBankingLinkTests {
     @Test func aServerErrorIsNotRetried() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
-        let calls = Mutex(0)
+        let calls = CallCounter()
         let store = try await makeStore(database: database) { _ in
-            calls.withLock { $0 += 1 }
+            calls.increment()
             return StubTransport.Response(body: Data(#"{"status":"ok","data":{"error":"Polling timed out"}}"#.utf8))
         }
 
         await #expect(throws: EnableBankingAuthError.timedOut) {
             _ = try await store.awaitEnableBankingAuthorization(state: "state-1")
         }
-        #expect(calls.withLock { $0 } == 1)
+        #expect(calls.value == 1)
     }
 
     // MARK: - Linking
