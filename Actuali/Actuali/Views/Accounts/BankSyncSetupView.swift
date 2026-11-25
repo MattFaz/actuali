@@ -32,6 +32,12 @@ struct BankSyncSetupView: View {
                     Label("SimpleFIN", systemImage: "building.columns")
                 }
                 .accessibilityIdentifier("bankSync.provider.simpleFIN")
+                NavigationLink {
+                    EnableBankingSyncView()
+                } label: {
+                    Label("Enable Banking", systemImage: "building.columns.fill")
+                }
+                .accessibilityIdentifier("bankSync.provider.enableBanking")
             }
             Section {
                 Toggle(String(localized: "Approve Before Importing"), isOn: $budgetStore.stagesBankImports)
@@ -490,7 +496,7 @@ struct SimpleFINSyncView: View {
 
 /// One provider-side account in a provider screen's list, with the budget
 /// account it's linked to, if any.
-private struct BankRemoteAccountRow: View {
+struct BankRemoteAccountRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
     let remote: BankSyncRemoteAccount
@@ -568,7 +574,7 @@ struct BankAccountLinkView: View {
                     Text(String(format: String(localized: "Creates a budget account for %@ at %@ and links it. Its opening balance is worked out on the first sync."), remote.name, remote.institutionName))
                 }
 
-                Section("Link to an existing account") {
+                Section {
                     if linkableAccounts.isEmpty {
                         Text("Every open account is already linked.")
                             .foregroundStyle(.secondary)
@@ -591,6 +597,12 @@ struct BankAccountLinkView: View {
                             }
                             .buttonStyle(.plain)
                         }
+                    }
+                } header: {
+                    Text("Link to an existing account")
+                } footer: {
+                    if remote.source == .enableBanking {
+                        Text("After re-authorizing your bank, choose the account that was linked before to replace its old link.")
                     }
                 }
             }
@@ -616,11 +628,34 @@ struct BankAccountLinkView: View {
         }
     }
 
+    private var linkableAccounts: [Account] {
+        Self.linkableAccounts(
+            accounts: budgetStore.accounts,
+            linked: budgetStore.bankSyncAccounts,
+            remoteSource: remote.source
+        )
+    }
+
     /// Open accounts with no bank feed of their own. An account already linked
     /// to a different bridge account isn't offered — one feed per account.
-    private var linkableAccounts: [Account] {
-        let linkedIds = Set(budgetStore.bankSyncAccounts.map(\.id))
-        return budgetStore.accounts.filter { !$0.closed && !linkedIds.contains($0.id) }
+    /// Enable Banking is the exception: re-authorizing issues new account ids,
+    /// so an account linked through it must stay replaceable, and the ones
+    /// whose link has gone stale come first.
+    nonisolated static func linkableAccounts(
+        accounts: [Account],
+        linked: [BankSyncAccount],
+        remoteSource: BankSyncSource
+    ) -> [Account] {
+        let linkedIds = Set(linked.map(\.id))
+        let open = accounts.filter { !$0.closed && !linkedIds.contains($0.id) }
+        guard remoteSource == .enableBanking else { return open }
+        let replaceable = linked.filter { $0.source == .enableBanking }
+        let attentionIds = Set(replaceable.filter(\.needsAttention).map(\.id))
+        let replaceableIds = Set(replaceable.map(\.id))
+        let replaceableOpen = accounts.filter { !$0.closed && replaceableIds.contains($0.id) }
+        return replaceableOpen.filter { attentionIds.contains($0.id) }
+            + replaceableOpen.filter { !attentionIds.contains($0.id) }
+            + open
     }
 
     private var errorAlertBinding: Binding<Bool> {
