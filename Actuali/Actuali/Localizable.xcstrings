@@ -26320,6 +26320,54 @@
         }
       }
     },
+    "Business" : {
+      "comment" : "Enable Banking usage type option",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geschäftlich"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Business"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empresarial"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Professionnel"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aziendale"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zakelijk"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empresarial"
+          }
+        }
+      }
+    },
     "Calendar" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -31582,6 +31630,54 @@
         }
       }
     },
+    "Connect a Bank" : {
+      "comment" : "Enable Banking screen section header for connecting a bank",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank verbinden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect a Bank"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectar un banco"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connecter une banque"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connetti una banca"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank koppelen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectar um banco"
+          }
+        }
+      }
+    },
     "Connect Apple Wallet" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -33510,6 +33606,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Não foi possível desfazer"
+          }
+        }
+      }
+    },
+    "Country" : {
+      "comment" : "Enable Banking screen country picker label",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Land"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Country"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "País"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pays"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paese"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Land"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "País"
           }
         }
       }
@@ -40133,6 +40277,102 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ativar automação"
+          }
+        }
+      }
+    },
+    "Enable Banking" : {
+      "comment" : "Settings row and screen title for the Enable Banking bank provider",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking"
+          }
+        }
+      }
+    },
+    "Enable Banking isn't set up on your Actual server yet. An administrator sets it up once in the Actual web app, under Bank Sync." : {
+      "comment" : "Enable Banking screen message when the server has no Enable Banking credentials",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking ist auf deinem Actual-Server noch nicht eingerichtet. Ein Administrator richtet es einmalig in der Actual-Web-App unter Banksynchronisierung ein."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking isn't set up on your Actual server yet. An administrator sets it up once in the Actual web app, under Bank Sync."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking aún no está configurado en tu servidor Actual. Un administrador lo configura una sola vez en la app web de Actual, en Sincronización bancaria."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking n'est pas encore configuré sur votre serveur Actual. Un administrateur le configure une seule fois dans l'app web d'Actual, sous Synchronisation bancaire."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking non è ancora configurato sul tuo server Actual. Un amministratore lo configura una sola volta nell'app web di Actual, in Sincronizzazione bancaria."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking is nog niet ingesteld op je Actual-server. Een beheerder stelt het eenmalig in via de Actual-webapp, onder Banksynchronisatie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Enable Banking ainda não está configurado no seu servidor Actual. Um administrador o configura uma vez no app web do Actual, em Sincronização bancária."
           }
         }
       }
@@ -52284,6 +52524,54 @@
         }
       }
     },
+    "Linked Accounts" : {
+      "comment" : "Enable Banking screen section header for accounts already linked",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verknüpfte Konten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linked Accounts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuentas vinculadas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comptes liés"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conti collegati"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gekoppelde rekeningen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contas vinculadas"
+          }
+        }
+      }
+    },
     "Linked accounts import transactions from this day on. It starts out as the day this budget began. For Apple Wallet accounts, pick an earlier day to pull in older history. Transactions already imported always stay." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -52844,6 +53132,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Carregando contas…"
+          }
+        }
+      }
+    },
+    "Loading banks…" : {
+      "comment" : "Enable Banking screen status while banks load",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Banken werden geladen…"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading banks…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cargando bancos…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chargement des banques…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Caricamento banche…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Banken laden…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Carregando bancos…"
           }
         }
       }
@@ -57732,6 +58068,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ainda não há backups"
+          }
+        }
+      }
+    },
+    "No banks found for this country." : {
+      "comment" : "Enable Banking screen empty state for the bank list",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Banken für dieses Land gefunden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No banks found for this country."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se encontraron bancos para este país."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune banque trouvée pour ce pays."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna banca trovata per questo paese."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geen banken gevonden voor dit land."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum banco encontrado para este país."
           }
         }
       }
@@ -64461,6 +64845,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "O acesso à pasta selecionada foi negado."
+          }
+        }
+      }
+    },
+    "Personal" : {
+      "comment" : "Enable Banking usage type option",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privat"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personal"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personal"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personnel"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personale"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Persoonlijk"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pessoal"
           }
         }
       }
@@ -84886,6 +85318,54 @@
         }
       }
     },
+    "This redirect URL must be allowed in your Enable Banking application." : {
+      "comment" : "Enable Banking screen footer about the redirect URL",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Weiterleitungs-URL muss in deiner Enable Banking-Anwendung erlaubt sein."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This redirect URL must be allowed in your Enable Banking application."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta URL de redirección debe estar permitida en tu aplicación de Enable Banking."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette URL de redirection doit être autorisée dans votre application Enable Banking."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo URL di reindirizzamento deve essere consentito nella tua applicazione Enable Banking."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze redirect-URL moet zijn toegestaan in je Enable Banking-applicatie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta URL de redirecionamento deve ser permitida no seu aplicativo do Enable Banking."
+          }
+        }
+      }
+    },
     "This repeat pattern isn't supported." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -89029,6 +89509,54 @@
         }
       }
     },
+    "Usage type" : {
+      "comment" : "Enable Banking screen picker label: personal or business bank login",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsart"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usage type"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipo de uso"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type d'utilisation"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipo di utilizzo"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gebruikstype"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipo de uso"
+          }
+        }
+      }
+    },
     "Use \"%@\"" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -89732,6 +90260,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "vs. orçamento"
+          }
+        }
+      }
+    },
+    "Waiting for your bank…" : {
+      "comment" : "Enable Banking status while waiting for the bank to confirm",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warten auf deine Bank…"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for your bank…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esperando a tu banco…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En attente de votre banque…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In attesa della tua banca…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wachten op je bank…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aguardando seu banco…"
           }
         }
       }
@@ -91619,6 +92195,54 @@
         }
       }
     },
+    "Your Actual server doesn't offer Enable Banking. Update the server to use it." : {
+      "comment" : "Enable Banking screen message when the server is too old for the feature",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Actual-Server unterstützt Enable Banking nicht. Aktualisiere den Server, um es zu nutzen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Actual server doesn't offer Enable Banking. Update the server to use it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu servidor Actual no ofrece Enable Banking. Actualiza el servidor para usarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre serveur Actual ne propose pas Enable Banking. Mettez le serveur à jour pour l'utiliser."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo server Actual non offre Enable Banking. Aggiorna il server per usarlo."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je Actual-server biedt geen Enable Banking. Werk de server bij om het te gebruiken."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu servidor Actual não oferece o Enable Banking. Atualize o servidor para usá-lo."
+          }
+        }
+      }
+    },
     "Your Actual server doesn't offer Enable Banking. Update the server, then try again." : {
       "comment" : "Error when the Actual server is too old to support Enable Banking",
       "extractionState" : "stale",
@@ -92086,6 +92710,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zero"
+          }
+        }
+      }
+    },
+    "%@ (beta)" : {
+      "comment" : "Bank name followed by a beta marker",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (Beta)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (beta)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (beta)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (bêta)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (beta)"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (beta)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (beta)"
           }
         }
       }
@@ -94267,6 +94939,54 @@
         }
       }
     },
+    "Accounts from Your Bank" : {
+      "comment" : "Enable Banking screen section header for the bank's accounts",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konten deiner Bank"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accounts from Your Bank"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuentas de tu banco"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comptes de votre banque"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conti della tua banca"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rekeningen van je bank"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contas do seu banco"
+          }
+        }
+      }
+    },
     "Rename" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -94877,6 +95597,54 @@
         }
       }
     },
+    "After re-authorizing your bank, choose the account that was linked before to replace its old link." : {
+      "comment" : "Enable Banking footer when re-linking an account after consent renewal",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle nach der erneuten Autorisierung deiner Bank das Konto aus, das zuvor verknüpft war, um die alte Verknüpfung zu ersetzen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "After re-authorizing your bank, choose the account that was linked before to replace its old link."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Después de volver a autorizar tu banco, elige la cuenta que estaba vinculada antes para reemplazar su vínculo anterior."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Après avoir autorisé de nouveau votre banque, choisissez le compte qui était lié auparavant pour remplacer son ancien lien."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dopo aver autorizzato di nuovo la tua banca, scegli il conto che era collegato prima per sostituire il vecchio collegamento."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kies na het opnieuw autoriseren van je bank de rekening die eerder was gekoppeld om de oude koppeling te vervangen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depois de autorizar seu banco novamente, escolha a conta que estava vinculada antes para substituir o vínculo antigo."
+          }
+        }
+      }
+    },
     "All existing transactions and budget balances will be transferred to the selected category before deletion." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -94924,6 +95692,54 @@
         }
       }
     },
+    "Approve the request with your bank. If your banking app opens, come back to Actuali when it's done." : {
+      "comment" : "Enable Banking footer while the bank consent is pending",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Genehmige die Anfrage bei deiner Bank. Wenn sich deine Banking-App öffnet, kehre zu Actuali zurück, sobald du fertig bist."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approve the request with your bank. If your banking app opens, come back to Actuali when it's done."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aprueba la solicitud en tu banco. Si se abre tu app bancaria, vuelve a Actuali cuando termines."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approuvez la demande auprès de votre banque. Si votre app bancaire s'ouvre, revenez dans Actuali une fois terminé."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approva la richiesta con la tua banca. Se si apre la tua app bancaria, torna su Actuali quando hai finito."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keur het verzoek goed bij je bank. Als je bank-app opent, ga dan terug naar Actuali als je klaar bent."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aprove a solicitação no seu banco. Se o app do seu banco abrir, volte ao Actuali quando terminar."
+          }
+        }
+      }
+    },
     "Are you sure you want to delete this item?" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -94967,6 +95783,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tem certeza de que deseja excluir este item?"
+          }
+        }
+      }
+    },
+    "Authorize with Your Bank" : {
+      "comment" : "Enable Banking button that opens the bank's login page",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei deiner Bank autorisieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authorize with Your Bank"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorizar con tu banco"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriser auprès de votre banque"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorizza con la tua banca"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriseren bij je bank"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorizar com seu banco"
           }
         }
       }
@@ -95246,6 +96110,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enviar"
+          }
+        }
+      }
+    },
+    "Checking your server…" : {
+      "comment" : "Enable Banking screen status while the server's capabilities are checked",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server wird geprüft…"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking your server…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprobando tu servidor…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vérification de votre serveur…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Controllo del server in corso…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je server controleren…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verificando seu servidor…"
           }
         }
       }
