@@ -4286,11 +4286,17 @@ final class BudgetDatabase: Sendable {
     /// to predate the columns — nothing can be linked in that case anyway.
     func fetchBankSyncAccounts() async throws -> [BankSyncAccount] {
         try await dbQueue.read { db in
-            guard try db.columns(in: "accounts").contains(where: { $0.name == "account_sync_source" }) else {
-                return []
-            }
+            let columns = try db.columns(in: "accounts").map(\.name)
+            guard columns.contains("account_sync_source") else { return [] }
+            // Several test schemas have no `banks` table, and the store reads
+            // this with `try?`, so a failing query would silently empty the list.
+            let hasBanks = try db.tableExists("banks")
+            let bankName = hasBanks && columns.contains("bank")
+                ? "(SELECT name FROM banks WHERE banks.id = accounts.bank)"
+                : "NULL"
             return try Row.fetchAll(db, sql: """
-            SELECT id, name, account_id, account_sync_source, offbudget, closed
+            SELECT id, name, account_id, account_sync_source, offbudget, closed,
+                   \(bankName) AS institution_name
             FROM accounts
             WHERE (tombstone = 0 OR tombstone IS NULL)
               AND account_id IS NOT NULL AND account_id <> ''
@@ -4303,7 +4309,8 @@ final class BudgetDatabase: Sendable {
                     externalAccountId: row["account_id"],
                     syncSource: row["account_sync_source"],
                     offBudget: row["offbudget"] == 1,
-                    closed: row["closed"] == 1
+                    closed: row["closed"] == 1,
+                    institutionName: row["institution_name"]
                 )
             }
         }

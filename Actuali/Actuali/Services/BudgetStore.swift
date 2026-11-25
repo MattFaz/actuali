@@ -4813,7 +4813,7 @@ final class BudgetStore: ObservableObject {
         ) -> String? {
             guard !accounts.isEmpty, accounts.allSatisfy({ $0.source == nil }) else { return nil }
             // Upstream writes exactly 'goCardless' into account_sync_source
-            // (app.ts); pluggyai, akahu, enableBanking and future sources
+            // (app.ts); pluggyai, akahu and future sources
             // stay generic rather than guess a provider name.
             if Set(accounts.map(\.syncSource)) == ["goCardless"] {
                 return ReportStrings.text(
@@ -5320,8 +5320,9 @@ final class BudgetStore: ObservableObject {
             !$0.closed && (accountIds.isEmpty || accountIds.contains($0.id))
         }
         let simpleFinTargets = linked.filter { $0.source == .simpleFin }
+        let enableBankingTargets = linked.filter { $0.source == .enableBanking }
         var walletTargets = linked.filter { $0.source == .financeKit }
-        guard !(simpleFinTargets.isEmpty && walletTargets.isEmpty) else {
+        guard !(simpleFinTargets.isEmpty && enableBankingTargets.isEmpty && walletTargets.isEmpty) else {
             if let message = BankSyncResult.unsupportedSourceMessage(for: linked) {
                 return BankSyncResult(problems: [message])
             }
@@ -5331,7 +5332,7 @@ final class BudgetStore: ObservableObject {
         // Nothing may suspend between the isBankSyncing guard above and this
         // write — an await in that window would let a second call slip past
         // the guard and import everything twice.
-        bankSyncingAccountIds = Set((simpleFinTargets + walletTargets).map(\.id))
+        bankSyncingAccountIds = Set((simpleFinTargets + enableBankingTargets + walletTargets).map(\.id))
         defer { bankSyncingAccountIds = [] }
         // An account's first download is its history, not news.
         let firstSyncAccountIds = Set(linked.filter { $0.lastSync == nil }.map(\.id))
@@ -5355,7 +5356,7 @@ final class BudgetStore: ObservableObject {
             }
         }
 
-        let targets = simpleFinTargets + walletTargets
+        let targets = simpleFinTargets + enableBankingTargets + walletTargets
         guard !targets.isEmpty else { return result }
 
         // Three windows. A first import (no history) starts where the person
@@ -5405,11 +5406,22 @@ final class BudgetStore: ObservableObject {
                     // Only deleted rows left: upstream's window, since the
                     // chosen day would download every one of them again.
                     startDay = lookbackFloor
+                } else if $0.source == .enableBanking {
+                    // Upstream's `getAccountSyncStartDate` never asks a bank for
+                    // more than its 90-day window by default, and banks may
+                    // reject an older `date_from`.
+                    // ponytail: no deeper history on a first import; honour the
+                    // chosen day once per-bank limits are handled.
+                    startDay = max(importStart, lookbackFloor)
                 } else {
                     startDay = importStart
                 }
                 targetStartDays[$0.id] = startDay
-                return BankSyncTarget(externalId: $0.externalAccountId, startDay: startDay)
+                return BankSyncTarget(
+                    externalId: $0.externalAccountId,
+                    startDay: startDay,
+                    institutionName: $0.institutionName
+                )
             }
         }
 
@@ -5429,7 +5441,7 @@ final class BudgetStore: ObservableObject {
             } catch {
                 simpleFinFailureIsDeviceLocal =
                     (error as? BudgetStoreError) == .bankSyncNotConfigured
-                guard !walletTargets.isEmpty else {
+                guard !(walletTargets.isEmpty && enableBankingTargets.isEmpty) else {
                     if !simpleFinFailureIsDeviceLocal {
                         try? await syncClient.recordBankSyncStatus(simpleFinTargets.map {
                             (
@@ -5449,6 +5461,11 @@ final class BudgetStore: ObservableObject {
                 simpleFinProblems.append(error.localizedDescription)
             }
         }
+        if !enableBankingTargets.isEmpty {
+            let set = await EnableBankingProvider(client: serverClient)
+                .download(downloadTargets(enableBankingTargets))
+            downloaded.byAccount.merge(set.byAccount) { first, _ in first }
+        }
         if !walletTargets.isEmpty {
             do {
                 let set = try await AppleWalletProvider(store: appleWalletStore)
@@ -5456,7 +5473,7 @@ final class BudgetStore: ObservableObject {
                 downloaded.byAccount.merge(set.byAccount) { first, _ in first }
                 walletProblems += set.problems
             } catch {
-                guard !simpleFinTargets.isEmpty else { throw error }
+                guard !(simpleFinTargets.isEmpty && enableBankingTargets.isEmpty) else { throw error }
                 walletProblems.append(error.localizedDescription)
             }
         }
@@ -5471,9 +5488,11 @@ final class BudgetStore: ObservableObject {
             guard let download = downloaded.byAccount[target.externalAccountId] else {
                 // A connection-level problem already explains why nothing came
                 // back; don't also tell them to relink an account that's fine.
-                let sourceHasProblems = target.source == .financeKit
-                    ? !walletProblems.isEmpty
-                    : !simpleFinProblems.isEmpty
+                let sourceHasProblems = switch target.source {
+                case .financeKit: !walletProblems.isEmpty
+                case .simpleFin: !simpleFinProblems.isEmpty
+                default: false
+                }
                 if target.source == .simpleFin, !sourceHasProblems {
                     result.problems.append(
                         "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
@@ -5482,7 +5501,7 @@ final class BudgetStore: ObservableObject {
                 // Missing Wallet data is device-local state, so don't stamp it
                 // into synced status columns. SimpleFIN is a shared feed, so
                 // its missing/failed state belongs there.
-                if target.source != .financeKit, !simpleFinFailureIsDeviceLocal {
+                if target.source == .simpleFin, !simpleFinFailureIsDeviceLocal {
                     statuses.append((
                         target.id, nil, sourceHasProblems ? "failed" : "account-missing",
                         ExpectedBankSyncLink(

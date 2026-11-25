@@ -6,6 +6,8 @@ struct BankSyncTarget: Sendable, Equatable {
     let externalId: String
     /// Earliest day (`YYYYMMDD`) worth downloading for this account.
     let startDay: Int
+    /// The bank's name, where the provider needs it.
+    var institutionName: String? = nil
 }
 
 /// What a provider came back with for one account.
@@ -156,6 +158,57 @@ struct ActualServerBankSyncProvider: BankSyncProvider {
                     .compactMap(BankSyncCandidate.init(serverBankSync:))
                     .filter { $0.date >= target.startDay }
                 download.currentBalanceCents = account.startingBalance
+            }
+            set.byAccount[target.externalId] = download
+        }
+        return set
+    }
+}
+
+// MARK: - Enable Banking
+
+/// Enable Banking through the Actual server's `/enablebanking/transactions`.
+/// No `accounts()`: the server only lists accounts at the end of a bank
+/// authorization, so this doesn't conform to `BankSyncProvider` — same as
+/// `AppleWalletProvider`.
+struct EnableBankingProvider: Sendable {
+    let client: ActualServerClient
+
+    /// Never throws, and every target gets an entry — the caller relies on it.
+    func download(_ targets: [BankSyncTarget]) async -> BankSyncDownloadSet {
+        var set = BankSyncDownloadSet()
+        // ponytail: sequential, as upstream does; a budget with many accounts
+        // could use a task group.
+        for target in targets {
+            var download = BankSyncDownload()
+            do {
+                let result = try await client.enableBankingTransactions(
+                    accountId: target.externalId,
+                    startDate: DayDate(yyyymmdd: target.startDay)?.iso ?? "",
+                    aspspName: target.institutionName
+                )
+                switch result {
+                case let .account(account):
+                    download = BankSyncDownload(
+                        candidates: (account.transactions?.all ?? [])
+                            .compactMap(BankSyncCandidate.init(serverBankSync:))
+                            .filter { $0.date >= target.startDay },
+                        currentBalanceCents: account.startingBalance,
+                        accountDataReceived: true
+                    )
+                case let .failure(error):
+                    // The route sends no `reason`, so the raw code is never shown.
+                    download.status = error.bankSyncStatus
+                    download.problem = BankSyncAccount.attentionMessage(
+                        status: error.bankSyncStatus, source: .enableBanking
+                    )
+                case nil:
+                    download.status = "failed"
+                    download.problem = String(localized: "Your Actual server doesn't offer Enable Banking. Update the server, then try again.")
+                }
+            } catch {
+                download.status = "failed"
+                download.problem = error.localizedDescription
             }
             set.byAccount[target.externalId] = download
         }
