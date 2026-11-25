@@ -90,7 +90,7 @@ struct EnableBankingClientTests {
         do {
             _ = try await client.enableBankingBanks(country: "XX")
             Issue.record("Expected enableBankingBanks to throw")
-        } catch let ActualServerError.httpError(statusCode, message) {
+        } catch ActualServerError.httpError(let statusCode, let message) {
             #expect(statusCode == 200)
             #expect(message == "Country not supported")
         }
@@ -133,7 +133,7 @@ struct EnableBankingClientTests {
             psuType: "business"
         )
 
-        let bodies = try captured.all.withLock { $0.map { $0.body } }.map {
+        let bodies = try captured.all.withLock { $0.map(\.body) }.map {
             try #require(JSONSerialization.jsonObject(with: $0) as? [String: Any])
         }
         #expect(bodies.count == 2)

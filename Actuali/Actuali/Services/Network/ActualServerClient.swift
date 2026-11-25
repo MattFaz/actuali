@@ -1271,7 +1271,7 @@ actor ActualServerClient {
         guard redirectURL.scheme == "https" else { throw EnableBankingAuthError.insecureServer }
 
         // Upstream's loot-core only sends a validity inside this range.
-        let validity = bank.maximumConsentValidity.flatMap { (1 ... 315_360_000).contains($0) ? $0 : nil }
+        let validity = bank.maximumConsentValidity.flatMap { (1...315_360_000).contains($0) ? $0 : nil }
         let body = EnableBankingStartRequest(
             aspsp: .init(name: bank.name, country: bank.country),
             redirectUrl: redirectURL.absoluteString,
@@ -1285,7 +1285,9 @@ actor ActualServerClient {
         guard let response: EnableBankingStartResponse = try await postBankSync(
             path: "/enablebanking/start-auth", body: body, fileId: nil
         ), let data = response.data else { throw ActualServerError.invalidResponse }
-        if let reason = data.failureReason { throw EnableBankingAuthError.failed(reason) }
+        if let reason = data.failureReason {
+            throw EnableBankingAuthError.failed(reason)
+        }
         guard let url = data.url, let state = data.state else { throw ActualServerError.invalidResponse }
         return EnableBankingAuthorization(url: url, state: state)
     }

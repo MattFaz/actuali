@@ -65,7 +65,9 @@ struct EnableBankingSyncView: View {
     }
 
     nonisolated static func defaultCountry(region: String?) -> String {
-        if let region, countries.contains(region) { return region }
+        if let region, countries.contains(region) {
+            return region
+        }
         return "NL"
     }
 
@@ -77,7 +79,9 @@ struct EnableBankingSyncView: View {
     /// shown just when there is a real choice.
     nonisolated static func psuType(for bank: EnableBankingBank, choice: String) -> String {
         let types = bank.psuTypes ?? []
-        if types.contains("personal"), types.contains("business") { return choice }
+        if types.contains("personal"), types.contains("business") {
+            return choice
+        }
         return types.first ?? choice
     }
 
@@ -185,7 +189,6 @@ struct EnableBankingSyncView: View {
             : bank.name
     }
 
-    @ViewBuilder
     private var connectSection: some View {
         Section {
             Picker("Country", selection: $country) {

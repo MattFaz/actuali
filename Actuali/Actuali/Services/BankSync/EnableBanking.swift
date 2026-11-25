@@ -62,7 +62,7 @@ enum EnableBankingAuthError: LocalizedError, Equatable {
         switch self {
         case .timedOut:
             String(localized: "Your bank didn't confirm in time. Try again.")
-        case let .failed(reason):
+        case .failed(let reason):
             String(format: String(localized: "Bank authorization failed: %@"), reason)
         case .insecureServer:
             String(localized: "Enable Banking needs your Actual server to use https.")

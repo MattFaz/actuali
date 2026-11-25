@@ -89,7 +89,9 @@ struct BudgetStoreEnableBankingLinkTests {
             guard request.url?.path == "/enablebanking/poll-auth" else {
                 return StubTransport.Response(status: 404)
             }
-            if calls.increment() == 1 { throw URLError(.networkConnectionLost) }
+            if calls.increment() == 1 {
+                throw URLError(.networkConnectionLost)
+            }
             return StubTransport.Response(body: success)
         }
 
