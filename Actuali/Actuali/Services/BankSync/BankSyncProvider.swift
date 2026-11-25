@@ -7,7 +7,7 @@ struct BankSyncTarget: Sendable, Equatable {
     /// Earliest day (`YYYYMMDD`) worth downloading for this account.
     let startDay: Int
     /// The bank's name, where the provider needs it.
-    var institutionName: String? = nil
+    var institutionName: String?
 }
 
 /// What a provider came back with for one account.
@@ -188,7 +188,7 @@ struct EnableBankingProvider: Sendable {
                     aspspName: target.institutionName
                 )
                 switch result {
-                case let .account(account):
+                case .account(let account):
                     download = BankSyncDownload(
                         candidates: (account.transactions?.all ?? [])
                             .compactMap(BankSyncCandidate.init(serverBankSync:))
@@ -196,7 +196,7 @@ struct EnableBankingProvider: Sendable {
                         currentBalanceCents: account.startingBalance,
                         accountDataReceived: true
                     )
-                case let .failure(error):
+                case .failure(let error):
                     // The route sends no `reason`, so the raw code is never shown.
                     download.status = error.bankSyncStatus
                     download.problem = BankSyncAccount.attentionMessage(

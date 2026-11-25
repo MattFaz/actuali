@@ -39,7 +39,7 @@ struct BankSyncAccount: Sendable, Equatable, Identifiable {
     var status: String?
     /// The linked bank's name (`banks.name`); Enable Banking sends it to the
     /// server as `aspspName`.
-    var institutionName: String? = nil
+    var institutionName: String?
 
     var source: BankSyncSource? {
         BankSyncSource(rawValue: syncSource)

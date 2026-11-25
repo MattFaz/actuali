@@ -150,7 +150,7 @@ struct EnableBankingDownloadTests {
          ]}}
         """)
 
-        guard case let .account(download) = decoded else {
+        guard case .account(let download) = decoded else {
             Issue.record("expected .account, got \(decoded)")
             return
         }
@@ -162,7 +162,7 @@ struct EnableBankingDownloadTests {
     @Test func decodesAnErrorBodyAsAFailure() throws {
         let decoded = try decode(#"{"error_type":"ITEM_ERROR","error_code":"ITEM_LOGIN_REQUIRED"}"#)
 
-        guard case let .failure(error) = decoded else {
+        guard case .failure(let error) = decoded else {
             Issue.record("expected .failure, got \(decoded)")
             return
         }

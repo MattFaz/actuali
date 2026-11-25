@@ -1294,7 +1294,9 @@ actor ActualServerClient {
 
         var request = makeRequest(serverURL.appendingPathComponent(path))
         request.httpMethod = "POST"
-        if let timeout { request.timeoutInterval = timeout }
+        if let timeout {
+            request.timeoutInterval = timeout
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
         request.setValue(fileId, forHTTPHeaderField: "X-ACTUAL-FILE-ID")
