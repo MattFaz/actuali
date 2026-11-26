@@ -4286,8 +4286,9 @@ final class BudgetDatabase: Sendable {
     /// to predate the columns — nothing can be linked in that case anyway.
     func fetchBankSyncAccounts() async throws -> [BankSyncAccount] {
         try await dbQueue.read { db in
-            let columns = try db.columns(in: "accounts").map(\.name)
-            guard columns.contains("account_sync_source") else { return [] }
+            guard try db.columns(in: "accounts").contains(where: { $0.name == "account_sync_source" }) else {
+                return []
+            }
             return try Row.fetchAll(db, sql: """
             SELECT id, name, account_id, account_sync_source, offbudget, closed,
                    (SELECT name FROM banks WHERE banks.id = accounts.bank) AS institution_name

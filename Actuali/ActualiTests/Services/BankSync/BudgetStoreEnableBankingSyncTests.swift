@@ -83,33 +83,40 @@ struct BudgetStoreEnableBankingSyncTests {
         return try await makeTestDatabase(statements)
     }
 
-    private static func defaultsSuite(for database: BudgetDatabase) -> String {
-        "BudgetStoreEnableBankingSyncTests-\(URL(fileURLWithPath: database.dbQueueForTesting.path).lastPathComponent)"
+    private static func defaultsSuite(for url: URL) -> String {
+        "BudgetStoreEnableBankingSyncTests-\(url.lastPathComponent)"
     }
 
     private func cleanup(_ url: URL) {
-        UserDefaults(suiteName: "BudgetStoreEnableBankingSyncTests-\(url.lastPathComponent)")?
-            .removePersistentDomain(forName: "BudgetStoreEnableBankingSyncTests-\(url.lastPathComponent)")
+        UserDefaults(suiteName: Self.defaultsSuite(for: url))?
+            .removePersistentDomain(forName: Self.defaultsSuite(for: url))
         try? FileManager.default.removeItem(at: url)
     }
 
     /// A store whose server answers by path; a path with no body is a 404.
+    /// `unreachable` fails every request as a timeout instead.
     private func makeServerStore(
         database: BudgetDatabase,
         bodies: [String: String],
-        log: EnableBankingRequestLog? = nil
+        log: EnableBankingRequestLog? = nil,
+        unreachable: Bool = false
     ) async throws -> BudgetStore {
         let store = try await makeTestStore(database: database)
         // A budget id and private defaults, as `BudgetStoreBankSyncTests` gives
         // its stores: without an id `setBankSyncImportStartDay` does nothing,
         // and with the shared defaults it would leak into other suites.
-        let defaults = try #require(UserDefaults(suiteName: Self.defaultsSuite(for: database)))
+        let defaults = try #require(UserDefaults(suiteName: Self.defaultsSuite(
+            for: URL(fileURLWithPath: database.dbQueueForTesting.path)
+        )))
         store.configureAppleWalletLinksForTesting(defaults: defaults, budgetId: "enable-banking-tests")
         store.setSimpleFINAccessKeyForTesting(nil)
 
         let serverClient = ActualServerClient(session: StubTransport.session { request in
             let path = request.url?.path ?? ""
             log?.entries.withLock { $0.append(.init(path: path, body: request.bodyData)) }
+            if unreachable {
+                throw URLError(.timedOut)
+            }
             let body = bodies[path]
             return StubTransport.Response(status: body == nil ? 404 : 200, body: Data((body ?? "").utf8))
         })
@@ -264,6 +271,29 @@ struct BudgetStoreEnableBankingSyncTests {
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").isEmpty)
         let account = try #require(try accountRow(path: url, id: Self.ebAccountId))
         #expect(account["bank_sync_status"] == "failed")
+    }
+
+    @Test func anUnreachableServerIsAskedOnceNotOncePerAccount() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        try await DatabaseQueue(path: url.path).write { db in
+            try db.execute(sql: """
+            INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order,
+                                  account_id, account_sync_source, bank)
+            VALUES ('acct-eb-2', 'Current', 'checking', 0, 0, 0, 3, 'eb-uid-2', 'enableBanking', 'bank-1')
+            """)
+        }
+        let log = EnableBankingRequestLog()
+        let store = try await makeServerStore(database: database, bodies: [:], log: log, unreachable: true)
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(log.bodies(for: "/enablebanking/transactions").count == 1)
+        #expect(result.problems.count == 2)
+        for id in [Self.ebAccountId, "acct-eb-2"] {
+            let account = try #require(try accountRow(path: url, id: id))
+            #expect(account["bank_sync_status"] == "failed")
+        }
     }
 
     // MARK: - Messages and accounts
