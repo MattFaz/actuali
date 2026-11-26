@@ -25,18 +25,7 @@ struct CategoryEntityQuery: EntityQuery {
 
     @MainActor
     private func selectedBudget() async -> (localID: String, scopeID: String)? {
-        let store = BudgetStore.shared
-        if let selectedBudget = intent?.budget {
-            guard let localID = try? await store.localBudgetIDForIntent(selectedBudget.id) else {
-                return nil
-            }
-            return (localID, selectedBudget.id)
-        }
-        guard !(store.isConnected && store.currentBudgetId == DemoDataSeeder.budgetId),
-              let currentBudgetID = store.currentBudgetId else {
-            return nil
-        }
-        return (currentBudgetID, currentBudgetID)
+        await BudgetEntity.selection(for: intent?.budget)
     }
 
     @MainActor

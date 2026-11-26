@@ -17,6 +17,23 @@ struct BudgetEntity: AppEntity, Identifiable {
 
     static let defaultQuery = BudgetEntityQuery()
 
+    /// The local file and entity-ID scope a dependent account/category query reads.
+    @MainActor
+    static func selection(for budget: BudgetEntity?) async -> (localID: String, scopeID: String)? {
+        let store = BudgetStore.shared
+        if let budget {
+            guard let localID = try? await store.localBudgetIDForIntent(budget.id) else {
+                return nil
+            }
+            return (localID, budget.id)
+        }
+        guard !(store.isConnected && store.currentBudgetId == DemoDataSeeder.budgetId),
+              let currentBudgetID = store.currentBudgetId else {
+            return nil
+        }
+        return (currentBudgetID, currentBudgetID)
+    }
+
     @MainActor
     static func availableEntities(
         localBudgets: [BudgetMetadata],
@@ -162,18 +179,7 @@ struct AccountEntityQuery: EntityQuery {
 
     @MainActor
     private func selectedBudget() async -> (localID: String, scopeID: String)? {
-        let store = BudgetStore.shared
-        if let selectedBudget = intent?.budget {
-            guard let localID = try? await store.localBudgetIDForIntent(selectedBudget.id) else {
-                return nil
-            }
-            return (localID, selectedBudget.id)
-        }
-        guard !(store.isConnected && store.currentBudgetId == DemoDataSeeder.budgetId),
-              let currentBudgetID = store.currentBudgetId else {
-            return nil
-        }
-        return (currentBudgetID, currentBudgetID)
+        await BudgetEntity.selection(for: intent?.budget)
     }
 
     @MainActor
