@@ -32,9 +32,9 @@ struct LogTransactionIntentTests {
             encryptKeyId: nil
         )
 
-        #expect(BudgetEntity.canWriteToLocally(localOnly))
-        #expect(!BudgetEntity.canWriteToLocally(detachedCloudCopy))
-        #expect(BudgetEntity.canWriteToLocally(connectedCloudBudget))
+        #expect(localOnly.canWriteToLocally)
+        #expect(!detachedCloudCopy.canWriteToLocally)
+        #expect(connectedCloudBudget.canWriteToLocally)
     }
 
     @MainActor @Test func savedLocalBudgetEntityNeedsNoRemoteFetch() {
@@ -46,15 +46,15 @@ struct LogTransactionIntentTests {
             localBudgets: [local], remoteBudgets: [], isConnected: true
         )
         #expect(!BudgetEntityQuery.needsRemoteFetch(
-            identifiers: ["cloud-file"], entities: entries, localBudgets: [local],
+            identifiers: ["cloud-file"], entities: entries,
             isConnected: true
         ))
         #expect(BudgetEntityQuery.needsRemoteFetch(
-            identifiers: ["server-only-file"], entities: entries, localBudgets: [local],
+            identifiers: ["server-only-file"], entities: entries,
             isConnected: true
         ))
         #expect(!BudgetEntityQuery.needsRemoteFetch(
-            identifiers: ["server-only-file"], entities: entries, localBudgets: [local],
+            identifiers: ["server-only-file"], entities: entries,
             isConnected: false
         ))
     }
@@ -263,13 +263,13 @@ struct LogTransactionIntentTests {
             categoryID: "groceries"
         )
 
-        #expect(AccountEntity.accountID(
-            from: accountID,
+        #expect(ScopedEntityID.rowID(
+            accountID,
             budgetID: targetBudgetID,
             allowLegacyID: false
         ) == "checking-account")
-        #expect(CategoryEntity.categoryID(
-            from: categoryID,
+        #expect(ScopedEntityID.rowID(
+            categoryID,
             budgetID: targetBudgetID,
             allowLegacyID: false
         ) == "groceries")
@@ -277,40 +277,40 @@ struct LogTransactionIntentTests {
 
     @Test func accountIdentifiersCannotCrossBudgets() {
         let saved = AccountEntity.scopedID(budgetID: "budget-a", accountID: "checking")
-        #expect(AccountEntity.accountID(
-            from: saved, budgetID: "budget-a", allowLegacyID: false
+        #expect(ScopedEntityID.rowID(
+            saved, budgetID: "budget-a", allowLegacyID: false
         ) == "checking")
-        #expect(AccountEntity.accountID(
-            from: saved, budgetID: "budget-b", allowLegacyID: false
+        #expect(ScopedEntityID.rowID(
+            saved, budgetID: "budget-b", allowLegacyID: false
         ) == nil)
-        #expect(AccountEntity.accountID(
-            from: "checking", budgetID: "budget-a", allowLegacyID: false
+        #expect(ScopedEntityID.rowID(
+            "checking", budgetID: "budget-a", allowLegacyID: false
         ) == nil)
-        #expect(AccountEntity.accountID(
-            from: "checking", budgetID: "budget-a", allowLegacyID: true
+        #expect(ScopedEntityID.rowID(
+            "checking", budgetID: "budget-a", allowLegacyID: true
         ) == "checking")
     }
 
-    @Test func scopedIDsResolveCloudAndLocalWithoutLeakingAcrossBudgets() {
+    @Test func scopedIDsResolveOnlyInTheirOwnBudget() {
         #expect(ScopedEntityID.rowID(
-            "cloud-file|checking", entityBudgetID: "cloud-file",
-            localBudgetID: "local-budget", allowLegacyID: false
+            "cloud-file|checking", budgetID: "cloud-file",
+            allowLegacyID: false
         ) == "checking")
         #expect(ScopedEntityID.rowID(
-            "local-budget|checking", entityBudgetID: "cloud-file",
-            localBudgetID: "local-budget", allowLegacyID: false
-        ) == "checking")
-        #expect(ScopedEntityID.rowID(
-            "other-budget|checking", entityBudgetID: "cloud-file",
-            localBudgetID: "local-budget", allowLegacyID: false
+            "local-budget|checking", budgetID: "cloud-file",
+            allowLegacyID: false
         ) == nil)
         #expect(ScopedEntityID.rowID(
-            "checking", entityBudgetID: "cloud-file",
-            localBudgetID: "local-budget", allowLegacyID: false
+            "other-budget|checking", budgetID: "cloud-file",
+            allowLegacyID: false
         ) == nil)
         #expect(ScopedEntityID.rowID(
-            "checking", entityBudgetID: "cloud-file",
-            localBudgetID: "local-budget", allowLegacyID: true
+            "checking", budgetID: "cloud-file",
+            allowLegacyID: false
+        ) == nil)
+        #expect(ScopedEntityID.rowID(
+            "checking", budgetID: "cloud-file",
+            allowLegacyID: true
         ) == "checking")
         #expect(ScopedEntityID.make(budgetID: "cloud-file", rowID: "groceries")
             == "cloud-file|groceries")
@@ -318,17 +318,17 @@ struct LogTransactionIntentTests {
 
     @Test func categoryIdentifiersCannotCrossBudgets() {
         let saved = CategoryEntity.scopedID(budgetID: "budget-a", categoryID: "groceries")
-        #expect(CategoryEntity.categoryID(
-            from: saved, budgetID: "budget-a", allowLegacyID: false
+        #expect(ScopedEntityID.rowID(
+            saved, budgetID: "budget-a", allowLegacyID: false
         ) == "groceries")
-        #expect(CategoryEntity.categoryID(
-            from: saved, budgetID: "budget-b", allowLegacyID: false
+        #expect(ScopedEntityID.rowID(
+            saved, budgetID: "budget-b", allowLegacyID: false
         ) == nil)
-        #expect(CategoryEntity.categoryID(
-            from: "groceries", budgetID: "budget-a", allowLegacyID: false
+        #expect(ScopedEntityID.rowID(
+            "groceries", budgetID: "budget-a", allowLegacyID: false
         ) == nil)
-        #expect(CategoryEntity.categoryID(
-            from: "groceries", budgetID: "budget-a", allowLegacyID: true
+        #expect(ScopedEntityID.rowID(
+            "groceries", budgetID: "budget-a", allowLegacyID: true
         ) == "groceries")
     }
 

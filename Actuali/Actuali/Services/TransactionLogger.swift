@@ -94,10 +94,11 @@ final class TransactionLogger {
         let payees = try await database.fetchPayees()
         let payee = payees.first { $0.name.lowercased() == payeeName.lowercased() }
 
-        let categoryGroups = try await database.fetchCategoryGroups()
-        let categories = categoryGroups.flatMap(\.categories)
-        let pinnedCategoryId = explicitCategoryId.flatMap { id in
-            categories.contains(where: { $0.id == id }) ? id : nil
+        let pinnedCategoryId: String? = if let explicitCategoryId {
+            try await database.fetchCategoryGroups().flatMap(\.categories)
+                .contains(where: { $0.id == explicitCategoryId }) ? explicitCategoryId : nil
+        } else {
+            nil
         }
         let categoryId: String? = if let pinnedCategoryId {
             pinnedCategoryId

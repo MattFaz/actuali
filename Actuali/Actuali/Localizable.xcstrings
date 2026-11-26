@@ -53035,49 +53035,49 @@
         }
       }
     },
-    "Log \\(\\.$amount) at \\(\\.$payee) in \\(\\.$account)" : {
-      "extractionState" : "stale",
+    "Log \\(\\.$amount) at \\(\\.$payee) for \\(\\.$budget) in \\(\\.$account)" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erfasse \\(\\.$amount) bei \\(\\.$payee) in \\(\\.$account)"
+            "value" : "Erfasse \\(\\.$amount) bei \\(\\.$payee) für das Budget \\(\\.$budget) auf dem Konto \\(\\.$account)"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Log \\(\\.$amount) at \\(\\.$payee) in \\(\\.$account)"
+            "value" : "Log \\(\\.$amount) at \\(\\.$payee) for \\(\\.$budget) in \\(\\.$account)"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registrar \\(\\.$amount) en \\(\\.$payee) en \\(\\.$account)"
+            "value" : "Registrar \\(\\.$amount) en \\(\\.$payee) para el presupuesto \\(\\.$budget) en la cuenta \\(\\.$account)"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Enregistrer \\(\\.$amount) chez \\(\\.$payee) dans \\(\\.$account)"
+            "value" : "Enregistrer \\(\\.$amount) chez \\(\\.$payee) pour le budget \\(\\.$budget) sur le compte \\(\\.$account)"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registra \\(\\.$amount) a \\(\\.$payee) in \\(\\.$account)"
+            "value" : "Registra \\(\\.$amount) presso \\(\\.$payee) per il budget \\(\\.$budget) sul conto \\(\\.$account)"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Boek \\(\\.$amount) bij \\(\\.$payee) op \\(\\.$account)"
+            "value" : "Boek \\(\\.$amount) bij \\(\\.$payee) voor budget \\(\\.$budget) op rekening \\(\\.$account)"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registrar \\(\\.$amount) em \\(\\.$payee) na conta \\(\\.$account)"
+            "value" : "Registrar \\(\\.$amount) em \\(\\.$payee) para o orçamento \\(\\.$budget) na conta \\(\\.$account)"
           }
         }
       }

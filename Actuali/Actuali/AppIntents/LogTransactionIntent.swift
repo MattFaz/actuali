@@ -159,10 +159,8 @@ struct LogTransactionIntent: AppIntent {
         let cardMappings = await writer.cardMappingsForIntent()
         let resolvedAccountId: String
         if let account {
-            let entityBudgetId = budget?.id ?? targetBudgetId
             guard let id = ScopedEntityID.rowID(
-                account.id, entityBudgetID: entityBudgetId,
-                localBudgetID: targetBudgetId, allowLegacyID: !isBudgetScoped
+                account.id, budgetID: budget?.id ?? targetBudgetId, allowLegacyID: !isBudgetScoped
             ) else {
                 await reportFailure(.accountUnavailable, store: store, budgetId: targetBudgetId, writer: writer)
                 throw LogTransactionError.accountUnavailable
@@ -192,10 +190,8 @@ struct LogTransactionIntent: AppIntent {
         if activeAccount.offBudget {
             categoryId = nil
         } else if let category {
-            let entityBudgetId = budget?.id ?? targetBudgetId
             let selectedID = ScopedEntityID.rowID(
-                category.id, entityBudgetID: entityBudgetId,
-                localBudgetID: targetBudgetId, allowLegacyID: !isBudgetScoped
+                category.id, budgetID: budget?.id ?? targetBudgetId, allowLegacyID: !isBudgetScoped
             )
             guard let selectedID else {
                 await reportFailure(.categoryUnavailable, store: store, budgetId: targetBudgetId, writer: writer)
@@ -306,18 +302,12 @@ struct LogTransactionIntent: AppIntent {
         let scopeBudgetId = entityBudgetId ?? targetBudgetId
         let accountId = accountEntityId
             .flatMap {
-                ScopedEntityID.rowID(
-                    $0, entityBudgetID: scopeBudgetId,
-                    localBudgetID: targetBudgetId, allowLegacyID: allowLegacyIDs
-                )
+                ScopedEntityID.rowID($0, budgetID: scopeBudgetId, allowLegacyID: allowLegacyIDs)
             }
             .flatMap { availableAccountIDs.contains($0) ? $0 : nil }
         let categoryId = categoryEntityId
             .flatMap {
-                ScopedEntityID.rowID(
-                    $0, entityBudgetID: scopeBudgetId,
-                    localBudgetID: targetBudgetId, allowLegacyID: allowLegacyIDs
-                )
+                ScopedEntityID.rowID($0, budgetID: scopeBudgetId, allowLegacyID: allowLegacyIDs)
             }
             .flatMap { availableCategoryIDs.contains($0) ? $0 : nil }
         return (accountId, categoryId)

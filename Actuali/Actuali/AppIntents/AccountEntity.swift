@@ -17,10 +17,6 @@ struct BudgetEntity: AppEntity, Identifiable {
 
     static let defaultQuery = BudgetEntityQuery()
 
-    static func canWriteToLocally(_ metadata: BudgetMetadata) -> Bool {
-        metadata.canWriteToLocally
-    }
-
     @MainActor
     static func availableEntities(
         localBudgets: [BudgetMetadata],
@@ -37,7 +33,7 @@ struct BudgetEntity: AppEntity, Identifiable {
         var entities: [String: BudgetEntity] = [:]
 
         for metadata in localBudgets.sorted(by: { $0.id < $1.id })
-            where canWriteToLocally(metadata) {
+            where metadata.canWriteToLocally {
             if isConnected, metadata.id == DemoDataSeeder.budgetId {
                 continue
             }
@@ -74,7 +70,6 @@ struct BudgetEntityQuery: EntityQuery {
     @MainActor
     private func available(fetchRemote: Bool = true) async -> (
         entities: [BudgetEntity],
-        localBudgets: [BudgetMetadata],
         isConnected: Bool
     ) {
         let store = BudgetStore.shared
@@ -93,20 +88,17 @@ struct BudgetEntityQuery: EntityQuery {
             remoteBudgets: store.isConnected ? store.remoteBudgets : [],
             isConnected: store.isConnected
         )
-        return (entities, localBudgets, store.isConnected)
+        return (entities, store.isConnected)
     }
 
     @MainActor
     static func needsRemoteFetch(
         identifiers: [BudgetEntity.ID],
         entities: [BudgetEntity],
-        localBudgets: [BudgetMetadata],
         isConnected: Bool
     ) -> Bool {
-        guard isConnected else { return false }
-        return identifiers.contains { identifier in
+        isConnected && identifiers.contains { identifier in
             !entities.contains(where: { $0.id == identifier })
-                && !localBudgets.contains(where: { $0.id == identifier })
         }
     }
 
@@ -114,36 +106,12 @@ struct BudgetEntityQuery: EntityQuery {
     func entities(for identifiers: [BudgetEntity.ID]) async throws -> [BudgetEntity] {
         var result = await available(fetchRemote: false)
         if Self.needsRemoteFetch(
-            identifiers: identifiers,
-            entities: result.entities,
-            localBudgets: result.localBudgets,
-            isConnected: result.isConnected
+            identifiers: identifiers, entities: result.entities, isConnected: result.isConnected
         ) {
             result = await available()
         }
-        var seen = Set<String>()
-        var entities: [BudgetEntity] = []
-
-        for identifier in identifiers {
-            if let entity = result.entities.first(where: { $0.id == identifier }) {
-                if seen.insert(entity.id).inserted {
-                    entities.append(entity)
-                }
-                continue
-            }
-
-            // Previously saved shortcuts used local metadata IDs for synced budgets.
-            guard let local = result.localBudgets.first(where: { $0.id == identifier }),
-                  BudgetEntity.canWriteToLocally(local),
-                  !(result.isConnected && local.id == DemoDataSeeder.budgetId),
-                  let entity = result.entities.first(where: {
-                      $0.id == (local.cloudFileId ?? local.id)
-                  }),
-                  seen.insert(entity.id).inserted
-            else { continue }
-            entities.append(BudgetEntity(id: identifier, name: entity.name))
-        }
-        return entities
+        let requested = Set(identifiers)
+        return result.entities.filter { requested.contains($0.id) }
     }
 
     @MainActor
@@ -152,8 +120,8 @@ struct BudgetEntityQuery: EntityQuery {
     }
 }
 
-/// A row identifier is scoped to the selected cloud budget (or its local file ID).
-/// Legacy IDs are accepted only when no budget parameter was supplied.
+/// A row identifier is scoped to the selected budget entity's ID. Unscoped IDs
+/// are accepted only when no budget parameter was supplied.
 enum ScopedEntityID {
     private static let separator = "|"
 
@@ -161,15 +129,9 @@ enum ScopedEntityID {
         "\(budgetID)\(separator)\(rowID)"
     }
 
-    static func rowID(
-        _ entityID: String,
-        entityBudgetID: String,
-        localBudgetID: String,
-        allowLegacyID: Bool
-    ) -> String? {
+    static func rowID(_ entityID: String, budgetID: String, allowLegacyID: Bool) -> String? {
         if let range = entityID.range(of: separator) {
-            let prefix = String(entityID[..<range.lowerBound])
-            guard prefix == entityBudgetID || prefix == localBudgetID else { return nil }
+            guard entityID[..<range.lowerBound] == budgetID else { return nil }
             return String(entityID[range.upperBound...])
         }
         return allowLegacyID ? entityID : nil
@@ -182,17 +144,6 @@ struct AccountEntity: AppEntity, Identifiable {
 
     static func scopedID(budgetID: String, accountID: String) -> String {
         ScopedEntityID.make(budgetID: budgetID, rowID: accountID)
-    }
-
-    static func accountID(
-        from entityID: String,
-        budgetID: String,
-        allowLegacyID: Bool
-    ) -> String? {
-        ScopedEntityID.rowID(
-            entityID, entityBudgetID: budgetID, localBudgetID: budgetID,
-            allowLegacyID: allowLegacyID
-        )
     }
 
     static let typeDisplayRepresentation = TypeDisplayRepresentation(
@@ -232,10 +183,7 @@ struct AccountEntityQuery: EntityQuery {
         let scoped = intent?.budget != nil
         let accounts = await store.accountsForIntent(in: selection.localID)
         let requestedIDs = Set(identifiers.compactMap { identifier in
-            ScopedEntityID.rowID(
-                identifier, entityBudgetID: selection.scopeID,
-                localBudgetID: selection.localID, allowLegacyID: !scoped
-            )
+            ScopedEntityID.rowID(identifier, budgetID: selection.scopeID, allowLegacyID: !scoped)
         })
         return accounts.compactMap { account in
             guard requestedIDs.contains(account.id) else { return nil }

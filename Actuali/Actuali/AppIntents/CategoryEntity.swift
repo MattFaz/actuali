@@ -9,17 +9,6 @@ struct CategoryEntity: AppEntity, Identifiable {
         ScopedEntityID.make(budgetID: budgetID, rowID: categoryID)
     }
 
-    static func categoryID(
-        from entityID: String,
-        budgetID: String,
-        allowLegacyID: Bool
-    ) -> String? {
-        ScopedEntityID.rowID(
-            entityID, entityBudgetID: budgetID, localBudgetID: budgetID,
-            allowLegacyID: allowLegacyID
-        )
-    }
-
     static let typeDisplayRepresentation = TypeDisplayRepresentation(
         name: LocalizedStringResource("Category")
     )
@@ -57,10 +46,7 @@ struct CategoryEntityQuery: EntityQuery {
         let scoped = intent?.budget != nil
         let categories = await store.categoriesForIntent(in: selection.localID)
         let requestedIDs = Set(identifiers.compactMap { identifier in
-            ScopedEntityID.rowID(
-                identifier, entityBudgetID: selection.scopeID,
-                localBudgetID: selection.localID, allowLegacyID: !scoped
-            )
+            ScopedEntityID.rowID(identifier, budgetID: selection.scopeID, allowLegacyID: !scoped)
         })
         return categories.compactMap { category in
             guard requestedIDs.contains(category.id) else { return nil }

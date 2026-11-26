@@ -4125,8 +4125,12 @@ final class BudgetStore: ObservableObject {
             // error or clear its spinner.
             guard db == nil || database === db else { return }
             if !published {
+                // Keep the opened connection, as before this change, so callers
+                // that only need the file (ParseAndQueue, actios-tq4w retries)
+                // still have it. Clearing the owner lets the next readiness
+                // check start a fresh load instead of waiting on this one.
                 loadedBudgetId = nil
-                database = nil
+                databaseBudgetId = nil
                 syncStateCancellable?.cancel()
                 syncStateCancellable = nil
                 syncClient = nil
