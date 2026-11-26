@@ -1108,19 +1108,12 @@ struct AccountsListView: View {
         let month = BudgetView.currentMonthString()
         let rule = budgetStore.monthStartRule
         let budgetID = budgetStore.currentBudgetId
-        var period: ClosedRange<Date>?
-        if !rule.isCalendarMonth {
-            let (start, end) = rule.range(relativeTo: DayDate.today().utcDate, first: 0, last: 0)
-            period = start...end
-        }
-        let dates = period.map { range in
-            let start = DayDate.today(calendar: MonthStartRule.calendar, now: range.lowerBound).yyyymmdd
-            let end = DayDate.today(calendar: MonthStartRule.calendar, now: range.upperBound).yyyymmdd
-            return start...end
-        }
-        guard let totals = await budgetStore.fetchAccountsMonthSummary(month: month, dates: dates),
+        // The calendar-month rule resolves to this calendar month, so one query covers both.
+        let (start, end) = rule.range(relativeTo: DayDate.today().utcDate, first: 0, last: 0)
+        let ymd = { DayDate.today(calendar: MonthStartRule.calendar, now: $0).yyyymmdd }
+        guard let totals = await budgetStore.fetchAccountsMonthSummary(dates: ymd(start)...ymd(end)),
               !Task.isCancelled, rule == budgetStore.monthStartRule, budgetID == budgetStore.currentBudgetId else { return }
-        monthSummary = AccountsMonthTotals(month: month, period: period, totals: totals)
+        monthSummary = AccountsMonthTotals(month: month, period: rule.isCalendarMonth ? nil : start...end, totals: totals)
     }
 
     /// Tapping a success notification lands here: jump the stack straight to

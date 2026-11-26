@@ -4426,17 +4426,14 @@ final class BudgetStore: ObservableObject {
         await fetchBudgetMonth(month)
     }
 
-    /// Money in and out across every account for one "yyyy-MM" month, for the
-    /// accounts tab's summary group (GH #256). Nil when there's no budget open
-    /// or the query failed, so the card keeps its last figures rather than
-    /// flashing zeroes.
-    func fetchAccountsMonthSummary(month: String, dates: ClosedRange<Int>? = nil) async -> BudgetDatabase.AccountsMonthSummary? {
+    /// Money in and out across every account for one YYYYMMDD date range (the
+    /// current month or report period), for the accounts tab's summary group
+    /// (GH #256). Nil when there's no budget open or the query failed, so the
+    /// card keeps its last figures rather than flashing zeroes.
+    func fetchAccountsMonthSummary(dates: ClosedRange<Int>) async -> BudgetDatabase.AccountsMonthSummary? {
         do {
-            if let dates {
-                return try await database?.fetchAccountsMonthSummary(dates: dates, excludingCategoryIds: excludedFromSpentCategoryIds)
-            }
             return try await database?.fetchAccountsMonthSummary(
-                month: month,
+                dates: dates,
                 excludingCategoryIds: excludedFromSpentCategoryIds
             )
         } catch is CancellationError {

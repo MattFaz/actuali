@@ -19,11 +19,12 @@ struct MonthStartRule: Codable, Equatable, Sendable {
         day == 1 && adjustment == .none
     }
 
-    static var calendar: Calendar {
+    /// Built once: anchor(containing:) runs per transaction in custom reports.
+    static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .gmt
         return calendar
-    }
+    }()
 
     private var calendar: Calendar {
         Self.calendar

@@ -127,7 +127,12 @@ enum CustomReportEngine {
         // Date range from actual history (also for Budgeted, as upstream's
         // card does).
         let live = transactions.filter { !$0.tombstone }
-        let rule = config.balanceType == "Budgeted" ? .calendarMonth : monthStartRule
+        // Only the month presets resolve to period-aligned ranges. Any other
+        // range stays on calendar months, so a clipped first period (Jan 1 of
+        // "Year to date" under a day-25 start) isn't labeled "Dec".
+        let followsRule = config.balanceType != "Budgeted" && !config.dateStatic
+            && ReportDateRange.monthPresets.contains(config.dateRange ?? "")
+        let rule = followsRule ? monthStartRule : .calendarMonth
         let earliest = live.map(\.date).min().map(dateFrom)
         let latest = live.map(\.date).max().map(dateFrom)
         let (start, end) = ReportDateRange.resolve(

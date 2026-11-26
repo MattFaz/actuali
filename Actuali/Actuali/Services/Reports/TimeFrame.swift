@@ -35,6 +35,9 @@ enum TimeFrame {
     }
 
     /// Month-shaped widget ranges can follow the device's reporting periods.
+    /// ponytail: year, static and full frames return nil and stay on calendar
+    /// months, as do engines that don't take the rule (Calendar, Net Worth,
+    /// Age of Money, Budget Analysis, Formula, Forecast). Extend per engine if asked.
     static func adjustedRange(_ tf: WidgetTimeFrame?, asOf today: Date, rule: MonthStartRule) -> (Date, Date)? {
         guard !rule.isCalendarMonth else { return nil }
         switch tf?.mode {

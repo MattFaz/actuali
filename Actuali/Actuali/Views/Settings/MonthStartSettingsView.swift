@@ -3,7 +3,7 @@ import SwiftUI
 struct MonthStartSettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
-    @State private var holiday = MonthStartRule.calendar.startOfDay(for: Date())
+    @State private var holiday = MonthStartRule.calendar.startOfDay(for: DayDate.today().utcDate)
 
     var body: some View {
         Form {

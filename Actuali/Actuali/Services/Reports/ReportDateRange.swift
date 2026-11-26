@@ -11,6 +11,12 @@ enum ReportDateRange {
         return c
     }
 
+    /// The presets resolved by `monthsBack`, the only ones a custom month
+    /// start moves.
+    static let monthPresets: Set<String> = [
+        "This month", "Last month", "Last 3 months", "Last 6 months", "Last 12 months",
+    ]
+
     static func resolve(
         dateRange: String?,
         dateStatic: Bool,
