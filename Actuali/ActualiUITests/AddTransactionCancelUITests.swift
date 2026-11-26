@@ -71,6 +71,33 @@ final class AddTransactionCancelUITests: XCTestCase {
         assertAmountCleared(in: app)
     }
 
+    /// An accidental open has the keyboard up over the Cancel row; the close
+    /// button beside the amount must cancel in one tap, without dropping the
+    /// keyboard first.
+    @MainActor
+    func testCloseButtonCancelsWithTheKeyboardUp() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-startTab", "budget"]
+        app.launch()
+
+        let amountField = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == '0.00'")
+        ).firstMatch
+        XCTAssertTrue(amountField.waitForExistence(timeout: 10), "amount field not found")
+        amountField.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
+                      "keyboard did not appear")
+        amountField.typeText("500")
+
+        app.buttons["addTransaction.close"].tap()
+
+        expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons["Budget"])
+        waitForExpectations(timeout: 5)
+
+        app.tabBars.buttons["Add"].tap()
+        assertAmountCleared(in: app)
+    }
+
     @MainActor
     func testCancelStaysPutWhenStartPageIsAddTransaction() {
         let app = XCUIApplication()

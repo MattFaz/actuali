@@ -578,9 +578,28 @@ struct AddTransactionView: View {
                         )
                         .fixedSize(horizontal: true, vertical: false)
                         .frame(minWidth: amountMinWidth)
-                        Color.clear
-                            .frame(width: amountSignWidth, height: 1)
-                            .accessibilityHidden(true)
+                        if isEditing {
+                            Color.clear
+                                .frame(width: amountSignWidth, height: 1)
+                                .accessibilityHidden(true)
+                        } else {
+                            // The add flow opens with the keyboard up, which
+                            // hides the Cancel row at the foot of the form.
+                            // This is the one-tap way out of an accidental
+                            // open, and it fills the slot that balances the
+                            // sign, so the amount stays centered.
+                            Button(action: cancelEntry) {
+                                Image(systemName: "xmark")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: amountSignWidth, height: amountSignWidth)
+                                    .background(Color.secondary.opacity(0.14), in: Circle())
+                                    .contentShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Close")
+                            .accessibilityIdentifier("addTransaction.close")
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
