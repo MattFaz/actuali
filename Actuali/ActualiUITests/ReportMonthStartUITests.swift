@@ -21,5 +21,14 @@ final class ReportMonthStartUITests: XCTestCase {
         monthStart.tap()
 
         XCTAssertTrue(app.navigationBars["Report Month Start"].waitForExistence(timeout: 5))
+
+        // The adjustment choices are rows on the page, not a menu squeezed
+        // beside its label.
+        let next = app.buttons["Next Working Day"]
+        XCTAssertTrue(next.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Previous Working Day"].exists)
+        XCTAssertTrue(app.buttons["Keep Selected Day"].exists)
+        next.tap()
+        XCTAssertTrue(next.isSelected)
     }
 }

@@ -14,15 +14,21 @@ struct MonthStartSettingsView: View {
                     }
                 }
                 .accessibilityIdentifier("monthStart.day")
+            } footer: {
+                Text("These dates apply to monthly report ranges on this device.")
+            }
 
+            // Its own section with the choices as rows: the label and a
+            // choice like "Previous Working Day" don't fit on one row.
+            Section("Working Day Adjustment") {
                 Picker("Working Day Adjustment", selection: $budgetStore.monthStartRule.adjustment) {
                     Text("Keep Selected Day").tag(MonthStartRule.Adjustment.none)
                     Text("Previous Working Day").tag(MonthStartRule.Adjustment.previousWorkingDay)
                     Text("Next Working Day").tag(MonthStartRule.Adjustment.nextWorkingDay)
                 }
+                .pickerStyle(.inline)
+                .labelsHidden()
                 .accessibilityIdentifier("monthStart.adjustment")
-            } footer: {
-                Text("These dates apply to monthly report ranges on this device.")
             }
 
             Section("Weekend Days") {
