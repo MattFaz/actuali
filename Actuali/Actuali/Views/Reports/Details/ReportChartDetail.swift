@@ -216,7 +216,7 @@ enum ReportDetailLabels {
 extension CustomReportData {
     /// Donut, table and ranked bar reports have no intervals to chart: see
     /// `breakdown`.
-    func chartDetail(today: Date = Date(), locale: Locale = .current) -> ReportChartDetail? {
+    func chartDetail(today: DayDate = .today(), locale: Locale = .current) -> ReportChartDetail? {
         func detail(
             _ table: Stacked, _ style: ReportChartDetail.Style, signed: Bool = false, trends: [Trend] = []
         ) -> ReportChartDetail? {
@@ -244,8 +244,9 @@ extension CustomReportData {
                 stats: single && style == .stackedBars
                     ? [.init(label: ReportStrings.text("Total", locale: locale), value: .amount(table.values[0].reduce(0, +)))] : []
             )
-            // Lead with today, not a day or month still to come.
-            chart.currentInterval = dates?.lastIndex { $0 <= today }
+            // Lead with today, not a day or month still to come. The dates are
+            // UTC midnights, so compare the local day, not the instant.
+            chart.currentInterval = dates?.lastIndex { $0 <= today.utcDate }
             return chart.chartable
         }
         func single(_ bars: [Bar]) -> Stacked {

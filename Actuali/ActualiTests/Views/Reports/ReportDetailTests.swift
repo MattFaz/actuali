@@ -69,9 +69,7 @@ struct ReportDetailTests {
     }
 
     @Test func timeChartsLeadWithTodayNotAFutureInterval() throws {
-        var utc = Calendar(identifier: .gregorian)
-        utc.timeZone = .gmt
-        let today = try #require(utc.date(from: DateComponents(year: 2026, month: 11, day: 26, hour: 9)))
+        let today = DayDate(year: 2026, month: 11, day: 26)
         let days = report(.bars(["26-11-25", "26-11-26", "26-11-27", "26-11-28"].map { .init(label: $0, valueUnits: 1) }, signed: false))
         #expect(try #require(days.chartDetail(today: today, locale: Locale(identifier: "en_US"))).leadInterval == 1)
         let months = report(.bars(["Oct '26", "Nov '26"].map { .init(label: $0, valueUnits: 1) }, signed: false))
@@ -272,6 +270,19 @@ struct ReportDetailTests {
         #expect(detail.leadingSeries(limit: 3) == [0, 1, 3])
         #expect(detail.leadingSeries(limit: 1) == [3])
         #expect(detail.leadingSeries(limit: 10) == [0, 1, 2, 3])
+    }
+
+    @Test func cardRanksSeriesAtTheIntervalItLeadsWith() throws {
+        // Today is the first day; the last day hasn't happened, so it ranks nothing.
+        let table = CustomReportData.Stacked(
+            intervalLabels: ["26-11-26", "26-11-27"],
+            seriesNames: ["A", "B", "C"],
+            values: [[1, 0], [50, 0], [9, 0]]
+        )
+        let detail = try #require(report(.stacked(table))
+            .chartDetail(today: DayDate(year: 2026, month: 11, day: 26), locale: Locale(identifier: "en_US")))
+        #expect(detail.leadInterval == 0)
+        #expect(detail.leadingSeries(limit: 1) == [1])
     }
 
     @Test func glanceCardStaysCompactHoweverManySeries() throws {
