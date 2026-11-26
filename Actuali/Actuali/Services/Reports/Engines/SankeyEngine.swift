@@ -218,19 +218,23 @@ enum SankeyEngine {
         categoryGroups: [CategoryGroup],
         budget: SankeyBudgetInput? = nil,
         today: Date,
+        monthStartRule: MonthStartRule = .calendarMonth,
         context: ConditionsFilter.Context = .empty,
         maxNodesPerLayer: Int = 6,
         locale: Locale = .current,
         bundle: Bundle = .main
     ) -> SankeyData {
-        var (start, end) = TimeFrame.resolve(meta?.timeFrame, asOf: today)
-        // Upstream queries firstDayOfMonth(start)..lastDayOfMonth(end).
-        start = monthStart(of: start)
-        end = endOfMonth(monthStart(of: end))
+        let isBudgeted = meta?.mode == "budgeted"
+        let adjusted = isBudgeted ? nil : TimeFrame.adjustedRange(meta?.timeFrame, asOf: today, rule: monthStartRule)
+        var (start, end) = adjusted ?? TimeFrame.resolve(meta?.timeFrame, asOf: today)
+        if adjusted == nil {
+            // Upstream queries firstDayOfMonth(start)..lastDayOfMonth(end).
+            start = monthStart(of: start)
+            end = endOfMonth(monthStart(of: end))
+        }
         let startYMD = ymdInt(from: start)
         let endYMD = ymdInt(from: end)
 
-        let isBudgeted = meta?.mode == "budgeted"
         // AQL `transactions` defaults to inline splits: children shown,
         // parents excluded.
         let live = transactions.filter {

@@ -31,18 +31,24 @@ enum SummaryEngine {
         meta: SummaryMeta?,
         transactions: [Transaction],
         today: Date,
+        monthStartRule: MonthStartRule = .calendarMonth,
         context: ConditionsFilter.Context = .empty
     ) -> SummaryData {
         guard let meta else { return .zero }
 
-        var (start, end) = TimeFrame.resolve(meta.timeFrame, asOf: today)
+        let adjusted = TimeFrame.adjustedRange(meta.timeFrame, asOf: today, rule: monthStartRule)
+        var (start, end) = adjusted ?? TimeFrame.resolve(meta.timeFrame, asOf: today)
         // Upstream clamps the range the same way regardless of mode: the
         // start snaps to the first of its month, and a range ending in the
         // current month ends *today* (this also keeps the avg-per-month
         // divisor from counting days that haven't happened yet).
-        start = monthStart(of: start)
-        if calendar.isDate(end, equalTo: today, toGranularity: .month) {
-            end = today
+        if adjusted != nil {
+            end = min(end, calendar.startOfDay(for: today))
+        } else {
+            start = monthStart(of: start)
+            if calendar.isDate(end, equalTo: today, toGranularity: .month) {
+                end = today
+            }
         }
         let startYMD = ymdInt(from: start)
         let endYMD = ymdInt(from: end)
@@ -61,6 +67,16 @@ enum SummaryEngine {
 
         case "avgPerMonth":
             guard !filtered.isEmpty else { return .zero }
+            if adjusted != nil {
+                let periods = monthStartRule.periods(from: start, through: end)
+                let elapsedMonths = periods.reduce(0.0) { result, period in
+                    let (_, fullEnd) = monthStartRule.range(relativeTo: period.lowerBound, first: 0, last: 0)
+                    let elapsed = calendar.dateComponents([.day], from: period.lowerBound, to: period.upperBound).day! + 1
+                    let full = calendar.dateComponents([.day], from: period.lowerBound, to: fullEnd).day! + 1
+                    return result + Double(elapsed) / Double(full)
+                }
+                return SummaryData(value: total / elapsedMonths, kind: .currency)
+            }
             // months between start month and end month, plus the elapsed
             // fraction of the final month (upstream calculatePerMonth).
             let wholeMonths = calendar.dateComponents([.month], from: monthStart(of: start), to: monthStart(of: end)).month ?? 0

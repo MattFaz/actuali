@@ -90,6 +90,7 @@ enum CustomReportEngine {
         reportContext: ReportContext,
         filterContext: ConditionsFilter.Context,
         today: Date,
+        monthStartRule: MonthStartRule = .calendarMonth,
         locale: Locale = .current,
         bundle: Bundle = .main
     ) -> CustomReportData {
@@ -133,7 +134,8 @@ enum CustomReportEngine {
             startDate: config.startDate, endDate: config.endDate,
             includeCurrent: config.includeCurrent,
             earliest: earliest, latest: latest, today: today,
-            firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx
+            firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx,
+            monthStartRule: config.balanceType == "Budgeted" ? .calendarMonth : monthStartRule
         )
         let startYMD = ymdInt(from: start), endYMD = ymdInt(from: end)
         let categoriesById = Dictionary(uniqueKeysWithValues: reportContext.categories.map { ($0.id, $0) })

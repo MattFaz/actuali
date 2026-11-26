@@ -30,6 +30,24 @@ struct CashFlowEngineTests {
         return cal.component(.month, from: date)
     }
 
+    @Test func customPeriodCountsBothCalendarMonthsAndExcludesAdjacentDays() throws {
+        let result = CashFlowEngine.compute(
+            meta: nil,
+            transactions: [
+                tx(date: 20_260_414, amount: -100),
+                tx(date: 20_260_415, amount: 500),
+                tx(date: 20_260_514, amount: -200),
+                tx(date: 20_260_515, amount: -100),
+            ],
+            today: asOf,
+            monthStartRule: MonthStartRule(day: 15)
+        )
+        let point = try #require(result.points.first)
+        #expect(result.points.count == 1)
+        #expect(point.incomeCents == 500)
+        #expect(point.expenseCents == 200)
+    }
+
     @Test func splitsPositiveAndNegativeAmounts() {
         let transactions = [
             tx(date: 20_260_301, amount: 50000),

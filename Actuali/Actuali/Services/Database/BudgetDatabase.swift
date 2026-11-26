@@ -930,6 +930,17 @@ final class BudgetDatabase: Sendable {
         month: String,
         excludingCategoryIds: Set<String> = []
     ) async throws -> AccountsMonthSummary {
+        let monthStart = Self.monthStringToInt(month) * 100
+        return try await fetchAccountsMonthSummary(
+            dates: (monthStart + 1)...(monthStart + 31),
+            excludingCategoryIds: excludingCategoryIds
+        )
+    }
+
+    func fetchAccountsMonthSummary(
+        dates: ClosedRange<Int>,
+        excludingCategoryIds: Set<String> = []
+    ) async throws -> AccountsMonthSummary {
         try await dbQueue.read { db in
             // Categories the user left out of Spent drop out of expense only,
             // so Net stays Income less the Spent shown beside it, as the
@@ -957,8 +968,8 @@ final class BudgetDatabase: Sendable {
               AND (g.hidden = 0 OR g.hidden IS NULL)
               AND a.offbudget = 0
               AND (a.tombstone = 0 OR a.tombstone IS NULL)
-              AND (t.date / 100) = ?
-            """, arguments: StatementArguments(excluded) + [Self.monthStringToInt(month)]) else {
+              AND t.date BETWEEN ? AND ?
+            """, arguments: StatementArguments(excluded) + [dates.lowerBound, dates.upperBound]) else {
                 return AccountsMonthSummary()
             }
             let income: Int = row["income"] ?? 0

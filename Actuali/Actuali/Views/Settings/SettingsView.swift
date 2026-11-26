@@ -112,6 +112,14 @@ struct SettingsView: View {
                     }
                 }
                 Section(String(localized: "Preferences")) {
+                    if budgetStore.currentBudgetId != nil {
+                        NavigationLink {
+                            MonthStartSettingsView()
+                        } label: {
+                            Label("Report Month Start", systemImage: "calendar")
+                        }
+                        .accessibilityIdentifier("settings.monthStart")
+                    }
                     ForEach(Self.preferencesItems, id: \.title) { item in
                         NavigationLink {
                             item.destination()
