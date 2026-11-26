@@ -336,9 +336,11 @@ enum CustomReportEngine {
         }
         // Upstream trimIntervals.ts: span from the first to the last interval
         // where any surviving row, or the overall total, is non-zero.
+        var intervalTotals = overall
         if config.trimIntervals {
             let range = trimmedRange(rows.map(\.perBucket) + [overall])
             labels = Array(labels[range])
+            intervalTotals = Array(overall[range])
             for i in rows.indices {
                 rows[i].perBucket = Array(rows[i].perBucket[range])
             }
@@ -364,6 +366,11 @@ enum CustomReportEngine {
             data.kind = .donut(slices: rows.filter { $0.total > 0 }
                 .map { .init(label: $0.name, valueUnits: $0.total, group: nil) },
                 groups: [])
+        case "BarGraph" where config.mode == "time":
+            // A time report charts its intervals, so a single-category report
+            // over six months shows six bars rather than one six-month total.
+            data.kind = .bars(zip(labels, intervalTotals).map { .init(label: $0, valueUnits: $1) },
+                              signed: signed)
         default:
             data.kind = .bars(rows.map { .init(label: $0.name, valueUnits: $0.total) }, signed: signed)
         }

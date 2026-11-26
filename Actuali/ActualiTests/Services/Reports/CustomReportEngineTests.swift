@@ -131,6 +131,28 @@ struct CustomReportEngineTests {
         #expect(s.values == [[300.0, 0.0], [0.0, 50.0]])
     }
 
+    @Test func timeModeBarsChartEachInterval() {
+        /// A single-category "by month" report: one bar per month with that
+        /// month's total, not one bar for the whole range.
+        func run(trim: Bool) -> [CustomReportData.Bar] {
+            let data = CustomReportEngine.compute(
+                config: config(mode: "time", groupBy: "Category", balance: "Payment",
+                               interval: "Monthly", graph: "BarGraph", trimIntervals: trim,
+                               staticRange: ("2026-04-01", "2026-07-31"),
+                               conditions: [WidgetRuleCondition(op: "is", field: "category", value: AnyCodable(rawJSON: Data("\"c-food\"".utf8)), options: nil, customName: nil)]),
+                transactions: sampleTxs + [tx("5", date: 20_260_705, amount: -2500, category: "c-food")],
+                reportContext: reportContext, filterContext: .empty, today: today, locale: englishLocale
+            )
+            guard case .bars(let bars, _) = data.kind else {
+                Issue.record("expected bars, got \(data.kind)"); return []
+            }
+            return bars
+        }
+        #expect(run(trim: false).map(\.label) == ["Apr '26", "May '26", "Jun '26", "Jul '26"])
+        #expect(run(trim: false).map(\.valueUnits) == [0.0, 0.0, 100.0, 25.0])
+        #expect(run(trim: true).map(\.label) == ["Jun '26", "Jul '26"])
+    }
+
     @Test func weeklyBucketsStartSunday() {
         // 2026-07-01 is a Wednesday → its Sunday week start is 2026-06-28.
         let data = CustomReportEngine.compute(
