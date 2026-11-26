@@ -58,12 +58,14 @@ struct AccountDetailView: View {
     /// layout reuses this view across selections; `dataVersion` covers every
     /// mutation (row toggles, deletes, sheet edits, sync, scheduled posts), so
     /// those sites carry no reload calls of their own; the cycle replaces a
-    /// separate statement-day observer.
+    /// separate statement-day observer. The running-balance preference is in
+    /// the key because the fetch only computes balances while it is on.
     private struct ReloadID: Equatable {
         let accountId: String
         let dataVersion: Int
         let search: String
         let statusFilter: TransactionStatusFilter
+        let showRunningBalance: Bool
         let cycle: CreditCardCycle?
     }
 
@@ -73,6 +75,7 @@ struct AccountDetailView: View {
             dataVersion: budgetStore.dataVersion,
             search: searchText,
             statusFilter: budgetStore.transactionStatusFilter,
+            showRunningBalance: showRunningBalance,
             cycle: budgetStore.activeCreditCardCycle(for: account.id)
         )
     }
@@ -93,24 +96,22 @@ struct AccountDetailView: View {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
     }
 
-    /// Running balances are shown only when the loaded page is the unfiltered
-    /// register (no search, no status chip). The flag snapshots the state
-    /// that the loaded page was fetched under.
+    /// Running balances are shown for the unsearched register, status
+    /// filters included. The flag snapshots the state the page used.
     private var shouldShowRunningBalance: Bool {
         showRunningBalance && loadedFullHistory
     }
 
-    /// Pure so the visibility rule can be covered without constructing a view.
-    nonisolated static func allowsRunningBalance(
+    /// The balance the fetch walks back from, or nil to skip the column. A
+    /// search hides it: matches skip rows, so no per-row balance is honest.
+    /// Pure so the rule can be covered without constructing a view.
+    nonisolated static func runningBalanceAnchor(
+        showRunningBalance: Bool,
         isSearching: Bool,
-        statusFilter: TransactionStatusFilter
-    ) -> Bool {
-        !isSearching && statusFilter == .all
-    }
-
-    private var transactionsForDisplay: [Transaction] {
-        guard shouldShowRunningBalance else { return pager?.transactions ?? [] }
-        return (pager?.transactions ?? []).withRunningBalances(startingAt: currentBalance)
+        currentBalance: Int
+    ) -> Int? {
+        guard showRunningBalance, !isSearching else { return nil }
+        return currentBalance
     }
 
     /// Limit and headroom for a tracked card with a limit set, else nil. Read
@@ -186,10 +187,18 @@ struct AccountDetailView: View {
         }
         let store = budgetStore
         let accountId = account.id
+        let showRunningBalance = $showRunningBalance
         let created = TransactionPager { offset, limit, search in
-            await store.fetchTransactions(
+            let currentBalance = store.accounts.first { $0.id == accountId }?.balance ?? account.balance
+            let runningBalanceStartingAt = Self.runningBalanceAnchor(
+                showRunningBalance: showRunningBalance.wrappedValue,
+                isSearching: search != nil,
+                currentBalance: currentBalance
+            )
+            return await store.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
-                statusFilter: store.transactionStatusFilter
+                statusFilter: store.transactionStatusFilter,
+                runningBalanceStartingAt: runningBalanceStartingAt
             )
         }
         pager = created
@@ -199,12 +208,9 @@ struct AccountDetailView: View {
 
     private func reload() async {
         let pager = currentPager()
-        // Captured before the fetch, which reads the same store flags, so a
-        // filter flipped mid-fetch can't label that page unfiltered.
-        let fullHistory = Self.allowsRunningBalance(
-            isSearching: searchQuery != nil,
-            statusFilter: budgetStore.transactionStatusFilter
-        )
+        // Captured before the fetch, so a search typed mid-fetch can't label
+        // that page unsearched.
+        let fullHistory = searchQuery == nil
         async let newBreakdown = budgetStore.balanceBreakdown(accountId: account.id)
         async let newNote = budgetStore.fetchNote(id: EntityNote.accountNoteId(account.id))
         async let newCycleSpend = fetchCycleSpend()
@@ -899,7 +905,7 @@ struct AccountDetailView: View {
             }
         }
         if let pager, !pager.transactions.isEmpty {
-            let displayedTransactions = transactionsForDisplay
+            let displayedTransactions = pager.transactions
             if budgetStore.transactionDisplayMode == .groupedByDate {
                 let groups = displayedTransactions.groupedByDate()
                 ForEach(groups) { group in
