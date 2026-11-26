@@ -29,47 +29,31 @@ struct BudgetDatabaseTransactionRunningBalanceTests {
             """)
         }
 
-        let all = try await db.fetchTransactions(accountId: "acct-1")
-        let expected = all.withRunningBalances(startingAt: 1_000)
-            .filter { $0.cleared && !$0.reconciled }
-        let balanceAnchor = AccountDetailView.runningBalanceAnchor(
-            showRunningBalance: true,
-            isSearching: false,
-            statusFilter: .cleared,
-            currentBalance: 1_000
-        )
+        let all = try await db.fetchTransactions(accountId: "acct-1", runningBalanceStartingAt: 1000)
         let cleared = try await db.fetchTransactions(
-            accountId: "acct-1", statusFilter: .cleared, runningBalanceStartingAt: balanceAnchor
-        )
-        let displayed = AccountDetailView.transactionsWithRunningBalancesIfNeeded(
-            cleared,
-            showRunningBalance: true,
-            isSearching: false,
-            statusFilter: .cleared,
-            currentBalance: 1_000
+            accountId: "acct-1", statusFilter: .cleared, runningBalanceStartingAt: 1000
         )
 
+        #expect(all.compactMap(\.runningBalance) == [1000, 1500, 1250, 1260])
         #expect(cleared.map(\.id) == ["t-cleared-new", "t-cleared-old"])
-        #expect(displayed.map(\.runningBalance) == expected.map(\.runningBalance))
-        #expect(displayed.compactMap(\.runningBalance) == [1_500, 1_260])
-        #expect(AccountDetailView.runningBalanceAnchor(
-            showRunningBalance: false,
-            isSearching: false,
-            statusFilter: .cleared,
-            currentBalance: 1_000
-        ) == nil)
-        #expect(AccountDetailView.runningBalanceAnchor(
-            showRunningBalance: true,
-            isSearching: true,
-            statusFilter: .cleared,
-            currentBalance: 1_000
-        ) == nil)
-        #expect(AccountDetailView.runningBalanceAnchor(
-            showRunningBalance: true,
-            isSearching: false,
-            statusFilter: .all,
-            currentBalance: 1_000
-        ) == nil)
+        #expect(cleared.map(\.runningBalance) == all.filter { $0.cleared && !$0.reconciled }.map(\.runningBalance))
+    }
+
+    @Test func noAnchorLeavesBalancesUnset() async throws {
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        try await seedAccounts(db)
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, amount, date, sort_order, cleared) VALUES
+                    ('t-1', 'acct-1', -500, 20260604, 1, 1);
+            """)
+        }
+
+        let rows = try await db.fetchTransactions(accountId: "acct-1", statusFilter: .cleared)
+
+        #expect(rows.map(\.id) == ["t-1"])
+        #expect(rows.first?.runningBalance == nil)
     }
 
     @Test func sameDateRowsUseSortOrderForBalances() async throws {
@@ -109,11 +93,11 @@ struct BudgetDatabaseTransactionRunningBalanceTests {
 
         let page = try await db.fetchTransactions(
             accountId: "acct-1", limit: 1, offset: 1,
-            statusFilter: .cleared, runningBalanceStartingAt: 1_000
+            statusFilter: .cleared, runningBalanceStartingAt: 1000
         )
 
         #expect(page.map(\.id) == ["t-cleared-old"])
-        #expect(page.first?.runningBalance == 1_260)
+        #expect(page.first?.runningBalance == 1260)
     }
 
     @Test func balanceWindowUsesOnlyLiveTopLevelRows() async throws {
@@ -130,10 +114,10 @@ struct BudgetDatabaseTransactionRunningBalanceTests {
             """)
         }
 
-        let rows = try await db.fetchTransactions(accountId: "acct-1", runningBalanceStartingAt: 1_000)
+        let rows = try await db.fetchTransactions(accountId: "acct-1", runningBalanceStartingAt: 1000)
 
         #expect(rows.map(\.id) == ["t-live", "t-parent"])
-        #expect(rows.compactMap(\.runningBalance) == [1_000, 900])
+        #expect(rows.compactMap(\.runningBalance) == [1000, 900])
     }
 
     @Test func balancesStayScopedToAccountAndSignedAmounts() async throws {

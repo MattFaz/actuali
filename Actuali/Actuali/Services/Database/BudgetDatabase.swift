@@ -1028,10 +1028,6 @@ final class BudgetDatabase: Sendable {
     """
 
     private static func mapTransaction(_ row: Row) -> Transaction {
-        mapTransaction(row, includesRunningBalance: false)
-    }
-
-    private static func mapTransaction(_ row: Row, includesRunningBalance: Bool) -> Transaction {
         Transaction(
             id: row["id"],
             accountId: row["acct"] ?? "",
@@ -1052,7 +1048,9 @@ final class BudgetDatabase: Sendable {
             importedPayee: row["imported_description"],
             schedule: row["schedule"],
             transferAcct: row["transfer_acct"],
-            runningBalance: includesRunningBalance ? row["running_balance"] : nil
+            // Only selected when fetchTransactions was given an anchor; a
+            // missing column reads as nil.
+            runningBalance: row["running_balance"]
         )
     }
 
@@ -1106,9 +1104,8 @@ final class BudgetDatabase: Sendable {
             // payee. Referenced by both SELECT and the search filter, which
             // must match what the row visibly shows.
             let payeeNameSQL = "COALESCE(pa.name, p.name, cpa.name, cp.name)"
-            let transactionSourceSQL: String
-            if includesRunningBalance {
-                transactionSourceSQL = """
+            let transactionSourceSQL = if includesRunningBalance {
+                """
                 (
                     SELECT register_tx.*,
                            ? - COALESCE(
@@ -1125,7 +1122,7 @@ final class BudgetDatabase: Sendable {
                 )
                 """
             } else {
-                transactionSourceSQL = "transactions"
+                "transactions"
             }
             var sql = """
             SELECT
@@ -1275,7 +1272,7 @@ final class BudgetDatabase: Sendable {
 
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
 
-            return rows.map { Self.mapTransaction($0, includesRunningBalance: includesRunningBalance) }
+            return rows.map(Self.mapTransaction)
         }
     }
 
