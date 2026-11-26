@@ -20,7 +20,6 @@ struct ReportsTabView: View {
     @State private var loadError: String?
     @State private var hasLoaded = false
     @State private var loadGeneration = 0
-    @State private var editingMonthStart = false
 
     var body: some View {
         NavigationStack {
@@ -97,44 +96,25 @@ struct ReportsTabView: View {
                 requestReload()
             }
         }
-        .sheet(isPresented: $editingMonthStart) {
-            NavigationStack {
-                MonthStartSettingsView()
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { editingMonthStart = false }
-                                .accessibilityIdentifier("monthStart.done")
-                        }
-                    }
-            }
-        }
         .initialSyncBanner()
     }
 
-    /// Labels the current dashboard and groups report settings with page switching.
+    /// Full-width dropdown naming the dashboard on screen (the web app's
+    /// sidebar equivalent). Shown whatever the page count: with a single page
+    /// it still labels what you're looking at, and it's disabled only for the
+    /// pre-dashboard-pages budgets that have no pages to switch between.
     private var dashboardPicker: some View {
         Menu {
-            if !pages.isEmpty {
-                Picker("Dashboard", selection: Binding(
-                    get: { selectedPageId ?? "" },
-                    set: { newId in
-                        selectedPageId = newId
-                        requestReload()
-                    }
-                )) {
-                    ForEach(pages) { page in
-                        Text(displayName(for: page)).tag(page.id)
-                    }
+            Picker("Dashboard", selection: Binding(
+                get: { selectedPageId ?? "" },
+                set: { newId in
+                    selectedPageId = newId
+                    requestReload()
                 }
-            }
-
-            Section {
-                Button {
-                    editingMonthStart = true
-                } label: {
-                    Label("Report Month Start", systemImage: "calendar")
+            )) {
+                ForEach(pages) { page in
+                    Text(displayName(for: page)).tag(page.id)
                 }
-                .accessibilityIdentifier("reports.monthStart")
             }
         } label: {
             HStack(spacing: 8) {
@@ -158,8 +138,8 @@ struct ReportsTabView: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
-        .accessibilityLabel("Dashboard")
-        .accessibilityIdentifier("reports.dashboardMenu")
+        .disabled(pages.isEmpty)
+        .accessibilityLabel("Switch dashboard")
     }
 
     private func displayName(for page: DashboardPage) -> String {

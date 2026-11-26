@@ -7,7 +7,7 @@ final class TabHeadersUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "3"]
         app.launch()
 
-        XCTAssertTrue(app.buttons["reports.dashboardMenu"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Switch dashboard"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.navigationBars.firstMatch.exists)
 
         app.tabBars.buttons["More"].tap()
