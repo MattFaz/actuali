@@ -174,6 +174,20 @@ struct CustomReportEngineTests {
         #expect(run("Payment", []) == .bars([], signed: false))
     }
 
+    @Test func barsMarkWhetherTheyRankRows() {
+        func run(groupBy: String) -> CustomReportData {
+            CustomReportEngine.compute(
+                config: config(mode: "total", groupBy: groupBy, balance: "Payment",
+                               interval: "Monthly", graph: "BarGraph"),
+                transactions: sampleTxs, reportContext: reportContext,
+                filterContext: .empty, today: today, locale: englishLocale
+            )
+        }
+        #expect(run(groupBy: "Payee").ranksRows)
+        #expect(run(groupBy: "Category").ranksRows)
+        #expect(!run(groupBy: "Interval").ranksRows)
+    }
+
     @Test func weeklyBucketsStartSunday() {
         // 2026-07-01 is a Wednesday → its Sunday week start is 2026-06-28.
         let data = CustomReportEngine.compute(

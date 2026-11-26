@@ -60,6 +60,12 @@ extension CustomReportData {
                 rows: rows.map { .init(name: $0.name, value: $0.totalUnits) },
                 total: totalUnits
             )
+        case .bars(let bars, _) where ranksRows && !bars.isEmpty:
+            return ReportBreakdown(
+                name: name, caption: rangeLabel,
+                rows: bars.map { .init(name: $0.label, value: $0.valueUnits) },
+                total: bars.reduce(0) { $0 + $1.valueUnits }
+            )
         default:
             return nil
         }

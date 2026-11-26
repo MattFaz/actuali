@@ -412,7 +412,7 @@ struct DashboardView: View {
                 )
             } model: { data in
                 // A chart to scrub, or a donut or table to list in full.
-                data.chartDetail(locale: locale).map(CustomReportPage.chart) ?? data.breakdown.map(CustomReportPage.breakdown)
+                data.chartDetail(today: today, locale: locale).map(CustomReportPage.chart) ?? data.breakdown.map(CustomReportPage.breakdown)
             } card: { data, page in
                 // The glance card when there is something to chart; the
                 // widget's own card (and its empty state) when there isn't.

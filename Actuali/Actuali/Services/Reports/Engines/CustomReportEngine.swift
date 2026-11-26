@@ -30,6 +30,9 @@ struct CustomReportData: Equatable {
     }
 
     var kind: Kind
+    /// Bars that rank rows (payees, categories) rather than chart intervals,
+    /// so they read as a list, not as a chart over time.
+    var ranksRows = false
 }
 
 /// Port of the webapp's custom-spreadsheet.ts for the option matrix the web
@@ -376,6 +379,7 @@ enum CustomReportEngine {
                               signed: signed)
         default:
             data.kind = .bars(rows.map { .init(label: $0.name, valueUnits: $0.total) }, signed: signed)
+            data.ranksRows = true
         }
         return data
     }

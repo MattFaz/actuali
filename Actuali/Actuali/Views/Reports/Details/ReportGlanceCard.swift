@@ -11,7 +11,7 @@ struct ReportGlanceCard: View {
     private static let legendLimit = 3
 
     private var latest: Int {
-        detail.intervals.count - 1
+        detail.leadInterval
     }
 
     var body: some View {
