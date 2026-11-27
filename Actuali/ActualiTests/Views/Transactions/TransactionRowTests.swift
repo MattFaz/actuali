@@ -73,13 +73,34 @@ struct TransactionRowTests {
         }
     }
 
+    @Test @MainActor func emptyNotesDoNotAddASeparatorOrAnotherLine() throws {
+        let withoutNotes = try renderedRow()
+        for notes in ["", " ", "\n\t"] {
+            let empty = try renderedRow(notes: notes)
+            #expect(UIImage(cgImage: empty).pngData() == UIImage(cgImage: withoutNotes).pngData())
+        }
+    }
+
+    @Test @MainActor func shortNotesUseTheExistingCategoryLine() throws {
+        let withoutNotes = try renderedRow(width: 600)
+        let withNotes = try renderedRow(notes: "Memo", width: 600)
+        #expect(withNotes.height == withoutNotes.height)
+    }
+
+    @Test @MainActor func separatorDoesNotAppearOnItsOwnWhenNotesWrap() throws {
+        let category = String(repeating: "Household supplies and essentials ", count: 4)
+        let automatic = try renderedRow(notes: "Memo", categoryName: category, width: 320)
+        let explicit = try renderedRow(notes: "\nMemo", categoryName: category, width: 320)
+        #expect(UIImage(cgImage: automatic).pngData() == UIImage(cgImage: explicit).pngData())
+    }
+
     @Test @MainActor func notesShareTheCategoryLineAndWrapWhenTheRowRunsOutOfSpace() throws {
-        let onePill = try renderedRow(notes: "Memo", width: 320)
+        let shortNote = try renderedRow(notes: "Memo", width: 320)
         let longNote = try renderedRow(
             notes: "Paid for groceries and household supplies at the neighborhood market.",
             width: 320
         )
-        #expect(longNote.height > onePill.height)
+        #expect(longNote.height > shortNote.height)
 
         let oneTag = try renderedRow(notes: "#reimbursable", width: 220)
         let multipleTags = try renderedRow(
@@ -120,7 +141,7 @@ struct TransactionRowTests {
         }
     }
 
-    @Test @MainActor func longUnbrokenNotesWrapToAnotherPillLine() throws {
+    @Test @MainActor func longUnbrokenNotesWrapToAnotherLine() throws {
         let short = try renderedRow(notes: "Memo", width: 320)
         for note in [
             "https://example.com/receipts/" + String(repeating: "abcdef", count: 20),
@@ -154,9 +175,9 @@ struct TransactionRowTests {
     }
 
     @Test @MainActor func overlongTagDoesNotShiftTheAmount() throws {
-        // Both metadata layouts occupy two lines, so the amount has the same
-        // vertical position without relying on rounded half-pixel offsets.
-        let short = try renderedRow(notes: "#item\n#item", width: 220)
+        // Compare an explicitly wrapped short tag to an automatically wrapped
+        // long tag: both have the category on its own metadata line.
+        let short = try renderedRow(notes: "\n#item", width: 220)
         let long = try renderedRow(notes: "#" + String(repeating: "item", count: 100), width: 220)
         #expect(long.height == short.height)
 

@@ -531,41 +531,40 @@ struct TransactionRow: View {
         )
     }
 
-    private var categoryPill: some View {
-        HStack(spacing: 3) {
+    private var categoryCaption: some View {
+        HStack(spacing: 4) {
             if transaction.isParent {
                 Image(systemName: "arrow.triangle.branch")
-                    .font(.system(size: 10))
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             Text(categoryLabel)
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 2)
-        .background(Color.secondary.opacity(0.12), in: Capsule())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(categoryLabel)
     }
 
-    /// Each explicit note line gets its own flow, while the first shares the
-    /// category line. Pills wrap as a group without flattening intentional newlines.
+    /// Share the category line before wrapping, without flattening intentional
+    /// note newlines or separating a tag from the note it belongs to.
     @ViewBuilder
-    private func metadataPills(_ notes: String?) -> some View {
-        if let notes, !notes.isEmpty {
+    private func metadataLine(_ notes: String?) -> some View {
+        if let notes, !notes.allSatisfy(\.isWhitespace) {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(
                     Array(notes.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).enumerated()),
                     id: \.offset
                 ) { index, line in
-                    FlowLayout(spacing: 3, lineSpacing: 2) {
+                    FlowLayout(spacing: 4, lineSpacing: 2) {
                         if index == 0 {
-                            categoryPill
+                            categoryCaption
+                            if !line.allSatisfy(\.isWhitespace) {
+                                FlowLayout.InlineSeparator()
+                            }
                         }
                         if line.allSatisfy(\.isWhitespace) {
-                            Text(verbatim: " ")
-                                .font(.caption2)
+                            if index != 0 {
+                                Text(verbatim: " ").font(.caption)
+                            }
                         } else {
                             ForEach(
                                 Array(TagFilter.noteSegments(String(line)).enumerated()),
@@ -573,7 +572,11 @@ struct TransactionRow: View {
                             ) { _, segment in
                                 switch segment {
                                 case .text(let text):
-                                    noteChip(text)
+                                    ForEach(Array(text.split(whereSeparator: \.isWhitespace).enumerated()), id: \.offset) { _, word in
+                                        Text(word)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 case .tag(let rawTag):
                                     tagChip(rawTag)
                                 }
@@ -585,17 +588,10 @@ struct TransactionRow: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Self.metadataAccessibilityLabel(category: categoryLabel, notes: notes))
         } else {
-            categoryPill
+            categoryCaption
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(categoryLabel)
         }
-    }
-
-    private func noteChip(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(Color.secondary.opacity(0.12), in: Capsule())
-            .foregroundStyle(.secondary)
     }
 
     private func tagChip(_ rawTag: String) -> some View {
@@ -657,21 +653,20 @@ struct TransactionRow: View {
                 ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
                     .frame(width: 28, height: 28)
             }
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(Self.payeeLabel(payeeName: transaction.payeeName, locale: locale))
-                    .font(.subheadline)
-                metadataPills(transaction.notes)
+                    .font(.body)
+                metadataLine(transaction.notes)
             }
             // Take all the width the amount column leaves. A trailing Spacer
             // would claim half of it, wrapping notes well before the amount.
             .frame(maxWidth: .infinity, alignment: .leading)
-            VStack(alignment: .trailing, spacing: 1) {
+            VStack(alignment: .trailing, spacing: 2) {
                 Text(budgetStore.displayBalance(transaction.amount))
-                    .font(.subheadline)
                     .foregroundColor(transaction.isOutflow ? .primary : .green)
                 if showAccount {
                     Text(accountName)
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 120, alignment: .trailing)
@@ -679,16 +674,16 @@ struct TransactionRow: View {
                 if let runningBalance = transaction.runningBalance {
                     Text(budgetStore.displayBalance(runningBalance))
                         .foregroundStyle(balanceColor(for: runningBalance))
-                        .font(.caption2)
+                        .font(.caption)
                 }
                 if showDate {
                     Text(transaction.dateFormatted)
-                        .font(.system(size: 10))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.vertical, 1)
+        .padding(.vertical, 2)
         .onChange(of: isSelectionMode) { _, active in
             // The row's long-press gesture spans the cleared-status button
             // too, so a hold on the dot can flip this row into selection
