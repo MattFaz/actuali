@@ -157,9 +157,9 @@ struct SettingsView: View {
                 } header: {
                     Text(String(localized: "Information"))
                 } footer: {
-                    Text("App Version \(appVersion)")
+                    Text("Actuali • App Version \(appVersion)")
+                        .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
                         .accessibilityIdentifier("settings.appVersion")
                 }
             }

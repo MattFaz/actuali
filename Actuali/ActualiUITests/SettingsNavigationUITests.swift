@@ -114,7 +114,7 @@ final class SettingsNavigationUITests: XCTestCase {
                     appVersion.waitForExistence(timeout: 5),
                     "App Version footer missing below the Information section"
                 )
-                XCTAssertTrue(appVersion.label.hasPrefix("App Version "))
+                XCTAssertTrue(appVersion.label.hasPrefix("Actuali • App Version "))
                 XCTAssertTrue(appVersion.label.hasSuffix(")"))
             }
         }
