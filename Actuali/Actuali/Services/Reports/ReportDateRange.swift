@@ -11,6 +11,12 @@ enum ReportDateRange {
         return c
     }
 
+    /// The presets resolved by `monthsBack`, the only ones a custom month
+    /// start moves.
+    static let monthPresets: Set<String> = [
+        "This month", "Last month", "Last 3 months", "Last 6 months", "Last 12 months",
+    ]
+
     static func resolve(
         dateRange: String?,
         dateStatic: Bool,
@@ -20,7 +26,8 @@ enum ReportDateRange {
         earliest: Date?,
         latest: Date?,
         today: Date,
-        firstDayOfWeekIdx: Int
+        firstDayOfWeekIdx: Int,
+        monthStartRule: MonthStartRule = .calendarMonth
     ) -> (Date, Date) {
         let allTime = (earliest ?? today, latest ?? today)
 
@@ -51,15 +58,15 @@ enum ReportDateRange {
         case "Last 30 days":
             return (max(allTime.0, cal.date(byAdding: .day, value: -29, to: today)!), today)
         case "This month":
-            return monthsBack(0, add: 0, today: today, earliest: allTime.0)
+            return monthsBack(0, add: 0, today: today, earliest: allTime.0, rule: monthStartRule)
         case "Last month":
-            return monthsBack(1, add: includeCurrent ? 1 : 0, today: today, earliest: allTime.0)
+            return monthsBack(1, add: includeCurrent ? 1 : 0, today: today, earliest: allTime.0, rule: monthStartRule)
         case "Last 3 months":
-            return monthsBack(3, add: includeCurrent ? 3 : 2, today: today, earliest: allTime.0)
+            return monthsBack(3, add: includeCurrent ? 3 : 2, today: today, earliest: allTime.0, rule: monthStartRule)
         case "Last 6 months":
-            return monthsBack(6, add: includeCurrent ? 6 : 5, today: today, earliest: allTime.0)
+            return monthsBack(6, add: includeCurrent ? 6 : 5, today: today, earliest: allTime.0, rule: monthStartRule)
         case "Last 12 months":
-            return monthsBack(12, add: includeCurrent ? 12 : 11, today: today, earliest: allTime.0)
+            return monthsBack(12, add: includeCurrent ? 12 : 11, today: today, earliest: allTime.0, rule: monthStartRule)
         case "This week":
             let start = weekStart(of: today, firstDayOfWeekIdx: firstDayOfWeekIdx)
             return (max(allTime.0, start), cal.date(byAdding: .day, value: 6, to: start)!)
@@ -79,7 +86,11 @@ enum ReportDateRange {
     /// Upstream getSpecificRange for Month type: start = first of the month
     /// `offset` months before today; end = end of month `add` months after
     /// the start.
-    private static func monthsBack(_ offset: Int, add: Int, today: Date, earliest: Date) -> (Date, Date) {
+    private static func monthsBack(_ offset: Int, add: Int, today: Date, earliest: Date, rule: MonthStartRule) -> (Date, Date) {
+        if !rule.isCalendarMonth {
+            let (start, end) = rule.range(relativeTo: today, first: -offset, last: add - offset)
+            return (max(earliest, start), end)
+        }
         let startMonth = cal.date(byAdding: .month, value: -offset,
                                   to: monthStart(of: today))!
         let endMonthStart = cal.date(byAdding: .month, value: add, to: startMonth)!

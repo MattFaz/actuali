@@ -787,4 +787,48 @@ extension CustomReportEngineTests {
         guard case .bars(let bars, _) = data.kind else { Issue.record("Expected bars"); return }
         #expect(bars.map(\.label) == ["2026"])
     }
+
+    @Test func monthlyBucketsFollowPayPeriods() {
+        // Day 25, moved back over a Fri/Sat weekend: Apr 25 and Jul 25 are
+        // Saturdays, so those periods start on the 23rd.
+        let rule = MonthStartRule(day: 25, adjustment: .previousWorkingDay, weekendDays: [6, 7])
+        let data = CustomReportEngine.compute(
+            config: config(mode: "time", groupBy: "Interval", balance: "Payment",
+                           interval: "Monthly", graph: "BarGraph", dateRange: "Last 3 months"),
+            transactions: [
+                tx("1", date: 20_260_422, amount: -1000, category: "c-food"),
+                tx("2", date: 20_260_423, amount: -2000, category: "c-food"),
+                tx("3", date: 20_260_624, amount: -4000, category: "c-food"),
+                tx("4", date: 20_260_625, amount: -8000, category: "c-food"),
+                tx("5", date: 20_260_711, amount: -16000, category: "c-food"),
+            ],
+            reportContext: reportContext, filterContext: .empty, today: today,
+            monthStartRule: rule, locale: englishLocale
+        )
+        guard case .bars(let bars, _) = data.kind else {
+            Issue.record("expected bars, got \(data.kind)"); return
+        }
+        #expect(bars.map(\.label) == ["Mar '26", "Apr '26", "May '26", "Jun '26"])
+        #expect(bars.map(\.valueUnits) == [10.0, 20.0, 40.0, 240.0])
+    }
+
+    @Test func nonMonthRangesKeepCalendarBuckets() {
+        // "Year to date" isn't a month preset, so a day-25 start must not
+        // file Jan 1...24 under a "Dec '25" bar.
+        let data = CustomReportEngine.compute(
+            config: config(mode: "time", groupBy: "Interval", balance: "Payment",
+                           interval: "Monthly", graph: "BarGraph", dateRange: "Year to date"),
+            transactions: [
+                tx("1", date: 20_260_105, amount: -1000, category: "c-food"),
+                tx("2", date: 20_260_130, amount: -2000, category: "c-food"),
+            ],
+            reportContext: reportContext, filterContext: .empty, today: today,
+            monthStartRule: MonthStartRule(day: 25), locale: englishLocale
+        )
+        guard case .bars(let bars, _) = data.kind else {
+            Issue.record("expected bars, got \(data.kind)"); return
+        }
+        #expect(bars.first?.label == "Jan '26")
+        #expect(bars.first?.valueUnits == 30.0)
+    }
 }

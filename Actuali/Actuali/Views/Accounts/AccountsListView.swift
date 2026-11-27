@@ -67,6 +67,7 @@ struct AccountGroupDropTarget: Equatable {
 /// under a view that reads "now" afresh on every render.
 struct AccountsMonthTotals: Equatable {
     let month: String
+    let period: ClosedRange<Date>?
     let totals: BudgetDatabase.AccountsMonthSummary
 }
 
@@ -75,6 +76,7 @@ struct AccountsMonthTotals: Equatable {
 private struct MonthSummaryInputs: Equatable {
     let dataVersion: Int
     let excludedFromSpent: Set<String>
+    let monthStartRule: MonthStartRule
 }
 
 struct AccountsListView: View {
@@ -1064,7 +1066,8 @@ struct AccountsListView: View {
             // the Spent exclusions, which change the totals without an edit.
             .task(id: MonthSummaryInputs(
                 dataVersion: budgetStore.dataVersion,
-                excludedFromSpent: budgetStore.excludedFromSpentCategoryIds
+                excludedFromSpent: budgetStore.excludedFromSpentCategoryIds,
+                monthStartRule: budgetStore.monthStartRule
             )) { await loadMonthSummary() }
             // Nothing above re-runs when only the date changes, so a phone
             // left on this tab overnight would keep showing last month's
@@ -1103,8 +1106,14 @@ struct AccountsListView: View {
 
     private func loadMonthSummary() async {
         let month = BudgetView.currentMonthString()
-        guard let totals = await budgetStore.fetchAccountsMonthSummary(month: month) else { return }
-        monthSummary = AccountsMonthTotals(month: month, totals: totals)
+        let rule = budgetStore.monthStartRule
+        let budgetID = budgetStore.currentBudgetId
+        // The calendar-month rule resolves to this calendar month, so one query covers both.
+        let (start, end) = rule.range(relativeTo: DayDate.today().utcDate, first: 0, last: 0)
+        let ymd = { DayDate.today(calendar: MonthStartRule.calendar, now: $0).yyyymmdd }
+        guard let totals = await budgetStore.fetchAccountsMonthSummary(dates: ymd(start)...ymd(end)),
+              !Task.isCancelled, rule == budgetStore.monthStartRule, budgetID == budgetStore.currentBudgetId else { return }
+        monthSummary = AccountsMonthTotals(month: month, period: rule.isCalendarMonth ? nil : start...end, totals: totals)
     }
 
     /// Tapping a success notification lands here: jump the stack straight to
@@ -1246,9 +1255,15 @@ struct AccountsSummaryCard: View {
             Divider()
             // Falls back to today's month only while the figures are still
             // dashes — there's nothing yet for the caption to disagree with.
-            Text(MonthPicker.title(for: monthTotals?.month ?? BudgetView.currentMonthString()))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Group {
+                if let period = monthTotals?.period {
+                    Text(period.lowerBound..<period.upperBound, format: Date.IntervalFormatStyle(date: .abbreviated, time: .omitted, timeZone: .gmt))
+                } else {
+                    Text(MonthPicker.title(for: monthTotals?.month ?? BudgetView.currentMonthString()))
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
             HStack(alignment: .top, spacing: 8) {
                 SummaryStat(label: "Income", value: amount(summary?.incomeCents))
                 Spacer(minLength: 4)

@@ -16,14 +16,23 @@ enum CashFlowEngine {
         transactions: [Transaction],
         offBudgetAccountIds: Set<String> = [],
         today: Date,
+        monthStartRule: MonthStartRule = .calendarMonth,
         context: ConditionsFilter.Context = .empty
     ) -> CashFlowData {
-        let (start, end) = TimeFrame.resolve(meta?.timeFrame, asOf: today)
+        let adjusted = TimeFrame.adjustedRange(meta?.timeFrame, asOf: today, rule: monthStartRule)
+        let (start, end) = adjusted ?? TimeFrame.resolve(meta?.timeFrame, asOf: today)
 
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
 
-        let months = monthsBetween(start: start, end: end, calendar: cal)
+        let periods = if adjusted != nil {
+            monthStartRule.periods(from: start, through: end)
+        } else {
+            monthsBetween(start: start, end: end, calendar: cal).map { month in
+                let next = cal.date(byAdding: .month, value: 1, to: month)!
+                return month...cal.date(byAdding: .day, value: -1, to: next)!
+            }
+        }
 
         // Match the WebUI's cash flow queries (cash-flow-spreadsheet.tsx):
         // only on-budget accounts, and no transfer legs — a transfer's equal
@@ -34,13 +43,9 @@ enum CashFlowEngine {
             .filter { !offBudgetAccountIds.contains($0.accountId) }
             .filter { ConditionsFilter.matches(transaction: $0, conditions: meta?.conditions, op: meta?.conditionsOp, context: context) }
 
-        let points = months.map { monthStart -> CashFlowPoint in
-            guard let nextMonth = cal.date(byAdding: .month, value: 1, to: monthStart),
-                  let monthEnd = cal.date(byAdding: .day, value: -1, to: nextMonth) else {
-                return CashFlowPoint(periodStart: monthStart, incomeCents: 0, expenseCents: 0)
-            }
-            let startYMD = ymdInt(from: monthStart, calendar: cal)
-            let endYMD = ymdInt(from: monthEnd, calendar: cal)
+        let points = periods.map { period -> CashFlowPoint in
+            let startYMD = ymdInt(from: period.lowerBound, calendar: cal)
+            let endYMD = ymdInt(from: period.upperBound, calendar: cal)
 
             var income = 0
             var expense = 0
@@ -51,7 +56,7 @@ enum CashFlowEngine {
                     expense += -tx.amount
                 }
             }
-            return CashFlowPoint(periodStart: monthStart, incomeCents: income, expenseCents: expense)
+            return CashFlowPoint(periodStart: period.lowerBound, incomeCents: income, expenseCents: expense)
         }
 
         return CashFlowData(points: points)

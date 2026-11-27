@@ -382,6 +382,7 @@ final class BudgetStore: ObservableObject {
                 loanConfigs = [:]
                 depositConfigs = [:]
                 cardAccountMappings = [:]
+                monthStartRule = .load(for: currentBudgetId)
                 excludedFromSpentCategoryIds = Self.loadExcludedFromSpentCategoryIds(for: currentBudgetId)
                 // Read before either write: both didSets save under the new id.
                 let matched = Self.loadMatchedTransactionIds(for: currentBudgetId)
@@ -420,6 +421,13 @@ final class BudgetStore: ObservableObject {
     @Published var creditCardStatementDues: [String: [CreditCardCycle.StatementDue]] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
     @Published private(set) var budgetType: BudgetType = .envelope
+
+    @Published var monthStartRule = MonthStartRule.calendarMonth {
+        didSet {
+            guard let budgetID = currentBudgetId else { return }
+            monthStartRule.save(for: budgetID)
+        }
+    }
 
     /// Categories left out of the Spent (and so Saved/Net) summaries on the
     /// Budget and Accounts tabs. This
@@ -2204,6 +2212,7 @@ final class BudgetStore: ObservableObject {
         currentLocalBudget = currentBudgetId.flatMap { currentID in
             fileManager.listLocalBudgets().first { $0.id == currentID }
         }
+        _monthStartRule = Published(initialValue: .load(for: defaults.string(forKey: "currentBudgetId")))
         _excludedFromSpentCategoryIds = Published(
             initialValue: Self.loadExcludedFromSpentCategoryIds(for: defaults.string(forKey: "currentBudgetId"))
         )
@@ -4417,14 +4426,14 @@ final class BudgetStore: ObservableObject {
         await fetchBudgetMonth(month)
     }
 
-    /// Money in and out across every account for one "yyyy-MM" month, for the
-    /// accounts tab's summary group (GH #256). Nil when there's no budget open
-    /// or the query failed, so the card keeps its last figures rather than
-    /// flashing zeroes.
-    func fetchAccountsMonthSummary(month: String) async -> BudgetDatabase.AccountsMonthSummary? {
+    /// Money in and out across every account for one YYYYMMDD date range (the
+    /// current month or report period), for the accounts tab's summary group
+    /// (GH #256). Nil when there's no budget open or the query failed, so the
+    /// card keeps its last figures rather than flashing zeroes.
+    func fetchAccountsMonthSummary(dates: ClosedRange<Int>) async -> BudgetDatabase.AccountsMonthSummary? {
         do {
             return try await database?.fetchAccountsMonthSummary(
-                month: month,
+                dates: dates,
                 excludingCategoryIds: excludedFromSpentCategoryIds
             )
         } catch is CancellationError {
