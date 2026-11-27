@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// One category's remaining balance as the widget shows it. The amount is
 /// pre-formatted by the app because the currency settings live in the app's
@@ -7,12 +8,20 @@ struct WidgetCategoryBalance: Codable, Equatable, Identifiable {
     let id: String
     let name: String
     /// In cents; carried alongside the formatted string so the widget can
-    /// color overspent categories without parsing the display text.
+    /// color the amount without parsing the display text.
     let available: Int
     let formattedAvailable: String
 
-    var isOverspent: Bool {
-        available < 0
+    /// Red when overspent, orange when fully spent, green while money is left.
+    var availableColor: Color {
+        if available < 0 {
+            return .red
+        }
+        // ponytail: "fully spent" is just available == 0, so a category
+        // with no money assigned also reads orange where the app shows it
+        // gray. To match the app, carry CategoryBudget.progressState in the
+        // snapshot (optional, so stored snapshots keep decoding).
+        return available == 0 ? .orange : .green
     }
 }
 
