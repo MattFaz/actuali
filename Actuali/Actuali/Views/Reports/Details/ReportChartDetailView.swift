@@ -20,7 +20,7 @@ struct ReportChartDetailView: View {
     }
 
     private var shownLabel: String {
-        shownInterval.map { detail.intervals[$0] } ?? ReportStrings.text("Total", locale: locale)
+        shownInterval.map { detail.intervals[$0] } ?? detail.spanLabel ?? ReportStrings.text("Total", locale: locale)
     }
 
     /// A list under the chart, where the numbers can't sit beside the headline.
@@ -44,6 +44,7 @@ struct ReportChartDetailView: View {
                         Text(ReportStrings.text("Breakdown", locale: locale)).tag(false)
                     }
                     .pickerStyle(.segmented)
+                    .unredacted()
                     .accessibilityIdentifier("reportDetail.chartView")
                 }
                 readout
@@ -177,6 +178,7 @@ struct ReportChartDetailView: View {
             set: { selected = ReportDetailChart.pinned(selected, scrubbedTo: $0) }
         ))
             .sensoryFeedback(.selection, trigger: selected)
+            .dimmedWhileLoading()
             // The interval list below already reads every figure. The other
             // lists carry one interval, and VoiceOver can't drag to move it,
             // so there the chart stands in for the whole table.

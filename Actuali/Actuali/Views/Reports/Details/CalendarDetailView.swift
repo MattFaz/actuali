@@ -63,6 +63,7 @@ struct CalendarDetailView: View {
                     .padding()
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .dimmedWhileLoading()
                 }
             }
             .padding()

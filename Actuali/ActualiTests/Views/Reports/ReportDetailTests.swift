@@ -281,6 +281,18 @@ struct ReportDetailTests {
         line.style = .lines
         #expect(!line.sumsOverRange)
 
+        // The summed headline is labelled with the dates the range spans,
+        // where the caption names it in words and the axis is dates.
+        var dated = total
+        #expect(dated.spanLabel == nil)
+        dated.axisLabels = ["Jan", "", ""]
+        dated.caption = "Last 3 months"
+        #expect(dated.rangeCaption == "Last 3 months")
+        #expect(dated.spanLabel == "Jan – Mar")
+        dated.caption = ""
+        #expect(dated.rangeCaption == "Jan – Mar")
+        #expect(dated.spanLabel == nil)
+
         // The list runs largest first: over the range for bars, at the
         // latest interval for levels. Equal sizes keep the legend's order.
         #expect(total.rankedSeries == [0, 1, 2])

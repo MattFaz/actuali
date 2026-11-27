@@ -102,7 +102,18 @@ struct ReportChartDetail: Equatable {
     /// What the page says above the headline: the report's own caption, or
     /// the dates the chart spans where the axis only names months.
     var rangeCaption: String {
-        guard caption.isEmpty, axisLabels != nil, let first = intervals.first, let last = intervals.last else { return caption }
+        caption.isEmpty ? span ?? "" : caption
+    }
+
+    /// What labels a headline that sums the whole range: the dates, where
+    /// the caption above names the range only in words ("Last 6 months").
+    /// nil where the caption already is the dates, or the axis isn't dates.
+    var spanLabel: String? {
+        caption.isEmpty ? nil : span
+    }
+
+    private var span: String? {
+        guard axisLabels != nil, let first = intervals.first, let last = intervals.last else { return nil }
         // One interval has no span; "Oct '26 – Oct '26" reads as a bug.
         return first == last ? first : first + " – " + last
     }

@@ -100,6 +100,8 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
 
     @State private var range: ReportDetailRange?
     @State private var ranged: (range: ReportDetailRange, value: Value)?
+    /// Set once a picked range has kept the page waiting long enough to say so.
+    @State private var showsLoading = false
 
     private struct Inputs: Hashable {
         let range: ReportDetailRange?
@@ -123,10 +125,10 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
     var body: some View {
         let pending = Self.isPending(ranged: ranged, range: range)
         content(Self.shown(initial: initial, ranged: ranged, range: range))
-            // Stepped back until the picked range's numbers replace the
-            // card's, so they aren't read as the new range.
-            .opacity(pending ? 0.4 : 1)
-            .animation(.default, value: pending)
+            // Placeholders until the picked range's numbers replace the
+            // card's, so they aren't read as the new range. The controls
+            // opt out with `unredacted`.
+            .redacted(reason: pending && showsLoading ? .placeholder : [])
             // A new range is a new report: selection and hidden series from
             // the old one don't carry over.
             .id(range)
@@ -142,6 +144,14 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
                 if let value = try? await ReportComputation.compute(transactions: transactions, using: { recompute(range, $0) }) {
                     ranged = (range, value)
                 }
+            }
+            // Most ranges compute at once; placeholders that came and went
+            // in a frame would only flicker.
+            .task(id: pending) {
+                showsLoading = false
+                guard pending else { return }
+                try? await Task.sleep(for: .milliseconds(200))
+                showsLoading = !Task.isCancelled
             }
     }
 }
@@ -203,18 +213,31 @@ struct ReportRangePicker: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel(ReportStrings.text("Time range", locale: locale))
                 .accessibilityIdentifier("reportDetail.range")
-                // Which range is the report's own, and that picking another
-                // doesn't write back to it.
-                Text(ReportStrings.text(
-                    range.wrappedValue == nil
-                        ? "The range saved with this report in Actual Budget."
-                        : "Shown here only. The report keeps its saved range.",
-                    locale: locale
-                ))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                // Picking another range doesn't write back to the report.
+                if range.wrappedValue != nil {
+                    Text(ReportStrings.text("Shown here only. The report keeps its saved range.", locale: locale))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
+            .unredacted()
         }
+    }
+}
+
+extension View {
+    /// Drawn marks have no placeholder form, so they step back while the
+    /// text around them is redacted for a range still loading.
+    func dimmedWhileLoading() -> some View {
+        modifier(ReportLoadingDim())
+    }
+}
+
+private struct ReportLoadingDim: ViewModifier {
+    @Environment(\.redactionReasons) private var reasons
+
+    func body(content: Content) -> some View {
+        content.opacity(reasons.contains(.placeholder) ? 0.3 : 1)
     }
 }
 

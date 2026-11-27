@@ -28337,53 +28337,6 @@
         }
       }
     },
-    "The range saved with this report in Actual Budget." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der mit diesem Bericht in Actual Budget gespeicherte Zeitraum."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The range saved with this report in Actual Budget."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El período guardado con este informe en Actual Budget."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La période enregistrée avec ce rapport dans Actual Budget."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Il periodo salvato con questo report in Actual Budget."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "De periode die bij dit rapport is opgeslagen in Actual Budget."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O período salvo com este relatório no Actual Budget."
-          }
-        }
-      }
-    },
     "Shown here only. The report keeps its saved range." : {
       "extractionState" : "manual",
       "localizations" : {

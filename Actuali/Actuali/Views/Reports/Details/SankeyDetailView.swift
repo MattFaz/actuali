@@ -61,6 +61,7 @@ struct SankeyDetailView: View {
             LazyVStack(alignment: .leading, spacing: 16) {
                 ReportRangePicker()
                 SankeyWidgetView(displayName: displayName, data: data, showsTitle: false)
+                    .dimmedWhileLoading()
                 ForEach(data.detailSections, id: \.layer) { section in
                     self.section(section)
                 }
