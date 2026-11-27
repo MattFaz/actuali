@@ -1,23 +1,41 @@
 import SwiftUI
 
-/// The spans a detail page can switch a report to, in months ending with the
-/// current one. The card keeps the range configured on the web.
-enum ReportDetailRange: Int, CaseIterable, Sendable {
-    case threeMonths = 3
-    case sixMonths = 6
-    case year = 12
+/// The spans a detail page can switch a report to, all ending with the
+/// current month. The card keeps the range configured on the web.
+enum ReportDetailRange: CaseIterable, Sendable {
+    case threeMonths, sixMonths, yearToDate, year, all
 
     var titleKey: String {
         switch self {
         case .threeMonths: "3M"
         case .sixMonths: "6M"
+        case .yearToDate: "YTD"
         case .year: "1Y"
+        case .all: "All"
         }
     }
 
-    /// A sliding window already ending on today's month, which is how
-    /// `TimeFrame.resolve` keeps a window's length while moving it.
-    func timeFrame(asOf today: Date) -> WidgetTimeFrame {
+    /// nil for the spans that aren't a count of months back.
+    private var months: Int? {
+        switch self {
+        case .threeMonths: 3
+        case .sixMonths: 6
+        case .year: 12
+        case .yearToDate, .all: nil
+        }
+    }
+
+    /// The month ("2024-03") of the first transaction, where `all` starts.
+    /// Unset dates are skipped: an unparseable start would send a full range
+    /// back to `TimeFrame`'s 1900.
+    static func earliestMonth(dates: some Sequence<Int>) -> String? {
+        dates.filter { $0 > 0 }.min().map { String(format: "%04d-%02d", $0 / 10000, $0 / 100 % 100) }
+    }
+
+    /// A span in months is a sliding window already ending on today's month,
+    /// which is how `TimeFrame.resolve` keeps a window's length while moving
+    /// it. `all` runs from the first transaction; with none, this month.
+    func timeFrame(asOf today: Date, earliestMonth: String? = nil) -> WidgetTimeFrame {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         func month(_ offset: Int) -> String {
@@ -25,12 +43,17 @@ enum ReportDetailRange: Int, CaseIterable, Sendable {
             let parts = calendar.dateComponents([.year, .month], from: date)
             return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)
         }
-        return WidgetTimeFrame(start: month(1 - rawValue), end: month(0), mode: .slidingWindow)
+        if let months {
+            return WidgetTimeFrame(start: month(1 - months), end: month(0), mode: .slidingWindow)
+        }
+        return self == .yearToDate
+            ? WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate)
+            : WidgetTimeFrame(start: earliestMonth ?? month(0), end: month(0), mode: .full)
     }
 
     /// Upstream's name for the same span as a custom report date range.
     var customReportDateRange: String {
-        "Last \(rawValue) months"
+        months.map { "Last \($0) months" } ?? (self == .yearToDate ? "Year to date" : "All time")
     }
 }
 
@@ -47,9 +70,9 @@ extension CalendarMeta: TimeFramedMeta {}
 extension SankeyMeta: TimeFramedMeta {}
 
 extension TimeFramedMeta {
-    func ranged(_ range: ReportDetailRange, asOf today: Date) -> Self {
+    func ranged(_ range: ReportDetailRange, asOf today: Date, earliestMonth: String? = nil) -> Self {
         var copy = self
-        copy.timeFrame = range.timeFrame(asOf: today)
+        copy.timeFrame = range.timeFrame(asOf: today, earliestMonth: earliestMonth)
         return copy
     }
 }
@@ -123,6 +146,36 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
     }
 }
 
+extension ReportRangePicker {
+    private func options(_ range: Binding<ReportDetailRange?>) -> some View {
+        let all: [ReportDetailRange?] = [nil] + ReportDetailRange.allCases
+        return HStack(spacing: 0) {
+            ForEach(all, id: \.self) { option in
+                if option != nil {
+                    Spacer(minLength: 0)
+                }
+                let isSelected = option == range.wrappedValue
+                Button {
+                    range.wrappedValue = option
+                } label: {
+                    Text(ReportStrings.text(option?.titleKey ?? "Saved", locale: locale))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(isSelected ? Color(.tertiarySystemFill) : .clear, in: Capsule())
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                .accessibilityIdentifier("reportDetail.range.\(option?.titleKey ?? "Saved")")
+            }
+        }
+    }
+}
+
 /// The range control a detail page shows at the top of its content. Draws
 /// nothing when the widget has no range to move.
 struct ReportRangePicker: View {
@@ -131,14 +184,18 @@ struct ReportRangePicker: View {
 
     var body: some View {
         if let range {
-            VStack(alignment: .leading, spacing: 6) {
-                Picker(ReportStrings.text("Time range", locale: locale), selection: range) {
-                    Text(ReportStrings.text("Saved", locale: locale)).tag(ReportDetailRange?.none)
-                    ForEach(ReportDetailRange.allCases, id: \.self) { range in
-                        Text(ReportStrings.text(range.titleKey, locale: locale)).tag(ReportDetailRange?.some(range))
-                    }
+            VStack(alignment: .leading, spacing: 2) {
+                // Each option as wide as its own label, not a segmented
+                // control's equal shares: "Saved" is long in some languages
+                // and the rest are two or three letters. Scrolls only where
+                // even that doesn't fit.
+                ViewThatFits(in: .horizontal) {
+                    options(range)
+                    ScrollView(.horizontal) { options(range) }
+                        .scrollIndicators(.hidden)
                 }
-                .pickerStyle(.segmented)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(ReportStrings.text("Time range", locale: locale))
                 .accessibilityIdentifier("reportDetail.range")
                 // Which range is the report's own, and that picking another
                 // doesn't write back to it.

@@ -23,6 +23,8 @@ struct DashboardView: View {
     @State private var reportTransactions: [Transaction]?
     @State private var reportDataVersion = 0
     @State private var reportDate = Date()
+    /// Where a detail page's "All" range starts.
+    @State private var reportEarliestMonth: String?
 
     /// Configs referenced by custom-report widgets plus the week-start pref,
     /// loaded alongside the transactions.
@@ -257,6 +259,7 @@ struct DashboardView: View {
             forecastSchedules = loadedForecastSchedules
             trackingBudgetMonths = loadedTrackingBudgetMonths
             reportTransactions = loadedTransactions
+            reportEarliestMonth = ReportDetailRange.earliestMonth(dates: loadedTransactions.lazy.map(\.date))
             reportDate = today
             reportDataVersion += 1
             loadError = nil
@@ -642,8 +645,11 @@ struct DashboardView: View {
 
     private func ranged<Meta: TimeFramedMeta>(_ meta: Meta?) -> (@Sendable (Meta?, ReportDetailRange) -> Meta?)? {
         let today = reportDate
+        let earliestMonth = reportEarliestMonth
         guard meta != nil else { return nil }
-        return { (meta: Meta?, range: ReportDetailRange) -> Meta? in meta?.ranged(range, asOf: today) }
+        return { (meta: Meta?, range: ReportDetailRange) -> Meta? in
+            meta?.ranged(range, asOf: today, earliestMonth: earliestMonth)
+        }
     }
 
     /// Upstream's card falls back to the schedules source when the file

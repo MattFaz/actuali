@@ -605,6 +605,23 @@ struct ReportDetailTests {
         }
     }
 
+    @Test func yearToDateAndAllRunToTheCurrentMonth() {
+        let today = utc(2026, 11, 13)
+        let (yearStart, yearEnd) = TimeFrame.resolve(ReportDetailRange.yearToDate.timeFrame(asOf: today), asOf: today)
+        #expect(yearStart == utc(2026, 1))
+        #expect(yearEnd == today)
+
+        // All starts at the first transaction's month, skipping unset dates.
+        let earliest = ReportDetailRange.earliestMonth(dates: [20_240_315, 0, 20_230_702, 20_261_101])
+        #expect(earliest == "2023-07")
+        #expect(ReportDetailRange.earliestMonth(dates: [0]) == nil)
+        let (allStart, _) = TimeFrame.resolve(ReportDetailRange.all.timeFrame(asOf: today, earliestMonth: earliest), asOf: today)
+        #expect(allStart == utc(2023, 7))
+        // No transactions: this month, not `TimeFrame`'s 1900.
+        let (emptyStart, _) = TimeFrame.resolve(ReportDetailRange.all.timeFrame(asOf: today), asOf: today)
+        #expect(emptyStart == utc(2026, 11))
+    }
+
     @Test func rangingAMetaReplacesOnlyItsTimeFrame() {
         let meta = NetWorthMeta(name: "Net Worth", timeFrame: WidgetTimeFrame(start: "2020-01", end: "2020-02", mode: .static),
                                 conditions: nil, conditionsOp: "and", interval: .monthly, mode: .stacked)
@@ -625,7 +642,9 @@ struct ReportDetailTests {
             dateRange: range.customReportDateRange, dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: true, earliest: earliest, latest: today, today: today, firstDayOfWeekIdx: 0
         )
-        #expect(start > earliest)
+        // All is the one range meant to reach back to the first transaction.
+        #expect(range == .all ? start == earliest : start > earliest)
+        #expect(range != .all || range.customReportDateRange == "All time")
     }
 
     // MARK: - Sankey
