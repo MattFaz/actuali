@@ -20,54 +20,18 @@ struct EnableBankingSyncViewTests {
         #expect(EnableBankingSyncView.readiness(failure: URLError(.cancelled)) == nil)
     }
 
-    @Test func banksLoadOnlyWhenTheCountryChangedOrNothingIsLoaded() {
-        #expect(EnableBankingSyncView.needsBankLoad(country: "NL", loadedCountry: nil))
-        #expect(EnableBankingSyncView.needsBankLoad(country: "DE", loadedCountry: "NL"))
-        #expect(!EnableBankingSyncView.needsBankLoad(country: "NL", loadedCountry: "NL"))
+    @Test func aCleanSyncReportsOnOneFooterLine() {
+        let result = BudgetStore.BankSyncResult(added: 2, updated: 1)
+        #expect(result.summary.contains("\n\n"))
+        let line = EnableBankingSyncView.cleanSummary(of: result)
+        #expect(line != nil)
+        #expect(line?.contains("\n") == false)
+        #expect(EnableBankingSyncView.cleanSummary(of: BudgetStore.BankSyncResult()) != nil)
     }
 
-    @Test func onlyAClosedSheetLeavesTheWaitRunning() {
-        #expect(EnableBankingSyncView.isSheetClosed(OpenIDAuthError.cancelled))
-        #expect(!EnableBankingSyncView.isSheetClosed(OpenIDAuthError.sessionFailed(URLError(.badURL))))
-        #expect(!EnableBankingSyncView.isSheetClosed(OpenIDAuthError.noWindow))
-        #expect(!EnableBankingSyncView.isSheetClosed(OpenIDAuthError.missingToken))
-        #expect(!EnableBankingSyncView.isSheetClosed(URLError(.cancelled)))
-    }
-
-    @Test func noAccountsMessageOnlyForAnEmptyAuthorization() {
-        let remote = BankSyncRemoteAccount(
-            id: "r", name: "Current", institutionId: "i", institutionName: "Bank", balanceCents: nil, source: .enableBanking
-        )
-        #expect(EnableBankingSyncView.noAccountsMessage(for: []) != nil)
-        #expect(EnableBankingSyncView.noAccountsMessage(for: [remote]) == nil)
-    }
-
-    @Test func defaultCountryUsesListedRegionElseFallback() {
-        #expect(EnableBankingSyncView.defaultCountry(region: "DE") == "DE")
-        #expect(EnableBankingSyncView.defaultCountry(region: "US") == "NL")
-        #expect(EnableBankingSyncView.defaultCountry(region: nil) == "NL")
-    }
-
-    @Test func psuTypeOnlyFollowsTheChoiceWhenBothAreOffered() {
-        func bank(_ types: [String]?) -> EnableBankingBank {
-            EnableBankingBank(name: "B", country: "NL", psuTypes: types, beta: nil, maximumConsentValidity: nil)
-        }
-        #expect(EnableBankingSyncView.psuType(for: bank(["personal", "business"]), choice: "business") == "business")
-        #expect(EnableBankingSyncView.psuType(for: bank(["business"]), choice: "personal") == "business")
-        #expect(EnableBankingSyncView.psuType(for: bank(nil), choice: "personal") == "personal")
-    }
-
-    @Test func aLinkedAccountsBankIsFoundByTrimmedCaseInsensitiveName() {
-        func bank(_ name: String) -> EnableBankingBank {
-            EnableBankingBank(name: name, country: "NL", psuTypes: nil, beta: nil, maximumConsentValidity: nil)
-        }
-        let abn = bank("ABN AMRO")
-        let ing = bank("ING")
-        #expect(EnableBankingSyncView.bank(named: "ING", in: [abn, ing]) == ing)
-        #expect(EnableBankingSyncView.bank(named: "  abn amro\n", in: [abn, ing]) == abn)
-        #expect(EnableBankingSyncView.bank(named: "Rabobank", in: [abn, ing]) == nil)
-        #expect(EnableBankingSyncView.bank(named: nil, in: [abn, ing]) == nil)
-        #expect(EnableBankingSyncView.bank(named: "ING", in: []) == nil)
+    @Test func aSyncWithProblemsLeavesTheReportingToTheAlert() {
+        let result = BudgetStore.BankSyncResult(added: 1, problems: ["Bridge said: retry later"])
+        #expect(EnableBankingSyncView.cleanSummary(of: result) == nil)
     }
 
     // MARK: - BankAccountLinkView.linkableAccounts

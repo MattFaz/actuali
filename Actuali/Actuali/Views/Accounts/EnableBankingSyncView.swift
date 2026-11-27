@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Enable Banking runs through the user's Actual server, which holds the
-/// credentials. This screen only reports whether the server is ready, sends the
-/// person to their bank to approve access, and then links what the bank returns.
+/// credentials. This screen manages the accounts already linked and, once the
+/// server is ready, leads to `EnableBankingConnectView` to connect a bank.
 struct EnableBankingSyncView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
@@ -13,48 +13,48 @@ struct EnableBankingSyncView: View {
         case failed(String)
     }
 
-    /// Upstream's list of supported countries.
-    nonisolated static let countries = [
-        "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IS", "IE", "IT",
-        "LV", "LI", "LT", "LU", "MT", "NL", "NO", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "GB",
-    ]
+    /// What "Authorize Again" pushes: the connect screen with the account's
+    /// bank already chosen.
+    private struct Reauthorization: Hashable {
+        let bankName: String?
+    }
 
     @State private var readiness = Readiness.checking
     @State private var redirectURL: URL?
-    @State private var country = EnableBankingSyncView.defaultCountry(region: Locale.current.region?.identifier)
-    @State private var banks: [EnableBankingBank] = []
-    /// The country `banks` was loaded for; nil while loading or after a failure.
-    @State private var loadedCountry: String?
-    @State private var isLoadingBanks = false
-    @State private var bankId: String?
-    @State private var psuChoice = "personal"
-    @State private var isWaiting = false
-    @State private var authorizationTask: Task<Void, Never>?
-    @State private var backgroundTask = UIBackgroundTaskIdentifier.invalid
-    @State private var remoteAccounts: [BankSyncRemoteAccount] = []
     @State private var errorMessage: String?
-    @State private var linkTarget: BankSyncRemoteAccount?
-    /// The budget account the link sheet linked, until the sheet has closed.
-    @State private var linkedAccountId: String?
+    /// A clean sync's outcome, shown in the footer where Sync Now was tapped.
+    @State private var syncSummary: String?
+    @State private var unlinkTarget: BankSyncAccount?
+    @State private var reauthorization: Reauthorization?
 
     var body: some View {
         List {
+            statusSection
             if !linkedAccounts.isEmpty {
                 linkedSection
             }
-            readinessSections
-            if !remoteAccounts.isEmpty {
-                remoteAccountsSection
+            if readiness == .ready {
+                connectSection
             }
         }
         .navigationTitle("Enable Banking")
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadReadiness() }
-        .onDisappear { authorizationTask?.cancel() }
-        .sheet(item: $linkTarget, onDismiss: syncAfterLink, content: { remote in
-            BankAccountLinkView(remote: remote, onLinked: { linkedAccountId = $0 })
-                .environmentObject(budgetStore)
-        })
+        .navigationDestination(item: $reauthorization) { target in
+            EnableBankingConnectView(preferredBankName: target.bankName)
+        }
+        .confirmationDialog(
+            "Unlink \(unlinkTarget?.name ?? "")?",
+            isPresented: unlinkDialogBinding,
+            titleVisibility: .visible,
+            presenting: unlinkTarget
+        ) { account in
+            Button("Unlink", role: .destructive) { unlink(account) }
+                .accessibilityIdentifier("enableBanking.unlink.confirm")
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("This account stops importing from your bank. Its transactions stay. To link it again you need to authorize the bank again.")
+        }
         .alert("Bank Sync", isPresented: errorAlertBinding) {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
@@ -78,55 +78,11 @@ struct EnableBankingSyncView: View {
         return .failed(error.localizedDescription)
     }
 
-    /// The Bank picker pushes a screen; popping it re-runs the Country row's
-    /// task, which must not wipe the bank picked there.
-    nonisolated static func needsBankLoad(country: String, loadedCountry: String?) -> Bool {
-        loadedCountry != country
-    }
-
-    nonisolated static func defaultCountry(region: String?) -> String {
-        if let region, countries.contains(region) {
-            return region
-        }
-        return "NL"
-    }
-
-    nonisolated static func countryName(_ code: String) -> String {
-        Locale.current.localizedString(forRegionCode: code) ?? code
-    }
-
-    /// A bank that offers one usage type only gets that one; the picker is
-    /// shown just when there is a real choice.
-    nonisolated static func psuType(for bank: EnableBankingBank, choice: String) -> String {
-        let types = bank.psuTypes ?? []
-        if types.contains("personal"), types.contains("business") {
-            return choice
-        }
-        return types.first ?? choice
-    }
-
-    /// `cancelled` means the sheet was closed, by the person or by `cancel()`;
-    /// any other error means it never opened.
-    nonisolated static func isSheetClosed(_ error: any Error) -> Bool {
-        if case OpenIDAuthError.cancelled = error {
-            return true
-        }
-        return false
-    }
-
-    /// The bank a linked account was made through, by the name the link stored.
-    /// Only the loaded list is searched, so a bank from another country is nil.
-    nonisolated static func bank(named name: String?, in banks: [EnableBankingBank]) -> EnableBankingBank? {
-        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
-        return banks.first {
-            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame
-        }
-    }
-
-    /// Nil when the bank shared at least one account to link.
-    nonisolated static func noAccountsMessage(for accounts: [BankSyncRemoteAccount]) -> String? {
-        accounts.isEmpty
-            ? String(localized: "Your bank didn't share any accounts. Authorize again and select at least one account.")
+    /// A clean sync's summary on one line, for a footer. Nil when the sync
+    /// reported problems, which the alert shows so they wait to be read.
+    nonisolated static func cleanSummary(of result: BudgetStore.BankSyncResult) -> String? {
+        result.problems.isEmpty
+            ? result.summary.replacingOccurrences(of: "\n\n", with: " ")
             : nil
     }
 
@@ -141,49 +97,58 @@ struct EnableBankingSyncView: View {
             ForEach(linkedAccounts) { account in
                 Menu {
                     Button("Authorize Again") {
-                        reauthorize(account)
+                        reauthorization = Reauthorization(bankName: account.institutionName)
                     }
-                    .disabled(authorizationTask != nil || readiness != .ready)
+                    .disabled(readiness != .ready)
                     .accessibilityIdentifier("enableBanking.reauthorize.\(account.id)")
                     Button("Unlink", role: .destructive) {
-                        unlink(account)
+                        unlinkTarget = account
                     }
                     .accessibilityIdentifier("enableBanking.unlink.\(account.id)")
                 } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        // Explicit styles keep the menu from tinting the row.
-                        Text(account.name)
-                            .foregroundStyle(.primary)
-                        if let bank = account.institutionName {
-                            Text(bank)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        if let lastSync = account.lastSync {
-                            HStack(spacing: 4) {
-                                Text("Last Bank Sync")
-                                Text(lastSync, format: .relative(presentation: .named))
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            // Explicit styles keep the menu from tinting the row.
+                            Text(account.name)
+                                .foregroundStyle(.primary)
+                            if let bank = account.institutionName {
+                                Text(bank)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                        if let endsBy = account.permissionEndsBy {
-                            Text("Bank permission ends by \(endsBy.formatted(date: .abbreviated, time: .omitted))")
+                            if let lastSync = account.lastSync {
+                                HStack(spacing: 4) {
+                                    Text("Last Bank Sync")
+                                    Text(lastSync, format: .relative(presentation: .named))
+                                }
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            }
+                            if let endsBy = account.permissionEndsBy {
+                                Text("Bank permission ends by \(endsBy.formatted(date: .abbreviated, time: .omitted))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let message = account.attentionMessage {
+                                Text(message)
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            }
                         }
-                        if let message = account.attentionMessage {
-                            Text(message)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
+                        Spacer()
+                        // Shows that the row opens a menu.
+                        Image(systemName: "ellipsis")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
                     .contentShape(Rectangle())
                 }
-                .swipeActions {
+                // A full swipe slides the row away as if it were already deleted, but the
+                // confirmation can still be cancelled.
+                .swipeActions(allowsFullSwipe: false) {
                     Button(role: .destructive) {
-                        unlink(account)
+                        unlinkTarget = account
                     } label: {
                         Text("Unlink")
                     }
@@ -208,11 +173,32 @@ struct EnableBankingSyncView: View {
             .accessibilityIdentifier("enableBanking.syncNow")
         } header: {
             Text("Linked Accounts")
+        } footer: {
+            if let syncSummary {
+                Text(syncSummary)
+            } else {
+                Text("Bank permissions last up to 90 days. Authorize a bank again before then to keep syncing.")
+            }
         }
     }
 
+    private var connectSection: some View {
+        Section {
+            NavigationLink {
+                EnableBankingConnectView()
+            } label: {
+                Label("Connect a Bank", systemImage: "plus")
+            }
+            .accessibilityIdentifier("enableBanking.connect")
+        } footer: {
+            Text("You approve access on your bank's own page. Actuali never sees your bank sign-in details.")
+        }
+    }
+
+    /// What the server said about Enable Banking, first on the screen because
+    /// everything below depends on it.
     @ViewBuilder
-    private var readinessSections: some View {
+    private var statusSection: some View {
         switch readiness {
         case .checking:
             Section {
@@ -243,7 +229,17 @@ struct EnableBankingSyncView: View {
                 }
             }
         case .ready:
-            connectSection
+            Section {
+                Label {
+                    Text("Enable Banking is set up on your Actual server.")
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+                .accessibilityIdentifier("enableBanking.status")
+            } footer: {
+                Text("Your Actual server holds the Enable Banking credentials, so this app and the web app share one connection. Accounts you link in either place work in both.")
+            }
         case .failed(let message):
             Section {
                 Text(message)
@@ -257,113 +253,6 @@ struct EnableBankingSyncView: View {
         }
     }
 
-    private var sortedCountries: [String] {
-        Self.countries.sorted {
-            Self.countryName($0).localizedCompare(Self.countryName($1)) == .orderedAscending
-        }
-    }
-
-    private var selectedBank: EnableBankingBank? {
-        banks.first { $0.id == bankId }
-    }
-
-    private var offersBothUsageTypes: Bool {
-        let types = selectedBank?.psuTypes ?? []
-        return types.contains("personal") && types.contains("business")
-    }
-
-    private func title(for bank: EnableBankingBank) -> String {
-        bank.beta == true
-            ? String(format: String(localized: "%@ (beta)"), bank.name)
-            : bank.name
-    }
-
-    private var connectSection: some View {
-        Section {
-            Picker("Country", selection: $country) {
-                ForEach(sortedCountries, id: \.self) { code in
-                    Text(Self.countryName(code)).tag(code)
-                }
-            }
-            .accessibilityIdentifier("enableBanking.country")
-            .task(id: country) { await loadBanks() }
-            .disabled(isWaiting)
-
-            if isLoadingBanks {
-                HStack {
-                    ProgressView()
-                    Text("Loading banks…")
-                        .foregroundStyle(.secondary)
-                }
-            } else if banks.isEmpty {
-                Text("No banks found for this country.")
-                    .foregroundStyle(.secondary)
-            } else {
-                Picker("Bank", selection: $bankId) {
-                    ForEach(banks) { bank in
-                        Text(title(for: bank)).tag(Optional(bank.id))
-                    }
-                }
-                .pickerStyle(.navigationLink)
-                .disabled(isWaiting)
-                .accessibilityIdentifier("enableBanking.bank")
-            }
-
-            if offersBothUsageTypes {
-                Picker("Usage type", selection: $psuChoice) {
-                    Text("Personal").tag("personal")
-                    Text("Business").tag("business")
-                }
-                .disabled(isWaiting)
-                .accessibilityIdentifier("enableBanking.usageType")
-            }
-
-            Button {
-                authorize()
-            } label: {
-                Text("Authorize with Your Bank")
-            }
-            .disabled(selectedBank == nil || authorizationTask != nil)
-            .accessibilityIdentifier("enableBanking.authorize")
-
-            if isWaiting {
-                HStack {
-                    ProgressView()
-                    Text("Waiting for your bank…")
-                        .foregroundStyle(.secondary)
-                }
-                Button("Cancel", role: .cancel) {
-                    authorizationTask?.cancel()
-                }
-                .accessibilityIdentifier("enableBanking.cancel")
-            }
-        } header: {
-            Text("Connect a Bank")
-        } footer: {
-            if isWaiting {
-                Text("Approve the request with your bank. If your banking app opens, come back to Actuali when it's done.")
-            }
-        }
-    }
-
-    private var remoteAccountsSection: some View {
-        Section {
-            ForEach(remoteAccounts) { remote in
-                Button {
-                    linkTarget = remote
-                } label: {
-                    BankRemoteAccountRow(remote: remote)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("enableBanking.remoteAccount.\(remote.id)")
-            }
-        } header: {
-            Text("Accounts from Your Bank")
-        } footer: {
-            Text("Tap an account to link it to a budget account. Linked accounts import new transactions every time you sync.")
-        }
-    }
-
     // MARK: - Actions
 
     private var errorAlertBinding: Binding<Bool> {
@@ -374,10 +263,18 @@ struct EnableBankingSyncView: View {
         })
     }
 
+    private var unlinkDialogBinding: Binding<Bool> {
+        Binding(get: { unlinkTarget != nil }, set: {
+            if !$0 {
+                unlinkTarget = nil
+            }
+        })
+    }
+
     private func loadReadiness() async {
-        // Re-appearing (the Bank picker popping, say) runs this again. A server
+        // Popping back from the connect screen runs this again. A server
         // already known to be ready isn't asked twice, so a network blip can't
-        // take the form away in the middle of picking a bank.
+        // take the Connect a Bank row away.
         guard readiness != .ready else { return }
         do {
             let status = try await budgetStore.enableBankingStatus()
@@ -391,27 +288,6 @@ struct EnableBankingSyncView: View {
         if readiness == .notConfigured {
             redirectURL = await budgetStore.enableBankingRedirectURL()
         }
-    }
-
-    private func loadBanks() async {
-        guard Self.needsBankLoad(country: country, loadedCountry: loadedCountry) else { return }
-        // Cleared with the list, so a pick cancelled mid-load and then undone
-        // still loads again instead of leaving the list empty.
-        loadedCountry = nil
-        banks = []
-        bankId = nil
-        isLoadingBanks = true
-        do {
-            let loaded = try await budgetStore.enableBankingBanks(country: country)
-            guard !Task.isCancelled else { return }
-            banks = loaded
-            loadedCountry = country
-        } catch {
-            // A newer country pick cancels this load; that isn't a failure.
-            guard !Task.isCancelled else { return }
-            errorMessage = error.localizedDescription
-        }
-        isLoadingBanks = false
     }
 
     private func unlink(_ account: BankSyncAccount) {
@@ -428,92 +304,16 @@ struct EnableBankingSyncView: View {
         // A sync already running reports for itself; this call would only
         // return an empty result that claims there was nothing to sync.
         guard !budgetStore.isBankSyncing else { return }
+        syncSummary = nil
         do {
-            // Shown even when clean, so the person sees the sync happened.
-            errorMessage = try await budgetStore.syncBankAccounts(accountIds: accountIds).summary
+            let result = try await budgetStore.syncBankAccounts(accountIds: accountIds)
+            if let line = Self.cleanSummary(of: result) {
+                syncSummary = line
+            } else {
+                errorMessage = result.summary
+            }
         } catch {
             errorMessage = error.localizedDescription
-        }
-    }
-
-    /// Upstream syncs on link, so a freshly linked account has its history at
-    /// once; and a re-link otherwise keeps showing the old "re-authorize" status.
-    /// Closing the sheet without linking syncs nothing.
-    private func syncAfterLink() {
-        guard let id = linkedAccountId else { return }
-        linkedAccountId = nil
-        Task { await sync(accountIds: [id]) }
-    }
-
-    private func reauthorize(_ account: BankSyncAccount) {
-        guard let bank = Self.bank(named: account.institutionName, in: banks) else {
-            errorMessage = String(localized: "Choose this account's bank under Connect a Bank, then authorize it again.")
-            return
-        }
-        bankId = bank.id
-        authorize()
-    }
-
-    private func authorize() {
-        guard let bank = selectedBank else { return }
-        let psuType = Self.psuType(for: bank, choice: psuChoice)
-        authorizationTask = Task { await runAuthorization(bank: bank, psuType: psuType) }
-    }
-
-    private func endBackgroundTask() {
-        guard backgroundTask != .invalid else { return }
-        UIApplication.shared.endBackgroundTask(backgroundTask)
-        backgroundTask = .invalid
-    }
-
-    private func runAuthorization(bank: EnableBankingBank, psuType: String) async {
-        defer {
-            isWaiting = false
-            authorizationTask = nil
-        }
-        do {
-            let start = try await budgetStore.startEnableBankingAuthorization(bank: bank, psuType: psuType)
-            isWaiting = true
-
-            // The approval often happens in the banking app, and the server only
-            // keeps a finished result for 30 seconds, so the open request should
-            // survive a short trip away. When iOS runs out of patience the
-            // assertion is released and the app suspends as usual; the wait
-            // itself carries on and asks the server again on return.
-            backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "EnableBankingAuthorization") {
-                endBackgroundTask()
-            }
-            defer { endBackgroundTask() }
-
-            guard let authenticator = OpenIDAuthenticator.make() else {
-                throw OpenIDAuthError.noWindow
-            }
-            // The bank sends the browser back to the Actual server, never to this
-            // app, so the sheet's own result means nothing: closing it must not
-            // end the wait. A sheet that never opened can't lead to an approval,
-            // though, so that ends it.
-            Task {
-                do {
-                    _ = try await authenticator.open(start.url, callbackScheme: OpenIDAuthenticator.callbackScheme)
-                } catch {
-                    guard !Self.isSheetClosed(error) else { return }
-                    errorMessage = error.localizedDescription
-                    authorizationTask?.cancel()
-                }
-            }
-            // Dismiss the sheet once the server reports the outcome.
-            defer { authenticator.cancel() }
-
-            remoteAccounts = try await budgetStore.awaitEnableBankingAuthorization(state: start.state)
-            if let message = Self.noAccountsMessage(for: remoteAccounts) {
-                errorMessage = message
-            }
-        } catch is CancellationError {
-            // Cancel button or leaving the screen.
-        } catch {
-            if !Task.isCancelled {
-                errorMessage = error.localizedDescription
-            }
         }
     }
 }
