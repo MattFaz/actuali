@@ -7,7 +7,7 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
     }
 
     @MainActor
-    func testColdShortcutOverridesStartPage() throws {
+    func testColdShortcutOpensAddTransactionOverStartPage() throws {
         try assertShortcutOpensAddTransaction(coldLaunch: true)
     }
 
@@ -20,8 +20,8 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Accounts"].waitForExistence(timeout: 15))
 
         // Home Screen launches don't inherit XCUITest's launch arguments.
-        // Persist a different Start Page so missing cold-launch routing
-        // cannot pass just because Add was already the default.
+        // Persist a different Start Page, so the cold launch opens on a page
+        // other than the one the warm launch leaves in place.
         let originalStartPage = coldLaunch ? try setStartPage("Budget", in: app) : nil
         defer {
             if let originalStartPage {
@@ -84,11 +84,24 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["addTransaction.payee"].waitForExistence(timeout: 15),
                       "Quick action did not open the transaction form")
         XCTAssertEqual(app.state, .runningForeground)
-        XCTAssertTrue(app.tabBars.buttons["Add"].isSelected)
+
+        // The form is a sheet over the page that was showing: the quick
+        // action no longer switches tabs, and a cold launch shows the Start Page.
+        // A Home Screen launch ignores the English launch arguments, so find
+        // the tab by its icon name rather than its label.
+        let pageUnderneath = coldLaunch ? "wallet.bifold" : "building.columns"
+        XCTAssertTrue(app.tabBars.buttons[pageUnderneath].wait(for: \.isSelected, toEqual: true, timeout: 5),
+                      "the quick action changed the tab underneath the form")
     }
 
     @MainActor
     private func setStartPage(_ page: String, in app: XCUIApplication) throws -> String {
+        // The quick action leaves its sheet open, and the sheet blocks the tab bar.
+        let close = app.buttons["addTransaction.close"]
+        if close.exists {
+            close.tap()
+            XCTAssertTrue(close.waitForNonExistence(timeout: 10), "add sheet did not close")
+        }
         if app.amountKeypad.exists {
             app.buttons["Done"].firstMatch.tap()
             if !app.amountKeypad.waitForNonExistence(timeout: 3) {
@@ -119,13 +132,14 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH 'Start Page'")
         ).firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        let original = try XCTUnwrap(["Accounts", "Budget", "Add Transaction", "Reports"].first {
+        let original = try XCTUnwrap(["Accounts", "Budget", "Reports"].first {
             picker.label.contains($0)
         })
         picker.tap()
         // The tab bar has buttons with the same labels as these menu items.
         let option = try XCTUnwrap(app.buttons.matching(identifier: page)
             .allElementsBoundByIndex.first { $0.isHittable })
+        XCTAssertFalse(app.buttons["Add Transaction"].exists, "the Start Page still offers Add Transaction")
         option.tap()
         XCTAssertTrue(picker.label.contains(page))
         return original

@@ -50,27 +50,43 @@ struct MainTabView: View {
                 selectedTab = 0
             }
         }
-        // A credit card reminder tap or a save in the tab-hosted add flow
-        // routes to a transaction list, which lives on the Accounts tab.
+        // A credit card reminder tap routes to a transaction list, which
+        // lives on the Accounts tab.
         .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
             if accountId != nil {
                 selectedTab = 0
             }
         }
-        .onChange(of: notificationRouter.pendingSavedTransactionAccount) { _, accountId in
-            if accountId != nil {
-                selectedTab = 0
-            }
-        }
-        // Cancel in the tab-hosted add flow returns to the user's Start Page.
-        // initial: true also covers a cold-launch Home Screen shortcut, which
-        // the scene delegate records before this view exists.
+        // initial: true covers a widget link that arrives on a cold launch,
+        // before this view exists.
         .onChange(of: notificationRouter.pendingTabNavigation, initial: true) { _, tab in
             if let tab {
                 selectedTab = tab
                 notificationRouter.pendingTabNavigation = nil
             }
         }
+        // One sheet for every way in: the Quick Add button, the Home Screen
+        // quick action and the widget link. It lives here rather than on a
+        // page so it opens from any tab, and with the button switched off.
+        .sheet(isPresented: $notificationRouter.pendingAddTransaction) {
+            AddTransactionSheet()
+        }
+        // Here rather than on the Quick Add button, which isn't on More and
+        // can be switched off. Invisible, like the form's Command-Return.
+        .background {
+            Button { notificationRouter.pendingAddTransaction = true } label: { EmptyView() }
+                .keyboardShortcut("n", modifiers: .command)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+        #if DEBUG
+        // Lets UI tests start with the form open.
+        .onAppear {
+            if CommandLine.arguments.contains("-presentAddTransaction") {
+                notificationRouter.pendingAddTransaction = true
+            }
+        }
+        #endif
     }
 
     /// The `Tab` value API rather than `tabItem`: `sidebarAdaptable` above only
@@ -95,12 +111,8 @@ struct MainTabView: View {
                 Label("Accounts", systemImage: "building.columns")
             }
 
-            Tab(value: 2) {
-                AddTransactionTabView(isSelected: selectedTab == 2)
-            } label: {
-                Label("Add", systemImage: "plus")
-            }
-
+            // Tag 2 was the Add tab. The others keep their numbers, which the
+            // `-initialTab` launch argument and StartTab.tabTag rely on.
             Tab(value: 3) {
                 ReportsTabView()
             } label: {
@@ -116,10 +128,11 @@ struct MainTabView: View {
     }
 }
 
-struct AddTransactionTabView: View {
+/// The add-transaction form for the default account, else the first open one.
+struct AddTransactionSheet: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var showingDefaultAccountAlert = false
-    var isSelected = false
 
     private func handleManualTransactionSaved(_ savedTransactionId: String?) {
         CategoryFundingAutomation.processIfNeeded(savedTransactionId, using: budgetStore)
@@ -135,7 +148,6 @@ struct AddTransactionTabView: View {
         if let account = validDefaultAccount ?? fallbackAccount {
             AddTransactionView(
                 accountId: account.id,
-                autofocusAmount: isSelected,
                 onSaved: handleManualTransactionSaved
             )
             .onAppear {
@@ -150,11 +162,15 @@ struct AddTransactionTabView: View {
                 Text(String(localized: "Your default account is no longer available. Please configure a new default in More → Transactions & Automation."))
             }
         } else {
-            ContentUnavailableView(
-                "No Accounts",
-                systemImage: "building.columns",
-                description: Text("Add an account to create transactions")
-            )
+            // Reached from the quick action or the widget link; the Quick Add
+            // button is hidden without an open account.
+            ContentUnavailableView {
+                Label("No Accounts", systemImage: "building.columns")
+            } description: {
+                Text("Add an account to create transactions")
+            } actions: {
+                Button("Close") { dismiss() }
+            }
         }
     }
 }

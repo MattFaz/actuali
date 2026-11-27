@@ -5,8 +5,9 @@ import XCTest
 /// The add-transaction form had two different endings: the tab-hosted flow
 /// reset itself and switched to the Accounts overview, while the
 /// sheet-presented flow (account detail "+") stayed open with a blank form.
-/// Both must now end the same way: the form closes and the user lands on the
-/// saved transaction's account list.
+/// Every entry point is a sheet now (the Quick Add button on Budget, Accounts
+/// and Reports, and the account detail's "+"), so all of them end the same
+/// way: the form closes and the user lands back on the page it was opened from.
 final class AddTransactionPostSaveUITests: XCTestCase {
     /// Types an amount on the keypad and taps the save button.
     @MainActor
@@ -45,9 +46,8 @@ final class AddTransactionPostSaveUITests: XCTestCase {
         XCTAssertTrue(accountRow.waitForExistence(timeout: 10), "Chase Checking row not found")
         accountRow.tap()
 
-        let addButton = app.navigationBars.buttons["Add Transaction"]
-        XCTAssertTrue(addButton.waitForExistence(timeout: 5), "'+' toolbar button not found")
-        addButton.tap()
+        // Quick Add, not the toolbar "+": a phone-width screen doesn't show it.
+        openAddTransactionSheet(in: app)
 
         // The sheet carries no title, so its close button marks it.
         let addSheet = app.buttons["addTransaction.close"]
@@ -65,41 +65,43 @@ final class AddTransactionPostSaveUITests: XCTestCase {
     }
 
     @MainActor
-    func testTabHostedAddFlowNavigatesToAccountListAfterSave() {
+    func testQuickAddFlowDismissesToBudgetAfterSave() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
         app.launch()
 
-        // Demo data sets no default account, so the tab-hosted form falls
-        // back to the first open account: Chase Checking.
+        // Demo data sets no default account, so the form falls back to the
+        // first open account: Chase Checking.
+        openAddTransactionSheet(in: app)
         enterAmountAndSave(in: app)
 
-        // The form must end on the saved transaction's account list, not the
-        // Accounts overview.
-        XCTAssertTrue(app.navigationBars["Chase Checking"].waitForExistence(timeout: 10),
-                      "did not land on the account's transaction list after saving")
+        // The sheet closes and the page it was opened from is still showing:
+        // the save no longer routes to the account's transaction list.
+        XCTAssertTrue(app.buttons["addTransaction.close"].waitForNonExistence(timeout: 10),
+                      "add sheet stayed open after saving")
+        expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons["Budget"])
+        waitForExpectations(timeout: 5)
+        XCTAssertFalse(app.navigationBars["Chase Checking"].exists,
+                       "navigated to the account's list instead of staying on Budget")
     }
 
-    /// GH #722: All Accounts already lists the saved transaction, so a save
-    /// started from there returns to it instead of the account's list.
     @MainActor
-    func testTabHostedAddFlowReturnsToAllAccountsAfterSave() {
+    func testQuickAddFlowDismissesToAccountsAfterSave() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "0"]
         app.launch()
 
         let allAccountsRow = app.buttons.matching(identifier: "accounts.topBox").firstMatch
-        XCTAssertTrue(allAccountsRow.waitForExistence(timeout: 10), "All Accounts row not found")
-        allAccountsRow.tap()
-        XCTAssertTrue(app.navigationBars["All Accounts"].waitForExistence(timeout: 5),
-                      "All Accounts list did not open")
+        XCTAssertTrue(allAccountsRow.waitForExistence(timeout: 10), "Accounts overview not found")
 
-        app.tabBars.buttons["Add"].tap()
+        openAddTransactionSheet(in: app)
         enterAmountAndSave(in: app)
 
-        XCTAssertTrue(app.navigationBars["All Accounts"].waitForExistence(timeout: 10),
-                      "did not return to All Accounts after saving")
+        XCTAssertTrue(app.buttons["addTransaction.close"].waitForNonExistence(timeout: 10),
+                      "add sheet stayed open after saving")
+        XCTAssertTrue(allAccountsRow.waitForExistence(timeout: 10),
+                      "did not return to the Accounts overview after saving")
         XCTAssertFalse(app.navigationBars["Chase Checking"].exists,
-                       "navigated to the account's list instead of All Accounts")
+                       "navigated to the account's list instead of staying on the Accounts overview")
     }
 }

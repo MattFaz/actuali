@@ -5,7 +5,7 @@ final class AddTransactionNotesUITests: XCTestCase {
     func testOptionalNotesRowsOnlyAppearWhenTheyHaveContent() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let done = app.buttons["Done"]
@@ -48,7 +48,7 @@ final class AddTransactionNotesUITests: XCTestCase {
     func testNotesClearButtonClearsText() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let done = app.buttons["Done"]
@@ -73,7 +73,7 @@ final class AddTransactionNotesUITests: XCTestCase {
     func testSplitLineNotesHaveNoEmptyLinkSpaceAndStillShowLinks() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 10))
@@ -103,7 +103,7 @@ final class AddTransactionNotesUITests: XCTestCase {
     func testSplitLineTagSuggestionsAppearAboveTheField() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 10))
@@ -131,7 +131,7 @@ final class AddTransactionNotesUITests: XCTestCase {
     func testNotesStaysAboveKeyboardWhileTyping() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let done = app.buttons["Done"]

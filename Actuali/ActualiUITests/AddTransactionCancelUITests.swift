@@ -1,10 +1,9 @@
 import XCTest
 
-/// The tab-hosted add flow must offer a way out that discards everything
-/// entered and returns to the user's Start Page (issue #281). Presented
-/// flows (edit, account-detail "+") already had Cancel via dismiss; the tab
-/// flow has nothing to dismiss to, so its Cancel resets the form and routes
-/// to the Start Page tab instead.
+/// The add flow must offer a way out that discards everything entered
+/// (issue #281). The form is a sheet over the page the Quick Add button was
+/// tapped on, so closing it dismisses back to that page rather than jumping to
+/// the Start Page.
 final class AddTransactionCancelUITests: XCTestCase {
     /// Types an amount, then closes the form with the button beside the
     /// amount. The add flow has no Cancel row; the close button stays
@@ -34,41 +33,45 @@ final class AddTransactionCancelUITests: XCTestCase {
         XCTAssertTrue(amountField.waitForExistence(timeout: 5), "amount field not found")
         let cleared = NSPredicate(format: "value == '0.00' OR value == ''")
         expectation(for: cleared, evaluatedWith: amountField)
-        // Generous: the caller has just switched tabs, and rebuilding the form
-        // takes well over 5s on a loaded CI runner (run 32860255135).
+        // Generous: the caller has just reopened the sheet, and rebuilding the
+        // form takes well over 5s on a loaded CI runner (run 32860255135).
         waitForExpectations(timeout: 20)
     }
 
     @MainActor
-    func testCancelReturnsToStartPageAndClearsTheForm() {
+    func testCloseStaysOnTheOpeningPageAndClearsTheForm() {
         let app = XCUIApplication()
         // -startTab feeds UserDefaults via the argument domain, the same key
-        // the Settings Start Page picker persists.
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-startTab", "budget"]
+        // the Settings Start Page picker persists. It differs from the page
+        // the sheet opens from, so a jump to the Start Page would show.
+        app.launchArguments = ["-loadDemoData", "-initialTab", "1", "-startTab", "accounts"]
         app.launch()
 
+        openAddTransactionSheet(in: app)
         enterAmountAndCancel(in: app)
 
+        XCTAssertTrue(app.buttons["addTransaction.close"].waitForNonExistence(timeout: 10),
+                      "add sheet stayed open after closing")
         // The Budget tab has no navigation header; verify the selected tab.
         expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons["Budget"])
         waitForExpectations(timeout: 5)
 
-        // Back on the Add tab, the entered amount must be gone.
-        app.tabBars.buttons["Add"].tap()
+        // Reopened, the form starts blank: the entered amount must be gone.
+        openAddTransactionSheet(in: app)
         assertAmountCleared(in: app)
     }
 
+    /// Add used to be a tab, so a Start Page of "addTransaction" may still be
+    /// stored from then.
     @MainActor
-    func testCancelStaysPutWhenStartPageIsAddTransaction() {
+    func testStoredAddTransactionStartPageOpensAccounts() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-startTab", "addTransaction"]
+        app.launchArguments = ["-loadDemoData", "-startTab", "addTransaction"]
         app.launch()
 
-        enterAmountAndCancel(in: app)
-
-        // The Start Page is this tab: cancel stays put and discards the entry.
-        assertAmountCleared(in: app)
-        XCTAssertTrue(app.tabBars.buttons["Accounts"].isHittable,
-                      "tab bar not reachable after cancelling in place")
+        expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons["Accounts"])
+        waitForExpectations(timeout: 15)
+        XCTAssertFalse(app.buttons["addTransaction.close"].exists,
+                       "the app opened on the add form instead of the page underneath")
     }
 }

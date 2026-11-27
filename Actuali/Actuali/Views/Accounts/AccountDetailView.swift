@@ -1071,6 +1071,21 @@ struct AccountDetailView: View {
         .contentMargins(.top, 8, for: .scrollContent)
         .listSectionSpacing(.compact)
         .readableWidth()
+        // Before the sheets below, not after them: a sheet takes on the
+        // refresh action of the view it is attached to, and then a swipe down
+        // on the add or edit form refreshes instead of closing it.
+        .refreshable {
+            await budgetStore.sync()
+            // Not every sync bumps dataVersion (no database, a budget switch
+            // or a failed read return early), so re-read explicitly: a pull
+            // must always show what is on disk.
+            await reload()
+        }
+        // Adds to this account. Selecting hides the tab bar and puts the bulk
+        // action bar at the bottom, where the button would sit on it.
+        .quickAddButton(isVisible: !isSelecting && !account.closed) {
+            showingAddTransaction = true
+        }
         .navigationTitle(account.name)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: accountIconPhotoLoadID) {
@@ -1238,13 +1253,6 @@ struct AccountDetailView: View {
             await reload()
         }
         .task { await budgetStore.loadSchedules() }
-        .refreshable {
-            await budgetStore.sync()
-            // Not every sync bumps dataVersion (no database, a budget switch
-            // or a failed read return early), so re-read explicitly: a pull
-            // must always show what is on disk.
-            await reload()
-        }
     }
 }
 

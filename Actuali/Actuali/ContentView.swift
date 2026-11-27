@@ -20,18 +20,24 @@ struct ContentView: View {
     /// sidebar becomes an overlay drawer instead; see `\.isWideLayout`.
     private static let wideLayoutThreshold: CGFloat = 1000
 
+    private nonisolated static func host(ofDeepLink url: URL) -> String {
+        url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
     nonisolated static func tab(forDeepLink url: URL) -> Int? {
-        let host = url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        switch host {
-        case "add-transaction":
-            return StartTab.addTransaction.tabTag
+        switch host(ofDeepLink: url) {
         case "budget":
-            return StartTab.budget.tabTag
+            StartTab.budget.tabTag
         case "accounts":
-            return StartTab.accounts.tabTag
+            StartTab.accounts.tabTag
         default:
-            return nil
+            nil
         }
+    }
+
+    /// The widget link that opens the add-transaction sheet rather than a tab.
+    nonisolated static func opensAddTransaction(deepLink url: URL) -> Bool {
+        host(ofDeepLink: url) == "add-transaction"
     }
 
     /// Presents whenever the store publishes an error; dismissing clears it
@@ -56,7 +62,9 @@ struct ContentView: View {
                 onShake: budgetStore.handleDeviceShake
             ))
             .onOpenURL { url in
-                if let tab = Self.tab(forDeepLink: url) {
+                if Self.opensAddTransaction(deepLink: url) {
+                    notificationRouter.pendingAddTransaction = true
+                } else if let tab = Self.tab(forDeepLink: url) {
                     notificationRouter.pendingTabNavigation = tab
                 }
             }
@@ -124,7 +132,7 @@ struct ContentView: View {
     }
 
     /// The notification's account if it is still open, else the default
-    /// account, else any open account (mirrors `AddTransactionTabView`).
+    /// account, else any open account (mirrors `AddTransactionSheet`).
     private func resolvedAccountId(for prefill: TransactionPrefill) -> String? {
         let openAccounts = budgetStore.accounts.filter { !$0.closed }
         if let id = prefill.accountId, openAccounts.contains(where: { $0.id == id }) {

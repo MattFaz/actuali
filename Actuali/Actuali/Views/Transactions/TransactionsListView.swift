@@ -238,6 +238,7 @@ struct TransactionsListView: View {
             }
         }
         .readableWidth()
+        .quickAddButton(isVisible: !isSelecting)
         .navigationTitle(scope?.title ?? String(localized: "All Accounts"))
         .onDemandSearch(
             text: $searchText,

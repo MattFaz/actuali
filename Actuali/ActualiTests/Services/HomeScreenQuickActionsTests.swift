@@ -4,10 +4,10 @@ import UIKit
 
 @MainActor
 struct HomeScreenQuickActionsTests {
-    @Test func addTransactionShortcutSelectsAddTab() {
+    @Test func addTransactionShortcutOpensTheAddSheet() {
         let shortcut = ActualiHomeScreenShortcut.addTransaction
-        #expect(ActualiSceneDelegate.tab(for: shortcut) == StartTab.addTransaction.tabTag)
-        #expect(shortcut.localizedTitle == StartTab.addTransaction.label(locale: .current))
+        #expect(ActualiSceneDelegate.isAddTransaction(shortcut))
+        #expect(shortcut.localizedTitle == String(localized: "Add Transaction"))
     }
 
     @Test func unrelatedShortcutIsIgnored() {
@@ -15,6 +15,6 @@ struct HomeScreenQuickActionsTests {
             type: "com.mfazz.Actuali.otherShortcut",
             localizedTitle: "Other"
         )
-        #expect(ActualiSceneDelegate.tab(for: shortcut) == nil)
+        #expect(!ActualiSceneDelegate.isAddTransaction(shortcut))
     }
 }

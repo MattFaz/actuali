@@ -5,7 +5,6 @@ import SwiftUI
 struct AddTransactionView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.isPresented) private var isPresented
     @Environment(\.locale) private var locale
     @Environment(\.scenePhase) private var scenePhase
 
@@ -15,10 +14,6 @@ struct AddTransactionView: View {
     private let onSaved: ((String?) throws -> Void)?
     private let saveOverride: ((BudgetStore.TransactionForm) async throws -> PendingImportApprover.SaveResult)?
     private let reviewRequirements: [PendingImportReviewRequirement]
-    /// Non-nil for the tab-hosted add flow, which gets a fresh focus request
-    /// each time the Add tab is selected. Presented add flows keep their
-    /// existing blank-form autofocus behavior.
-    private let autofocusAmount: Bool?
 
     /// Width of the sign glyph beside the amount, scaled with the glyph's own
     /// text style so it never clips at accessibility sizes. The same width is
@@ -61,9 +56,9 @@ struct AddTransactionView: View {
     /// Set once the user flips Save Location, so the at-home default never
     /// overrides their choice for this entry (GH #845).
     @State private var saveLocationChosen = false
-    /// Bumped per fresh entry and on return to the foreground: the
-    /// tab-hosted form outlives a trip away from Home, and the at-home
-    /// default must follow the phone rather than the last entry.
+    /// Bumped per fresh entry and on return to the foreground: an open form
+    /// outlives a trip away from Home, and the at-home default must follow
+    /// the phone rather than the last entry.
     @State private var homeCheck = 0
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
     /// True while the edit form's "Remove Split" is toggled on an existing
@@ -85,7 +80,6 @@ struct AddTransactionView: View {
         categoryId: String? = nil,
         isIncome: Bool = false,
         cleared: Bool = false,
-        autofocusAmount: Bool? = nil,
         saveOverride: ((BudgetStore.TransactionForm) async throws -> PendingImportApprover.SaveResult)? = nil,
         onSaved: ((String?) throws -> Void)? = nil,
         reviewRequirements: [PendingImportReviewRequirement] = []
@@ -94,7 +88,6 @@ struct AddTransactionView: View {
         self.onSaved = onSaved
         self.saveOverride = saveOverride
         self.reviewRequirements = reviewRequirements
-        self.autofocusAmount = autofocusAmount
         _selectedAccountId = State(initialValue: accountId)
         _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
         _isInflow = State(initialValue: isIncome)
@@ -117,7 +110,6 @@ struct AddTransactionView: View {
         self.onSaved = nil
         self.saveOverride = nil
         self.reviewRequirements = []
-        self.autofocusAmount = nil
 
         let cents = abs(editing.amount)
         let dollars = Double(cents) / 100.0
@@ -136,13 +128,6 @@ struct AddTransactionView: View {
 
     private var isEditing: Bool {
         editing != nil
-    }
-
-    /// Presented flows (edit, account-detail "+", notification prefill) can
-    /// close themselves; the tab-hosted add flow can't. Cancel and post-save
-    /// behavior branch on this.
-    private var canDismiss: Bool {
-        isEditing || isPresented
     }
 
     /// A transfer is a transaction whose payee is another account. An existing
@@ -577,7 +562,7 @@ struct AddTransactionView: View {
                             alignment: .center,
                             textStyle: .extraLargeTitle,
                             weight: .bold,
-                            autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty),
+                            autofocus: !isEditing && amount.isEmpty,
                             onToggleSign: toggleDirection,
                             canToggleSign: canToggleDirection
                         )
@@ -881,9 +866,9 @@ struct AddTransactionView: View {
             // header; 8pt keeps the first section off the status bar. Edits
             // have a title up there and keep the stock inset.
             .contentMargins(.top, isEditing ? nil : 8, for: .scrollContent)
-            // Only edits carry a title. Every add flow, tab or sheet, opens
-            // on the amount alone: the sheet's close button sits beside it,
-            // so a title bar would only push the form down.
+            // Only edits carry a title. Every add flow opens on the amount
+            // alone: the sheet's close button sits beside it, so a title bar
+            // would only push the form down.
             .navigationDestination(isPresented: $showCategoryPicker) {
                 CategoryPickerView(
                     selectedCategoryId: $selectedCategoryId,
@@ -946,17 +931,8 @@ struct AddTransactionView: View {
         }
     }
 
-    /// Any presented flow (edit, account-detail "+", notification prefill)
-    /// closes on Cancel; the tab-hosted add flow has nothing to dismiss to, so
-    /// Cancel discards the entry and returns to the user's Start Page instead
-    /// (GH #281).
     private func cancelEntry() {
-        if canDismiss {
-            dismiss()
-        } else {
-            resetForm()
-            NotificationRouter.shared.pendingTabNavigation = StartTab.persisted.tabTag
-        }
+        dismiss()
     }
 
     /// Load a split parent's children as editable lines. Inherited payees
@@ -1212,18 +1188,7 @@ struct AddTransactionView: View {
                 try await budgetStore.saveTransaction(form, editing: editing)
             }
             try onSaved?(savedTransactionId)
-            if canDismiss {
-                // Presented flows (edit, account-detail "+", notification
-                // prefill) close; the account-detail host is already the
-                // saved transaction's list.
-                dismiss()
-            } else {
-                // The tab-hosted flow has nothing to dismiss: reset for the
-                // next entry and route to the saved transaction's account
-                // list so every add flow lands on the relevant list.
-                resetForm()
-                NotificationRouter.shared.pendingSavedTransactionAccount = selectedAccountId
-            }
+            dismiss()
         } catch {
             errorMessage = PendingImportApprover.localizedErrorMessage(
                 for: error, locale: locale
@@ -1267,7 +1232,7 @@ struct AddTransactionView: View {
             )
             try await budgetStore.createSchedule(fields: fields)
 
-            // Keep the confirmation visible in both tab-hosted and presented flows.
+            // Reset first: it clears the confirmation set below.
             resetForm()
             scheduleConfirmation = String(
                 localized: "Schedule created for \(dateText)",

@@ -7,7 +7,7 @@ final class AddTransactionSignUITests: XCTestCase {
     @MainActor
     func testSignButtonSwitchesBetweenExpenseAndIncome() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let sign = app.buttons["addTransaction.sign"]
@@ -32,7 +32,7 @@ final class AddTransactionSignUITests: XCTestCase {
     @MainActor
     func testChoosingATransferKeepsTheSignEnabled() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let sign = app.buttons["addTransaction.sign"]
@@ -93,7 +93,7 @@ final class AddTransactionSignUITests: XCTestCase {
     @MainActor
     func testSignButtonReversesATransferWithoutChangingItsAmount() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let amount = app.textFields.matching(NSPredicate(format: "placeholderValue == '0.00'")).firstMatch

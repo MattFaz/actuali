@@ -831,6 +831,14 @@ struct AccountsListView: View {
                 TopBoxLayout.verticalContentMargin,
                 for: .scrollContent
             )
+            // Before the sheets below, not after them: a sheet takes on the
+            // refresh action of the view it is attached to, and then a swipe
+            // down refreshes instead of closing the sheet.
+            .refreshable {
+                await budgetStore.sync()
+            }
+            // The split layout's detail column carries its own.
+            .quickAddButton(isVisible: !usesSplitLayout)
             .overlay {
                 if hasNoSearchResults {
                     ContentUnavailableView.search(text: accountSearchText)
@@ -1044,7 +1052,6 @@ struct AccountsListView: View {
             .onAppear {
                 consumePendingAllAccountsNavigation()
                 consumePendingAccountNavigation()
-                consumePendingSavedTransactionNavigation()
             }
             .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
                 if pending {
@@ -1054,11 +1061,6 @@ struct AccountsListView: View {
             .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
                 if accountId != nil {
                     consumePendingAccountNavigation()
-                }
-            }
-            .onChange(of: notificationRouter.pendingSavedTransactionAccount) { _, accountId in
-                if accountId != nil {
-                    consumePendingSavedTransactionNavigation()
                 }
             }
             // Keyed to dataVersion so the summary's month totals follow every
@@ -1076,9 +1078,6 @@ struct AccountsListView: View {
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task { await loadMonthSummary() }
-            }
-            .refreshable {
-                await budgetStore.sync()
             }
             .overlay {
                 if budgetStore.isLoading {
@@ -1139,18 +1138,6 @@ struct AccountsListView: View {
         guard let accountId = notificationRouter.pendingAccountNavigation else { return }
         notificationRouter.pendingAccountNavigation = nil
         showAccount(accountId)
-    }
-
-    /// A save in the tab-hosted add flow lands here, the same way, except
-    /// that All Accounts stays showing: it already lists the saved
-    /// transaction (GH #722).
-    private func consumePendingSavedTransactionNavigation() {
-        guard let accountId = notificationRouter.pendingSavedTransactionAccount else { return }
-        notificationRouter.pendingSavedTransactionAccount = nil
-        let showsAllAccounts = usesSplitLayout ? selection == .allAccounts : path.last == .allAccounts
-        if !showsAllAccounts {
-            showAccount(accountId)
-        }
     }
 
     private func showAccount(_ accountId: String) {

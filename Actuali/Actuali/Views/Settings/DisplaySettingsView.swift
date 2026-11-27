@@ -202,6 +202,13 @@ struct DisplaySettingsView: View {
             } footer: {
                 Text("Start Page takes effect the next time the app opens.")
             }
+
+            Section {
+                Toggle("Show Quick Add Button", isOn: $budgetStore.showsQuickAddButton)
+                    .accessibilityIdentifier("displaySettings.quickAddButton")
+            } footer: {
+                Text("Shows a + button on Budget, Accounts and Reports for adding a transaction.")
+            }
         }
         .readableWidth()
         .navigationTitle("Display")

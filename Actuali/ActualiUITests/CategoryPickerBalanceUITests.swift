@@ -6,7 +6,7 @@ final class CategoryPickerBalanceUITests: XCTestCase {
     @MainActor
     func testCategoryPickerShowsBalances() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let categoryRow = app.buttons["addTransaction.category"]

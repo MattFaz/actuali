@@ -719,6 +719,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether Budget, Accounts and Reports float an add-transaction button.
+    /// The Home Screen quick action and the widget link open the form whatever
+    /// this says. Persisted to UserDefaults, defaults to on.
+    @Published var showsQuickAddButton: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showsQuickAddButton, forKey: "showsQuickAddButton")
+        }
+    }
+
     /// How the Budget tab lays out its summary and category rows
     /// (actios-96wa). Persisted to UserDefaults; defaults to the clean
     /// card look from the App Store screenshots.
@@ -2750,13 +2759,17 @@ final class BudgetStore: ObservableObject {
     }
     #endif
 
+    /// Reads stored Bool values and UI-test `YES`/`NO` launch overrides through the
+    /// same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
+    /// overrides as strings; checking for existence first preserves non-false defaults.
+    private static func persistedBool(_ key: String, default defaultValue: Bool, in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
+    }
+
     private init() {
         let defaults = UserDefaults.standard
-        // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
-        // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
-        // overrides as strings; checking for existence first preserves non-false defaults.
         func persistedBool(_ key: String, default defaultValue: Bool) -> Bool {
-            defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
+            Self.persistedBool(key, default: defaultValue, in: defaults)
         }
 
         // Restore saved state. Preferences restore through the Published
@@ -2806,6 +2819,7 @@ final class BudgetStore: ObservableObject {
             _appearanceMode = Published(initialValue: mode)
         }
         _startTab = Published(initialValue: StartTab.persisted)
+        _showsQuickAddButton = Published(initialValue: persistedBool("showsQuickAddButton", default: true))
         _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle.resolved(
             from: defaults.string(forKey: "budgetDisplayStyle")
         ))
@@ -2958,6 +2972,9 @@ final class BudgetStore: ObservableObject {
     private init(forPreview mode: PreviewMode) {
         switch mode {
         case .loadPersistedPreferences:
+            _showsQuickAddButton = Published(
+                initialValue: Self.persistedBool("showsQuickAddButton", default: true, in: UserDefaults.standard)
+            )
             _categoryStatusDotColors = Published(
                 initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard)
             )
