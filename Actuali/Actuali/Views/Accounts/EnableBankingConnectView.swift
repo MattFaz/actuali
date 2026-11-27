@@ -387,7 +387,7 @@ private struct EnableBankingBankList: View {
             } label: {
                 HStack {
                     Text(EnableBankingConnectView.title(for: bank))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.primary)
                     Spacer()
                     if bank.id == selection {
                         Image(systemName: "checkmark")
