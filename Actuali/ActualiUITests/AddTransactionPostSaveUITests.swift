@@ -49,14 +49,16 @@ final class AddTransactionPostSaveUITests: XCTestCase {
         XCTAssertTrue(addButton.waitForExistence(timeout: 5), "'+' toolbar button not found")
         addButton.tap()
 
-        let addTitle = app.navigationBars["Add Transaction"]
-        XCTAssertTrue(addTitle.waitForExistence(timeout: 5), "add sheet did not present")
+        // The sheet carries no title, so its close button marks it.
+        let addSheet = app.buttons["addTransaction.close"]
+        XCTAssertTrue(addSheet.waitForExistence(timeout: 5), "add sheet did not present")
+        XCTAssertFalse(app.navigationBars["Add Transaction"].exists, "add sheet shows a title")
 
         enterAmountAndSave(in: app)
 
         // The sheet must close itself, landing back on the account's
         // transaction list — not stay open with a reset form.
-        XCTAssertTrue(addTitle.waitForNonExistence(timeout: 10),
+        XCTAssertTrue(addSheet.waitForNonExistence(timeout: 10),
                       "add sheet stayed open after saving")
         XCTAssertTrue(app.navigationBars["Chase Checking"].waitForExistence(timeout: 5),
                       "did not land back on the account's transaction list")

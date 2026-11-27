@@ -44,8 +44,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                       "tab bar not reachable after dismissing the keyboard")
     }
 
-    /// The operators sit in the bar as one-tap keys, with no ± beside them:
-    /// the sign button next to the amount already flips it.
+    /// The operators sit on the keypad as one-tap keys.
     @MainActor
     func testOperatorKeyInsertsOperator() {
         let app = XCUIApplication()
@@ -60,7 +59,6 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                       "keyboard did not appear")
         amountField.typeText("12")
 
-        XCTAssertFalse(app.buttons["Flip sign"].exists, "keypad repeats the sign button")
         // "Add" would also match the Add tab, so use an unambiguous key.
         let multiply = app.buttons["Multiply"]
         XCTAssertTrue(multiply.waitForExistence(timeout: 5), "no operator keys on the keypad")
@@ -337,8 +335,10 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         XCTAssertTrue(addButton.waitForExistence(timeout: 5), "'+' toolbar button not found")
         addButton.tap()
 
-        let addTitle = app.navigationBars["Add Transaction"]
-        XCTAssertTrue(addTitle.waitForExistence(timeout: 5), "add sheet did not present")
+        // The sheet carries no title, so its close button marks it.
+        let addSheet = app.buttons["addTransaction.close"]
+        XCTAssertTrue(addSheet.waitForExistence(timeout: 5), "add sheet did not present")
+        XCTAssertFalse(app.navigationBars["Add Transaction"].exists, "add sheet shows a title")
 
         // The sheet autofocuses the amount field, and Cancel is a row at the
         // foot of the form now — drop the keyboard first, then reach it.
@@ -351,7 +351,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                       "no close button on the sheet-presented add flow")
         close.tap()
 
-        XCTAssertTrue(addTitle.waitForNonExistence(timeout: 5),
+        XCTAssertTrue(addSheet.waitForNonExistence(timeout: 5),
                       "add sheet did not dismiss after tapping close")
     }
 }

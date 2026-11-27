@@ -1,8 +1,8 @@
 import XCTest
 
 /// The amount's sign is the transaction's direction, as in Actual: the sign
-/// beside the amount flips it. The keypad carries no ± of its own here, since
-/// it would only repeat that button.
+/// beside the amount flips it, and so does the keypad's ±, which stays under
+/// the thumb.
 final class AddTransactionSignUITests: XCTestCase {
     @MainActor
     func testSignButtonSwitchesBetweenExpenseAndIncome() {
@@ -15,11 +15,17 @@ final class AddTransactionSignUITests: XCTestCase {
         XCTAssertEqual(sign.value as? String, "Outflow", "a new transaction starts as an expense")
 
         XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10), "keyboard did not appear")
-        XCTAssertFalse(app.buttons["Flip sign"].exists, "keypad repeats the sign button")
 
         sign.tap()
         XCTAssertEqual(sign.value as? String, "Inflow")
         sign.tap()
+        XCTAssertEqual(sign.value as? String, "Outflow")
+
+        let flip = app.amountKeypad.buttons["Flip sign"]
+        XCTAssertTrue(flip.exists, "no ± on the keypad")
+        flip.tap()
+        XCTAssertEqual(sign.value as? String, "Inflow")
+        flip.tap()
         XCTAssertEqual(sign.value as? String, "Outflow")
     }
 
