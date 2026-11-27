@@ -9,6 +9,39 @@ struct EnableBankingSyncViewTests {
         #expect(EnableBankingSyncView.readiness(for: true) == .ready)
     }
 
+    @Test func failedStatusCheckIsNotReportedAsAnOutdatedServer() {
+        let offline = URLError(.notConnectedToInternet)
+        #expect(EnableBankingSyncView.readiness(failure: offline) == .failed(offline.localizedDescription))
+        #expect(EnableBankingSyncView.readiness(failure: offline) != .unavailable)
+    }
+
+    @Test func cancelledStatusCheckLeavesTheStateAlone() {
+        #expect(EnableBankingSyncView.readiness(failure: CancellationError()) == nil)
+        #expect(EnableBankingSyncView.readiness(failure: URLError(.cancelled)) == nil)
+    }
+
+    @Test func banksLoadOnlyWhenTheCountryChangedOrNothingIsLoaded() {
+        #expect(EnableBankingSyncView.needsBankLoad(country: "NL", loadedCountry: nil))
+        #expect(EnableBankingSyncView.needsBankLoad(country: "DE", loadedCountry: "NL"))
+        #expect(!EnableBankingSyncView.needsBankLoad(country: "NL", loadedCountry: "NL"))
+    }
+
+    @Test func onlyAClosedSheetLeavesTheWaitRunning() {
+        #expect(EnableBankingSyncView.isSheetClosed(OpenIDAuthError.cancelled))
+        #expect(!EnableBankingSyncView.isSheetClosed(OpenIDAuthError.sessionFailed(URLError(.badURL))))
+        #expect(!EnableBankingSyncView.isSheetClosed(OpenIDAuthError.noWindow))
+        #expect(!EnableBankingSyncView.isSheetClosed(OpenIDAuthError.missingToken))
+        #expect(!EnableBankingSyncView.isSheetClosed(URLError(.cancelled)))
+    }
+
+    @Test func noAccountsMessageOnlyForAnEmptyAuthorization() {
+        let remote = BankSyncRemoteAccount(
+            id: "r", name: "Current", institutionId: "i", institutionName: "Bank", balanceCents: nil, source: .enableBanking
+        )
+        #expect(EnableBankingSyncView.noAccountsMessage(for: []) != nil)
+        #expect(EnableBankingSyncView.noAccountsMessage(for: [remote]) == nil)
+    }
+
     @Test func defaultCountryUsesListedRegionElseFallback() {
         #expect(EnableBankingSyncView.defaultCountry(region: "DE") == "DE")
         #expect(EnableBankingSyncView.defaultCountry(region: "US") == "NL")
@@ -22,24 +55,6 @@ struct EnableBankingSyncViewTests {
         #expect(EnableBankingSyncView.psuType(for: bank(["personal", "business"]), choice: "business") == "business")
         #expect(EnableBankingSyncView.psuType(for: bank(["business"]), choice: "personal") == "business")
         #expect(EnableBankingSyncView.psuType(for: bank(nil), choice: "personal") == "personal")
-    }
-
-    @Test func accountsNeedingSyncPicksNewAndBrokenEnableBankingLinks() {
-        func link(_ id: String, source: String = "enableBanking", closed: Bool = false,
-                  lastSync: Date? = Date(), status: String? = "ok") -> BankSyncAccount {
-            BankSyncAccount(
-                id: id, name: id, externalAccountId: "ext-\(id)", syncSource: source,
-                offBudget: false, closed: closed, lastSync: lastSync, status: status
-            )
-        }
-        let accounts = [
-            link("never", lastSync: nil, status: nil),
-            link("attention", status: "reauth-required"),
-            link("healthy"),
-            link("closed", closed: true, lastSync: nil),
-            link("simplefin", source: "simpleFin", lastSync: nil),
-        ]
-        #expect(EnableBankingSyncView.accountsNeedingSync(accounts) == ["never", "attention"])
     }
 
     // MARK: - BankAccountLinkView.linkableAccounts
@@ -64,7 +79,7 @@ struct EnableBankingSyncViewTests {
         #expect(result.map(\.id) == ["free"])
     }
 
-    @Test func enableBankingRemoteOffersItsOwnLinksAttentionFirst() {
+    @Test func enableBankingRemoteListsStaleLinksThenFreeAccountsThenHealthyLinks() {
         let result = BankAccountLinkView.linkableAccounts(
             accounts: [account("free"), account("ok"), account("stale"), account("sf"), account("closed", closed: true)],
             linked: [
@@ -74,6 +89,15 @@ struct EnableBankingSyncViewTests {
             ],
             remoteSource: .enableBanking
         )
-        #expect(result.map(\.id) == ["stale", "ok", "free"])
+        #expect(result.map(\.id) == ["stale", "free", "ok"])
+    }
+
+    @Test func onlyEnableBankingLinksAreMarkedAsReplaced() {
+        let ids = BankAccountLinkView.enableBankingLinkedIds([
+            link("ok", source: "enableBanking"),
+            link("stale", source: "enableBanking", status: "reauth-required"),
+            link("sf", source: "simpleFin"),
+        ])
+        #expect(ids == ["ok", "stale"])
     }
 }

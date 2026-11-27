@@ -8,6 +8,9 @@ struct EnableBankingSyncView: View {
 
     enum Readiness: Equatable {
         case checking, unavailable, notConfigured, ready
+        /// The status check itself failed (offline, say), which says nothing
+        /// about what the server offers.
+        case failed(String)
     }
 
     /// Upstream's list of supported countries.
@@ -20,6 +23,8 @@ struct EnableBankingSyncView: View {
     @State private var redirectURL: URL?
     @State private var country = EnableBankingSyncView.defaultCountry(region: Locale.current.region?.identifier)
     @State private var banks: [EnableBankingBank] = []
+    /// The country `banks` was loaded for; nil while loading or after a failure.
+    @State private var loadedCountry: String?
     @State private var isLoadingBanks = false
     @State private var bankId: String?
     @State private var psuChoice = "personal"
@@ -29,6 +34,8 @@ struct EnableBankingSyncView: View {
     @State private var remoteAccounts: [BankSyncRemoteAccount] = []
     @State private var errorMessage: String?
     @State private var linkTarget: BankSyncRemoteAccount?
+    /// The budget account the link sheet linked, until the sheet has closed.
+    @State private var linkedAccountId: String?
 
     var body: some View {
         List {
@@ -44,10 +51,8 @@ struct EnableBankingSyncView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadReadiness() }
         .onDisappear { authorizationTask?.cancel() }
-        .sheet(item: $linkTarget, onDismiss: {
-            Task { await syncAfterLink() }
-        }, content: { remote in
-            BankAccountLinkView(remote: remote)
+        .sheet(item: $linkTarget, onDismiss: syncAfterLink, content: { remote in
+            BankAccountLinkView(remote: remote, onLinked: { linkedAccountId = $0 })
                 .environmentObject(budgetStore)
         })
         .alert("Bank Sync", isPresented: errorAlertBinding) {
@@ -62,6 +67,21 @@ struct EnableBankingSyncView: View {
     nonisolated static func readiness(for status: Bool?) -> Readiness {
         guard let status else { return .unavailable }
         return status ? .ready : .notConfigured
+    }
+
+    /// A failed status check gets its own state; cancellation (leaving the
+    /// screen) isn't a failure, so it yields nil.
+    nonisolated static func readiness(failure error: any Error) -> Readiness? {
+        if error is CancellationError || (error as? URLError)?.code == .cancelled {
+            return nil
+        }
+        return .failed(error.localizedDescription)
+    }
+
+    /// The Bank picker pushes a screen; popping it re-runs the Country row's
+    /// task, which must not wipe the bank picked there.
+    nonisolated static func needsBankLoad(country: String, loadedCountry: String?) -> Bool {
+        loadedCountry != country
     }
 
     nonisolated static func defaultCountry(region: String?) -> String {
@@ -85,12 +105,20 @@ struct EnableBankingSyncView: View {
         return types.first ?? choice
     }
 
-    /// Upstream syncs on link, so a freshly linked account has its history at
-    /// once; and a re-link otherwise keeps showing the old "re-authorize" status.
-    nonisolated static func accountsNeedingSync(_ accounts: [BankSyncAccount]) -> [String] {
-        accounts
-            .filter { $0.source == .enableBanking && !$0.closed && ($0.lastSync == nil || $0.needsAttention) }
-            .map(\.id)
+    /// `cancelled` means the sheet was closed, by the person or by `cancel()`;
+    /// any other error means it never opened.
+    nonisolated static func isSheetClosed(_ error: any Error) -> Bool {
+        if case OpenIDAuthError.cancelled = error {
+            return true
+        }
+        return false
+    }
+
+    /// Nil when the bank shared at least one account to link.
+    nonisolated static func noAccountsMessage(for accounts: [BankSyncRemoteAccount]) -> String? {
+        accounts.isEmpty
+            ? String(localized: "Your bank didn't share any accounts. Authorize again and select at least one account.")
+            : nil
     }
 
     // MARK: - Sections
@@ -165,6 +193,16 @@ struct EnableBankingSyncView: View {
             }
         case .ready:
             connectSection
+        case .failed(let message):
+            Section {
+                Text(message)
+                    .foregroundStyle(.secondary)
+                Button("Try Again") {
+                    readiness = .checking
+                    Task { await loadReadiness() }
+                }
+                .accessibilityIdentifier("enableBanking.retry")
+            }
         }
     }
 
@@ -286,12 +324,18 @@ struct EnableBankingSyncView: View {
     }
 
     private func loadReadiness() async {
+        // Re-appearing (the Bank picker popping, say) runs this again. A server
+        // already known to be ready isn't asked twice, so a network blip can't
+        // take the form away in the middle of picking a bank.
+        guard readiness != .ready else { return }
         do {
             let status = try await budgetStore.enableBankingStatus()
             readiness = Self.readiness(for: status)
         } catch {
-            errorMessage = error.localizedDescription
-            readiness = .unavailable
+            if let failed = Self.readiness(failure: error) {
+                readiness = failed
+            }
+            return
         }
         if readiness == .notConfigured {
             redirectURL = await budgetStore.enableBankingRedirectURL()
@@ -299,6 +343,10 @@ struct EnableBankingSyncView: View {
     }
 
     private func loadBanks() async {
+        guard Self.needsBankLoad(country: country, loadedCountry: loadedCountry) else { return }
+        // Cleared with the list, so a pick cancelled mid-load and then undone
+        // still loads again instead of leaving the list empty.
+        loadedCountry = nil
         banks = []
         bankId = nil
         isLoadingBanks = true
@@ -306,6 +354,7 @@ struct EnableBankingSyncView: View {
             let loaded = try await budgetStore.enableBankingBanks(country: country)
             guard !Task.isCancelled else { return }
             banks = loaded
+            loadedCountry = country
         } catch {
             // A newer country pick cancels this load; that isn't a failure.
             guard !Task.isCancelled else { return }
@@ -335,10 +384,13 @@ struct EnableBankingSyncView: View {
         }
     }
 
-    private func syncAfterLink() async {
-        let ids = Self.accountsNeedingSync(budgetStore.bankSyncAccounts)
-        guard !ids.isEmpty else { return }
-        await sync(accountIds: ids)
+    /// Upstream syncs on link, so a freshly linked account has its history at
+    /// once; and a re-link otherwise keeps showing the old "re-authorize" status.
+    /// Closing the sheet without linking syncs nothing.
+    private func syncAfterLink() {
+        guard let id = linkedAccountId else { return }
+        linkedAccountId = nil
+        Task { await sync(accountIds: [id]) }
     }
 
     private func authorize() {
@@ -377,12 +429,24 @@ struct EnableBankingSyncView: View {
             }
             // The bank sends the browser back to the Actual server, never to this
             // app, so the sheet's own result means nothing: closing it must not
-            // end the wait.
-            Task { _ = try? await authenticator.open(start.url, callbackScheme: OpenIDAuthenticator.callbackScheme) }
+            // end the wait. A sheet that never opened can't lead to an approval,
+            // though, so that ends it.
+            Task {
+                do {
+                    _ = try await authenticator.open(start.url, callbackScheme: OpenIDAuthenticator.callbackScheme)
+                } catch {
+                    guard !Self.isSheetClosed(error) else { return }
+                    errorMessage = error.localizedDescription
+                    authorizationTask?.cancel()
+                }
+            }
             // Dismiss the sheet once the server reports the outcome.
             defer { authenticator.cancel() }
 
             remoteAccounts = try await budgetStore.awaitEnableBankingAuthorization(state: start.state)
+            if let message = Self.noAccountsMessage(for: remoteAccounts) {
+                errorMessage = message
+            }
         } catch is CancellationError {
             // Cancel button or leaving the screen.
         } catch {

@@ -541,6 +541,9 @@ struct BankAccountLinkView: View {
     @Environment(\.dismiss) private var dismiss
 
     let remote: BankSyncRemoteAccount
+    /// Called with the budget account's id once a link succeeded, just before
+    /// the sheet closes. Unlinking doesn't call it.
+    var onLinked: ((String) -> Void)?
 
     @State private var newAccountOffBudget = false
     @State private var isWorking = false
@@ -579,16 +582,25 @@ struct BankAccountLinkView: View {
                         Text("Every open account is already linked.")
                             .foregroundStyle(.secondary)
                     } else {
+                        let replaceableIds = Self.enableBankingLinkedIds(budgetStore.bankSyncAccounts)
                         ForEach(linkableAccounts) { account in
                             Button {
                                 perform {
                                     try await budgetStore.linkBankAccount(
                                         accountId: account.id, to: remote
                                     )
+                                    onLinked?(account.id)
                                 }
                             } label: {
                                 HStack {
-                                    Text(account.name)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(account.name)
+                                        if replaceableIds.contains(account.id) {
+                                            Text("Already linked. Linking here replaces that link.")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
                                     Spacer()
                                     Text(budgetStore.displayBalance(account.balance))
                                         .foregroundStyle(.secondary)
@@ -636,11 +648,17 @@ struct BankAccountLinkView: View {
         )
     }
 
+    /// The budget accounts fed through Enable Banking.
+    nonisolated static func enableBankingLinkedIds(_ linked: [BankSyncAccount]) -> Set<String> {
+        Set(linked.filter { $0.source == .enableBanking }.map(\.id))
+    }
+
     /// Open accounts with no bank feed of their own. An account already linked
     /// to a different bridge account isn't offered — one feed per account.
     /// Enable Banking is the exception: re-authorizing issues new account ids,
-    /// so an account linked through it must stay replaceable, and the ones
-    /// whose link has gone stale come first.
+    /// so an account linked through it must stay replaceable. The ones whose
+    /// link has gone stale come first; the healthy ones come last, so one tap
+    /// on a free account never lands on a working link.
     nonisolated static func linkableAccounts(
         accounts: [Account],
         linked: [BankSyncAccount],
@@ -649,13 +667,12 @@ struct BankAccountLinkView: View {
         let linkedIds = Set(linked.map(\.id))
         let open = accounts.filter { !$0.closed && !linkedIds.contains($0.id) }
         guard remoteSource == .enableBanking else { return open }
-        let replaceable = linked.filter { $0.source == .enableBanking }
-        let attentionIds = Set(replaceable.filter(\.needsAttention).map(\.id))
-        let replaceableIds = Set(replaceable.map(\.id))
+        let replaceableIds = enableBankingLinkedIds(linked)
+        let attentionIds = Set(linked.filter { replaceableIds.contains($0.id) && $0.needsAttention }.map(\.id))
         let replaceableOpen = accounts.filter { !$0.closed && replaceableIds.contains($0.id) }
         return replaceableOpen.filter { attentionIds.contains($0.id) }
-            + replaceableOpen.filter { !attentionIds.contains($0.id) }
             + open
+            + replaceableOpen.filter { !attentionIds.contains($0.id) }
     }
 
     private var errorAlertBinding: Binding<Bool> {
@@ -676,6 +693,7 @@ struct BankAccountLinkView: View {
                 startingBalanceCents: 0
             )
             try await budgetStore.linkBankAccount(accountId: account.id, to: remote)
+            onLinked?(account.id)
         }
     }
 

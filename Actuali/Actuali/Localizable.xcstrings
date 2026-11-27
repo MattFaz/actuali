@@ -8048,6 +8048,54 @@
         }
       }
     },
+    "Your bank didn't share any accounts. Authorize again and select at least one account." : {
+      "comment" : "Enable Banking error when the bank authorization returned no accounts",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Bank hat keine Konten freigegeben. Autorisiere erneut und wähle mindestens ein Konto aus."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your bank didn't share any accounts. Authorize again and select at least one account."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu banco no compartió ninguna cuenta. Vuelve a autorizar y selecciona al menos una cuenta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre banque n'a partagé aucun compte. Autorisez de nouveau l'accès et sélectionnez au moins un compte."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tua banca non ha condiviso alcun conto. Autorizza di nuovo e seleziona almeno un conto."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je bank heeft geen rekeningen gedeeld. Autoriseer opnieuw en selecteer minstens één rekening."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu banco não compartilhou nenhuma conta. Autorize novamente e selecione pelo menos uma conta."
+          }
+        }
+      }
+    },
     "Your bank's permission has expired. Authorize the bank again to keep syncing." : {
       "comment" : "Account detail explanation when the bank's read-access consent has expired",
       "extractionState" : "stale",
@@ -17815,6 +17863,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Quase gasto"
+          }
+        }
+      }
+    },
+    "Already linked. Linking here replaces that link." : {
+      "comment" : "Caption on a budget account that already has an Enable Banking link, in the list for linking a bank account",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits verknüpft. Eine Verknüpfung hier ersetzt die bestehende."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already linked. Linking here replaces that link."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya vinculada. Vincular aquí reemplaza ese vínculo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Déjà lié. Le lier ici remplace ce lien."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Già collegato. Collegarlo qui sostituisce quel collegamento."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al gekoppeld. Hier koppelen vervangt die koppeling."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Já vinculada. Vincular aqui substitui esse vínculo."
           }
         }
       }
@@ -87482,6 +87578,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gatilho"
+          }
+        }
+      }
+    },
+    "Try Again" : {
+      "comment" : "Enable Banking screen button that runs the server check again",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut versuchen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try Again"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Intentar de nuevo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réessayer"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riprova"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opnieuw proberen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tentar novamente"
           }
         }
       }
