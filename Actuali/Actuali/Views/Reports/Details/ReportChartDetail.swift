@@ -226,9 +226,15 @@ extension CustomReportData {
             // dates are read back from "Sep '26" (monthly) or "26-09-14"
             // (daily, weekly). Yearly labels are already short and stay.
             // Carry the dates on Stacked if this ever needs to be exact.
-            let dates = [CustomReportEngine.monthFormatter(locale: locale), CustomReportEngine.dayFormatter(locale: locale)]
-                .map { formatter in table.intervalLabels.compactMap(formatter.date(from:)) }
-                .first { $0.count == table.intervalLabels.count }
+            // Each with the date it holds today at: a month label is the
+            // month the current period is anchored to, not today's month.
+            let parsed = [
+                (CustomReportEngine.monthFormatter(locale: locale), monthStartRule.anchor(containing: today.utcDate)),
+                (CustomReportEngine.dayFormatter(locale: locale), today.utcDate),
+            ]
+            .map { formatter, now in (dates: table.intervalLabels.compactMap(formatter.date(from:)), now: now) }
+            .first { $0.dates.count == table.intervalLabels.count }
+            let dates = parsed?.dates
             var chart = ReportChartDetail(
                 name: name, caption: rangeLabel, intervals: table.intervalLabels,
                 axisLabels: dates.map { ReportDetailLabels.axis($0, locale: locale) },
@@ -246,7 +252,7 @@ extension CustomReportData {
             )
             // Lead with today, not a day or month still to come. The dates are
             // UTC midnights, so compare the local day, not the instant.
-            chart.currentInterval = dates?.lastIndex { $0 <= today.utcDate }
+            chart.currentInterval = parsed.flatMap { parsed in parsed.dates.lastIndex { $0 <= parsed.now } }
             return chart.chartable
         }
         func single(_ bars: [Bar]) -> Stacked {

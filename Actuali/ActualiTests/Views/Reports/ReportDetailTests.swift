@@ -78,6 +78,18 @@ struct ReportDetailTests {
         #expect(try #require(report(.stacked(stacked)).chartDetail(today: today)).leadInterval == 2)
     }
 
+    @Test func monthlyChartsLeadWithThePeriodHoldingToday() throws {
+        // Under a day-25 start, "Nov '26" runs from November 25: on the 20th
+        // the period holding today is still "Oct '26".
+        var months = report(.bars(["Oct '26", "Nov '26"].map { .init(label: $0, valueUnits: 1) }, signed: false))
+        months.monthStartRule = MonthStartRule(day: 25)
+        func lead(on day: Int) throws -> Int {
+            try #require(months.chartDetail(today: DayDate(year: 2026, month: 11, day: day), locale: Locale(identifier: "en_US"))).leadInterval
+        }
+        #expect(try lead(on: 20) == 0)
+        #expect(try lead(on: 27) == 1)
+    }
+
     @Test func oneRingDonutListsEverySliceWithItsShare() throws {
         let slices = [CustomReportData.Slice(label: "Rent", valueUnits: 300, group: nil), .init(label: "Food", valueUnits: 100, group: nil)]
         let breakdown = try #require(report(.donut(slices: slices, groups: [])).breakdown)

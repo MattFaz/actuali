@@ -867,6 +867,7 @@ extension CustomReportEngineTests {
         }
         #expect(bars.map(\.label) == ["Mar '26", "Apr '26", "May '26", "Jun '26"])
         #expect(bars.map(\.valueUnits) == [10.0, 20.0, 40.0, 240.0])
+        #expect(data.monthStartRule == rule)
     }
 
     @Test func nonMonthRangesKeepCalendarBuckets() {
@@ -887,5 +888,6 @@ extension CustomReportEngineTests {
         }
         #expect(bars.first?.label == "Jan '26")
         #expect(bars.first?.valueUnits == 30.0)
+        #expect(data.monthStartRule == .calendarMonth)
     }
 }
