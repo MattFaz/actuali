@@ -343,11 +343,12 @@ extension ReportChartDetail {
     }
 
     /// The series a card has room to name: the largest by magnitude in the
-    /// latest interval, in legend order.
+    /// interval the card leads with, in legend order.
     func leadingSeries(limit: Int = 3) -> [Int] {
-        guard let latest = intervals.indices.last else { return [] }
+        guard !intervals.isEmpty else { return [] }
+        let lead = leadInterval
         return series.indices
-            .sorted { abs(series[$0].values[latest]) > abs(series[$1].values[latest]) }
+            .sorted { abs(series[$0].values[lead]) > abs(series[$1].values[lead]) }
             .prefix(limit)
             .sorted()
     }

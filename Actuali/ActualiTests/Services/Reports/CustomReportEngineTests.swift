@@ -174,6 +174,22 @@ struct CustomReportEngineTests {
         #expect(run("Payment", []) == .bars([], signed: false))
     }
 
+    @Test func barsMarkWhetherTheyRankRows() {
+        func run(groupBy: String, mode: String = "total") -> CustomReportData {
+            CustomReportEngine.compute(
+                config: config(mode: mode, groupBy: groupBy, balance: "Payment",
+                               interval: "Monthly", graph: "BarGraph"),
+                transactions: sampleTxs, reportContext: reportContext,
+                filterContext: .empty, today: today, locale: englishLocale
+            )
+        }
+        #expect(run(groupBy: "Payee").ranksRows)
+        #expect(run(groupBy: "Category").ranksRows)
+        #expect(!run(groupBy: "Interval").ranksRows)
+        // Time-mode bars chart each interval's total, so they stay a chart.
+        #expect(!run(groupBy: "Payee", mode: "time").ranksRows)
+    }
+
     @Test func weeklyBucketsStartSunday() {
         // 2026-07-01 is a Wednesday → its Sunday week start is 2026-06-28.
         let data = CustomReportEngine.compute(
@@ -853,6 +869,7 @@ extension CustomReportEngineTests {
         }
         #expect(bars.map(\.label) == ["Mar '26", "Apr '26", "May '26", "Jun '26"])
         #expect(bars.map(\.valueUnits) == [10.0, 20.0, 40.0, 240.0])
+        #expect(data.monthStartRule == rule)
     }
 
     @Test func nonMonthRangesKeepCalendarBuckets() {
@@ -873,5 +890,6 @@ extension CustomReportEngineTests {
         }
         #expect(bars.first?.label == "Jan '26")
         #expect(bars.first?.valueUnits == 30.0)
+        #expect(data.monthStartRule == .calendarMonth)
     }
 }

@@ -30,6 +30,12 @@ struct CustomReportData: Equatable {
     }
 
     var kind: Kind
+    /// Bars that rank rows (payees, categories) rather than chart intervals,
+    /// so they read as a list, not as a chart over time.
+    var ranksRows = false
+    /// The month start the monthly intervals follow: a "Nov '26" bar under a
+    /// day-25 start runs from November 25.
+    var monthStartRule = MonthStartRule.calendarMonth
 }
 
 /// Port of the webapp's custom-spreadsheet.ts for the option matrix the web
@@ -133,6 +139,7 @@ enum CustomReportEngine {
         let followsRule = config.balanceType != "Budgeted" && !config.dateStatic
             && ReportDateRange.monthPresets.contains(config.dateRange ?? "")
         let rule = followsRule ? monthStartRule : .calendarMonth
+        data.monthStartRule = rule
         let earliest = live.map(\.date).min().map(dateFrom)
         let latest = live.map(\.date).max().map(dateFrom)
         let (start, end) = ReportDateRange.resolve(
@@ -376,6 +383,7 @@ enum CustomReportEngine {
                               signed: signed)
         default:
             data.kind = .bars(rows.map { .init(label: $0.name, valueUnits: $0.total) }, signed: signed)
+            data.ranksRows = true
         }
         return data
     }

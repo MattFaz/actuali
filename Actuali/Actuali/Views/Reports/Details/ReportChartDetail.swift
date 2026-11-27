@@ -65,7 +65,15 @@ struct ReportChartDetail: Equatable {
     var events: [Event] = []
     /// Abbreviate amounts ("690K"): for figures too large to need their cents.
     var compact = false
+    /// The interval holding today, where the range runs past it; nil leads
+    /// with the last interval.
+    var currentInterval: Int?
     var card = Card()
+
+    /// The interval the card and page lead with.
+    var leadInterval: Int {
+        currentInterval ?? intervals.count - 1
+    }
 
     /// What the dashboard card leads with, where it isn't simply the readout
     /// at the latest interval.
@@ -206,8 +214,9 @@ enum ReportDetailLabels {
 // MARK: - Widgets
 
 extension CustomReportData {
-    /// Donut and table reports have no intervals to chart: see `breakdown`.
-    func chartDetail(locale: Locale = .current) -> ReportChartDetail? {
+    /// Donut, table and ranked bar reports have no intervals to chart: see
+    /// `breakdown`.
+    func chartDetail(today: DayDate = .today(), locale: Locale = .current) -> ReportChartDetail? {
         func detail(
             _ table: Stacked, _ style: ReportChartDetail.Style, signed: Bool = false, trends: [Trend] = []
         ) -> ReportChartDetail? {
@@ -217,10 +226,16 @@ extension CustomReportData {
             // dates are read back from "Sep '26" (monthly) or "26-09-14"
             // (daily, weekly). Yearly labels are already short and stay.
             // Carry the dates on Stacked if this ever needs to be exact.
-            let dates = [CustomReportEngine.monthFormatter(locale: locale), CustomReportEngine.dayFormatter(locale: locale)]
-                .map { formatter in table.intervalLabels.compactMap(formatter.date(from:)) }
-                .first { $0.count == table.intervalLabels.count }
-            return ReportChartDetail(
+            // Each with the date it holds today at: a month label is the
+            // month the current period is anchored to, not today's month.
+            let parsed = [
+                (CustomReportEngine.monthFormatter(locale: locale), monthStartRule.anchor(containing: today.utcDate)),
+                (CustomReportEngine.dayFormatter(locale: locale), today.utcDate),
+            ]
+            .map { formatter, now in (dates: table.intervalLabels.compactMap(formatter.date(from:)), now: now) }
+            .first { $0.dates.count == table.intervalLabels.count }
+            let dates = parsed?.dates
+            var chart = ReportChartDetail(
                 name: name, caption: rangeLabel, intervals: table.intervalLabels,
                 axisLabels: dates.map { ReportDetailLabels.axis($0, locale: locale) },
                 series: table.seriesNames.indices.map {
@@ -234,7 +249,11 @@ extension CustomReportData {
                 // area is a level at each interval and doesn't.
                 stats: single && style == .stackedBars
                     ? [.init(label: ReportStrings.text("Total", locale: locale), value: .amount(table.values[0].reduce(0, +)))] : []
-            ).chartable
+            )
+            // Lead with today, not a day or month still to come. The dates are
+            // UTC midnights, so compare the local day, not the instant.
+            chart.currentInterval = parsed.flatMap { parsed in parsed.dates.lastIndex { $0 <= parsed.now } }
+            return chart.chartable
         }
         func single(_ bars: [Bar]) -> Stacked {
             Stacked(intervalLabels: bars.map(\.label), seriesNames: [name], values: [bars.map(\.valueUnits)])
@@ -242,7 +261,7 @@ extension CustomReportData {
         return switch kind {
         case .stacked(let stacked): detail(stacked, .stackedBars)
         case .lines(let stacked, let trends): detail(stacked, .lines, trends: trends)
-        case .bars(let bars, let signed): detail(single(bars), .stackedBars, signed: signed)
+        case .bars(let bars, let signed): ranksRows ? nil : detail(single(bars), .stackedBars, signed: signed)
         case .area(let bars): detail(single(bars), .area)
         case .donut, .table, .unsupported: nil
         }
