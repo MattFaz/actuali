@@ -42,6 +42,13 @@ struct ReportDetailChart: View {
         intervals.isEmpty ? nil : intervals[min(max(Int(position.rounded()), 0), intervals.count - 1)]
     }
 
+    /// Charts clears its selection when the finger lifts. The page keeps the
+    /// interval instead, so the lists under the chart can be scrolled while
+    /// they still describe it.
+    nonisolated static func pinned(_ current: String?, scrubbedTo interval: String?) -> String? {
+        interval ?? current
+    }
+
     private var selected: String? {
         selection?.wrappedValue
     }
@@ -250,7 +257,7 @@ struct ReportDetailChart: View {
         StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round, dash: dashed ? [5, 5] : [])
     }
 
-    /// While scrubbing, the bars of every other interval step back.
+    /// While an interval is selected, the bars of every other one step back.
     private func barOpacity(_ point: Point) -> Double {
         selected == nil || selected == point.interval ? 1 : 0.35
     }

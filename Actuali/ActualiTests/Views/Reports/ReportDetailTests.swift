@@ -238,6 +238,14 @@ struct ReportDetailTests {
         #expect(ReportDetailChart.interval(at: 0, in: []) == nil)
     }
 
+    @Test func liftingTheFingerKeepsTheScrubbedInterval() {
+        #expect(ReportDetailChart.pinned(nil, scrubbedTo: "Feb") == "Feb")
+        #expect(ReportDetailChart.pinned("Feb", scrubbedTo: "Mar") == "Mar")
+        // Charts reports nil when the gesture ends.
+        #expect(ReportDetailChart.pinned("Mar", scrubbedTo: nil) == "Mar")
+        #expect(ReportDetailChart.pinned(nil, scrubbedTo: nil) == nil)
+    }
+
     @Test func repeatedLabelsAreNotChartable() {
         // A string axis merges equal labels into one position.
         let bars = [CustomReportData.Bar(label: "Rent", valueUnits: 5), .init(label: "Rent", valueUnits: 7)]

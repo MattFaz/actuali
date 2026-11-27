@@ -12,8 +12,8 @@ struct ReportChartDetailView: View {
     @State private var hidden: Set<Int> = []
     @State private var showsTotal = true
 
-    /// The interval the readout and the lists describe: the one under the
-    /// finger, otherwise the one the card leads with.
+    /// The interval the readout and the lists describe: the one last
+    /// scrubbed to, otherwise the one the card leads with.
     private var shownInterval: Int {
         selected.flatMap(detail.intervals.firstIndex(of:)) ?? detail.leadInterval
     }
@@ -43,10 +43,18 @@ struct ReportChartDetailView: View {
                 }
                 readout
                 chart
-                Text(ReportStrings.text("Drag across the chart to inspect a point.", locale: locale))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+                HStack(alignment: .firstTextBaseline) {
+                    Text(ReportStrings.text("Drag across the chart to inspect a point.", locale: locale))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Spacer()
+                    // A range change can leave an interval that is gone.
+                    if selected.flatMap(detail.intervals.firstIndex(of:)) != nil {
+                        Button(ReportStrings.text("Show latest", locale: locale)) { selected = nil }
+                            .accessibilityIdentifier("reportDetail.showLatest")
+                    }
+                }
+                .font(.footnote)
                 switch breakdown {
                 case .series: seriesList
                 case .intervals: intervalList
@@ -158,7 +166,10 @@ struct ReportChartDetailView: View {
         let total = showsTotal && detail.canShowTotal
         let shown = total ? detail.totalled(hiding: hidden) : detail
         let figures = shown.figures(hiding: total ? [] : hidden)
-        return ReportDetailChart(detail: shown, hidden: total ? [] : hidden, selection: $selected)
+        return ReportDetailChart(detail: shown, hidden: total ? [] : hidden, selection: Binding(
+            get: { selected },
+            set: { selected = ReportDetailChart.pinned(selected, scrubbedTo: $0) }
+        ))
             // The interval list below already reads every figure. The other
             // lists carry one interval, and VoiceOver can't drag to move it,
             // so there the chart stands in for the whole table.
