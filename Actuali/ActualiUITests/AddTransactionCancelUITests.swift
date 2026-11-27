@@ -7,8 +7,8 @@ import XCTest
 /// to the Start Page tab instead.
 final class AddTransactionCancelUITests: XCTestCase {
     /// Types an amount, then closes the form with the button beside the
-    /// amount and confirms the discard. The add flow has no Cancel row; the
-    /// close button stays reachable with the keyboard up.
+    /// amount. The add flow has no Cancel row; the close button stays
+    /// reachable with the keypad up, and discards without asking.
     @MainActor
     private func enterAmountAndCancel(in app: XCUIApplication) {
         let amountField = app.textFields.matching(
@@ -21,11 +21,9 @@ final class AddTransactionCancelUITests: XCTestCase {
         amountField.typeText("500")
         XCTAssertFalse(app.buttons["Cancel"].exists, "add flow still shows a Cancel row")
 
-        // An amount has been typed, so the close button confirms first.
         app.buttons["addTransaction.close"].tap()
-        let discard = app.buttons["Discard"]
-        XCTAssertTrue(discard.waitForExistence(timeout: 5), "no discard confirmation for a typed amount")
-        discard.tap()
+        XCTAssertFalse(app.buttons["Discard"].waitForExistence(timeout: 2),
+                       "close asked to confirm instead of discarding")
     }
 
     /// Asserts the amount field shows its placeholder again — the entered
@@ -62,8 +60,7 @@ final class AddTransactionCancelUITests: XCTestCase {
         assertAmountCleared(in: app)
     }
 
-    /// Nothing typed means nothing to lose: an accidental open closes in one
-    /// tap, with no confirmation in the way.
+    /// An untouched form closes in one tap too.
     @MainActor
     func testCloseButtonLeavesAnEmptyFormWithoutConfirming() {
         let app = XCUIApplication()

@@ -52,7 +52,6 @@ struct AddTransactionView: View {
     @State private var showPayeePicker = false
     @State private var showCategoryPicker = false
     @State private var showAccountPicker = false
-    @State private var showDiscardConfirmation = false
     /// The floating save buttons step aside while a keyboard is up: the
     /// keypad's Done is the action then, and the buttons would sit over the
     /// form's last rows.
@@ -586,19 +585,14 @@ struct AddTransactionView: View {
                             .accessibilityHidden(true)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
-                    // The add flow opens with the keyboard up, which hides the
-                    // Cancel row at the foot of the form. This is the one-tap
-                    // way out of an accidental open; anything already typed is
-                    // confirmed before it's dropped.
+                    // The add flow opens with the keypad up and has no Cancel
+                    // row, so this is the one-tap way out of an accidental
+                    // open. It discards straight away, as the Cancel row it
+                    // replaced did: a confirmation popover beside the amount
+                    // read as clutter.
                     .overlay(alignment: .topTrailing) {
                         if !isEditing {
-                            Button {
-                                if hasEntry {
-                                    showDiscardConfirmation = true
-                                } else {
-                                    cancelEntry()
-                                }
-                            } label: {
+                            Button(action: cancelEntry) {
                                 Image(systemName: "xmark")
                                     .font(.footnote.weight(.bold))
                                     .foregroundStyle(.red)
@@ -610,15 +604,6 @@ struct AddTransactionView: View {
                             .accessibilityLabel("Close")
                             .accessibilityIdentifier("addTransaction.close")
                             .keyboardShortcut(.cancelAction)
-                            .confirmationDialog(
-                                "Discard this transaction?",
-                                isPresented: $showDiscardConfirmation,
-                                // The red Discard button says it all; a title
-                                // only crowded the small popover beside ✕.
-                                titleVisibility: .hidden
-                            ) {
-                                Button("Discard", role: .destructive, action: cancelEntry)
-                            }
                         }
                     }
                     .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
@@ -945,11 +930,6 @@ struct AddTransactionView: View {
                 }
             }
         }
-    }
-
-    /// Whether the user has typed anything worth confirming before a discard.
-    private var hasEntry: Bool {
-        !amount.isEmpty || !payeeName.isEmpty || transferToAccountId != nil || !notes.isEmpty || !splitLines.isEmpty
     }
 
     /// Any presented flow (edit, account-detail "+", notification prefill)
