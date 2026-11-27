@@ -52,6 +52,7 @@ struct AddTransactionView: View {
     @State private var showPayeePicker = false
     @State private var showCategoryPicker = false
     @State private var showAccountPicker = false
+    @State private var showDiscardConfirmation = false
     @State private var saveLocation = true
     /// Set once the user flips Save Location, so the at-home default never
     /// overrides their choice for this entry (GH #845).
@@ -587,8 +588,16 @@ struct AddTransactionView: View {
                             // hides the Cancel row at the foot of the form.
                             // This is the one-tap way out of an accidental
                             // open, and it fills the slot that balances the
-                            // sign, so the amount stays centered.
-                            Button(action: cancelEntry) {
+                            // sign, so the amount stays centered. It sits a
+                            // thumb's width from the amount, so anything
+                            // already typed is confirmed before it's dropped.
+                            Button {
+                                if hasEntry {
+                                    showDiscardConfirmation = true
+                                } else {
+                                    cancelEntry()
+                                }
+                            } label: {
                                 Image(systemName: "xmark")
                                     .font(.body.weight(.semibold))
                                     .foregroundStyle(.secondary)
@@ -599,6 +608,13 @@ struct AddTransactionView: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("Close")
                             .accessibilityIdentifier("addTransaction.close")
+                            .confirmationDialog(
+                                "Discard this transaction?",
+                                isPresented: $showDiscardConfirmation,
+                                titleVisibility: .visible
+                            ) {
+                                Button("Discard", role: .destructive, action: cancelEntry)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -915,6 +931,11 @@ struct AddTransactionView: View {
                 }
             }
         }
+    }
+
+    /// Whether the user has typed anything worth confirming before a discard.
+    private var hasEntry: Bool {
+        !amount.isEmpty || !payeeName.isEmpty || transferToAccountId != nil || !notes.isEmpty || !splitLines.isEmpty
     }
 
     /// Any presented flow (edit, account-detail "+", notification prefill)

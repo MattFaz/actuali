@@ -89,13 +89,34 @@ final class AddTransactionCancelUITests: XCTestCase {
                       "keyboard did not appear")
         amountField.typeText("500")
 
+        // An amount has been typed, so the close button confirms first.
         app.buttons["addTransaction.close"].tap()
+        let discard = app.buttons["Discard"]
+        XCTAssertTrue(discard.waitForExistence(timeout: 5), "no discard confirmation for a typed amount")
+        discard.tap()
 
         expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons["Budget"])
         waitForExpectations(timeout: 5)
 
         app.tabBars.buttons["Add"].tap()
         assertAmountCleared(in: app)
+    }
+
+    /// Nothing typed means nothing to lose: an accidental open closes in one
+    /// tap, with no confirmation in the way.
+    @MainActor
+    func testCloseButtonLeavesAnEmptyFormWithoutConfirming() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-startTab", "budget"]
+        app.launch()
+
+        let close = app.buttons["addTransaction.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 10), "close button not found")
+        close.tap()
+
+        expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons["Budget"])
+        waitForExpectations(timeout: 5)
+        XCTAssertFalse(app.buttons["Discard"].exists, "empty form asked to confirm a discard")
     }
 
     @MainActor
