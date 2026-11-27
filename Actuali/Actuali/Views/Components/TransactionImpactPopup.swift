@@ -12,6 +12,8 @@ struct TransactionImpactPopup: View {
             ScrollView {
                 cards
             }
+            // Lays out its own edges, so it opts out of the root side margin.
+            .contentMargins(.horizontal, 0, for: .scrollContent)
             .scrollBounceBehavior(.basedOnSize)
         }
         .frame(maxHeight: 300, alignment: .bottom)

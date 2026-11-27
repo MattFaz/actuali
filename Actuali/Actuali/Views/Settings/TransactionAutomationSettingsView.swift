@@ -1,48 +1,10 @@
 import SwiftUI
-import UIKit
-import UserNotifications
 
 struct TransactionAutomationSettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
-    @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
-    @State private var creditCardDueNotificationsEnabled = CreditCardNotificationSettings().isEnabled
-    @State private var notificationPermissionDenied = false
     @State private var showingWalletImport = false
-
-    /// Persists the opt-in and requests permission on enable. Background
-    /// refresh runs regardless of this toggle (it keeps data fresh for
-    /// everyone); only notification posting is gated on it.
-    private var transactionNotificationsBinding: Binding<Bool> {
-        Binding(
-            get: { transactionNotificationsEnabled },
-            set: { enabled in
-                transactionNotificationsEnabled = enabled
-                TransactionNotificationSettings().isEnabled = enabled
-                if enabled {
-                    Task { await enableTransactionNotifications() }
-                } else {
-                    notificationPermissionDenied = false
-                }
-            }
-        )
-    }
-
-    private var creditCardDueRemindersBinding: Binding<Bool> {
-        Binding(
-            get: { creditCardDueNotificationsEnabled },
-            set: { enabled in
-                creditCardDueNotificationsEnabled = enabled
-                CreditCardNotificationSettings().isEnabled = enabled
-                Task {
-                    if enabled {
-                        await enableTransactionNotifications()
-                    }
-                    await budgetStore.scheduleCreditCardDueNotifications()
-                }
-            }
-        )
-    }
+    @State private var homeLocationFailed = false
 
     var body: some View {
         Form {
@@ -84,6 +46,8 @@ struct TransactionAutomationSettingsView: View {
 
                 Toggle(String(localized: "Category from Payee History"), isOn: $budgetStore.suggestCategoryFromPayeeHistory)
                     .accessibilityIdentifier("transactionAutomation.categoryFromPayeeHistory")
+                Toggle(String(localized: "Show Balance Impact"), isOn: $budgetStore.showTransactionImpactCue)
+                    .accessibilityIdentifier("transactionAutomation.showBalanceImpact")
             } header: {
                 Text(String(localized: "Transaction Behavior"))
             } footer: {
@@ -95,6 +59,18 @@ struct TransactionAutomationSettingsView: View {
                 // locations (< 26.4.0), so hidden there.
                 if budgetStore.payeeLocationWritesEnabled {
                     Toggle(String(localized: "Record Payee Locations"), isOn: $budgetStore.recordPayeeLocations)
+
+                    if budgetStore.homeLocation == nil {
+                        Button(String(localized: "Set Home to Current Location")) {
+                            Task { homeLocationFailed = await !budgetStore.setHomeToCurrentLocation() }
+                        }
+                        .accessibilityIdentifier("transactionAutomation.setHomeLocation")
+                    } else {
+                        Button(String(localized: "Clear Home Location"), role: .destructive) {
+                            budgetStore.homeLocation = nil
+                        }
+                        .accessibilityIdentifier("transactionAutomation.clearHomeLocation")
+                    }
 
                     // Clearing needs the same >= 26.4.0 server, so this
                     // lives inside the gate too (GH #147).
@@ -146,27 +122,8 @@ struct TransactionAutomationSettingsView: View {
                    budgetStore.currentBudgetId != nil,
                    budgetStore.isConnected {
                     Text(String(localized: "Payee locations require Actual Server 26.4.0 or later."))
-                }
-            }
-
-            Section {
-                Toggle(String(localized: "New Transaction Alerts"), isOn: transactionNotificationsBinding)
-                Toggle(String(localized: "Credit Card Due Reminders"), isOn: creditCardDueRemindersBinding)
-
-                if notificationPermissionDenied {
-                    Button(String(localized: "Open Settings to Allow Notifications")) {
-                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                            UIApplication.shared.open(url)
-                        }
-                    }
-                }
-            } header: {
-                Text(String(localized: "Notifications"))
-            } footer: {
-                if notificationPermissionDenied {
-                    Text(String(localized: "Notifications are turned off for Actuali in the Settings app, so alerts can't be delivered."))
-                } else {
-                    Text(String(localized: "New transaction alerts require Background App Refresh. Credit card due reminders are sent 7, 5, 3, and 1 days before payment is due for cards with an unpaid balance."))
+                } else if budgetStore.payeeLocationWritesEnabled {
+                    Text(String(localized: "Save Location starts off for new transactions entered near Home. Home stays on this device."))
                 }
             }
 
@@ -204,29 +161,43 @@ struct TransactionAutomationSettingsView: View {
                     Text(String(localized: "Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet."))
                 }
             }
+
+            // Mirrors the web's Settings → Experimental features toggle. These
+            // are synced preferences shared with the web app.
+            Section {
+                Toggle(String(localized: "Budget Goal Templates"), isOn: Binding(
+                    get: { budgetStore.goalTemplatesEnabled },
+                    set: { enabled in
+                        Task { await budgetStore.setGoalTemplatesEnabled(enabled) }
+                    }
+                ))
+                .accessibilityIdentifier("transactionAutomation.goalTemplates")
+                .disabled(budgetStore.currentBudgetId == nil)
+                Toggle(String(localized: "Automations Editor"), isOn: Binding(
+                    get: { budgetStore.goalTemplatesUIEnabled },
+                    set: { enabled in
+                        Task { await budgetStore.setGoalTemplatesUIEnabled(enabled) }
+                    }
+                ))
+                .accessibilityIdentifier("transactionAutomation.automationsEditor")
+                .disabled(budgetStore.currentBudgetId == nil || !budgetStore.goalTemplatesEnabled)
+            } header: {
+                Text(String(localized: "Experimental"))
+            } footer: {
+                Text(String(localized: "Set budgeting goals per category with #template and #goal lines in category notes, or with the visual automations editor, then apply them from the Budget tab's options menu. Synced with the web app's Goal Templates experimental features."))
+            }
         }
         .readableWidth()
         .navigationTitle(String(localized: "Transactions & Automation"))
         .navigationBarTitleDisplayMode(.inline)
-        .contentMargins(.horizontal, 6, for: .scrollContent)
-        .task { await refreshNotificationPermissionState() }
+        .alert(String(localized: "Couldn't Set Home Location"), isPresented: $homeLocationFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(String(localized: "Actuali could not get your current location. Allow location access in Settings, then try again."))
+        }
         .sheet(isPresented: $showingWalletImport) {
             WalletImportView()
                 .environmentObject(budgetStore)
         }
-    }
-
-    private func enableTransactionNotifications() async {
-        let center = UNUserNotificationCenter.current()
-        let granted = await (try? center.requestAuthorization(options: [.alert, .sound])) ?? false
-        notificationPermissionDenied = !granted
-    }
-
-    /// Permission can change in the Settings app while we're backgrounded;
-    /// re-check whenever the screen appears.
-    private func refreshNotificationPermissionState() async {
-        guard transactionNotificationsEnabled || creditCardDueNotificationsEnabled else { return }
-        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
-        notificationPermissionDenied = status == .denied
     }
 }

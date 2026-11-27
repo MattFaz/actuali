@@ -5,5 +5,11 @@ import WidgetKit
 struct ActualiWidgetsBundle: WidgetBundle {
     var body: some Widget {
         CategoryBalanceWidget()
+        AccountBalanceWidget()
+        NetWorthWidget()
+        ToBeBudgetedWidget()
+        UpcomingBillsWidget()
+        SpendingSummaryWidget()
+        QuickAddTransactionWidget()
     }
 }

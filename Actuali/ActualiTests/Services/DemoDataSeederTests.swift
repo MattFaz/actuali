@@ -25,6 +25,7 @@ struct DemoDataSeederTests {
     private static let trackingSeed = Result { try seed(tracking: true) }
     private static let uncategorizedSeed = Result { try seed(seedUncategorized: true) }
     private static let unsupportedBankSyncSeed = Result { try seed(seedUnsupportedBankSync: true) }
+    private static let goalTemplatesSeed = Result { try seed(goalTemplatesEnabled: true) }
     private static let august31Seed = Result {
         try seed(now: Calendar(identifier: .gregorian)
             .date(from: DateComponents(year: 2026, month: 8, day: 31, hour: 12))!)
@@ -34,12 +35,14 @@ struct DemoDataSeederTests {
         tracking: Bool = false,
         seedUncategorized: Bool = false,
         seedUnsupportedBankSync: Bool = false,
+        goalTemplatesEnabled: Bool = false,
         now: Date = Date()
     ) throws -> Seed {
         try DemoDataSeeder.seed(
             tracking: tracking,
             seedUncategorized: seedUncategorized,
             seedUnsupportedBankSync: seedUnsupportedBankSync,
+            goalTemplatesEnabled: goalTemplatesEnabled,
             now: now
         )
         let copy = FileManager.default.temporaryDirectory
@@ -117,12 +120,86 @@ struct DemoDataSeederTests {
         #expect(!newest.cleared)
     }
 
-    /// Two pages so the demo exercises the dashboard switcher (GH #120);
-    /// "Main" is first so it's the default dashboard on open.
-    @Test func seedsTwoDashboardPages() async throws {
+    /// Several pages so the demo exercises the dashboard switcher (GH #120);
+    /// "Main" is first so it's the default dashboard on open. "All Reports"
+    /// holds one of every remaining widget type for manual testing.
+    @Test func seedsDashboardPages() async throws {
         let database = try open(Self.defaultSeed)
         let pages = try await database.fetchDashboardPages()
-        #expect(pages.map(\.name) == ["Main", "Trends"])
+        #expect(pages.map(\.name) == ["Main", "Trends", "All Reports"])
+    }
+
+    /// Every card on "All Reports" has to show something: an empty or
+    /// unsupported card there would make the page useless for trying the
+    /// cards and their detail pages.
+    @Test func allReportsDashboardCoversEveryOtherWidgetTypeWithData() async throws {
+        let database = try open(Self.defaultSeed)
+        let pages = try await database.fetchDashboardPages()
+        let page = try #require(pages.first { $0.name == "All Reports" })
+        let widgets = try await database.fetchWidgets(pageId: page.id)
+        #expect(widgets.map(\.typeLabel) == [
+            "Notes", "Summary", "Summary", "Custom Report", "Custom Report", "Custom Report", "Custom Report",
+            "Custom Report", "Custom Report",
+            "Calendar", "Sankey", "Budget Analysis", "Balance Forecast", "Crossover", "Monte Carlo",
+        ])
+
+        let transactions = try await database.fetchTransactionsForReports()
+        let groups = try await database.fetchCategoryGroups()
+        let accounts = try await database.fetchAccounts()
+        let today = Date()
+
+        let reportIds = widgets.compactMap { widget -> String? in
+            if case .customReport(_, let meta) = widget {
+                return meta?.id
+            }
+            return nil
+        }
+        let configs = try await database.fetchCustomReportConfigs(ids: reportIds)
+        #expect(configs.count == 6)
+        let context = try await CustomReportEngine.ReportContext(
+            categories: groups.flatMap(\.categories), groups: groups,
+            offBudgetAccountIds: Set(accounts.filter(\.offBudget).map(\.id)), firstDayOfWeekIdx: 0,
+            payees: database.fetchPayees()
+        )
+        var chartable = 0
+        var breakdowns = 0
+        for config in configs.values {
+            let data = CustomReportEngine.compute(config: config, transactions: transactions, reportContext: context,
+                                                  filterContext: .empty, today: today, locale: Locale(identifier: "en_US"))
+            if case .unsupported(let reason) = data.kind {
+                Issue.record("\(config.name) is unsupported: \(reason)")
+            }
+            chartable += data.chartDetail() == nil ? 0 : 1
+            breakdowns += data.breakdown == nil ? 0 : 1
+        }
+        // The line, stacked and bar reports open a chart page; the two donuts
+        // and the table open a list.
+        #expect(chartable == 3)
+        #expect(breakdowns == 3)
+
+        for widget in widgets {
+            switch widget {
+            case .calendar(_, let meta):
+                let data = CalendarEngine.compute(meta: meta, transactions: transactions, today: today, firstDayOfWeekIdx: 0)
+                #expect(data.latestActiveDay != nil)
+            case .sankey(_, let meta):
+                let data = SankeyEngine.compute(meta: meta, transactions: transactions, categoryGroups: groups,
+                                                budget: SankeyBudgetInput(), today: today, context: .empty,
+                                                locale: Locale(identifier: "en_US"))
+                #expect(data.hasDrawableFlows)
+            case .crossover(_, let meta):
+                let data = CrossoverEngine.compute(meta: meta, transactions: transactions, categories: groups.flatMap(\.categories),
+                                                   accountIds: accounts.map(\.id), today: today)
+                #expect(data.points.count >= 2)
+            case .monteCarlo(_, let meta):
+                let data = MonteCarloEngine.compute(meta: meta, accountBalances: Dictionary(
+                    accounts.map { ($0.id, $0.balance) }, uniquingKeysWith: { first, _ in first }
+                ))
+                #expect(data.percentileBands.count >= 2)
+            default:
+                break
+            }
+        }
     }
 
     @Test func seededDashboardWidgetsAllParseToSupportedTypes() async throws {
@@ -216,6 +293,47 @@ struct DemoDataSeederTests {
         }
     }
 
+    @Test func seedsAccountGroupsForReordering() async throws {
+        let database = try open(Self.defaultSeed)
+        let groups = try await database.fetchAccountGroups()
+        let accounts = try await database.fetchAccounts()
+        let chequingId = try #require(groups.first { $0.name == "Chequing" }?.id)
+        let savingsId = try #require(groups.first { $0.name == "Savings" }?.id)
+
+        #expect(groups.map(\.name) == ["Chequing", "Savings"])
+        #expect(accounts.first { $0.name == "Chase Checking" }?.groupId == chequingId)
+        #expect(accounts.first { $0.name == "Apple Card" }?.groupId == chequingId)
+        #expect(accounts.first { $0.name == "Ally Savings" }?.groupId == savingsId)
+    }
+
+    @Test func localDemoBudgetReordersAccountsAndGroupsWithoutSync() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        let pendingImports = PendingImportStore(fileURL: tempDirectory.appendingPathComponent("pending.json"))
+        let store = BudgetStore.previewInstance()
+        defer {
+            try? FileManager.default.removeItem(at: tempDirectory)
+            store.lastViewedBudgetMonth = nil
+        }
+
+        await store.loadDemoData(pendingImports: pendingImports)
+
+        let chequing = try #require(store.accountGroups.first { $0.name == "Chequing" })
+        let savings = try #require(store.accountGroups.first { $0.name == "Savings" })
+        let chequingAccounts = store.accounts.filter { $0.groupId == chequing.id }
+        let chase = try #require(chequingAccounts.first { $0.name == "Chase Checking" })
+
+        #expect(chequingAccounts.map(\.name) == ["Chase Checking", "Apple Card"])
+
+        try await store.dropAccount(
+            chase.id, at: chequingAccounts.count, among: chequingAccounts, groupId: chequing.id
+        )
+        #expect(store.accounts.filter { $0.groupId == chequing.id }.map(\.name) == ["Apple Card", "Chase Checking"])
+
+        try await store.moveAccountGroup(id: chequing.id, before: nil)
+        #expect(store.accountGroups.map(\.id) == [savings.id, chequing.id])
+    }
+
     @Test func everyAccountHasATransferPayee() async throws {
         let database = try open(Self.defaultSeed)
         let accounts = try await database.fetchAccounts()
@@ -245,6 +363,16 @@ struct DemoDataSeederTests {
                     "\(account.name) starting balance miscategorized")
         }
         #expect(try await database.fetchUncategorizedCount() == 0)
+    }
+
+    /// Goal-template UI tests need the synced Actual preference but must not
+    /// enable it through a SyncClient-dependent settings write.
+    @Test func goalTemplatesSeedEnablesTheSyncedFlag() async throws {
+        let defaultDatabase = try open(Self.defaultSeed)
+        #expect(try await defaultDatabase.fetchPreference(id: "flags.goalTemplatesEnabled") == nil)
+
+        let enabledDatabase = try open(Self.goalTemplatesSeed)
+        #expect(try await enabledDatabase.fetchPreference(id: "flags.goalTemplatesEnabled") == "true")
     }
 
     /// The demo tracks a loan and a deposit so both features show in demo
@@ -418,6 +546,25 @@ struct DemoDataSeederTests {
         // value, so assert the id before the month.
         #expect(store.currentBudgetId == DemoDataSeeder.budgetId)
         #expect(store.lastViewedBudgetMonth == nil)
+    }
+
+    /// New-transaction marks are keyed by transaction id, and a reseed mints
+    /// new ids, so marks from the last demo session must not survive it.
+    @Test func loadDemoDataForgetsNewTransactionMarks() async throws {
+        let key = "unreviewedTransactions.\(DemoDataSeeder.budgetId)"
+        UserDefaults.standard.set(["stale-transaction": "stale-account"], forKey: key)
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = DemoDataSeeder.budgetId
+        #expect(store.unreviewedTransactions == ["stale-transaction": "stale-account"])
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let pendingImports = PendingImportStore(fileURL: tempDir.appendingPathComponent("pending.json"))
+
+        await store.loadDemoData(pendingImports: pendingImports)
+
+        #expect(store.unreviewedTransactions.isEmpty)
+        #expect(UserDefaults.standard.dictionary(forKey: key)?.isEmpty ?? true)
     }
 
     @Test func removeSamplePendingImportKeepsOtherDemoImports() throws {

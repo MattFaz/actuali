@@ -36,6 +36,11 @@ enum TestSchema {
         tombstone INTEGER DEFAULT 0
     )
     """
+    static let banks = """
+    CREATE TABLE banks (
+        id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
+    )
+    """
     static let payeeMapping = "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)"
     static let categories = """
     CREATE TABLE categories (
@@ -102,7 +107,7 @@ enum TestSchema {
 
     /// The tables every transaction-writing suite needs.
     static let core = [
-        accounts, transactions, payees, payeeMapping, categories, categoryGroups,
+        accounts, banks, transactions, payees, payeeMapping, categories, categoryGroups,
         categoryMapping, messagesCrdt,
     ]
 
@@ -376,5 +381,16 @@ extension URLRequest {
             data.append(buffer, count: read)
         }
         return data
+    }
+}
+
+/// Deterministic, so a failure reproduces.
+struct SeededGenerator {
+    var state: UInt64 = 0x9e3779b97f4a7c15
+
+    mutating func next(_ bound: UInt64) -> UInt64 {
+        state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+        // The top 48 bits: enough to cover every millisecond `parse` accepts.
+        return (state >> 16) % bound
     }
 }

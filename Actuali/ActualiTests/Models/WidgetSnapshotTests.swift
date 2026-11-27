@@ -229,4 +229,198 @@ struct WidgetSnapshotTests {
             WidgetCategoryBalance(id: "grocery", name: "Groceries", available: -2000, formattedAvailable: "<-2000>"),
         ])
     }
+
+    // MARK: - Accounts & Net Worth
+
+    @Test func makePopulatesAccountsAndNetWorth() {
+        let accounts = [
+            Account(id: "closed", name: "Old Checking", type: .checking, offBudget: false, closed: true, sortOrder: 0, balance: 10000),
+            Account(id: "savings", name: "Savings", type: .savings, offBudget: false, closed: false, sortOrder: 2, balance: 500_000),
+            Account(id: "checking", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 1, balance: 250_000),
+        ]
+
+        let snapshot = WidgetSnapshot.make(
+            from: [],
+            month: "2026-08",
+            balancesHidden: false,
+            generatedAt: Date(),
+            format: { "$\($0)" },
+            accounts: accounts
+        )
+
+        #expect(snapshot.accounts?.map(\.id) == ["checking", "savings"])
+        #expect(snapshot.netWorth == 750_000)
+        #expect(snapshot.formattedNetWorth == "$750000")
+    }
+
+    @Test func accountSelectionMatching() {
+        var snapshot = sampleSnapshot()
+        snapshot.accounts = [
+            WidgetAccountBalance(id: "1", name: "Checking", balance: 100, formattedBalance: "$1", type: "checking", offBudget: false),
+            WidgetAccountBalance(id: "2", name: "Savings", balance: 200, formattedBalance: "$2", type: "savings", offBudget: false),
+            WidgetAccountBalance(id: "3", name: "Investment", balance: 300, formattedBalance: "$3", type: "investment", offBudget: true),
+        ]
+
+        // Custom selection
+        let matched = snapshot.accounts(matching: ["3", "1"], limit: 2)
+        #expect(matched.map(\.id) == ["3", "1"])
+
+        // Empty selection falls back to on-budget accounts
+        let fallback = snapshot.accounts(matching: [], limit: 4)
+        #expect(fallback.map(\.id) == ["1", "2"])
+    }
+
+    // MARK: - To Be Budgeted & Spending
+
+    @Test func makePopulatesToBeBudgetedAndSpending() {
+        let month = BudgetMonth(
+            month: "2026-08",
+            categoryBudgets: [
+                CategoryBudget(
+                    month: "2026-08", categoryId: "c1", categoryName: "Groceries",
+                    groupId: "g1", groupName: "Everyday", groupSortOrder: 0, categorySortOrder: 0,
+                    budgeted: 200_000, spent: -150_000, available: 50000, carryover: 0
+                ),
+            ],
+            incomeCategories: [
+                IncomeCategory(
+                    month: "2026-08", categoryId: "i1", categoryName: "Salary",
+                    groupName: "Income", sortOrder: 0, budgeted: 0, received: 300_000
+                ),
+            ],
+            toBudget: 45000
+        )
+
+        let snapshot = WidgetSnapshot.make(
+            from: [],
+            month: "2026-08",
+            balancesHidden: false,
+            generatedAt: Date(),
+            format: { "$\($0)" },
+            budgetMonth: month
+        )
+
+        #expect(snapshot.toBudget == 45000)
+        #expect(snapshot.formattedToBudget == "$45000")
+        #expect(snapshot.totalBudgeted == 200_000)
+        #expect(snapshot.totalSpent == -150_000)
+        #expect(snapshot.formattedTotalIncome == "$300000")
+    }
+
+    // MARK: - Upcoming Bills
+
+    @Test func makePopulatesUpcomingBills() {
+        let accounts = [
+            Account(id: "a1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 1, balance: 100),
+            Account(id: "closed-acc", name: "Old", type: .checking, offBudget: false, closed: true, sortOrder: 2, balance: 0),
+        ]
+
+        let schedules = [
+            ScheduleSummary(
+                id: "s1", name: "Electric", ruleId: nil,
+                nextDate: DayDate(year: 2026, month: 8, day: 25), nextDateRowId: nil, baseNextDateTs: nil,
+                accountId: "a1", payeeId: nil,
+                amount: .fixed(-12000), amountOp: .isExactly, dateOp: nil,
+                dateCondition: nil, postsTransaction: true, completed: false,
+                customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+                conditionsJSON: nil, actionsJSON: nil
+            ),
+            ScheduleSummary(
+                id: "s2", name: "Completed Bill", ruleId: nil,
+                nextDate: DayDate(year: 2026, month: 8, day: 20), nextDateRowId: nil, baseNextDateTs: nil,
+                accountId: "a1", payeeId: nil,
+                amount: .fixed(-5000), amountOp: .isExactly, dateOp: nil,
+                dateCondition: nil, postsTransaction: true, completed: true,
+                customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+                conditionsJSON: nil, actionsJSON: nil
+            ),
+            ScheduleSummary(
+                id: "s3", name: "Internet", ruleId: nil,
+                nextDate: DayDate(year: 2026, month: 8, day: 22), nextDateRowId: nil, baseNextDateTs: nil,
+                accountId: "a1", payeeId: nil,
+                amount: .fixed(-6000), amountOp: .isExactly, dateOp: nil,
+                dateCondition: nil, postsTransaction: true, completed: false,
+                customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+                conditionsJSON: nil, actionsJSON: nil
+            ),
+            ScheduleSummary(
+                id: "s-paid", name: "Rent", ruleId: nil,
+                nextDate: DayDate(year: 2026, month: 8, day: 21), nextDateRowId: nil, baseNextDateTs: nil,
+                accountId: "a1", payeeId: nil,
+                amount: .fixed(-100_000), amountOp: .isExactly, dateOp: nil,
+                dateCondition: nil, postsTransaction: true, completed: false,
+                customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+                conditionsJSON: nil, actionsJSON: nil
+            ),
+            ScheduleSummary(
+                id: "s-closed", name: "Old Bill", ruleId: nil,
+                nextDate: DayDate(year: 2026, month: 8, day: 23), nextDateRowId: nil, baseNextDateTs: nil,
+                accountId: "closed-acc", payeeId: nil,
+                amount: .fixed(-3000), amountOp: .isExactly, dateOp: nil,
+                dateCondition: nil, postsTransaction: true, completed: false,
+                customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+                conditionsJSON: nil, actionsJSON: nil
+            ),
+            ScheduleSummary(
+                id: "s-empty-name", name: "", ruleId: nil,
+                nextDate: DayDate(year: 2026, month: 8, day: 26), nextDateRowId: nil, baseNextDateTs: nil,
+                accountId: "a1", payeeId: "p1",
+                amount: .fixed(-4000), amountOp: .isExactly, dateOp: nil,
+                dateCondition: nil, postsTransaction: true, completed: false,
+                customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+                conditionsJSON: nil, actionsJSON: nil
+            ),
+        ]
+
+        let payees = [Payee(id: "p1", name: "Netflix", transferAccountId: nil)]
+
+        let snapshot = WidgetSnapshot.make(
+            from: [],
+            month: "2026-08",
+            balancesHidden: false,
+            generatedAt: Date(),
+            format: { "$\($0)" },
+            accounts: accounts,
+            schedules: schedules,
+            scheduleStatuses: ["s3": .due, "s-paid": .paid],
+            payees: payees
+        )
+
+        // Paid (s-paid), completed (s2), and closed account (s-closed) are dropped
+        #expect(snapshot.upcomingBills?.count == 3)
+        #expect(snapshot.upcomingBills?[0].id == "s3") // earlier date (Aug 22 vs Aug 25)
+        #expect(snapshot.upcomingBills?[0].status == .due)
+        #expect(snapshot.upcomingBills?[1].id == "s1")
+        #expect(snapshot.upcomingBills?[1].status == .upcoming)
+        #expect(snapshot.upcomingBills?[2].id == "s-empty-name")
+        #expect(snapshot.upcomingBills?[2].title == "Netflix") // empty name fell back to payee
+    }
+
+    @Test func upcomingBillsMarkMissedOverdueAndCapAtEight() {
+        let schedules = (1...10).map { day in
+            ScheduleSummary(
+                id: "s\(day)", name: "Bill \(day)", ruleId: nil,
+                nextDate: DayDate(year: 2026, month: 8, day: day), nextDateRowId: nil, baseNextDateTs: nil,
+                accountId: "a1", payeeId: nil,
+                amount: .fixed(-1000), amountOp: .isExactly, dateOp: nil,
+                dateCondition: nil, postsTransaction: true, completed: false,
+                customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+                conditionsJSON: nil, actionsJSON: nil
+            )
+        }
+
+        let snapshot = WidgetSnapshot.make(
+            from: [],
+            month: "2026-08",
+            balancesHidden: false,
+            generatedAt: Date(),
+            format: { "$\($0)" },
+            accounts: [Account(id: "a1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 1, balance: 0)],
+            schedules: schedules.reversed(),
+            scheduleStatuses: ["s1": .missed]
+        )
+
+        #expect(snapshot.upcomingBills?.map(\.id) == (1...8).map { "s\($0)" })
+        #expect(snapshot.upcomingBills?.first?.status == .overdue)
+    }
 }

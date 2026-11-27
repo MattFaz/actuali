@@ -36,8 +36,8 @@ struct SettingsView: View {
 
     static var preferencesItems: [SettingsItem] {
         [
-            SettingsItem(title: String(localized: "Budget View"), systemImage: "wallet.bifold", destination: { AnyView(BudgetViewSettingsView()) }),
             SettingsItem(title: String(localized: "Display"), systemImage: "iphone", destination: { AnyView(DisplaySettingsView()) }),
+            SettingsItem(title: String(localized: "Notifications"), systemImage: "bell", destination: { AnyView(NotificationsSettingsView()) }),
             SettingsItem(title: String(localized: "Privacy"), systemImage: "hand.raised", destination: { AnyView(PrivacySettingsView()) }),
             SettingsItem(title: String(localized: "Transactions & Automation"), systemImage: "arrow.left.arrow.right", destination: { AnyView(TransactionAutomationSettingsView()) }),
         ].sorted { Self.titlePrecedes($0.title, $1.title) }
@@ -45,7 +45,7 @@ struct SettingsView: View {
 
     static func manageItems(includeRules: Bool) -> [SettingsItem] {
         var items = [
-            SettingsItem(title: String(localized: "Bank Sync (SimpleFIN & Wallet)"), systemImage: "building.columns", destination: { AnyView(BankSyncSetupView()) }),
+            SettingsItem(title: String(localized: "Bank Sync"), systemImage: "building.columns", destination: { AnyView(BankSyncSetupView()) }),
             SettingsItem(title: String(localized: "Bills & Calendar"), systemImage: "calendar", destination: { AnyView(BillsCalendarView()) }),
             SettingsItem(title: String(localized: "History"), systemImage: "clock.arrow.circlepath", destination: { AnyView(HistoryView()) }),
             SettingsItem(title: String(localized: "Scheduled Transactions"), systemImage: "calendar.badge.clock", destination: { AnyView(SchedulesListView()) }),
@@ -164,7 +164,6 @@ struct SettingsView: View {
             }
             .readableWidth()
             .toolbar(.hidden, for: .navigationBar)
-            .contentMargins(.horizontal, 6, for: .scrollContent)
         }
         // Keep the store-wide loading indicator above the navigation stack so
         // operations started from any destination remain covered, not only

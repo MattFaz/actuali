@@ -141,14 +141,21 @@ struct TagTransactionsView: View {
                     )
                 } else {
                     ForEach(filteredTransactions) { transaction in
-                        TransactionListRow(
-                            transaction: transaction,
-                            showDate: true,
-                            isSelectionMode: .constant(false),
-                            isSelected: false,
-                            editing: $editingTransaction,
-                            onToggleSelect: {}
-                        )
+                        // Split lines display only, as in CategoryTransactionsView:
+                        // editing or deleting one leg would break the parent's amount.
+                        if transaction.parentId == nil {
+                            TransactionListRow(
+                                transaction: transaction,
+                                showDate: true,
+                                isSelectionMode: .constant(false),
+                                isSelected: false,
+                                editing: $editingTransaction,
+                                onToggleSelect: {}
+                            )
+                        } else {
+                            TransactionRow(transaction: transaction, showDate: true)
+                                .accessibilityIdentifier("transactionRow.\(transaction.id)")
+                        }
                     }
                 }
             }

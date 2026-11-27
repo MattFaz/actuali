@@ -87,6 +87,27 @@ struct BudgetDatabaseTransactionPagingSearchTests {
         #expect(pastEnd.isEmpty)
     }
 
+    @Test func accountIdsFilterTransactionsAndEmptyScopeReturnsNothing() async throws {
+        let (db, url) = try await makeTestDatabase(TestSchema.core)
+        defer { cleanup(url) }
+        try await seedLookups(db)
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, description, amount, date, sort_order) VALUES
+                    ('t-on-1',  'acct-1', 'payee-market', -1000, 20260601, 3),
+                    ('t-off-1', 'acct-2', 'payee-cafe',   -2000, 20260531, 2),
+                    ('t-off-2', 'acct-2', 'payee-market', -3000, 20260530, 1);
+            """)
+        }
+
+        let offBudget = try await db.fetchTransactions(accountIds: ["acct-2"])
+        #expect(offBudget.map(\.id) == ["t-off-1", "t-off-2"])
+
+        let emptyScope = try await db.fetchTransactions(accountIds: [])
+        #expect(emptyScope.isEmpty)
+    }
+
     // MARK: - Search: text fields
 
     @Test func searchMatchesPayeeCaseInsensitivelyAcrossFullHistory() async throws {

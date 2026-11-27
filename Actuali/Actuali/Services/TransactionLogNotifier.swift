@@ -25,8 +25,12 @@ enum TransactionLogNotifier {
     ///   transaction looks logged while the budget on the server is unchanged.
     static func notifySuccess(payee: String, amountCents: Int, currencyCode: String,
                               narrowSymbol: Bool = false, synced: Bool = true,
-                              numberFormat: ActualNumberFormat = .commaDot) async {
-        let center = UNUserNotificationCenter.current()
+                              numberFormat: ActualNumberFormat = .commaDot,
+                              settings: TransactionLogNotificationSettings = .init(),
+                              center: any NotificationPosting = UNUserNotificationCenter.current()) async {
+        // A locally saved row still needs its warning when ordinary
+        // Shortcut success confirmations are disabled.
+        guard !synced || settings.showsSuccessNotification else { return }
 
         let granted: Bool
         do {
@@ -63,9 +67,8 @@ enum TransactionLogNotifier {
     static func notifyFailure(message: String, payee: String?, amountCents: Int?,
                               currencyCode: String, narrowSymbol: Bool = false,
                               prefill: TransactionPrefill? = nil,
-                              numberFormat: ActualNumberFormat = .commaDot) async {
-        let center = UNUserNotificationCenter.current()
-
+                              numberFormat: ActualNumberFormat = .commaDot,
+                              center: any NotificationPosting = UNUserNotificationCenter.current()) async {
         // Request permission lazily on first call. Quietly ignore denial — without
         // permission we can't notify, but we still want the AppIntent to throw a
         // banner-visible error so the user isn't left in the dark.

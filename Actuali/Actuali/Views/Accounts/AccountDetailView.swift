@@ -1,7 +1,9 @@
 import SwiftUI
+import UIKit
 
 struct AccountDetailView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @ObservedObject private var accountIconStore = AccountIconCustomizationStore.shared
     let account: Account
 
     @State private var pager: TransactionPager?
@@ -10,6 +12,7 @@ struct AccountDetailView: View {
     /// under state that was scoped to the previous one.
     @State private var pagerAccountId: String?
     @State private var breakdown: AccountBalanceBreakdown?
+    @State private var loadedAccountIconImage: UIImage?
     @State private var showingBreakdown = false
     @State private var showingBillingCycle = false
     @State private var showingLoanDetails = false
@@ -27,6 +30,8 @@ struct AccountDetailView: View {
     /// paged transaction list, which only holds a window of the history.
     @State private var loanTotalPaid: Int?
     @State private var searchText = ""
+    @State private var isTransactionSearchActive = false
+    @FocusState private var isTransactionSearchFocused: Bool
     @State private var showingAddTransaction = false
     @State private var showingReconcile = false
     @State private var showingWalletImport = false
@@ -53,12 +58,14 @@ struct AccountDetailView: View {
     /// layout reuses this view across selections; `dataVersion` covers every
     /// mutation (row toggles, deletes, sheet edits, sync, scheduled posts), so
     /// those sites carry no reload calls of their own; the cycle replaces a
-    /// separate statement-day observer.
+    /// separate statement-day observer. The running-balance preference is in
+    /// the key because the fetch only computes balances while it is on.
     private struct ReloadID: Equatable {
         let accountId: String
         let dataVersion: Int
         let search: String
         let statusFilter: TransactionStatusFilter
+        let showRunningBalance: Bool
         let cycle: CreditCardCycle?
     }
 
@@ -68,8 +75,16 @@ struct AccountDetailView: View {
             dataVersion: budgetStore.dataVersion,
             search: searchText,
             statusFilter: budgetStore.transactionStatusFilter,
+            showRunningBalance: showRunningBalance,
             cycle: budgetStore.activeCreditCardCycle(for: account.id)
         )
+    }
+
+    private var accountIconPhotoLoadID: String? {
+        guard let budgetID = budgetStore.currentBudgetId,
+              let filename = accountIconStore.customization(for: budgetID, accountID: account.id)?.photoFilename
+        else { return nil }
+        return "\(budgetID)|\(account.id)|\(filename)|\(accountIconStore.photoRevision)"
     }
 
     private var statementDue: CreditCardCycle.StatementDue? {
@@ -81,24 +96,22 @@ struct AccountDetailView: View {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
     }
 
-    /// Running balances are shown only when the loaded page is the unfiltered
-    /// register (no search, no status chip). The flag snapshots the state
-    /// that the loaded page was fetched under.
+    /// Running balances are shown for the unsearched register, status
+    /// filters included. The flag snapshots the state the page used.
     private var shouldShowRunningBalance: Bool {
         showRunningBalance && loadedFullHistory
     }
 
-    /// Pure so the visibility rule can be covered without constructing a view.
-    nonisolated static func allowsRunningBalance(
+    /// The balance the fetch walks back from, or nil to skip the column. A
+    /// search hides it: matches skip rows, so no per-row balance is honest.
+    /// Pure so the rule can be covered without constructing a view.
+    nonisolated static func runningBalanceAnchor(
+        showRunningBalance: Bool,
         isSearching: Bool,
-        statusFilter: TransactionStatusFilter
-    ) -> Bool {
-        !isSearching && statusFilter == .all
-    }
-
-    private var transactionsForDisplay: [Transaction] {
-        guard shouldShowRunningBalance else { return pager?.transactions ?? [] }
-        return (pager?.transactions ?? []).withRunningBalances(startingAt: currentBalance)
+        currentBalance: Int
+    ) -> Int? {
+        guard showRunningBalance, !isSearching else { return nil }
+        return currentBalance
     }
 
     /// Limit and headroom for a tracked card with a limit set, else nil. Read
@@ -131,7 +144,7 @@ struct AccountDetailView: View {
         scheduleLoadFailed: Bool,
         showUpcomingSchedules: Bool = true
     ) -> Bool {
-        isSearching || statusFilter != .all || !showUpcomingSchedules
+        isSearching || !statusFilter.includesUpcomingSchedules || !showUpcomingSchedules
             || (schedulesLoaded && !hasUpcomingSchedules && !scheduleLoadFailed)
     }
 
@@ -174,10 +187,18 @@ struct AccountDetailView: View {
         }
         let store = budgetStore
         let accountId = account.id
+        let showRunningBalance = $showRunningBalance
         let created = TransactionPager { offset, limit, search in
-            await store.fetchTransactions(
+            let currentBalance = store.accounts.first { $0.id == accountId }?.balance ?? account.balance
+            let runningBalanceStartingAt = Self.runningBalanceAnchor(
+                showRunningBalance: showRunningBalance.wrappedValue,
+                isSearching: search != nil,
+                currentBalance: currentBalance
+            )
+            return await store.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
-                statusFilter: store.transactionStatusFilter
+                statusFilter: store.transactionStatusFilter,
+                runningBalanceStartingAt: runningBalanceStartingAt
             )
         }
         pager = created
@@ -187,12 +208,9 @@ struct AccountDetailView: View {
 
     private func reload() async {
         let pager = currentPager()
-        // Captured before the fetch, which reads the same store flags, so a
-        // filter flipped mid-fetch can't label that page unfiltered.
-        let fullHistory = Self.allowsRunningBalance(
-            isSearching: searchQuery != nil,
-            statusFilter: budgetStore.transactionStatusFilter
-        )
+        // Captured before the fetch, so a search typed mid-fetch can't label
+        // that page unsearched.
+        let fullHistory = searchQuery == nil
         async let newBreakdown = budgetStore.balanceBreakdown(accountId: account.id)
         async let newNote = budgetStore.fetchNote(id: EntityNote.accountNoteId(account.id))
         async let newCycleSpend = fetchCycleSpend()
@@ -434,10 +452,16 @@ struct AccountDetailView: View {
         )
         breakdownRow(
             config.kind == .recurring
-                ? String(localized: "Monthly Instalment")
+                ? String(localized: "Contribution Amount")
                 : String(localized: "Deposit Amount"),
             amount: config.amount
         )
+        if config.kind == .recurring {
+            breakdownRow(
+                String(localized: "Contribution Frequency"),
+                value: DepositEditorView.contributionFrequencyLabel(config.contributionFrequency)
+            )
+        }
         breakdownRow(String(localized: "Interest Rate"), value: LoanSummaryRow.percentText(config.annualRatePercent / 100))
         breakdownRow(String(localized: "Compounding"), value: DepositEditorView.compoundingLabel(config.compounding))
         breakdownRow(String(localized: "Opened"), value: config.openedOn.displayText)
@@ -502,6 +526,22 @@ struct AccountDetailView: View {
                 selectedTransactionIds.formSymmetricDifference([transaction.id])
             }
         )
+        // In the row's leading margin, the way Mail marks unread.
+        .overlay(alignment: .leading) {
+            if budgetStore.unreviewedTransactions[transaction.id] != nil {
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 7, height: 7)
+                    .offset(x: -12)
+                    .accessibilityLabel(String(localized: "\(1) new transactions"))
+                    .accessibilityIdentifier("transactionRow.unreviewed.\(transaction.id)")
+            }
+        }
+        .swipeActions(edge: .leading) {
+            if budgetStore.unreviewedTransactions[transaction.id] != nil {
+                MarkReviewedButton(transactionId: transaction.id)
+            }
+        }
     }
 
     private func balanceColumn(
@@ -597,6 +637,35 @@ struct AccountDetailView: View {
             ), let headroom {
                 breakdownRow(String(localized: "Available Credit"), amount: headroom.available)
                 breakdownRow(String(localized: "Credit Limit"), amount: headroom.limit)
+            }
+
+            if let linked = budgetStore.bankSyncAccount(forAccountId: account.id) {
+                let isSyncing = budgetStore.bankSyncingAccountIds.contains(account.id)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        BankSyncBadge(linked: linked, isSyncing: isSyncing)
+                        Text(String(localized: "Last Bank Sync"))
+                        Spacer()
+                        Group {
+                            if isSyncing {
+                                Text(String(localized: "Syncing..."))
+                            } else if let lastSync = linked.lastSync {
+                                Text(lastSync, format: .relative(presentation: .named))
+                            } else {
+                                Text(String(localized: "Never"))
+                            }
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    if !isSyncing, let message = linked.attentionMessage {
+                        Text(message)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .font(.footnote)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("accountBankSync.status")
             }
         }
     }
@@ -813,7 +882,12 @@ struct AccountDetailView: View {
     }
 
     @ViewBuilder private var transactionSection: some View {
-        if showUpcomingSchedules, searchQuery == nil, budgetStore.transactionStatusFilter == .all {
+        let shouldShowUpcomingSchedules = showUpcomingSchedules
+            && searchQuery == nil && budgetStore.transactionStatusFilter.includesUpcomingSchedules
+        let scheduledEntries = shouldShowUpcomingSchedules && budgetStore.schedulesLoaded
+            ? upcomingScheduleEntries : []
+
+        if shouldShowUpcomingSchedules {
             if budgetStore.scheduleLoadError != nil {
                 Section {
                     Label(
@@ -823,15 +897,15 @@ struct AccountDetailView: View {
                     .foregroundStyle(.secondary)
                 }
             }
-            if budgetStore.schedulesLoaded, !upcomingScheduleEntries.isEmpty {
+            if !scheduledEntries.isEmpty {
                 UpcomingScheduleSections(
-                    entries: upcomingScheduleEntries,
-                    showRunningBalance: showRunningBalance
+                    entries: scheduledEntries,
+                    showRunningBalance: shouldShowRunningBalance
                 )
             }
         }
         if let pager, !pager.transactions.isEmpty {
-            let displayedTransactions = transactionsForDisplay
+            let displayedTransactions = pager.transactions
             if budgetStore.transactionDisplayMode == .groupedByDate {
                 let groups = displayedTransactions.groupedByDate()
                 ForEach(groups) { group in
@@ -866,7 +940,7 @@ struct AccountDetailView: View {
                         isSearching: searchQuery != nil,
                         statusFilter: budgetStore.transactionStatusFilter,
                         schedulesLoaded: budgetStore.schedulesLoaded,
-                        hasUpcomingSchedules: !upcomingScheduleEntries.isEmpty,
+                        hasUpcomingSchedules: !scheduledEntries.isEmpty,
                         scheduleLoadFailed: budgetStore.scheduleLoadError != nil,
                         showUpcomingSchedules: showUpcomingSchedules
                     ) {
@@ -929,6 +1003,16 @@ struct AccountDetailView: View {
                 }
             }
         }
+        if budgetStore.unreviewedCount(forAccountId: account.id) > 0 {
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    budgetStore.markAccountReviewed(account.id)
+                } label: {
+                    Label(String(localized: "Mark All Reviewed"), systemImage: "checkmark.circle")
+                }
+                .accessibilityIdentifier("accountDetail.markAllReviewed")
+            }
+        }
         if budgetStore.bankSyncAccount(forAccountId: account.id) != nil {
             ToolbarItem(placement: .secondaryAction) {
                 Button {
@@ -981,7 +1065,6 @@ struct AccountDetailView: View {
             notesSection.animation(AppAnimation.disclosure, value: hideNotes)
             transactionSection
         }
-        .contentMargins(.horizontal, 6, for: .scrollContent)
         // The header sections (balance, billing cycle, note) are one or two rows
         // each, so the stock inset-grouped gaps pushed the transactions off
         // screen. Tighter spacing top and between.
@@ -989,8 +1072,48 @@ struct AccountDetailView: View {
         .listSectionSpacing(.compact)
         .readableWidth()
         .navigationTitle(account.name)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: accountIconPhotoLoadID) {
+            loadedAccountIconImage = nil
+            guard let budgetID = budgetStore.currentBudgetId,
+                  accountIconStore.customization(for: budgetID, accountID: account.id)?.photoFilename != nil else {
+                return
+            }
+            let image = await accountIconStore.loadImage(for: budgetID, accountID: account.id)
+            guard !Task.isCancelled else { return }
+            loadedAccountIconImage = image
+        }
+        .onDemandSearch(
+            text: $searchText,
+            isPresented: $isTransactionSearchActive,
+            isFocused: $isTransactionSearchFocused,
+            prompt: "Search transactions",
+            accessibilityPrefix: "accountDetails"
+        )
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 8) {
+                    if accountIconStore.iconsEnabled(for: budgetStore.currentBudgetId) {
+                        let customization = accountIconStore.customization(
+                            for: budgetStore.currentBudgetId, accountID: account.id
+                        )
+                        AccountTypeAvatar(
+                            account: account,
+                            hasLoan: budgetStore.activeLoanConfig(for: account.id) != nil,
+                            hasDeposit: budgetStore.activeDepositConfig(for: account.id) != nil,
+                            hasCreditCard: budgetStore.activeCreditCardCycle(for: account.id) != nil,
+                            customSymbol: customization?.symbolName,
+                            customTintHex: customization?.tintHex,
+                            customImage: loadedAccountIconImage
+                        )
+                        .accessibilityHidden(true)
+                    }
+                    Text(account.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .combine)
+            }
             accountToolbarContent
             runningBalanceToolbarItem
         }
@@ -1082,6 +1205,13 @@ struct AccountDetailView: View {
         .sheet(item: $selectedStatement) { statement in
             CreditCardStatementDetailView(account: account, statement: statement)
                 .environmentObject(budgetStore)
+        }
+        .onChange(of: account.id) {
+            // Search belongs to the selected account; don't carry a hidden filter
+            // or an open search field into the next account in the iPad split view.
+            isTransactionSearchActive = false
+            isTransactionSearchFocused = false
+            searchText = ""
         }
         .task(id: reloadID) {
             let searchChanged = previousSearchText != searchText

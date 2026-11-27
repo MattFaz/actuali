@@ -6,6 +6,7 @@ import Foundation
 /// Refresh switch remains the off button for background activity.
 struct TransactionNotificationSettings {
     static let key = "transactionNotificationsEnabled"
+    static let includesOffBudgetKey = "transactionNotificationsIncludeOffBudget"
 
     private let defaults: UserDefaults
 
@@ -15,6 +16,30 @@ struct TransactionNotificationSettings {
 
     var isEnabled: Bool {
         get { defaults.bool(forKey: Self.key) }
+        nonmutating set { defaults.set(newValue, forKey: Self.key) }
+    }
+
+    /// Whether off-budget (tracking) account transactions are included
+    /// (GH #755). Default on, so existing opted-in users see no change.
+    var includesOffBudget: Bool {
+        get { defaults.object(forKey: Self.includesOffBudgetKey) as? Bool ?? true }
+        nonmutating set { defaults.set(newValue, forKey: Self.includesOffBudgetKey) }
+    }
+}
+
+/// Controls the success banner shown after an iOS Shortcut logs a transaction.
+/// This is separate from background transaction alerts and defaults on.
+struct TransactionLogNotificationSettings {
+    static let key = "transactionLogSuccessNotificationEnabled"
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    var showsSuccessNotification: Bool {
+        get { defaults.object(forKey: Self.key) as? Bool ?? true }
         nonmutating set { defaults.set(newValue, forKey: Self.key) }
     }
 }

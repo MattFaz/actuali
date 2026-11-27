@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Sheet showing pending transaction imports queued from shared messages.
+/// Sheet showing pending transaction imports queued from shared messages,
+/// and below them what this device's bank sync imported since it was last open.
 /// Users can approve (logs to budget), edit (opens add-transaction form),
 /// or dismiss each import.
 struct PendingImportsView: View {
@@ -25,71 +26,109 @@ struct PendingImportsView: View {
     @State private var errorMessage: String?
     @State private var deferredFailureCount: Int?
     @State private var isProcessing = false
+    /// What this device's bank sync imported and nobody has looked at yet.
+    /// Already in the budget, so there is nothing to approve. The marks stay
+    /// until marked reviewed: closing the sheet is not a decision.
+    @State private var newTransactions: [Transaction] = []
+    @State private var editingTransaction: Transaction?
+    /// The tab the person picked; until they do, whichever has something
+    /// to decide comes first.
+    @State private var pickedTab: Tab?
+
+    /// Two tabs, because the sheet holds two kinds of thing: rows that need a
+    /// decision before they enter the budget, and rows that are already in.
+    private enum Tab {
+        case toApprove
+        case imported
+    }
 
     var body: some View {
         NavigationStack {
             Group {
-                let visibleImports = store.visibleImports()
-                if visibleImports.isEmpty {
+                if approvalCount == 0, importedCount == 0 {
                     ContentUnavailableView(
                         "No Pending Imports",
                         systemImage: "tray",
                         description: Text("Share a bank message to Actuali to import transactions")
                     )
                 } else {
-                    List {
-                        ForEach(visibleImports) { item in
-                            Button {
-                                editingItem = item
-                            } label: {
-                                PendingImportRow(item: item)
-                            }
-                            .buttonStyle(.plain)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    do { try store.remove(id: item.id) } catch {
-                                        errorMessage = PendingImportApprover.localizedErrorMessage(
-                                            for: error, locale: locale
-                                        )
-                                    }
-                                } label: {
-                                    Label("Dismiss", systemImage: "trash")
-                                }
-                            }
-                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                Button {
-                                    approve(item)
-                                } label: {
-                                    Label("Approve", systemImage: "checkmark")
-                                }
-                                .tint(.green)
-                            }
+                    // An empty tab is never shown: with one kind only there
+                    // is no picker, just that list.
+                    // The tab titles say which list this is; without them a
+                    // line under the list has to.
+                    let hasTabs = approvalCount > 0 && importedCount > 0
+                    let tab = currentTab
+                    Group {
+                        switch tab {
+                        case .toApprove: approvalList(
+                                imports: store.visibleImports(),
+                                staged: budgetStore.stagedBankTransactions,
+                                showsNote: !hasTabs
+                            )
+                        case .imported: importedList(showsNote: !hasTabs)
                         }
-
-                        if visibleImports.count > 1 {
-                            Section {
-                                Button {
-                                    approveAll()
-                                } label: {
+                    }
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if hasTabs {
+                            Picker(String(localized: "Review"), selection: Binding(
+                                get: { tab },
+                                set: { pickedTab = $0 }
+                            )) {
+                                Text(verbatim: "\(String(localized: "To Approve")) \(approvalCount)").tag(Tab.toApprove)
+                                Text(verbatim: "\(String(localized: "Imported")) \(importedCount)").tag(Tab.imported)
+                            }
+                            .pickerStyle(.segmented)
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .background(.bar)
+                            .accessibilityIdentifier("review.tabs")
+                        }
+                    }
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        if tab == .toApprove, approvalCount > 1 {
+                            Button {
+                                approveAll()
+                            } label: {
+                                Group {
                                     if isProcessing {
                                         ProgressView()
-                                            .frame(maxWidth: .infinity)
                                     } else {
-                                        Label("Approve All", systemImage: "checkmark.circle.fill")
-                                            .frame(maxWidth: .infinity)
+                                        Text(verbatim: "\(String(localized: "Approve All")) (\(approvalCount))")
+                                            .fontWeight(.semibold)
                                     }
                                 }
-                                .disabled(isProcessing)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
                             }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(isProcessing)
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .background(.bar)
+                            .accessibilityIdentifier("review.approveAll")
                         }
                     }
                 }
             }
-            .navigationTitle("Pending Imports")
+            // Not "Pending Imports": what a bank sync brought in is listed here too.
+            .navigationTitle(String(localized: "Review"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                }
+                // A plain toolbar button, not a filled one like Approve All:
+                // clearing marks tidies up, it doesn't change the budget.
+                if importedCount > 0, currentTab == .imported {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button(String(localized: "Mark All Reviewed")) {
+                            budgetStore.markAllReviewed()
+                            if approvalCount == 0 {
+                                dismiss()
+                            }
+                        }
+                        .accessibilityIdentifier("review.markAllReviewed")
+                    }
                 }
             }
             .alert("Import Failed", isPresented: Binding(
@@ -112,6 +151,123 @@ struct PendingImportsView: View {
                         .environmentObject(budgetStore)
                 }
             }
+            .sheet(item: $editingTransaction) { transaction in
+                AddTransactionView(editing: transaction)
+                    .environmentObject(budgetStore)
+            }
+            // An edit or delete bumps dataVersion, which is what re-reads the rows.
+            .task(id: budgetStore.dataVersion) {
+                newTransactions = await budgetStore.fetchUnreviewedTransactions()
+            }
+        }
+    }
+
+    /// Everything that isn't in the budget until approved: shared messages
+    /// and, with "Approve Before Importing" on, what a bank sync downloaded.
+    private func approvalList(
+        imports: [PendingImport], staged: [StagedBankTransaction], showsNote: Bool
+    ) -> some View {
+        List {
+            Section {
+                ForEach(imports) { item in
+                    ApprovalRow(
+                        rejectTitle: "Dismiss",
+                        rejectIdentifier: "review.dismiss.\(item.id)",
+                        approveIdentifier: "review.approve.\(item.id)",
+                        isDisabled: isProcessing,
+                        onApprove: { approve(item) },
+                        onReject: { dismissImport(item) }
+                    ) {
+                        // Tapping the details opens the form to fix them first.
+                        Button {
+                            editingItem = item
+                        } label: {
+                            PendingImportRow(item: item)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                ForEach(staged) { item in
+                    ApprovalRow(
+                        rejectTitle: "Reject",
+                        rejectIdentifier: "review.reject.\(item.importedId)",
+                        approveIdentifier: "review.approve.\(item.importedId)",
+                        rejectConfirmation: "Future bank syncs won't import this transaction.",
+                        isDisabled: isProcessing,
+                        onApprove: { approveStaged([item]) },
+                        onReject: { budgetStore.rejectStagedBankTransactions([item]) }
+                    ) {
+                        StagedBankTransactionRow(item: item)
+                    }
+                }
+            } footer: {
+                if showsNote {
+                    Text(String(localized: "Not in your budget yet."))
+                }
+            }
+        }
+    }
+
+    /// One derivation of each count, read by both the body and the toolbar,
+    /// so the two can't disagree about which tab is showing.
+    private var approvalCount: Int {
+        store.visibleImports().count + budgetStore.stagedBankTransactions.count
+    }
+
+    private var importedCount: Int {
+        budgetStore.unreviewedTransactions.count
+    }
+
+    private var currentTab: Tab {
+        approvalCount == 0 ? .imported
+            : importedCount == 0 ? .toApprove
+            : pickedTab ?? .toApprove
+    }
+
+    /// What this device's bank sync already put in the budget, listed until
+    /// marked reviewed: one by a swipe, or all at once.
+    private func importedList(showsNote: Bool) -> some View {
+        List {
+            Section {
+                // Filtered by the live marks: the fetched list only reloads
+                // on a data change, and clearing a mark isn't one.
+                ForEach(Self.stillUnreviewed(newTransactions, marks: budgetStore.unreviewedTransactions)) { transaction in
+                    VStack(alignment: .leading, spacing: 4) {
+                        TransactionListRow(
+                            transaction: transaction,
+                            // No bulk actions here, so a long press selects nothing.
+                            isSelectionMode: .constant(false),
+                            editing: $editingTransaction
+                        )
+                        // A match changes a row the person already had, so it says so.
+                        if budgetStore.matchedTransactionIds.contains(transaction.id) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "link")
+                                Text(String(localized: "Matched to a transaction you already had"))
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("review.matched.\(transaction.id)")
+                        }
+                    }
+                    // Leading, the way Mail marks read; the row's own
+                    // actions are on the trailing edge.
+                    .swipeActions(edge: .leading) {
+                        MarkReviewedButton(transactionId: transaction.id)
+                    }
+                }
+            } footer: {
+                if showsNote {
+                    Text(String(localized: "Already in your budget."))
+                }
+            }
+        }
+        .accessibilityIdentifier("pendingImports.newTransactions")
+    }
+
+    private func dismissImport(_ item: PendingImport) {
+        do { try store.remove(id: item.id) } catch {
+            errorMessage = PendingImportApprover.localizedErrorMessage(for: error, locale: locale)
         }
     }
 
@@ -193,9 +349,23 @@ struct PendingImportsView: View {
         }
     }
 
+    private func approveStaged(_ items: [StagedBankTransaction]) {
+        guard !isProcessing else { return }
+        isProcessing = true
+        Task {
+            defer { isProcessing = false }
+            do {
+                try await budgetStore.approveStagedBankTransactions(items)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     private func approveAll() {
         let approver = PendingImportApprover(store: budgetStore)
         let items = store.visibleImports()
+        let staged = budgetStore.stagedBankTransactions
         deferredFailureCount = nil
         errorMessage = nil
         isProcessing = true
@@ -203,6 +373,13 @@ struct PendingImportsView: View {
         Task {
             var failedCount = 0
             var reviewItem: PendingImport?
+            do {
+                try await budgetStore.approveStagedBankTransactions(staged)
+            } catch {
+                // What is still waiting failed; the rest went in or matched.
+                let waiting = Set(budgetStore.stagedBankTransactions.map(\.id))
+                failedCount += staged.count { waiting.contains($0.id) }
+            }
             for item in items {
                 do {
                     _ = try await approver.approve(item)
@@ -246,6 +423,10 @@ struct PendingImportsView: View {
         deferredFailureCount = nil
         editingItem = nil
         errorMessage = Self.approvalFailureMessage(count: count, locale: locale)
+    }
+
+    nonisolated static func stillUnreviewed(_ transactions: [Transaction], marks: [String: String]) -> [Transaction] {
+        transactions.filter { marks[$0.id] != nil }
     }
 
     nonisolated static func bulkApprovalDisposition(
@@ -476,6 +657,93 @@ private struct PendingImportEditView: View {
 }
 
 // MARK: - Row
+
+/// A row that needs a decision, with the two answers in plain sight rather
+/// than behind a swipe: small round buttons at the row's end, the way Mail
+/// and Reminders keep a row's own actions out of the text's way.
+private struct ApprovalRow<Content: View>: View {
+    let rejectTitle: LocalizedStringKey
+    let rejectIdentifier: String
+    let approveIdentifier: String
+    /// Asked before rejecting, when rejecting can't be taken back.
+    var rejectConfirmation: LocalizedStringKey?
+    let isDisabled: Bool
+    let onApprove: () -> Void
+    let onReject: () -> Void
+    @ViewBuilder let content: Content
+    @State private var isConfirmingReject = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+            // One accent, not red against green: approving is the expected
+            // answer, so it is the filled one.
+            Button {
+                if rejectConfirmation == nil {
+                    onReject()
+                } else {
+                    isConfirmingReject = true
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, height: 34)
+                    .background(Color(.tertiarySystemFill), in: Circle())
+            }
+            .accessibilityLabel(rejectTitle)
+            .accessibilityIdentifier(rejectIdentifier)
+            .confirmationDialog(
+                rejectConfirmation ?? "", isPresented: $isConfirmingReject, titleVisibility: .visible
+            ) {
+                Button(rejectTitle, role: .destructive, action: onReject)
+            }
+            Button(action: onApprove) {
+                Image(systemName: "checkmark")
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(Color.accentColor, in: Circle())
+            }
+            .accessibilityLabel("Approve")
+            .accessibilityIdentifier(approveIdentifier)
+        }
+        .font(.footnote.weight(.bold))
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+    }
+}
+
+/// A bank transaction waiting for approval: what the bank sent, and the
+/// account it would land in.
+private struct StagedBankTransactionRow: View {
+    let item: StagedBankTransaction
+    @EnvironmentObject private var budgetStore: BudgetStore
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.payeeName)
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+                Text([
+                    budgetStore.accounts.first { $0.id == item.accountId }?.name ?? String(localized: "Bank Sync"),
+                    Transaction.formattedDate(from: item.date),
+                ].joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Text(budgetStore.formatCurrency(item.amount))
+                .font(.body.weight(.medium))
+                .monospacedDigit()
+                .foregroundStyle(item.amount > 0 ? .green : .primary)
+        }
+        .font(.body)
+        .padding(.vertical, 4)
+    }
+}
 
 private struct PendingImportRow: View {
     let item: PendingImport

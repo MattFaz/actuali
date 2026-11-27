@@ -48,7 +48,6 @@ enum BudgetCategoryAccessibility {
 /// Insets applied to the two top summary surfaces. UI coverage checks their
 /// rendered frames because List adds its own row and section insets.
 enum TopBoxLayout {
-    static let horizontalContentMargin: CGFloat = 4
     static let verticalContentMargin: CGFloat = 8
 }
 
@@ -70,9 +69,11 @@ struct BudgetView: View {
 
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
+    @Environment(\.sideMargin) private var sideMargin
     @State private var selectedMonth = currentMonthString()
-    @State private var editingCategory: CategoryBudget?
+    @State private var editingBudgetAmount: EditBudgetAmountTarget?
     @State private var editingCategoryGroup: CategoryGroup?
+    @State private var pendingCategoryDeletion: CategoryDeletionRequest?
     @State private var selectedCategory: CategoryBudget?
     @State private var renamingCategory: CategoryBudget?
     @State private var renameText = ""
@@ -90,6 +91,9 @@ struct BudgetView: View {
     /// open budget file.
     @State private var monthNoteMonth: String?
     @State private var editingMonthNote = false
+    @State private var editingBudgetViewOptions = false
+    // Not observed here: see DockObserver.
+    @State private var dock = CompactDockTracker()
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
@@ -215,11 +219,17 @@ struct BudgetView: View {
                     note: displayedMonthNote.text
                 )
             }
-            .sheet(item: $editingCategory) { category in
-                EditBudgetAmountSheet(category: category)
+            .sheet(isPresented: $editingBudgetViewOptions) {
+                BudgetViewSheet()
+            }
+            .sheet(item: $editingBudgetAmount) { target in
+                EditBudgetAmountSheet(target: target)
             }
             .sheet(item: $editingCategoryGroup) { group in
                 CategoryGroupSheet(group: group, month: selectedMonth)
+            }
+            .sheet(item: $pendingCategoryDeletion) { request in
+                CategoryDeletionSheet(request: request)
             }
             // Compact only — in a wide window the inspector below presents
             // the same selection instead. The conditional binding also hands
@@ -324,31 +334,38 @@ struct BudgetView: View {
                             && !budgetStore.hiddenBudgetProgressCategoryIDs.contains(category.categoryId),
                         showsStatusDots: budgetStore.showCategoryStatusDots,
                         onShowDetails: { selectedCategory = $0 },
-                        onEditBudget: { editingCategory = $0 },
+                        onEditBudget: { editingBudgetAmount = EditBudgetAmountTarget(category: $0) },
                         onShowTransactions: showTransactions,
                         onMoveMoney: moveMoney,
                         onApplyTemplate: budgetStore.goalTemplatesEnabled
                             ? { runTemplates(.apply, for: $0) } : nil,
-                        onRename: { beginRenaming($0) }
+                        onRename: { beginRenaming($0) },
+                        onDelete: { requestDeleteCategory(id: $0.categoryId, name: $0.categoryName, isIncome: false) }
                     )
                 }
             }
         } header: {
-            CompactBudgetGroupHeader(
-                name: group.name,
-                isCollapsed: isCollapsed,
-                isHidden: group.isHidden,
-                onSetHidden: {
-                    setCategoryGroupHidden(group.id, hidden: $0)
-                },
-                onRename: { editCategoryGroup(group.id) },
-                onApplyTemplate: groupTemplateAction(.apply, for: group),
-                onOverwriteTemplate: groupTemplateAction(.overwrite, for: group),
-                totals: budgetStore.showGroupTotals ? group.totals : nil,
-                showsSpent: budgetStore.showCompactSpentColumn,
-                showsBudgeted: budgetStore.showBudgetedAmounts,
-                onToggleCollapse: { toggleCollapsed(group.id) }
-            )
+            DockObserver(dock) { docked in
+                CompactBudgetGroupHeader(
+                    name: group.name,
+                    isCollapsed: isCollapsed,
+                    isHidden: group.isHidden,
+                    onSetHidden: {
+                        setCategoryGroupHidden(group.id, hidden: $0)
+                    },
+                    onRename: { editCategoryGroup(group.id) },
+                    onDelete: { requestDeleteCategoryGroup(group.id) },
+                    onApplyTemplate: groupTemplateAction(.apply, for: group),
+                    onOverwriteTemplate: groupTemplateAction(.overwrite, for: group),
+                    totals: budgetStore.showGroupTotals ? group.totals : nil,
+                    showsSpent: budgetStore.showCompactSpentColumn,
+                    showsBudgeted: budgetStore.showBudgetedAmounts,
+                    onToggleCollapse: { toggleCollapsed(group.id) },
+                    isConnectedToSummary: docked == group.id && budgetStore.showCompactBudgetOverview,
+                    dockID: group.id,
+                    dockTracker: dock
+                )
+            }
         }
     }
 
@@ -372,26 +389,33 @@ struct BudgetView: View {
                         isTrackingBudget: budget.isTrackingBudget,
                         showsSpent: budgetStore.showCompactSpentColumn,
                         showsBudgeted: budgetStore.showBudgetedAmounts,
-                        onShowTransactions: showTransactions
+                        onEditBudget: { editingBudgetAmount = EditBudgetAmountTarget(income: $0) },
+                        onShowTransactions: showTransactions,
+                        onDelete: { requestDeleteCategory(id: income.categoryId, name: income.categoryName, isIncome: true) }
                     )
                 }
             }
         } header: {
-            CompactIncomeGroupHeader(
-                name: header.name,
-                isCollapsed: isCollapsed,
-                isHidden: header.isHidden,
-                onSetHidden: header.onSetHidden,
-                onRename: header.onRename,
-                totalBudgeted: budget.totalBudgetedIncome,
-                totalReceived: budget.totalIncome,
-                isTrackingBudget: budget.isTrackingBudget,
-                showsSpent: budgetStore.showCompactSpentColumn,
-                showsBudgeted: budgetStore.showBudgetedAmounts,
-                onToggleCollapse: {
-                    toggleCollapsed(Self.incomeGroupCollapseID)
-                }
-            )
+            DockObserver(dock) { docked in
+                CompactIncomeGroupHeader(
+                    name: header.name,
+                    isCollapsed: isCollapsed,
+                    isHidden: header.isHidden,
+                    onSetHidden: header.onSetHidden,
+                    onRename: header.onRename,
+                    totalBudgeted: budget.totalBudgetedIncome,
+                    totalReceived: budget.totalIncome,
+                    isTrackingBudget: budget.isTrackingBudget,
+                    showsSpent: budgetStore.showCompactSpentColumn,
+                    showsBudgeted: budgetStore.showBudgetedAmounts,
+                    onToggleCollapse: {
+                        toggleCollapsed(Self.incomeGroupCollapseID)
+                    },
+                    isConnectedToSummary: docked == Self.incomeGroupCollapseID && budgetStore.showCompactBudgetOverview,
+                    dockID: Self.incomeGroupCollapseID,
+                    dockTracker: dock
+                )
+            }
         }
     }
 
@@ -444,12 +468,13 @@ struct BudgetView: View {
                 onCopyPreviousMonthBudget: hasBudget ? { copyPreviousMonthBudget() } : nil,
                 onSetBudgetsToZero: hasBudget ? { setBudgetsToZero() } : nil,
                 // Keep template actions visible in the ellipsis, but disabled until
-                // the synced Goal Templates feature is enabled in Budget View Settings.
+                // the synced Goal Templates feature is enabled in More → Transactions & Automation.
                 onTemplateAction: hasBudget ? { runTemplates($0) } : nil,
                 onCleanup: hasBudget && budgetStore.currentBudgetMonth?.isTrackingBudget == false
                     ? { runCleanup() } : nil,
                 monthNote: displayedMonthNote,
-                onEditMonthNote: hasBudget ? { editingMonthNote = true } : nil
+                onEditMonthNote: hasBudget ? { editingMonthNote = true } : nil,
+                onEditBudgetViewOptions: { editingBudgetViewOptions = true }
             )
             .tint(.primary)
             .accessibilityIdentifier("budget.optionsMenu")
@@ -707,7 +732,7 @@ struct BudgetView: View {
                 // the summary's own padding supplies the gap below it. Compact
                 // rows stay edge-to-edge.
                 .padding(.top, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
-                .padding(.horizontal, isCompact ? 0 : 4)
+                .padding(.horizontal, isCompact ? 0 : sideMargin)
                 .padding(.bottom, isCompact ? 8 : 0)
             }
 
@@ -732,16 +757,24 @@ struct BudgetView: View {
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("budget.topBox")
                     case .compact:
-                        CompactBudgetSummary(
-                            budget: budget,
-                            showsSpent: budgetStore.showCompactSpentColumn,
-                            showsBudgeted: budgetStore.showBudgetedAmounts
-                        )
+                        DockObserver(dock) { docked in
+                            CompactBudgetSummary(
+                                budget: budget,
+                                showsSpent: budgetStore.showCompactSpentColumn,
+                                showsBudgeted: budgetStore.showBudgetedAmounts,
+                                isHeaderDocked: docked != nil
+                            )
+                        }
+                        // Headers compare their frames to this edge to tell
+                        // when they touch the summary.
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: {
+                            dock.setSummaryBottom($0)
+                        }
                     }
                 }
                 .padding(
                     .horizontal,
-                    isCompact ? 0 : TopBoxLayout.horizontalContentMargin
+                    isCompact ? 0 : sideMargin
                 )
                 .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
                 .background(Color(.systemGroupedBackground).ignoresSafeArea())
@@ -749,7 +782,7 @@ struct BudgetView: View {
                 // With the Clean overview hidden, what's left to budget stays
                 // in view as a single filled row, as in Actua's plan view.
                 ReadyToBudgetRow(budget: budget)
-                    .padding(.horizontal, TopBoxLayout.horizontalContentMargin)
+                    .padding(.horizontal, sideMargin)
                     .padding(.vertical, TopBoxLayout.verticalContentMargin)
                     .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }
@@ -878,6 +911,8 @@ struct BudgetView: View {
         }
         // A little air under the last row once scrolling ends.
         .contentMargins(.bottom, 8, for: .scrollContent)
+        // The cards pad themselves so the pinned group headers stay full width.
+        .contentMargins(.horizontal, 0, for: .scrollContent)
         // Pull-to-refresh belongs to the table alone, not the check-in strip.
         .refreshable {
             await budgetStore.sync()
@@ -898,14 +933,15 @@ struct BudgetView: View {
                             setCategoryHidden(category.categoryId, hidden: $0)
                         },
                         onShowDetails: { selectedCategory = $0 },
-                        onEditBudget: { editingCategory = $0 },
+                        onEditBudget: { editingBudgetAmount = EditBudgetAmountTarget(category: $0) },
                         // Name shows all time, Spent shows
                         // the displayed month (GH #56).
                         onShowTransactions: showTransactions,
                         onMoveMoney: moveMoney,
                         onApplyTemplate: budgetStore.goalTemplatesEnabled
                             ? { runTemplates(.apply, for: $0) } : nil,
-                        onRename: { beginRenaming($0) }
+                        onRename: { beginRenaming($0) },
+                        onDelete: { requestDeleteCategory(id: $0.categoryId, name: $0.categoryName, isIncome: false) }
                     )
                 }
             }
@@ -918,6 +954,7 @@ struct BudgetView: View {
                     setCategoryGroupHidden(group.id, hidden: $0)
                 },
                 onRename: { editCategoryGroup(group.id) },
+                onDelete: { requestDeleteCategoryGroup(group.id) },
                 onApplyTemplate: groupTemplateAction(.apply, for: group),
                 onOverwriteTemplate: groupTemplateAction(.overwrite, for: group),
                 balanceTotal: group.totals.balance,
@@ -942,7 +979,9 @@ struct BudgetView: View {
                             setCategoryHidden(income.categoryId, hidden: $0)
                         },
                         showsBudgeted: budget.toBudget == nil && budgetStore.showBudgetedAmounts,
-                        onShowTransactions: showTransactions
+                        onEditBudget: { editingBudgetAmount = EditBudgetAmountTarget(income: $0) },
+                        onShowTransactions: showTransactions,
+                        onDelete: { requestDeleteCategory(id: income.categoryId, name: income.categoryName, isIncome: true) }
                     )
                 }
             }
@@ -958,6 +997,7 @@ struct BudgetView: View {
                     toggleCollapsed(Self.incomeGroupCollapseID)
                 }
             )
+            .accessibilityIdentifier("budget.incomeGroupHeader")
         }
     }
 
@@ -998,7 +1038,7 @@ struct BudgetView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .padding(.horizontal, TopBoxLayout.horizontalContentMargin)
+        .padding(.horizontal, sideMargin)
         .padding(.bottom, 4)
     }
 
@@ -1113,6 +1153,39 @@ struct BudgetView: View {
 
     private func editCategoryGroup(_ id: String) {
         editingCategoryGroup = budgetStore.categoryGroups.first { $0.id == id }
+    }
+
+    private func requestDeleteCategory(id: String, name: String, isIncome: Bool) {
+        Task {
+            // A failed preflight must not allow existing history or balances to
+            // be deleted without a destination.
+            let requiresTransfer = await (try? budgetStore.categoryRequiresTransfer(id: id)) ?? true
+            pendingCategoryDeletion = CategoryDeletionRequest(
+                id: id,
+                name: name,
+                categoryIds: [id],
+                isIncome: isIncome,
+                kind: .category,
+                month: selectedMonth,
+                requiresTransfer: requiresTransfer
+            )
+        }
+    }
+
+    private func requestDeleteCategoryGroup(_ id: String) {
+        Task {
+            guard let group = budgetStore.categoryGroups.first(where: { $0.id == id }) else { return }
+            let requiresTransfer = await (try? budgetStore.categoryGroupRequiresTransfer(id: id)) ?? true
+            pendingCategoryDeletion = CategoryDeletionRequest(
+                id: group.id,
+                name: group.name,
+                categoryIds: group.categories.map(\.id),
+                isIncome: group.isIncome,
+                kind: .group,
+                month: selectedMonth,
+                requiresTransfer: requiresTransfer
+            )
+        }
     }
 
     private func setCategoryGroupHidden(_ id: String, hidden: Bool) {
@@ -1291,7 +1364,6 @@ struct BudgetCheckInStrip: View {
             }
         }
         .scrollIndicators(.hidden)
-        .contentMargins(.horizontal, 4, for: .scrollContent)
     }
 
     private func count(for filter: BudgetCategoryFilter) -> Int {
@@ -1342,6 +1414,7 @@ struct CleanCategoryBudgetRow: View {
     /// callers gate it on the goalTemplatesEnabled flag.
     var onApplyTemplate: ((CategoryBudget) -> Void)?
     let onRename: (CategoryBudget) -> Void
+    var onDelete: ((CategoryBudget) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1441,7 +1514,8 @@ struct CleanCategoryBudgetRow: View {
             onShowTransactions: onShowTransactions,
             onMoveMoney: onMoveMoney,
             onApplyTemplate: onApplyTemplate,
-            onRename: onRename
+            onRename: onRename,
+            onDelete: onDelete
         ))
     }
 
@@ -1465,6 +1539,7 @@ struct CategoryRowContextMenu: ViewModifier {
     let onMoveMoney: (CategoryBudget) -> Void
     let onApplyTemplate: ((CategoryBudget) -> Void)?
     let onRename: (CategoryBudget) -> Void
+    var onDelete: ((CategoryBudget) -> Void)?
 
     func body(content: Content) -> some View {
         content.contextMenu {
@@ -1513,6 +1588,12 @@ struct CategoryRowContextMenu: ViewModifier {
                         systemImage: isProgressBarHidden ? "plus.rectangle" : "minus.rectangle"
                     )
                 }
+            }
+            if let onDelete {
+                Button(role: .destructive) { onDelete(category) } label: {
+                    Label("Delete Category", systemImage: "trash")
+                }
+                .accessibilityIdentifier("categoryDelete.action")
             }
         }
     }
@@ -1752,6 +1833,7 @@ struct BudgetGroupHeader: View {
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)?
     var onRename: (() -> Void)?
+    var onDelete: (() -> Void)?
     var onApplyTemplate: (() -> Void)?
     var onOverwriteTemplate: (() -> Void)?
     /// Income groups show the money received beside their name.
@@ -1821,10 +1903,11 @@ struct BudgetGroupHeader: View {
             onOverwriteTemplate: onOverwriteTemplate,
             onRename: onRename,
             onSetHidden: onSetHidden,
+            onDelete: onDelete,
             locale: locale
         )
         return ForEach(items.indices, id: \.self) { index in
-            Button(action: items[index].handler) {
+            Button(role: items[index].isDestructive ? .destructive : nil, action: items[index].handler) {
                 Label(items[index].title, systemImage: items[index].systemImage)
             }
         }
@@ -1854,7 +1937,9 @@ struct IncomeCategoryRow: View {
     var isDimmed = false
     var onSetHidden: ((Bool) -> Void)?
     var showsBudgeted = false
+    var onEditBudget: (IncomeCategory) -> Void = { _ in }
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
+    var onDelete: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1885,9 +1970,25 @@ struct IncomeCategoryRow: View {
                 ))
             }
             if showsBudgeted {
-                Text("Budgeted: \(budgetStore.displayBalance(income.budgeted))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button {
+                    onEditBudget(income)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Budgeted: \(budgetStore.displayBalance(income.budgeted))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "pencil")
+                            .font(.caption2)
+                            .foregroundStyle(.tint)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(CompactBudgetAccessibility.editBudget(
+                    category: income.categoryName,
+                    amount: budgetStore.displayBalance(income.budgeted),
+                    locale: locale
+                ))
+                .accessibilityIdentifier("incomeBudgeted.\(income.categoryId)")
             }
         }
         .opacity(isDimmed ? 0.5 : 1)
@@ -1905,6 +2006,12 @@ struct IncomeCategoryRow: View {
                 } label: {
                     Label(BudgetCategoryAccessibility.visibility(isHidden: isHidden, locale: locale), systemImage: isHidden ? "eye" : "eye.slash")
                 }
+            }
+            if let onDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete Category", systemImage: "trash")
+                }
+                .accessibilityIdentifier("categoryDelete.action")
             }
         }
     }
@@ -2357,23 +2464,49 @@ struct CompactCategoryStatusDot: View {
     }
 }
 
+/// Shared fields needed to edit a category-month's budget, whether income or expense.
+private struct EditBudgetAmountTarget: Identifiable {
+    let month: String
+    let categoryId: String
+    let categoryName: String
+    let budgeted: Int
+
+    var id: String {
+        "\(month)-\(categoryId)"
+    }
+
+    init(category: CategoryBudget) {
+        month = category.month
+        categoryId = category.categoryId
+        categoryName = category.categoryName
+        budgeted = category.budgeted
+    }
+
+    init(income: IncomeCategory) {
+        month = income.month
+        categoryId = income.categoryId
+        categoryName = income.categoryName
+        budgeted = income.budgeted
+    }
+}
+
 /// Edit the budgeted amount for one category-month. Saving writes through
 /// the sync engine (optimistic local-first) and refreshes the month.
-struct EditBudgetAmountSheet: View {
+private struct EditBudgetAmountSheet: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
-    let category: CategoryBudget
+    let target: EditBudgetAmountTarget
 
     @State private var amountText: String
     @State private var errorMessage: String?
     @State private var isSaving = false
 
-    init(category: CategoryBudget) {
-        self.category = category
-        let initial = category.budgeted == 0
+    init(target: EditBudgetAmountTarget) {
+        self.target = target
+        let initial = target.budgeted == 0
             ? ""
-            : String(format: "%.2f", Double(category.budgeted) / 100.0)
+            : String(format: "%.2f", Double(target.budgeted) / 100.0)
         _amountText = State(initialValue: initial)
     }
 
@@ -2388,7 +2521,7 @@ struct EditBudgetAmountSheet: View {
                         autofocus: true
                     )
                 } header: {
-                    Text(ReportStrings.format("Budgeted in %@", MonthPicker.title(for: category.month, locale: locale), locale: locale, bundle: .main))
+                    Text(ReportStrings.format("Budgeted in %@", MonthPicker.title(for: target.month, locale: locale), locale: locale, bundle: .main))
                 } footer: {
                     if let errorMessage {
                         Text(errorMessage)
@@ -2396,7 +2529,7 @@ struct EditBudgetAmountSheet: View {
                     }
                 }
             }
-            .navigationTitle(category.categoryName)
+            .navigationTitle(target.categoryName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -2423,8 +2556,8 @@ struct EditBudgetAmountSheet: View {
                     allowNegative: true
                 )
                 try await budgetStore.setBudgetAmount(
-                    month: category.month,
-                    categoryId: category.categoryId,
+                    month: target.month,
+                    categoryId: target.categoryId,
                     amountCents: cents
                 )
                 dismiss()

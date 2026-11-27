@@ -62,6 +62,22 @@ struct DepositEditorViewTests {
         #expect(config.maturityDate == DayDate(year: 2031, month: 1, day: 15))
     }
 
+    @Test func aCompleteEntryProjectsItsMaturityValue() throws {
+        let config = try #require(DepositEditorView.config(
+            kind: .recurring,
+            amount: "100000",
+            rate: "7",
+            compounding: .daily,
+            openedOn: opened,
+            term: "12",
+            contributionFrequency: .weekly
+        ))
+
+        #expect(config.contributionFrequency == .weekly)
+        #expect(config.maturityValue > config.amount)
+        #expect(config.value(on: config.maturityDate) == config.maturityValue)
+    }
+
     /// A zero-interest deposit is a real if joyless thing, so a blank rate
     /// doesn't block Save.
     @Test func theRateIsOptional() throws {
@@ -110,6 +126,12 @@ struct DepositEditorViewTests {
 
         #expect(Set(labels).count == DepositConfig.Compounding.allCases.count)
         #expect(blankCount == 0)
+    }
+
+    @Test func everyContributionFrequencyHasItsOwnLabel() {
+        let labels = DepositConfig.ContributionFrequency.allCases.map(DepositEditorView.contributionFrequencyLabel)
+        #expect(Set(labels).count == DepositConfig.ContributionFrequency.allCases.count)
+        #expect(labels.allSatisfy { !$0.isEmpty })
     }
 
     // MARK: - Summary row

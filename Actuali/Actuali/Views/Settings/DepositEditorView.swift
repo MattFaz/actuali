@@ -23,6 +23,7 @@ struct DepositEditorView: View {
     /// the locales that use one — see `LoanEditorView.rate(from:)`.
     @State private var rateText: String
     @State private var compounding: DepositConfig.Compounding
+    @State private var contributionFrequency: DepositConfig.ContributionFrequency
     @State private var openedOn: Date
     @State private var termText: String
 
@@ -37,6 +38,7 @@ struct DepositEditorView: View {
             _amountText = State(initialValue: "")
             _rateText = State(initialValue: "")
             _compounding = State(initialValue: .quarterly)
+            _contributionFrequency = State(initialValue: .monthly)
             _openedOn = State(initialValue: Date())
             _termText = State(initialValue: "")
         case .edit(let accountId, let config):
@@ -45,6 +47,7 @@ struct DepositEditorView: View {
             _amountText = State(initialValue: LoanEditorView.amountText(config.amount))
             _rateText = State(initialValue: LoanEditorView.rateText(config.annualRatePercent))
             _compounding = State(initialValue: config.compounding)
+            _contributionFrequency = State(initialValue: config.contributionFrequency)
             // Local midnight, not `utcDate`: `enteredConfig` reads the day
             // back in the local calendar, and noon UTC is already tomorrow
             // east of UTC+12.
@@ -94,7 +97,8 @@ struct DepositEditorView: View {
             rate: rateText,
             compounding: compounding,
             openedOn: DayDate.today(now: openedOn),
-            term: termText
+            term: termText,
+            contributionFrequency: contributionFrequency
         )
     }
 
@@ -110,7 +114,8 @@ struct DepositEditorView: View {
         rate: String,
         compounding: DepositConfig.Compounding,
         openedOn: DayDate,
-        term: String
+        term: String,
+        contributionFrequency: DepositConfig.ContributionFrequency = .monthly
     ) -> DepositConfig? {
         guard let amount = LoanEditorView.cents(from: amount), amount > 0,
               let termMonths = months(from: term) else { return nil }
@@ -119,6 +124,7 @@ struct DepositEditorView: View {
             amount: amount,
             annualRatePercent: max(0, LoanEditorView.rate(from: rate) ?? 0),
             compounding: compounding,
+            contributionFrequency: contributionFrequency,
             openedOn: openedOn,
             termMonths: termMonths
         )
@@ -127,7 +133,7 @@ struct DepositEditorView: View {
     /// The instalment on a recurring deposit, the lump sum on a fixed one.
     private var amountLabel: String {
         kind == .recurring
-            ? String(localized: "Monthly Instalment")
+            ? String(localized: "Contribution Amount")
             : String(localized: "Deposit Amount")
     }
 
@@ -199,6 +205,15 @@ struct DepositEditorView: View {
                 .accessibilityIdentifier("depositEditor.amount")
             }
 
+            if kind == .recurring {
+                Picker(String(localized: "Contribution Frequency"), selection: $contributionFrequency) {
+                    ForEach(DepositConfig.ContributionFrequency.allCases, id: \.self) { frequency in
+                        Text(Self.contributionFrequencyLabel(frequency)).tag(frequency)
+                    }
+                }
+                .accessibilityIdentifier("depositEditor.contributionFrequency")
+            }
+
             HStack {
                 Text(String(localized: "Interest Rate"))
                 Spacer()
@@ -251,20 +266,44 @@ struct DepositEditorView: View {
                 )
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("depositEditor.matures")
+
+                LabeledContent(
+                    String(localized: "Value at Maturity"),
+                    value: budgetStore.displayBalance(config.maturityValue)
+                )
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("depositEditor.maturityValue")
             }
         } header: {
             Text(String(localized: "Deposit Details"))
         } footer: {
-            Text(String(localized: "A fixed deposit is one lump sum left for the term. A recurring deposit takes the same amount every month.\n\nInterest is credited on whole compounding periods, so the value steps up at the end of each one rather than growing smoothly — the same way your bank reports it."))
+            Text(String(localized: """
+            A fixed deposit is one lump sum left for the term. A recurring deposit adds the same amount at the selected contribution frequency.
+
+            Interest is credited on whole compounding periods, so the value steps up at the end of each one rather than growing smoothly — the same way your bank reports it.
+            """))
+        }
+    }
+
+    nonisolated static func contributionFrequencyLabel(_ frequency: DepositConfig.ContributionFrequency) -> String {
+        switch frequency {
+        case .weekly: String(localized: "Weekly")
+        case .biWeekly: String(localized: "Bi-weekly")
+        case .monthly: String(localized: "Monthly")
+        case .quarterly: String(localized: "Quarterly")
+        case .annually: String(localized: "Annually")
         }
     }
 
     nonisolated static func compoundingLabel(_ frequency: DepositConfig.Compounding) -> String {
         switch frequency {
-        case .annually: String(localized: "Annually")
-        case .semiAnnually: String(localized: "Semi-annually")
-        case .quarterly: String(localized: "Quarterly")
+        case .daily: String(localized: "Daily")
+        case .weekly: String(localized: "Weekly")
+        case .biWeekly: String(localized: "Bi-weekly")
         case .monthly: String(localized: "Monthly")
+        case .quarterly: String(localized: "Quarterly")
+        case .semiAnnually: String(localized: "Semi-annually")
+        case .annually: String(localized: "Annually")
         }
     }
 }

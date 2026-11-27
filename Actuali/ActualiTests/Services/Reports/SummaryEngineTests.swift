@@ -163,6 +163,31 @@ struct SummaryEngineTests {
         #expect(result.totalCents == -1550)
     }
 
+    @Test func avgPerMonthDividesByElapsedCustomPeriods() {
+        // Day-15 periods, two-month sliding window on 2026-05-01: Mar 15...Apr 14
+        // is whole, Apr 15...May 14 is clamped to today, 17 of its 30 days.
+        // Divisor 1 + 17/30, so a -4700 total averages to exactly -3000.
+        let meta = SummaryMeta(
+            name: nil,
+            timeFrame: WidgetTimeFrame(start: "2026-03", end: "2026-04", mode: .slidingWindow),
+            conditions: nil,
+            conditionsOp: nil,
+            content: SummaryContent(type: "avgPerMonth", divisorConditions: nil,
+                                    divisorConditionsOp: nil, divisorAllTimeDateRange: nil)
+        )
+        let transactions = [
+            tx(date: 20_260_314, amount: -9999), // before the window
+            tx(date: 20_260_315, amount: -3000),
+            tx(date: 20_260_501, amount: -1700),
+        ]
+        var c = DateComponents(); c.year = 2026; c.month = 5; c.day = 1
+        c.timeZone = TimeZone(identifier: "UTC")
+        let today = Calendar(identifier: .gregorian).date(from: c)!
+        let result = SummaryEngine.compute(meta: meta, transactions: transactions, today: today,
+                                           monthStartRule: MonthStartRule(day: 15))
+        #expect(abs(result.value - -3000) < 0.001)
+    }
+
     @Test func avgPerMonthEmptyDataIsZero() {
         let result = SummaryEngine.compute(meta: meta(contentType: "avgPerMonth"),
                                            transactions: [], today: asOf)

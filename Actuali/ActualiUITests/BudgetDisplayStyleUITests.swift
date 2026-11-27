@@ -15,15 +15,6 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    private func scrollToSettingsControl(_ control: XCUIElement, in app: XCUIApplication) {
-        var swipesLeft = 8
-        while !control.exists, swipesLeft > 0 {
-            app.swipeUp()
-            swipesLeft -= 1
-        }
-    }
-
-    @MainActor
     func testCleanStyleShowsCaptions() {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -65,10 +56,10 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
             "-showCompactBudgetOverview", "YES",
+            "-initialTab", "1",
         ]
         app.launch()
 
-        app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 10),
                       "starts in the clean layout")
 
@@ -170,16 +161,12 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertFalse(groceriesSpent.exists,
                        "the launch argument seeds the Spent column off, so it is absent rather than an empty placeholder")
 
-        let optionsMenu = app.buttons["Budget options"]
-        optionsMenu.tap()
-        app.buttons["Budget View"].tap()
-        // The menu item's accessibility label varies by OS: "Show Spent" in
-        // the rendered menu, "Show Spent Column" from the toggle's modifier.
-        let spentToggle = app.buttons.matching(
-            NSPredicate(format: "label IN %@", ["Show Spent", "Show Spent Column"])
-        ).firstMatch
+        openBudgetViewMenu(in: app)
+        let spentToggle = app.switches["budgetView.showCompactSpentColumn"]
+        scrollUntilHittable(spentToggle, in: app)
         XCTAssertTrue(spentToggle.waitForExistence(timeout: 5))
-        spentToggle.tap()
+        tapSwitch(spentToggle)
+        app.buttons["budgetView.done"].tap()
 
         XCTAssertTrue(groceriesSpent.waitForExistence(timeout: 5),
                       "turning on Spent should add the existing month-transactions action live")
@@ -224,21 +211,45 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         }
         XCTAssertTrue(salary.waitForExistence(timeout: 5),
                       "Income remains expanded")
-        let salaryBudget = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label BEGINSWITH 'Budgeted for Salary, '")
+        let salaryBudget = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Salary'")
         ).firstMatch
         XCTAssertTrue(
-            salaryBudget.exists,
-            "tracking Income's read-only budget needs its own currency-aware VoiceOver context"
+            salaryBudget.waitForExistence(timeout: 5),
+            "tracking income's Budgeted amount should open the same editor as expenses"
         )
         // "$" in a US locale, "USD" elsewhere; both are currency-aware.
         let salaryAmount = salaryBudget.label
         XCTAssertTrue(salaryAmount.contains("$") || salaryAmount.contains("USD"),
                       "the amount should be announced with its currency: \(salaryAmount)")
-        XCTAssertFalse(
-            salaryBudget.elementType == .button,
-            "tracking Income budget remains read-only in Compact"
-        )
+        salaryBudget.tap()
+        XCTAssertTrue(app.navigationBars["Salary"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields.firstMatch.exists)
+        app.buttons["Cancel"].tap()
+    }
+
+    @MainActor
+    func testCleanTrackingIncomeBudgetCanBeEdited() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-loadTrackingDemoData",
+            "-budgetDisplayStyle", "clean",
+            "-collapsedBudgetGroups", "",
+            "-initialTab", "1",
+        ]
+        app.launch()
+
+        let salaryBudget = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Salary'")
+        ).firstMatch
+        scrollUntilHittable(salaryBudget, in: app)
+        XCTAssertTrue(salaryBudget.isHittable, "Salary's budgeted amount should be editable in Clean")
+
+        salaryBudget.tap()
+        XCTAssertTrue(app.navigationBars["Salary"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields.firstMatch.exists)
+        app.buttons["Cancel"].tap()
     }
 
     @MainActor
@@ -274,12 +285,12 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertFalse(progressBar.exists,
                        "disabled progress mode displays no progress bar")
 
-        openBudgetViewSettings(in: app)
-        let sharedProgressBars = app.switches["Budget Progress Bars"]
-        scrollToSettingsControl(sharedProgressBars, in: app)
+        openBudgetViewMenu(in: app)
+        let sharedProgressBars = app.switches["budgetView.showBudgetProgressBars"]
+        scrollUntilHittable(sharedProgressBars, in: app)
         XCTAssertTrue(sharedProgressBars.waitForExistence(timeout: 5))
         tapSwitch(sharedProgressBars)
-        app.tabBars.buttons["Budget"].tap()
+        app.buttons["budgetView.done"].tap()
         XCTAssertEqual(groceries.label, "Details for Groceries",
                        "progress bars do not turn on the independent status-dot setting")
         XCTAssertTrue(
@@ -287,9 +298,12 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             "progress mode adds a bar for an active category"
         )
 
-        openBudgetViewSettings(in: app)
-        tapSwitch(sharedProgressBars)
-        app.tabBars.buttons["Budget"].tap()
+        openBudgetViewMenu(in: app)
+        let restoredProgressBars = app.switches["budgetView.showBudgetProgressBars"]
+        scrollUntilHittable(restoredProgressBars, in: app)
+        XCTAssertTrue(restoredProgressBars.waitForExistence(timeout: 5))
+        tapSwitch(restoredProgressBars)
+        app.buttons["budgetView.done"].tap()
         XCTAssertTrue(progressBar.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Details for Groceries"].exists)
     }

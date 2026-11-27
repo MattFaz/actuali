@@ -7,8 +7,9 @@ struct NewTransactionNotifierTests {
     private func makeTransaction(id: String, payeeName: String? = nil,
                                  categoryId: String? = nil, amount: Int = -1250,
                                  transferId: String? = nil,
-                                 transferAcct: String? = nil) -> Transaction {
-        Transaction(id: id, accountId: "acct1", date: 20_260_707, amount: amount,
+                                 transferAcct: String? = nil,
+                                 accountId: String = "acct1") -> Transaction {
+        Transaction(id: id, accountId: accountId, date: 20_260_707, amount: amount,
                     payeeId: nil, payeeName: payeeName, categoryId: categoryId,
                     categoryName: nil, notes: nil, cleared: false, reconciled: false,
                     transferId: transferId, isParent: false, parentId: nil, tombstone: false,
@@ -183,12 +184,13 @@ struct NewTransactionNotifierTests {
         #expect(first?.identifier == second?.identifier)
     }
 
-    private func makeSettings(enabled: Bool) -> TransactionNotificationSettings {
+    private func makeSettings(enabled: Bool, includesOffBudget: Bool = true) -> TransactionNotificationSettings {
         let name = "NewTransactionNotifierTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         let settings = TransactionNotificationSettings(defaults: defaults)
         settings.isEnabled = enabled
+        settings.includesOffBudget = includesOffBudget
         return settings
     }
 
@@ -216,6 +218,47 @@ struct NewTransactionNotifierTests {
         )
 
         #expect(center.added.map(\.identifier) == [NewTransactionNotifier.requestIdentifier])
+    }
+
+    /// Tracking-account movements aren't budget activity, so users can mute
+    /// them without losing on-budget alerts (GH #755).
+    @Test @MainActor func notifyOmitsOffBudgetTransactionsWhenExcluded() async {
+        let center = NotificationCenterSpy()
+
+        await NewTransactionNotifier.notify(
+            about: [makeTransaction(id: "t1"), makeTransaction(id: "t2", accountId: "broker")],
+            currencyCode: "USD", offBudgetAccountIds: ["broker"],
+            settings: makeSettings(enabled: true, includesOffBudget: false), center: center
+        )
+
+        let content = center.added.first?.content
+        #expect(content?.userInfo[NewTransactionNotifier.transactionIdsKey] as? [String] == ["t1"])
+        #expect(content?.title.contains("1") == true)
+    }
+
+    @Test @MainActor func notifyPostsNothingForOffBudgetOnlyBatchWhenExcluded() async {
+        let center = NotificationCenterSpy()
+
+        await NewTransactionNotifier.notify(
+            about: [makeTransaction(id: "t1", accountId: "broker")],
+            currencyCode: "USD", offBudgetAccountIds: ["broker"],
+            settings: makeSettings(enabled: true, includesOffBudget: false), center: center
+        )
+
+        #expect(center.authorizationRequested == false)
+        #expect(center.added.isEmpty)
+    }
+
+    @Test @MainActor func notifyIncludesOffBudgetTransactionsByDefault() async {
+        let center = NotificationCenterSpy()
+
+        await NewTransactionNotifier.notify(
+            about: [makeTransaction(id: "t1", accountId: "broker")],
+            currencyCode: "USD", offBudgetAccountIds: ["broker"],
+            settings: makeSettings(enabled: true), center: center
+        )
+
+        #expect(center.added.first?.content.userInfo[NewTransactionNotifier.transactionIdsKey] as? [String] == ["t1"])
     }
 }
 

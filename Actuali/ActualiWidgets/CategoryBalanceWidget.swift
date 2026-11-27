@@ -86,6 +86,7 @@ struct CategoryBalanceWidgetView: View {
             }
         }
         .containerBackground(.fill.tertiary, for: .widget)
+        .widgetURL(URL(string: "actuali://budget"))
     }
 
     private var emptyState: some View {

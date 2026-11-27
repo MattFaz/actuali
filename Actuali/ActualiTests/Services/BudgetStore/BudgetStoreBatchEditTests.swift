@@ -65,6 +65,65 @@ struct BudgetStoreBatchEditTests {
     }
 
     @Test
+    func scheduleActionUnlinksOnlyWhenEverySelectedRowIsLinked() {
+        var linked = transaction("a")
+        linked.schedule = "sched-1"
+        let plain = transaction("b")
+        #expect(TransactionBulkEdit.allLinkedToSchedule([linked]))
+        #expect(!TransactionBulkEdit.allLinkedToSchedule([linked, plain]))
+        #expect(!TransactionBulkEdit.allLinkedToSchedule([]))
+    }
+
+    @Test
+    func linkTransactionsSetsAndClearsTheScheduleAndSyncsIt() async throws {
+        let (store, database, tempURL) = try await makeStore()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let a = transaction("tx-a"), b = transaction("tx-b")
+        try await store.createTransaction(a)
+        try await store.createTransaction(b)
+
+        try await store.linkTransactions([a, b], to: "sched-1")
+
+        #expect(try await stored(database, "tx-a")?.schedule == "sched-1")
+        #expect(try await stored(database, "tx-b")?.schedule == "sched-1")
+        for row in ["tx-a", "tx-b"] {
+            let values = try await database.dbQueueForTesting.read { db in
+                try String.fetchAll(db, sql: """
+                SELECT value FROM messages_crdt WHERE row = ? AND column = 'schedule' ORDER BY id
+                """, arguments: [row])
+            }
+            #expect(values.last == "S:sched-1")
+        }
+
+        let linked = try #require(try await stored(database, "tx-a"))
+        try await store.linkTransactions([linked], to: nil)
+        #expect(try await stored(database, "tx-a")?.schedule == nil)
+        #expect(try await stored(database, "tx-b")?.schedule == "sched-1")
+        let cleared = try await database.dbQueueForTesting.read { db in
+            try String.fetchAll(db, sql: """
+            SELECT value FROM messages_crdt WHERE row = 'tx-a' AND column = 'schedule' ORDER BY id
+            """)
+        }
+        #expect(cleared.last == "0:", "unlink syncs a null, not only a local clear")
+    }
+
+    @Test
+    func linkTransactionsLeavesReconciledRowsAlone() async throws {
+        let (store, database, tempURL) = try await makeStore()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let open = transaction("tx-open")
+        let locked = transaction("tx-locked", reconciled: true)
+        try await store.createTransaction(open)
+        try await store.createTransaction(locked)
+
+        try await store.linkTransactions([open, locked], to: "sched-1")
+
+        #expect(try await stored(database, "tx-open")?.schedule == "sched-1")
+        #expect(try await stored(database, "tx-locked")?.schedule == nil)
+        #expect(store.error?.isEmpty == false, "the locked row is reported")
+    }
+
+    @Test
     func setCategoryAppliesToEverySelectedTransaction() async throws {
         let (store, database, tempURL) = try await makeStore()
         defer { try? FileManager.default.removeItem(at: tempURL) }

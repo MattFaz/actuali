@@ -57,6 +57,23 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         return [rows.element(boundBy: 0), rows.element(boundBy: 1)]
     }
 
+    /// The selection box sits on the trailing edge, away from the cleared
+    /// dot on the leading edge, and tracks the row's selected state.
+    @MainActor
+    func testSelectionIndicatorSitsTrailingAndTracksSelection() {
+        let app = XCUIApplication()
+        let rows = openAllAccountsSelecting(app)
+        let id = rows[0].identifier.replacingOccurrences(of: "transactionRow.", with: "")
+        let box = app.descendants(matching: .any)["transaction.select.\(id)"]
+
+        XCTAssertTrue(box.waitForExistence(timeout: 5), "selection mode shows the indicator")
+        XCTAssertEqual(box.label, "Not selected")
+        XCTAssertGreaterThan(box.frame.minX, rows[0].frame.midX, "the indicator is on the trailing edge")
+
+        rows[0].tap()
+        XCTAssertEqual(box.label, "Selected")
+    }
+
     /// One selected transaction keeps the single-row bar; a second grows it
     /// into a card with the count and total.
     @MainActor
@@ -101,6 +118,33 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         let tagged = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'batchtag'"))
         XCTAssertTrue(tagged.firstMatch.waitForExistence(timeout: 10), "the new tag shows on the selected transactions")
         XCTAssertGreaterThanOrEqual(tagged.count, 2)
+    }
+
+    @MainActor
+    func testLinkScheduleLinksTheSelectionAndOffersUnlink() {
+        let app = XCUIApplication()
+        let rows = openAllAccountsSelecting(app)
+        rows[0].tap()
+
+        let more = app.buttons["transactionBulkBar.more"]
+        more.tap()
+        app.buttons["Link Schedule"].tap()
+        let schedule = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'scheduleLinkPicker.'")
+        ).firstMatch
+        XCTAssertTrue(schedule.waitForExistence(timeout: 5), "the picker lists the demo schedules")
+        schedule.tap()
+        XCTAssertTrue(app.navigationBars["Link Schedule"].waitForNonExistence(timeout: 5),
+                      "picking a schedule closes the picker")
+
+        more.tap()
+        XCTAssertTrue(app.buttons["Unlink Schedule"].waitForExistence(timeout: 5),
+                      "a linked selection offers Unlink instead of Link")
+        app.buttons["Unlink Schedule"].tap()
+
+        more.tap()
+        XCTAssertTrue(app.buttons["Link Schedule"].waitForExistence(timeout: 5),
+                      "unlinking puts Link back")
     }
 
     @MainActor

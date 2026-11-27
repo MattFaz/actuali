@@ -103,6 +103,12 @@ struct CreditCardCycle: Equatable, Hashable {
         return pendingStatement
     }
 
+    /// Payment due date of the statement still open on `today`. The statement
+    /// dues end with this entry once every closed statement is past due.
+    func openCycleDueDate(for today: DayDate = .today()) -> DayDate {
+        dueDate(forStatement: cycleRange(for: today).end)
+    }
+
     /// Next upcoming payment due date.
     func upcomingDueDate(for today: DayDate = .today()) -> DayDate {
         dueDate(forStatement: upcomingStatementDate(for: today))

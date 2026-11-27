@@ -1,10 +1,13 @@
 import SwiftUI
+import UIKit
 
 /// Value-based routes for the phone stack. Typed rather than a
 /// `NavigationPath` so a notification tap can reset the stack onto All
 /// Accounts, and a save can tell when All Accounts is already showing.
 private enum AccountsRoute: Hashable {
     case allAccounts
+    case onBudgetTransactions
+    case offBudgetTransactions
     case account(Account)
 }
 
@@ -13,6 +16,8 @@ private enum AccountsRoute: Hashable {
 /// and a stored value would stop matching its row the moment it did.
 private enum AccountSelection: Hashable {
     case allAccounts
+    case onBudgetTransactions
+    case offBudgetTransactions
     case account(String)
 }
 
@@ -34,6 +39,26 @@ struct AccountListBucket: Identifiable {
     let id: String
     let group: AccountGroup?
     let accounts: [Account]
+
+    nonisolated static func buckets(for accounts: [Account], groups: [AccountGroup]) -> [AccountListBucket] {
+        var buckets: [AccountListBucket] = []
+        let groupIds = Set(groups.map(\.id))
+        let ungrouped = accounts.filter { $0.groupId.map(groupIds.contains) != true }
+        if !ungrouped.isEmpty {
+            buckets.append(AccountListBucket(id: "ungrouped", group: nil, accounts: ungrouped))
+        }
+        for group in groups {
+            let members = accounts.filter { $0.groupId == group.id }
+            if !members.isEmpty {
+                buckets.append(AccountListBucket(id: group.id, group: group, accounts: members))
+            }
+        }
+        return buckets
+    }
+}
+
+struct AccountGroupDropTarget: Equatable {
+    let before: String?
 }
 
 /// A month's totals carried together with the month they were fetched for.
@@ -42,6 +67,7 @@ struct AccountListBucket: Identifiable {
 /// under a view that reads "now" afresh on every render.
 struct AccountsMonthTotals: Equatable {
     let month: String
+    let period: ClosedRange<Date>?
     let totals: BudgetDatabase.AccountsMonthSummary
 }
 
@@ -50,6 +76,7 @@ struct AccountsMonthTotals: Equatable {
 private struct MonthSummaryInputs: Equatable {
     let dataVersion: Int
     let excludedFromSpent: Set<String>
+    let monthStartRule: MonthStartRule
 }
 
 struct AccountsListView: View {
@@ -58,9 +85,11 @@ struct AccountsListView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.sideMargin) private var sideMargin
     @State private var path: [AccountsRoute] = []
     @State private var showingAddAccount = false
     @State private var showingAccountGroups = false
+    @State private var isReordering = false
     @AppStorage("accountsCollapsedAccountGroupIDs") private var collapsedAccountGroupIDs = ""
     @State private var accountGroupBackgroundOverrides: [String: Bool] = [:]
     @State private var pendingAccountGroupTransitions: Set<String> = []
@@ -139,19 +168,7 @@ struct AccountsListView: View {
     }
 
     private func accountBuckets(for accounts: [Account]) -> [AccountListBucket] {
-        var buckets: [AccountListBucket] = []
-        let groupIds = Set(budgetStore.accountGroups.map(\.id))
-        let ungrouped = accounts.filter { $0.groupId.map(groupIds.contains) != true }
-        if !ungrouped.isEmpty {
-            buckets.append(AccountListBucket(id: "ungrouped", group: nil, accounts: ungrouped))
-        }
-        for group in budgetStore.accountGroups {
-            let members = accounts.filter { $0.groupId == group.id }
-            if !members.isEmpty {
-                buckets.append(AccountListBucket(id: group.id, group: group, accounts: members))
-            }
-        }
-        return buckets
+        AccountListBucket.buckets(for: accounts, groups: budgetStore.accountGroups)
     }
 
     /// A budget section as one flat run of rows, so a single `onMove` can
@@ -161,7 +178,7 @@ struct AccountsListView: View {
     private func accountListRows(for buckets: [AccountListBucket]) -> [AccountListRow] {
         buckets.flatMap { bucket -> [AccountListRow] in
             let header: [AccountListRow] = bucket.group == nil ? [] : [.header(bucket)]
-            let isExpanded = bucket.group.map { isSearchingAccounts || !collapsedAccountGroups.contains($0.id) } ?? true
+            let isExpanded = bucket.group.map { isSearchingAccounts || isReordering || !collapsedAccountGroups.contains($0.id) } ?? true
             guard isExpanded else { return header }
             return header + bucket.accounts.enumerated().map { .account($1, offset: $0, bucket: bucket) }
         }
@@ -186,14 +203,97 @@ struct AccountsListView: View {
         }
     }
 
-    private func moveAccount(in rows: [AccountListRow]) -> (IndexSet, Int) -> Void {
+    /// ponytail: derive a group's anchor from native List move indices and the
+    /// synced group order; no second drag engine or local-only ordering state.
+    nonisolated static func groupDropTarget(
+        in rows: [AccountListRow],
+        at destination: Int,
+        moving groupId: String,
+        fullOrder: [String]
+    ) -> AccountGroupDropTarget? {
+        let visibleOrder = rows.compactMap { row -> String? in
+            if case .header(let bucket) = row {
+                return bucket.group?.id
+            }
+            return nil
+        }
+        guard visibleOrder.count > 1, visibleOrder.contains(groupId), fullOrder.contains(groupId) else {
+            return nil
+        }
+
+        let remainingVisible = visibleOrder.filter { $0 != groupId }
+        let insertionIndex = rows.prefix(destination).reduce(into: 0) { count, row in
+            if case .header(let bucket) = row, let id = bucket.group?.id, id != groupId {
+                count += 1
+            }
+        }
+        var reordered = remainingVisible
+        reordered.insert(groupId, at: min(insertionIndex, reordered.count))
+        guard reordered != visibleOrder, let position = reordered.firstIndex(of: groupId) else { return nil }
+        if reordered.indices.contains(position + 1) {
+            return AccountGroupDropTarget(before: reordered[position + 1])
+        }
+
+        // Groups without accounts in this budget section still occupy the
+        // shared order; anchor after the last visible group without moving them.
+        let remainingFullOrder = fullOrder.filter { $0 != groupId }
+        guard position > 0,
+              let previousIndex = remainingFullOrder.firstIndex(of: reordered[position - 1]) else { return nil }
+        let nextIndex = remainingFullOrder.index(after: previousIndex)
+        return AccountGroupDropTarget(
+            before: remainingFullOrder.indices.contains(nextIndex) ? remainingFullOrder[nextIndex] : nil
+        )
+    }
+
+    nonisolated static func groupMoveTarget(
+        in groups: [AccountGroup],
+        from source: IndexSet,
+        to destination: Int
+    ) -> AccountGroupDropTarget? {
+        guard source.count == 1,
+              let index = source.first,
+              groups.indices.contains(index),
+              (0...groups.count).contains(destination) else { return nil }
+        var reordered = groups
+        reordered.move(fromOffsets: source, toOffset: destination)
+        guard reordered.map(\.id) != groups.map(\.id),
+              let moved = reordered.firstIndex(where: { $0.id == groups[index].id }) else { return nil }
+        return AccountGroupDropTarget(
+            before: reordered.indices.contains(moved + 1) ? reordered[moved + 1].id : nil
+        )
+    }
+
+    private func moveRow(in rows: [AccountListRow]) -> (IndexSet, Int) -> Void {
         { source, destination in
-            guard let from = source.first, case .account(let account, _, _) = rows[from],
-                  let slot = Self.dropSlot(in: rows, at: destination) else { return }
-            Task {
-                try? await budgetStore.dropAccount(
-                    account.id, at: slot.index, among: slot.bucket.accounts, groupId: slot.bucket.group?.id
-                )
+            guard let from = source.first, rows.indices.contains(from) else { return }
+            switch rows[from] {
+            case .account(let account, _, _):
+                guard let slot = Self.dropSlot(in: rows, at: destination) else { return }
+                Task {
+                    do {
+                        try await budgetStore.dropAccount(
+                            account.id, at: slot.index, among: slot.bucket.accounts, groupId: slot.bucket.group?.id
+                        )
+                    } catch {
+                        budgetStore.error = error.localizedDescription
+                    }
+                }
+            case .header(let bucket):
+                guard budgetStore.canReorderAccountGroups,
+                      let group = bucket.group,
+                      let target = Self.groupDropTarget(
+                          in: rows,
+                          at: destination,
+                          moving: group.id,
+                          fullOrder: budgetStore.accountGroups.map(\.id)
+                      ) else { return }
+                Task {
+                    do {
+                        try await budgetStore.moveAccountGroup(id: group.id, before: target.before)
+                    } catch {
+                        budgetStore.error = error.localizedDescription
+                    }
+                }
             }
         }
     }
@@ -207,26 +307,40 @@ struct AccountsListView: View {
                     group: group,
                     total: bucket.accounts.sumBalance,
                     rowPosition: accountGroupHeaderRowPosition(for: bucket, among: buckets),
-                    isExpanded: isSearchingAccounts || !collapsedAccountGroups.contains(group.id),
+                    isExpanded: isSearchingAccounts || isReordering || !collapsedAccountGroups.contains(group.id),
                     isBackgroundClear: accountGroupBackgroundIsClear(group.id),
-                    allowsCollapse: !isSearchingAccounts,
+                    allowsCollapse: !isSearchingAccounts && !isReordering,
                     totalTrailingPadding: linked ? 24 : 0,
+                    unreviewedCount: bucket.accounts.reduce(0) {
+                        $0 + budgetStore.unreviewedCount(forAccountId: $1.id)
+                    },
                     action: { toggleAccountGroup(group.id) }
                 )
-                .moveDisabled(true)
+                .moveDisabled(!isReordering || !budgetStore.canReorderAccountGroups)
             }
         case .account(let account, let offset, let bucket):
             if bucket.group != nil {
                 accountCell(account, linked: linked)
                     .listRowSeparator(offset == bucket.accounts.count - 1 ? .hidden : .visible)
                     .listRowBackground(groupedAccountRowBackground(at: offset, in: bucket, among: buckets))
+                    .moveDisabled(!isReordering)
             } else {
                 accountCell(account, linked: linked)
-                    .listRowBackground(groupRowBackground(
-                        position: precedingGroupRowPosition(for: account, in: bucket, among: buckets)
+                    .listRowBackground(AccountGroupRowBackground(
+                        position: AccountGroupRowLayout.position(
+                            roundsTop: offset == 0,
+                            roundsBottom: offset == bucket.accounts.count - 1
+                        )
                     ))
+                    .moveDisabled(!isReordering)
             }
         }
+    }
+
+    /// What a sync brought in is gone through where pending imports are.
+    private func showNewTransactions() {
+        budgetStore.dismissBankSyncNotice()
+        showingPendingImports = true
     }
 
     /// Phone rows push the account; iPad sidebar rows drive the selection.
@@ -305,13 +419,11 @@ struct AccountsListView: View {
         )
     }
 
-    private func precedingGroupRowPosition(for account: Account, in bucket: AccountListBucket, among buckets: [AccountListBucket]) -> AccountGroupRowPosition? {
-        guard bucket.id == "ungrouped",
-              bucket.accounts.last?.id == account.id,
-              let group = buckets.first(where: { $0.group != nil })?.group,
-              accountGroupBackgroundIsClear(group.id)
-        else { return nil }
-        return .last
+    private func closedRowBackground(at index: Int) -> AccountGroupRowBackground {
+        AccountGroupRowBackground(position: AccountGroupRowLayout.position(
+            roundsTop: index == 0,
+            roundsBottom: index == filteredClosedAccounts.count - 1
+        ))
     }
 
     private var filteredOnBudgetAccounts: [Account] {
@@ -327,9 +439,14 @@ struct AccountsListView: View {
     }
 
     private func filterAccountsAndGroups(_ accounts: [Account]) -> [Account] {
-        let query = accountSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        Self.filterAccounts(accounts, groups: budgetStore.accountGroups, matching: accountSearchText)
+    }
+
+    /// Matches an account by its own name or by its custom group's name.
+    nonisolated static func filterAccounts(_ accounts: [Account], groups: [AccountGroup], matching query: String) -> [Account] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return accounts }
-        let matchingGroupIds = Set(budgetStore.accountGroups
+        let matchingGroupIds = Set(groups
             .filter { $0.name.localizedCaseInsensitiveContains(query) }
             .map(\.id))
         return accounts.filter { account in
@@ -368,6 +485,37 @@ struct AccountsListView: View {
         } message: {
             Text(budgetStore.bankSyncSummary ?? "")
         }
+        // A clean sync says so without stopping anyone; only problems get
+        // the alert above.
+        .overlay(alignment: .bottom) { bankSyncToast }
+        .animation(AppAnimation.appearance, value: budgetStore.bankSyncNotice)
+        // Only a sync someone asked for sets either of these, so the quiet
+        // Wallet imports on foregrounding stay quiet. The return types are
+        // spelled out because inferring them here times the type checker out.
+        .sensoryFeedback(trigger: budgetStore.bankSyncNotice) { _, notice -> SensoryFeedback? in
+            notice == nil ? nil : .success
+        }
+        .sensoryFeedback(trigger: budgetStore.bankSyncSummary) { _, summary -> SensoryFeedback? in
+            summary == nil ? nil : .warning
+        }
+    }
+
+    /// At the bottom: a tappable toast at the top would take the toolbar's
+    /// taps for as long as it shows.
+    @ViewBuilder
+    private var bankSyncToast: some View {
+        if let notice = budgetStore.bankSyncNotice {
+            if notice.offersReview {
+                Button(action: showNewTransactions) {
+                    ToastView(text: notice.text, actionTitle: String(localized: "Review"), edge: .bottom)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("bankSync.review")
+            } else {
+                ToastView(text: notice.text, edge: .bottom)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 
     /// The phone layout: tap an account, push its transactions.
@@ -378,21 +526,14 @@ struct AccountsListView: View {
                     emptyState
                 } else {
                     List {
-                        if !isSearchingAccounts {
-                            Section {
-                                NavigationLink(value: AccountsRoute.allAccounts) {
-                                    allAccountsRow
-                                }
-                            }
-                        }
                         if !filteredOnBudgetAccounts.isEmpty {
                             Section {
-                                if isOnBudgetExpanded || isSearchingAccounts {
+                                if isOnBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: onBudgetBuckets)
                                     ForEach(rows) { row in
                                         accountListRow(row, among: onBudgetBuckets, linked: true)
                                     }
-                                    .onMove(perform: moveAccount(in: rows))
+                                    .onMove(perform: moveRow(in: rows))
                                 }
                             } header: {
                                 AccountSectionHeader(
@@ -400,19 +541,20 @@ struct AccountsListView: View {
                                     title: String(localized: "On Budget"),
                                     total: onBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOnBudgetExpanded,
-                                    allowsCollapse: !isSearchingAccounts
+                                    allowsCollapse: !isSearchingAccounts && !isReordering,
+                                    onShowTransactions: { path.append(.onBudgetTransactions) }
                                 )
                             }
                             .listSectionSeparator(.hidden)
                         }
                         if !filteredOffBudgetAccounts.isEmpty {
                             Section {
-                                if isOffBudgetExpanded || isSearchingAccounts {
+                                if isOffBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: offBudgetBuckets)
                                     ForEach(rows) { row in
                                         accountListRow(row, among: offBudgetBuckets, linked: true)
                                     }
-                                    .onMove(perform: moveAccount(in: rows))
+                                    .onMove(perform: moveRow(in: rows))
                                 }
                             } header: {
                                 AccountSectionHeader(
@@ -420,7 +562,8 @@ struct AccountsListView: View {
                                     title: String(localized: "Off Budget"),
                                     total: offBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOffBudgetExpanded,
-                                    allowsCollapse: !isSearchingAccounts
+                                    allowsCollapse: !isSearchingAccounts && !isReordering,
+                                    onShowTransactions: { path.append(.offBudgetTransactions) }
                                 )
                             }
                             .listSectionSeparator(.hidden)
@@ -428,10 +571,11 @@ struct AccountsListView: View {
                         if !filteredClosedAccounts.isEmpty {
                             Section {
                                 if isClosedExpanded || isSearchingAccounts {
-                                    ForEach(filteredClosedAccounts) { account in
+                                    ForEach(Array(filteredClosedAccounts.enumerated()), id: \.element.id) { offset, account in
                                         NavigationLink(value: AccountsRoute.account(account)) {
                                             AccountRow(account: account)
                                         }
+                                        .listRowBackground(closedRowBackground(at: offset))
                                     }
                                 }
                             } header: {
@@ -445,6 +589,21 @@ struct AccountsListView: View {
                             }
                         }
                     }
+                    // Keep native search attached to the List itself so iOS can focus its search field.
+                    .onDemandSearch(
+                        text: $accountSearchText,
+                        isPresented: $isAccountSearchActive,
+                        isFocused: $isAccountSearchFocused,
+                        prompt: "Search Accounts",
+                        accessibilityPrefix: "accounts"
+                    )
+                    .environment(\.editMode, .constant(isReordering ? .active : .inactive))
+                    .pinnedSectionHeaders()
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        pinnedSummary {
+                            NavigationLink(value: AccountsRoute.allAccounts) { allAccountsCard }
+                        }
+                    }
                     // Capped like the transactions this pushes to, so a
                     // narrow-iPad account list doesn't stretch a row's balance
                     // an inch away from its name. Only here: the split
@@ -455,6 +614,8 @@ struct AccountsListView: View {
             .navigationDestination(for: AccountsRoute.self) { route in
                 switch route {
                 case .allAccounts: AccountTransactionsScreen()
+                case .onBudgetTransactions: AccountTransactionsScreen(scope: .onBudget)
+                case .offBudgetTransactions: AccountTransactionsScreen(scope: .offBudget)
                 case .account(let account): AccountTransactionsScreen(account: account)
                 }
             }
@@ -469,20 +630,14 @@ struct AccountsListView: View {
                     emptyState
                 } else {
                     List(selection: $selection) {
-                        if !isSearchingAccounts {
-                            Section {
-                                allAccountsRow
-                                    .tag(AccountSelection.allAccounts)
-                            }
-                        }
                         if !filteredOnBudgetAccounts.isEmpty {
                             Section {
-                                if isOnBudgetExpanded || isSearchingAccounts {
+                                if isOnBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: onBudgetBuckets)
                                     ForEach(rows) { row in
                                         accountListRow(row, among: onBudgetBuckets, linked: false)
                                     }
-                                    .onMove(perform: moveAccount(in: rows))
+                                    .onMove(perform: moveRow(in: rows))
                                 }
                             } header: {
                                 AccountSectionHeader(
@@ -490,20 +645,20 @@ struct AccountsListView: View {
                                     title: String(localized: "On Budget"),
                                     total: onBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOnBudgetExpanded,
-                                    allowsCollapse: !isSearchingAccounts,
-                                    totalTrailingPadding: 0
+                                    allowsCollapse: !isSearchingAccounts && !isReordering,
+                                    onShowTransactions: { selection = .onBudgetTransactions }
                                 )
                             }
                             .listSectionSeparator(.hidden)
                         }
                         if !filteredOffBudgetAccounts.isEmpty {
                             Section {
-                                if isOffBudgetExpanded || isSearchingAccounts {
+                                if isOffBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: offBudgetBuckets)
                                     ForEach(rows) { row in
                                         accountListRow(row, among: offBudgetBuckets, linked: false)
                                     }
-                                    .onMove(perform: moveAccount(in: rows))
+                                    .onMove(perform: moveRow(in: rows))
                                 }
                             } header: {
                                 AccountSectionHeader(
@@ -511,8 +666,8 @@ struct AccountsListView: View {
                                     title: String(localized: "Off Budget"),
                                     total: offBudgetTotal,
                                     isExpanded: isSearchingAccounts ? .constant(true) : $isOffBudgetExpanded,
-                                    allowsCollapse: !isSearchingAccounts,
-                                    totalTrailingPadding: 0
+                                    allowsCollapse: !isSearchingAccounts && !isReordering,
+                                    onShowTransactions: { selection = .offBudgetTransactions }
                                 )
                             }
                             .listSectionSeparator(.hidden)
@@ -520,9 +675,10 @@ struct AccountsListView: View {
                         if !filteredClosedAccounts.isEmpty {
                             Section {
                                 if isClosedExpanded || isSearchingAccounts {
-                                    ForEach(filteredClosedAccounts) { account in
+                                    ForEach(Array(filteredClosedAccounts.enumerated()), id: \.element.id) { offset, account in
                                         AccountRow(account: account)
                                             .tag(AccountSelection.account(account.id))
+                                            .listRowBackground(closedRowBackground(at: offset))
                                     }
                                 }
                             } header: {
@@ -535,6 +691,20 @@ struct AccountsListView: View {
                                     totalTrailingPadding: 0
                                 )
                             }
+                        }
+                    }
+                    .onDemandSearch(
+                        text: $accountSearchText,
+                        isPresented: $isAccountSearchActive,
+                        isFocused: $isAccountSearchFocused,
+                        prompt: "Search Accounts",
+                        accessibilityPrefix: "accounts"
+                    )
+                    .environment(\.editMode, .constant(isReordering ? .active : .inactive))
+                    .pinnedSectionHeaders()
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        pinnedSummary {
+                            Button { selection = .allAccounts } label: { allAccountsCard }
                         }
                     }
                 }
@@ -557,6 +727,10 @@ struct AccountsListView: View {
                     }
                 case .allAccounts:
                     AccountTransactionsScreen()
+                case .onBudgetTransactions:
+                    AccountTransactionsScreen(scope: .onBudget)
+                case .offBudgetTransactions:
+                    AccountTransactionsScreen(scope: .offBudget)
                 case nil:
                     ContentUnavailableView(
                         "No Account Selected",
@@ -568,14 +742,52 @@ struct AccountsListView: View {
         }
     }
 
+    private func beginReordering() {
+        accountSearchText = ""
+        isAccountSearchFocused = false
+        isAccountSearchActive = false
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isReordering = true
+        }
+    }
+
+    private func finishReordering() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isReordering = false
+        }
+    }
+
     private var hasNoAccounts: Bool {
         budgetStore.accounts.isEmpty && !budgetStore.isLoading
     }
 
-    private var allAccountsRow: some View {
+    /// The card as Budget draws its summary, so the two tabs' summaries line up.
+    private var allAccountsCard: some View {
         AccountsSummaryCard(totalBalance: totalBalance, monthTotals: monthSummary)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("accounts.topBox")
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+    }
+
+    /// Kept outside the List so it stays put while the accounts scroll, like
+    /// the Budget summary (GH #155). Hidden while searching, as the in-list
+    /// row was.
+    @ViewBuilder
+    private func pinnedSummary(@ViewBuilder _ link: () -> some View) -> some View {
+        if !isSearchingAccounts {
+            link()
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("accounts.topBox")
+                .padding(.horizontal, sideMargin)
+                .padding(.top, TopBoxLayout.verticalContentMargin)
+                // Twice the top gutter: the room the later section bars get
+                // from the gap between sections, so On Budget isn't squat.
+                .padding(.bottom, TopBoxLayout.verticalContentMargin * 2)
+                .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        }
     }
 
     @ViewBuilder
@@ -603,9 +815,8 @@ struct AccountsListView: View {
         }
     }
 
-    /// Everything both layouts hang off their account list: title, notification
-    /// routing, pull-to-refresh, loading overlay, search.
-    /// Shared so the two layouts can't drift apart.
+    /// Shared presentation for both account-list layouts: margins, empty search
+    /// results, and toolbar items. Search itself stays attached to each List.
     private func withChrome(@ViewBuilder _ content: () -> some View) -> some View {
         Group(content: content)
             // Both layouts' section state lives in @AppStorage, and a write to
@@ -614,11 +825,6 @@ struct AccountsListView: View {
             .animation(
                 AppAnimation.disclosure,
                 value: [isOnBudgetExpanded, isOffBudgetExpanded, isClosedExpanded]
-            )
-            .contentMargins(
-                .horizontal,
-                TopBoxLayout.horizontalContentMargin,
-                for: .scrollContent
             )
             .contentMargins(
                 .top,
@@ -630,70 +836,59 @@ struct AccountsListView: View {
                     ContentUnavailableView.search(text: accountSearchText)
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if isAccountSearchActive {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                        TextField(String(localized: "Search Accounts"), text: $accountSearchText)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .submitLabel(.done)
-                            .focused($isAccountSearchFocused)
-                            .accessibilityIdentifier("accounts.searchField")
-                            .onSubmit { isAccountSearchFocused = false }
-                            // Focus after the conditional field joins the view tree.
-                            .task { isAccountSearchFocused = true }
-                        if !accountSearchText.isEmpty {
-                            Button {
-                                accountSearchText = ""
-                                isAccountSearchFocused = true
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                                    .frame(minWidth: 44, minHeight: 44)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(String(localized: "Clear Search"))
-                            .accessibilityIdentifier("accounts.searchClear")
-                        }
-                    }
-                    .frame(minHeight: 44)
-                    .padding(.horizontal, 12)
-                    .background(.quaternary, in: Capsule())
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+            // Searching filters the rows a drag moves among, so reordering and
+            // search stay mutually exclusive (beginReordering clears search).
+            .onChange(of: isAccountSearchActive) { _, active in
+                if active {
+                    finishReordering()
                 }
             }
+            // The List carrying search leaves with the last account; don't
+            // reopen it with a stale query when accounts come back.
+            .onChange(of: hasNoAccounts) { _, empty in
+                guard empty else { return }
+                isAccountSearchActive = false
+                isAccountSearchFocused = false
+                accountSearchText = ""
+            }
             .toolbar {
-                if !hasNoAccounts || isAccountSearchActive {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            isAccountSearchActive.toggle()
-                            if !isAccountSearchActive {
-                                isAccountSearchFocused = false
-                                accountSearchText = ""
-                            }
-                        } label: {
-                            Image(systemName: isAccountSearchActive ? "xmark" : "magnifyingglass")
+                if isReordering {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(String(localized: "Done")) {
+                            finishReordering()
                         }
-                        .accessibilityLabel(isAccountSearchActive
-                            ? String(localized: "Cancel Search")
-                            : String(localized: "Search Accounts"))
-                        .accessibilityIdentifier("accounts.search")
+                        .fontWeight(.semibold)
+                        .accessibilityIdentifier("accounts.reorderDone")
                     }
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showingAddAccount = true
-                    } label: {
-                        Image(systemName: "plus")
+                if !isReordering {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            showingAddAccount = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel(String(localized: "accounts.add.title"))
                     }
-                    .accessibilityLabel(String(localized: "accounts.add.title"))
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
+                        if !budgetStore.accounts.isEmpty {
+                            Button {
+                                if isReordering {
+                                    finishReordering()
+                                } else {
+                                    beginReordering()
+                                }
+                            } label: {
+                                Label(
+                                    isReordering ? "Done Reordering" : "Reorder Items",
+                                    systemImage: isReordering ? "checkmark" : "arrow.up.arrow.down"
+                                )
+                            }
+                            .accessibilityIdentifier("accountsOptions.reorder")
+                            Divider()
+                        }
                         // Stays reachable while local groups exist, so the
                         // sheet can say why they can't be edited.
                         if budgetStore.accountGroupWritesEnabled || !budgetStore.accountGroups.isEmpty {
@@ -761,15 +956,20 @@ struct AccountsListView: View {
                     }
                     .accessibilityLabel(String(localized: "Accounts options"))
                     .accessibilityHint(String(localized: "Account list display options"))
+                    .accessibilityIdentifier("accounts.optionsMenu")
                 }
-                if pendingImportStore.count > 0 {
+                // One way in for everything waiting to be looked at: imports to
+                // approve and what this device's bank sync brought in.
+                let pendingCount = pendingImportStore.count + budgetStore.stagedBankTransactions.count
+                let newCount = budgetStore.unreviewedTransactions.count
+                if pendingCount + newCount > 0, !isReordering {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             showingPendingImports = true
                         } label: {
                             Image(systemName: "tray.and.arrow.down")
                                 .overlay(alignment: .topTrailing) {
-                                    Text("\(pendingImportStore.count)")
+                                    Text("\(pendingCount + newCount)")
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(.white)
                                         .padding(3)
@@ -777,8 +977,12 @@ struct AccountsListView: View {
                                         .offset(x: 6, y: -6)
                                 }
                         }
-                        .accessibilityLabel("Pending imports")
-                        .accessibilityValue(String(localized: "\(pendingImportStore.count) pending"))
+                        .accessibilityLabel(String(localized: "Review"))
+                        .accessibilityValue([
+                            pendingCount > 0 ? String(localized: "\(pendingCount) pending") : nil,
+                            newCount > 0 ? String(localized: "\(newCount) new transactions") : nil,
+                        ].compactMap(\.self).joined(separator: ", "))
+                        .accessibilityIdentifier("accounts.pendingImports")
                     }
                 }
             }
@@ -862,7 +1066,8 @@ struct AccountsListView: View {
             // the Spent exclusions, which change the totals without an edit.
             .task(id: MonthSummaryInputs(
                 dataVersion: budgetStore.dataVersion,
-                excludedFromSpent: budgetStore.excludedFromSpentCategoryIds
+                excludedFromSpent: budgetStore.excludedFromSpentCategoryIds,
+                monthStartRule: budgetStore.monthStartRule
             )) { await loadMonthSummary() }
             // Nothing above re-runs when only the date changes, so a phone
             // left on this tab overnight would keep showing last month's
@@ -901,8 +1106,14 @@ struct AccountsListView: View {
 
     private func loadMonthSummary() async {
         let month = BudgetView.currentMonthString()
-        guard let totals = await budgetStore.fetchAccountsMonthSummary(month: month) else { return }
-        monthSummary = AccountsMonthTotals(month: month, totals: totals)
+        let rule = budgetStore.monthStartRule
+        let budgetID = budgetStore.currentBudgetId
+        // The calendar-month rule resolves to this calendar month, so one query covers both.
+        let (start, end) = rule.range(relativeTo: DayDate.today().utcDate, first: 0, last: 0)
+        let ymd = { DayDate.today(calendar: MonthStartRule.calendar, now: $0).yyyymmdd }
+        guard let totals = await budgetStore.fetchAccountsMonthSummary(dates: ymd(start)...ymd(end)),
+              !Task.isCancelled, rule == budgetStore.monthStartRule, budgetID == budgetStore.currentBudgetId else { return }
+        monthSummary = AccountsMonthTotals(month: month, period: rule.isCalendarMonth ? nil : start...end, totals: totals)
     }
 
     /// Tapping a success notification lands here: jump the stack straight to
@@ -958,27 +1169,29 @@ struct AccountsListView: View {
 private struct AccountTransactionsScreen: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     var account: Account?
+    var scope: AccountTransactionsScope?
 
     var body: some View {
         Group {
             if let account {
                 AccountDetailView(account: account)
             } else {
-                TransactionsListView()
+                TransactionsListView(scope: scope)
+                    .id(scope?.rawValue ?? "all")
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             if budgetStore.showTransactionStatusFilters {
                 TransactionFilterStrip(
                     selection: $budgetStore.transactionStatusFilter,
-                    filters: account?.offBudget == true
+                    filters: account?.offBudget == true || scope == .offBudget
                         ? TransactionStatusFilter.allCases.filter { $0 != .uncategorized }
                         : TransactionStatusFilter.allCases
                 )
             }
         }
-        .task(id: account?.id) {
-            if account?.offBudget == true,
+        .task(id: "\(account?.id ?? "")|\(scope?.rawValue ?? "")") {
+            if account?.offBudget == true || scope == .offBudget,
                budgetStore.transactionStatusFilter == .uncategorized {
                 budgetStore.transactionStatusFilter = .all
             }
@@ -1042,9 +1255,15 @@ struct AccountsSummaryCard: View {
             Divider()
             // Falls back to today's month only while the figures are still
             // dashes — there's nothing yet for the caption to disagree with.
-            Text(MonthPicker.title(for: monthTotals?.month ?? BudgetView.currentMonthString()))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Group {
+                if let period = monthTotals?.period {
+                    Text(period.lowerBound..<period.upperBound, format: Date.IntervalFormatStyle(date: .abbreviated, time: .omitted, timeZone: .gmt))
+                } else {
+                    Text(MonthPicker.title(for: monthTotals?.month ?? BudgetView.currentMonthString()))
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
             HStack(alignment: .top, spacing: 8) {
                 SummaryStat(label: "Income", value: amount(summary?.incomeCents))
                 Spacer(minLength: 4)
@@ -1074,8 +1293,9 @@ struct AccountsSummaryCard: View {
 }
 
 /// Header used for the On Budget, Off Budget, and Closed Accounts sections.
-/// The section name sits on the left, the total is right-aligned, and tapping
-/// anywhere on the header expands/collapses that section.
+/// The budget sections split into two buttons: the title and arrow open that
+/// section's transactions, the total and chevron expand/collapse it. Closed
+/// Accounts has no transactions list, so its whole header collapses.
 struct AccountSectionHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let identifier: String
@@ -1083,70 +1303,121 @@ struct AccountSectionHeader: View {
     let total: Int
     @Binding var isExpanded: Bool
     var allowsCollapse = true
-    /// Extra trailing inset lining the total up with row balances that sit
-    /// left of a NavigationLink disclosure chevron. The split layout's rows
+    var onShowTransactions: (() -> Void)?
+    /// Extra trailing inset lining the Closed total up with row balances that
+    /// sit left of a NavigationLink disclosure chevron. The split layout's rows
     /// carry no chevron, so it passes zero to keep its totals flush too.
     var totalTrailingPadding: CGFloat = 24
 
     var body: some View {
         let totalText = budgetStore.displayBalance(total)
-        Button {
-            isExpanded.toggle()
-        } label: {
-            HStack(spacing: 8) {
-                if identifier == "closed" {
-                    DisclosureChevron(isExpanded: isExpanded)
-                        .frame(width: 12)
-                    sectionTitle
-                }
-                Spacer()
-                Text(totalText)
-                    .font(.headline.weight(.regular))
-                    .foregroundStyle(balanceColor(for: total))
-                    .animatedAmount(totalText)
-                    .padding(.trailing, identifier == "closed" ? totalTrailingPadding : 20)
-                    // Grouped-list headers uppercase their content; fine for
-                    // the title (string headers always rendered that way) but
-                    // it would mangle alphabetic currency symbols ("kr"→"KR").
-                    .textCase(nil)
-                    // One line always: a narrow sidebar wraps "USD 48,800.00"
-                    // onto two lines rather than shrinking it.
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .overlay(alignment: .leading) {
-                if identifier != "closed" {
-                    sectionTitle
+        Group {
+            if let onShowTransactions {
+                HStack(spacing: 0) {
+                    Button(action: onShowTransactions) {
+                        HStack(spacing: 8) {
+                            sectionTitle
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                        }
                         .padding(.leading, 8)
-                        .allowsHitTesting(false)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!allowsCollapse)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityLabel(String(format: String(localized: "Show %@ transactions"), title))
+                    .accessibilityIdentifier("account.group.\(identifier).transactions")
+                    .accessibilityHint(String(localized: "Opens transactions for this budget group"))
+
+                    Button {
+                        isExpanded.toggle()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(totalText)
+                                .font(.headline.weight(.regular))
+                                .foregroundStyle(balanceColor(for: total))
+                                .animatedAmount(totalText)
+                                // Grouped-list headers uppercase their content,
+                                // which would mangle currency symbols ("kr"→"KR").
+                                .textCase(nil)
+                                // One line always: a narrow sidebar would wrap it.
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                            DisclosureChevron(isExpanded: isExpanded)
+                                .frame(width: 12, height: 20)
+                                .accessibilityHidden(true)
+                        }
+                        .padding(.leading, 8)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!allowsCollapse)
+                    .accessibilityLabel(
+                        String(
+                            format: String(localized: "accounts.group.accessibility"),
+                            title,
+                            expandedState,
+                            totalText
+                        )
+                    )
+                    .accessibilityIdentifier("account.group.\(identifier).disclosure")
+                    .accessibilityHint(collapseHint)
                 }
-            }
-            .overlay(alignment: .trailing) {
-                if identifier != "closed" {
-                    DisclosureChevron(isExpanded: isExpanded)
-                        .frame(width: 12, height: 20)
-                        .allowsHitTesting(false)
+            } else {
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    HStack(spacing: 8) {
+                        DisclosureChevron(isExpanded: isExpanded)
+                            .frame(width: 12)
+                            .accessibilityHidden(true)
+                        sectionTitle
+                        Spacer(minLength: 8)
+                        Text(totalText)
+                            .font(.headline.weight(.regular))
+                            .foregroundStyle(balanceColor(for: total))
+                            .animatedAmount(totalText)
+                            .padding(.trailing, totalTrailingPadding)
+                            .textCase(nil)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .disabled(!allowsCollapse)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityLabel(
+                    String(
+                        format: String(localized: "accounts.group.accessibility"),
+                        title,
+                        expandedState,
+                        totalText
+                    )
+                )
+                .accessibilityIdentifier("account.group.\(identifier)")
+                .accessibilityHint(collapseHint)
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .disabled(!allowsCollapse)
         .listRowSeparator(.hidden)
-        .accessibilityAddTraits(.isHeader)
-        // State lives in the label, not the hint: hints are read last and can
-        // be disabled outright, and a collapsed section is otherwise
-        // indistinguishable from an empty one. Same convention as the budget
-        // tab's group headers ("Essentials, collapsed").
-        .accessibilityLabel(String(format: String(localized: "accounts.group.accessibility"), title, expandedState, totalText))
-        .accessibilityIdentifier("account.group.\(identifier)")
-        // Hints describe the result of the action, not the gesture itself —
-        // VoiceOver already announces this as double-tap-activatable.
-        .accessibilityHint(allowsCollapse
-            ? (isExpanded
-                ? String(localized: "Collapses this section")
-                : String(localized: "Expands this section"))
-            : "")
+        // Pinned, so rows scrolling beneath must not show through: take the
+        // container's insets away and put the horizontal one back inside.
+        .padding(.horizontal, 16)
+        .listRowInsets(EdgeInsets())
+        .background(Color(.systemGroupedBackground))
+    }
+
+    private var collapseHint: String {
+        guard allowsCollapse else { return "" }
+        return isExpanded
+            ? String(localized: "Collapses this section")
+            : String(localized: "Expands this section")
     }
 
     private var expandedState: String {
@@ -1173,6 +1444,9 @@ private struct AccountGroupListHeader: View {
     /// Sidebar rows have no NavigationLink chevron, so they pass zero to keep
     /// group totals aligned with the account balances below.
     var totalTrailingPadding: CGFloat = 24
+    /// New transactions across the group's accounts, shown while it is
+    /// collapsed and their own rows can't say so.
+    let unreviewedCount: Int
     let action: () -> Void
 
     var body: some View {
@@ -1186,10 +1460,14 @@ private struct AccountGroupListHeader: View {
                 Text(group.name)
                     .font(.body.weight(.bold))
                     .foregroundStyle(isExpanded ? .secondary : .primary)
+                if !isExpanded, unreviewedCount > 0 {
+                    UnreviewedCountBadge(count: unreviewedCount)
+                }
                 Spacer()
                 AccountGroupTotal(totalText: totalText, total: total)
                     .padding(.trailing, totalTrailingPadding)
             }
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
             .overlay(alignment: .leading) {
                 DisclosureChevron(isExpanded: isExpanded)
@@ -1198,7 +1476,7 @@ private struct AccountGroupListHeader: View {
             }
         }
         .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets(top: 5, leading: 28, bottom: 5, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 0, leading: 28, bottom: 0, trailing: 16))
         .listRowBackground(rowBackground)
         .listRowSeparator(isBackgroundClear ? .hidden : .visible, edges: .top)
         .listRowSeparator(.hidden, edges: .bottom)
@@ -1255,10 +1533,6 @@ private struct AccountGroupRowBackground: View {
     }
 }
 
-private func groupRowBackground(position: AccountGroupRowPosition?) -> AnyView? {
-    position.map { AnyView(AccountGroupRowBackground(position: $0)) }
-}
-
 private struct AccountGroupTotal: View {
     let totalText: String
     let total: Int
@@ -1274,32 +1548,413 @@ private struct AccountGroupTotal: View {
     }
 }
 
-struct AccountRow: View {
-    @EnvironmentObject var budgetStore: BudgetStore
+/// Circular badge with an SF Symbol for the account type, or for the loan,
+/// deposit or credit card it tracks. Symbols follow `AccountBalanceWidget.iconName`.
+struct AccountTypeAvatar: View {
     let account: Account
-    @State private var isCreatingGroup = false
-    @State private var newGroupName = ""
+    var hasLoan: Bool = false
+    var hasDeposit: Bool = false
+    var hasCreditCard: Bool = false
+    var customSymbol: String?
+    var customTintHex: String?
+    var customImage: UIImage?
+
+    // ponytail: icon derived from account.type and active configs only.
+    // Ceiling: no vehicle/personal split for loans. Upgrade path: store
+    // the loan instrument kind on LoanConfig when the loan editor gains the field.
+    nonisolated static func icon(
+        for type: AccountType,
+        hasDeposit: Bool = false,
+        hasLoan: Bool = false,
+        hasCreditCard: Bool = false
+    ) -> String {
+        if hasDeposit {
+            return "lock.fill"
+        }
+        if hasLoan {
+            return "house.fill"
+        }
+        if hasCreditCard {
+            return "creditcard.fill"
+        }
+        return defaultTypeIcon(for: type)
+    }
+
+    nonisolated static func defaultTypeIcon(for type: AccountType) -> String {
+        switch type {
+        case .checking: "banknote.fill"
+        case .savings: "building.columns.fill"
+        case .credit: "creditcard.fill"
+        case .mortgage: "house.fill"
+        case .debt: "exclamationmark.triangle.fill"
+        case .investment: "chart.line.uptrend.xyaxis"
+        case .other: "dollarsign.circle.fill"
+        }
+    }
+
+    /// Icon color; the badge fills with the same color at low opacity.
+    nonisolated static func iconColor(
+        for type: AccountType,
+        hasDeposit: Bool = false,
+        hasLoan: Bool = false,
+        hasCreditCard: Bool = false,
+        closed: Bool = false
+    ) -> Color {
+        if closed {
+            return .secondary
+        }
+        if hasDeposit {
+            return .green
+        }
+        if hasLoan {
+            return .blue
+        }
+        if hasCreditCard {
+            return .orange
+        }
+        switch type {
+        case .checking, .mortgage, .debt: return .blue
+        case .savings: return .purple
+        case .credit: return .orange
+        case .investment: return .green
+        case .other: return .primary
+        }
+    }
 
     var body: some View {
-        // The group menu is the only context-menu item, so without it there
-        // is no menu at all rather than an empty one.
-        if budgetStore.accountGroupWritesEnabled {
-            row.contextMenu { groupMenu }
+        let color = customTintHex.flatMap { Color(hex: $0) } ?? Self.iconColor(
+            for: account.type,
+            hasDeposit: hasDeposit,
+            hasLoan: hasLoan,
+            hasCreditCard: hasCreditCard,
+            closed: account.closed
+        )
+        ZStack {
+            Circle().fill(color.opacity(0.18))
+            if let customImage {
+                Image(uiImage: customImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+            } else {
+                Image(systemName: customSymbol ?? Self.icon(
+                    for: account.type,
+                    hasDeposit: hasDeposit,
+                    hasLoan: hasLoan,
+                    hasCreditCard: hasCreditCard
+                ))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(color)
+            }
+        }
+        .frame(width: 36, height: 36)
+    }
+}
+
+/// The leading swipe that clears one transaction's new mark, shared by
+/// Review and the account screen.
+struct MarkReviewedButton: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    let transactionId: String
+
+    var body: some View {
+        Button {
+            budgetStore.markReviewed(transactionId)
+        } label: {
+            Label(String(localized: "Reviewed"), systemImage: "checkmark")
+        }
+        .tint(.accentColor)
+        .accessibilityIdentifier("review.markReviewed.\(transactionId)")
+    }
+}
+
+/// How many new transactions sit behind a row, the way Mail counts unread.
+struct UnreviewedCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text(count, format: .number)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.accentColor, in: Capsule())
+            .accessibilityLabel(String(localized: "\(count) new transactions"))
+    }
+}
+
+/// Marks an account as fed by a bank: which feed, whether its last sync went
+/// wrong, and a spinner while one is running.
+struct BankSyncBadge: View {
+    let linked: BankSyncAccount
+    let isSyncing: Bool
+
+    var body: some View {
+        if isSyncing {
+            ProgressView()
+                .controlSize(.mini)
+                .accessibilityLabel(String(localized: "Syncing..."))
         } else {
-            row
+            // A different shape, not only a different color, when it failed.
+            Image(systemName: linked.needsAttention
+                ? "exclamationmark.triangle.fill"
+                : linked.source == .financeKit ? "wallet.pass" : "building.columns")
+                .foregroundStyle(linked.needsAttention ? Color.red : Color.secondary)
+                .accessibilityLabel(linked.needsAttention
+                    ? String(localized: "Bank sync needs attention")
+                    : String(localized: "Bank Sync"))
+        }
+    }
+}
+
+struct AccountRow: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    @ObservedObject private var iconStore = AccountIconCustomizationStore.shared
+    let account: Account
+
+    @State private var isCreatingGroup = false
+    @State private var isRenamingAccount = false
+    @State private var newGroupName = ""
+    @State private var renameName = ""
+    @State private var isClosing = false
+    @State private var iconPickerMode: AccountIconPickerSheet.Mode?
+    @State private var loadedAccountIconImage: UIImage?
+
+    private var showAccountTypeIcons: Bool {
+        iconStore.iconsEnabled(for: budgetStore.currentBudgetId)
+    }
+
+    private var iconCustomization: AccountIconCustomization? {
+        iconStore.customization(for: budgetStore.currentBudgetId, accountID: account.id)
+    }
+
+    private var photoLoadID: String? {
+        guard let budgetID = budgetStore.currentBudgetId,
+              let filename = iconCustomization?.photoFilename else { return nil }
+        return "\(budgetID)|\(account.id)|\(filename)|\(iconStore.photoRevision)"
+    }
+
+    /// Share of payoff or term completed (0...1), or nil when the account has no tracking.
+    /// Pure so tests can exercise all combinations of loan, deposit, and credit card configs.
+    nonisolated static func progress(
+        for account: Account,
+        loanConfig: LoanConfig?,
+        depositConfig: DepositConfig?,
+        creditCardDues: [CreditCardCycle.StatementDue]?,
+        creditCardCycle: CreditCardCycle?,
+        today: DayDate = .today()
+    ) -> Double? {
+        guard !account.closed else { return nil }
+        if let loanConfig {
+            return loanConfig.fractionPaidOff(accountBalance: account.balance)
+        }
+        if let depositConfig {
+            return depositConfig.fractionElapsed(on: today)
+        }
+        guard let dues = creditCardDues, let cycle = creditCardCycle else { return nil }
+        // The dues include the still-open cycle once every closed statement is
+        // past due. Nothing is paid against an open cycle, so it always read 0%.
+        // Track closed statements only, falling back to the newest one.
+        let openDue = cycle.openCycleDueDate(for: today)
+        let closed = dues.filter { $0.dueDate != openDue }
+        // remainingDue never exceeds statementBalance (calculateStatementDue), so this stays in 0...1.
+        // A settled statement past its due date is no longer actionable, so hide
+        // the bar rather than show it full against new spend on the open cycle.
+        guard let due = CreditCardCycle.pendingStatementDue(in: closed, today: today) ?? closed.last,
+              due.statementBalance > 0,
+              today <= due.dueDate || due.remainingDue > 0 else { return nil }
+        return Double(due.statementBalance - due.remainingDue) / Double(due.statementBalance)
+    }
+
+    /// One account is one instrument, so a bar that is neither loan nor
+    /// deposit is a tracked card, whatever the account's type.
+    nonisolated static func progressBarColor(p: Double, hasLoan: Bool, hasDeposit: Bool) -> Color {
+        if p >= 1.0 || hasDeposit {
+            return .green
+        }
+        return hasLoan ? .blue : .red
+    }
+
+    var body: some View {
+        row
+            .task(id: photoLoadID) {
+                loadedAccountIconImage = nil
+                guard let budgetID = budgetStore.currentBudgetId,
+                      iconCustomization?.photoFilename != nil else {
+                    return
+                }
+                let image = await iconStore.loadImage(for: budgetID, accountID: account.id)
+                guard !Task.isCancelled else { return }
+                loadedAccountIconImage = image
+            }
+            .contextMenu {
+                Button {
+                    renameName = account.name
+                    isRenamingAccount = true
+                } label: {
+                    Label(String(localized: "Rename Account"), systemImage: "pencil")
+                }
+                .accessibilityIdentifier("accountRename.action")
+
+                Menu {
+                    Button {
+                        iconPickerMode = .icons
+                    } label: {
+                        Label("Icons", systemImage: "square.grid.2x2")
+                    }
+                    Button {
+                        iconPickerMode = .upload
+                    } label: {
+                        Label("Upload", systemImage: "photo")
+                    }
+                } label: {
+                    Label("Pick Icon", systemImage: "paintpalette")
+                }
+                .accessibilityIdentifier("accountRow.pickIcon.\(account.id)")
+
+                if budgetStore.accountGroupWritesEnabled {
+                    groupMenu
+                }
+                typeMenu
+                closeMenu
+            }
+            .sheet(isPresented: $isClosing) {
+                CloseAccountSheet(account: account)
+            }
+            .sheet(item: $iconPickerMode) { mode in
+                AccountIconPickerSheet(
+                    mode: mode,
+                    budgetID: budgetStore.currentBudgetId,
+                    account: account
+                )
+            }
+    }
+
+    private func commitRename() {
+        let name = renameName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != account.name else { return }
+        Task {
+            do {
+                try await budgetStore.renameAccount(id: account.id, name: name)
+            } catch {
+                budgetStore.error = error.localizedDescription
+            }
+        }
+    }
+
+    private var typeMenu: some View {
+        Menu(String(localized: "accounts.type.title"), systemImage: "tag") {
+            ForEach(AccountType.allCases, id: \.self) { type in
+                Button {
+                    Task {
+                        do {
+                            try await budgetStore.setAccountType(account, type: type)
+                        } catch {
+                            budgetStore.error = error.localizedDescription
+                        }
+                    }
+                } label: {
+                    if account.type == type {
+                        Label(type.title, systemImage: "checkmark")
+                    } else {
+                        Text(type.title)
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier("accountRow.type.\(account.id)")
+    }
+
+    @ViewBuilder
+    private var closeMenu: some View {
+        if account.closed {
+            Button {
+                Task { try? await budgetStore.reopenAccount(account) }
+            } label: {
+                Label(String(localized: "Reopen Account"), systemImage: "arrow.uturn.backward")
+            }
+            .accessibilityIdentifier("accountRow.reopen.\(account.id)")
+        } else {
+            Button(role: .destructive) {
+                isClosing = true
+            } label: {
+                Label(String(localized: "Close Account"), systemImage: "xmark.circle")
+            }
+            .accessibilityIdentifier("accountRow.close.\(account.id)")
         }
     }
 
     private var row: some View {
         let balance = budgetStore.displayBalance(account.balance)
-        return HStack {
-            Text(account.name)
-                .font(.body)
-                .padding(.leading, 8)
-            Spacer()
-            Text(balance)
-                .foregroundStyle(balanceColor(for: account.balance))
-                .animatedAmount(balance)
+        let loanConfig = budgetStore.activeLoanConfig(for: account.id)
+        let depositConfig = budgetStore.activeDepositConfig(for: account.id)
+        let hasLoan = loanConfig != nil
+        let hasDeposit = depositConfig != nil
+        let creditCardCycle = budgetStore.activeCreditCardCycle(for: account.id)
+        let hasCreditCard = creditCardCycle != nil
+        let progress = Self.progress(
+            for: account,
+            loanConfig: loanConfig,
+            depositConfig: depositConfig,
+            creditCardDues: budgetStore.creditCardStatementDues[account.id],
+            creditCardCycle: creditCardCycle
+        )
+        let unreviewedCount = budgetStore.unreviewedCount(forAccountId: account.id)
+        let linked = budgetStore.bankSyncAccount(forAccountId: account.id)
+        let isSyncing = linked != nil && budgetStore.bankSyncingAccountIds.contains(account.id)
+
+        return HStack(alignment: .center, spacing: 12) {
+            if showAccountTypeIcons {
+                AccountTypeAvatar(
+                    account: account,
+                    hasLoan: hasLoan,
+                    hasDeposit: hasDeposit,
+                    hasCreditCard: hasCreditCard,
+                    customSymbol: iconCustomization?.symbolName,
+                    customTintHex: iconCustomization?.tintHex,
+                    customImage: loadedAccountIconImage
+                )
+                .accessibilityHidden(true)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(account.name)
+                        .font(.body)
+                        .fontWeight(unreviewedCount > 0 ? .semibold : .regular)
+                    if unreviewedCount > 0 {
+                        UnreviewedCountBadge(count: unreviewedCount)
+                            .accessibilityIdentifier("accountRow.unreviewed.\(account.id)")
+                    }
+                    // Only when there is something to say: a healthy link's
+                    // icon on every row is noise next to the name.
+                    if let linked, !isSyncing, linked.needsAttention {
+                        BankSyncBadge(linked: linked, isSyncing: false)
+                            .font(.caption)
+                            .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
+                    }
+                    Spacer()
+                    // Beside the balance, the figure a bank sync is about to
+                    // change, and in the row's free space: next to the name
+                    // it pushed the name out of line with its neighbours.
+                    if let linked, isSyncing {
+                        BankSyncBadge(linked: linked, isSyncing: true)
+                            .accessibilityIdentifier("accountRow.bankSync.\(account.id)")
+                    }
+                    Text(balance)
+                        .foregroundStyle(balanceColor(for: account.balance))
+                        .animatedAmount(balance)
+                        // Still readable, but marked as about to change.
+                        .opacity(isSyncing ? 0.5 : 1)
+                }
+                if let p = progress {
+                    ProgressView(value: p)
+                        .progressViewStyle(.linear)
+                        .tint(Self.progressBarColor(p: p, hasLoan: hasLoan, hasDeposit: hasDeposit))
+                        .accessibilityIdentifier("accountRow.progress.\(account.id)")
+                }
+            }
         }
         .alert(String(localized: "Create Group"), isPresented: $isCreatingGroup) {
             TextField(String(localized: "Group Name"), text: $newGroupName)
@@ -1309,6 +1964,14 @@ struct AccountRow: View {
             }
             .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button(String(localized: "Cancel"), role: .cancel) {}
+        }
+        .alert(String(localized: "Rename Account"), isPresented: $isRenamingAccount) {
+            TextField(String(localized: "Account Name"), text: $renameName)
+            Button(String(localized: "Cancel"), role: .cancel) {}
+            Button(String(localized: "Save")) {
+                commitRename()
+            }
+            .disabled(renameName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
 
@@ -1336,6 +1999,21 @@ private struct AccountGroupsSheet: View {
     @State private var isRenaming = false
     @State private var renameName = ""
     @State private var renameTarget: AccountGroup?
+
+    private func moveGroup(from source: IndexSet, to destination: Int) {
+        let groups = budgetStore.accountGroups
+        guard budgetStore.canReorderAccountGroups,
+              let index = source.first,
+              groups.indices.contains(index),
+              let target = AccountsListView.groupMoveTarget(in: groups, from: source, to: destination) else { return }
+        Task {
+            do {
+                try await budgetStore.moveAccountGroup(id: groups[index].id, before: target.before)
+            } catch {
+                budgetStore.error = error.localizedDescription
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -1369,17 +2047,25 @@ private struct AccountGroupsSheet: View {
                         }
                         .buttonStyle(.borderless)
                         .disabled(!budgetStore.accountGroupWritesEnabled)
+                        .moveDisabled(!budgetStore.canReorderAccountGroups)
                     }
+                    .onMove(perform: moveGroup)
                 } header: {
                     Text(String(localized: "Account Groups"))
                 } footer: {
-                    if !budgetStore.accountGroupWritesEnabled {
+                    if !budgetStore.canReorderAccountGroups {
                         Text(String(localized: "Account groups require Actual Server 26.9.0 or later."))
                     }
                 }
             }
             .navigationTitle(String(localized: "Account Groups"))
             .toolbar {
+                if budgetStore.canReorderAccountGroups {
+                    ToolbarItem(placement: .topBarLeading) {
+                        EditButton()
+                            .accessibilityIdentifier("accountGroups.edit")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "Done")) { dismiss() }
                 }
@@ -1400,4 +2086,135 @@ private struct AccountGroupsSheet: View {
 #Preview {
     AccountsListView()
         .environmentObject(BudgetStore.previewInstance())
+}
+
+/// Close flow for one account (upstream `closeAccount`): a non-zero balance
+/// needs a destination account, plus a category when the money leaves the
+/// budget for an off-budget account.
+private struct CloseAccountSheet: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+    let account: Account
+    @State private var transferAccountId: String?
+    @State private var categoryId: String?
+    @State private var errorMessage: String?
+    @State private var isConfirmingForceClose = false
+
+    private var destinations: [Account] {
+        budgetStore.accounts.filter { !$0.closed && $0.id != account.id }
+    }
+
+    /// Upstream asks only when an on-budget account empties into an
+    /// off-budget one, and won't close until a category is picked.
+    private var needsCategory: Bool {
+        BudgetStore.transferLegTakesCategory(
+            leg: account.id,
+            partner: transferAccountId,
+            offBudgetAccountIds: budgetStore.offBudgetAccountIds
+        )
+    }
+
+    private var canClose: Bool {
+        account.balance == 0 || (transferAccountId != nil && (!needsCategory || categoryId != nil))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if account.balance != 0 {
+                    Section {
+                        Picker(String(localized: "Move Balance To"), selection: $transferAccountId) {
+                            Text(String(localized: "Select Account")).tag(String?.none)
+                            ForEach(destinations) { Text($0.name).tag(String?.some($0.id)) }
+                        }
+                        .accessibilityIdentifier("closeAccount.destination")
+                        if needsCategory {
+                            Picker(String(localized: "Category"), selection: $categoryId) {
+                                Text(String(localized: "Select a category")).tag(String?.none)
+                                ForEach(budgetStore.categoryGroups.filter { !$0.isIncome }) { group in
+                                    ForEach(group.categories) { Text($0.name).tag(String?.some($0.id)) }
+                                }
+                            }
+                            .accessibilityIdentifier("closeAccount.category")
+                        }
+                    } footer: {
+                        Text(String(
+                            localized: "The remaining balance of \(budgetStore.displayBalance(account.balance)) moves to the selected account."
+                        ))
+                    }
+                } else {
+                    Section {
+                        Text(String(localized: "Closed accounts stay in your history but no longer accept new transactions."))
+                    }
+                }
+                Section {
+                    Button(String(localized: "Delete Account and Transactions"), role: .destructive) {
+                        isConfirmingForceClose = true
+                    }
+                    .accessibilityIdentifier("closeAccount.forceClose")
+                } footer: {
+                    Text(String(localized: "Removes the account and every transaction in it. Transfers in other accounts stay but lose their link. This can't be undone."))
+                }
+                if let errorMessage {
+                    Section { Text(errorMessage).foregroundStyle(.red) }
+                }
+            }
+            .confirmationDialog(
+                String(localized: "Delete this account and all its transactions?"),
+                isPresented: $isConfirmingForceClose,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "Delete Account and Transactions"), role: .destructive) {
+                    Task {
+                        do {
+                            try await budgetStore.forceCloseAccount(account)
+                            dismiss()
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
+                    }
+                }
+            }
+            .navigationTitle(String(localized: "Close Account"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "Cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "Close")) {
+                        Task {
+                            do {
+                                try await budgetStore.closeAccount(
+                                    account,
+                                    transferAccountId: transferAccountId,
+                                    categoryId: needsCategory ? categoryId : nil
+                                )
+                                dismiss()
+                            } catch {
+                                errorMessage = error.localizedDescription
+                            }
+                        }
+                    }
+                    .disabled(!canClose)
+                    .accessibilityIdentifier("closeAccount.confirm")
+                }
+            }
+        }
+    }
+}
+
+private extension View {
+    /// Grouped List headers scroll away; the plain style pins them (as
+    /// Budget's group headers are, GH #610). The grouped look is put back
+    /// by hand: no default background, the grouped canvas colour behind.
+    func pinnedSectionHeaders() -> some View {
+        listStyle(.plain)
+            // The plain style's stock minimum is taller than the 44 pt header
+            // rows, which would leave group rows taller than the section bars.
+            .environment(\.defaultMinListRowHeight, 44)
+            .contentMargins(.top, 0, for: .scrollContent)
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemGroupedBackground))
+    }
 }

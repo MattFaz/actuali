@@ -485,6 +485,8 @@ struct DiagnosticReportView: View {
                 ProgressView()
             }
         }
+        // Lays out its own edges, so it opts out of the root side margin.
+        .contentMargins(.horizontal, 0, for: .scrollContent)
         .readableWidth()
         .navigationTitle(String(localized: "Diagnostic Report"))
         .navigationBarTitleDisplayMode(.inline)

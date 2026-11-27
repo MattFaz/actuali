@@ -87,4 +87,21 @@ enum Keychain {
             throw KeychainError.unhandled(status)
         }
     }
+
+    /// Remove every item whose key starts with `prefix`. Best effort: an item
+    /// that can't be listed or removed is left in place.
+    static func removeAll(withPrefix prefix: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnAttributes as String: kCFBooleanTrue as Any,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]] else { return }
+        for case let key as String in items.map({ $0[kSecAttrAccount as String] }) where key.hasPrefix(prefix) {
+            try? remove(for: key)
+        }
+    }
 }

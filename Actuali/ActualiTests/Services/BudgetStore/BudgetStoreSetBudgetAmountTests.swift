@@ -274,6 +274,43 @@ struct BudgetStoreSetBudgetAmountTests {
         #expect(amounts["cat-income"] == 5000)
     }
 
+    /// Tracking budgets edit income through the same sheet as expenses, so the
+    /// write has to land in reflect_budgets and republish the income row.
+    @Test func settingTrackingIncomeBudgetPersistsAndRefreshesMonth() async throws {
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        try await seedIncomeCategory(database)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+            CREATE TABLE reflect_budgets (
+                id TEXT PRIMARY KEY, month INTEGER, category TEXT,
+                amount INTEGER DEFAULT 0, carryover INTEGER DEFAULT 0,
+                goal INTEGER, long_goal INTEGER
+            );
+            CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking');
+            """)
+        }
+        let store = try await makeTestStore(database: database)
+
+        try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-salary", amountCents: 500_000)
+
+        let queue = try DatabaseQueue(path: path.path)
+        let amounts = try await queue.read { db in
+            try (
+                Int.fetchOne(db, sql: "SELECT amount FROM reflect_budgets WHERE id = '202607-cat-salary'"),
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM zero_budgets")
+            )
+        }
+        #expect(amounts.0 == 500_000)
+        #expect(amounts.1 == 0)
+
+        let month = try #require(store.currentBudgetMonth)
+        #expect(month.isTrackingBudget)
+        let salary = try #require(month.incomeCategories.first { $0.categoryId == "cat-salary" })
+        #expect(salary.budgeted == 500_000)
+    }
+
     @Test func zeroingAnOlderMonthPreservesTheNewerMonthSelection() async throws {
         let (database, path) = try await makeDatabase()
         defer { cleanup(path) }

@@ -88,13 +88,17 @@ final class TransactionLogger {
         }
         let normalized = MerchantNormalizer.normalize(rawMerchant)
         let payeeName = normalized.isEmpty ? rawMerchant : normalized
-        let payee = try await store.findOrCreatePayee(name: payeeName)
+        // A new name is only created after rules run, and only if no rule
+        // replaces it (#777), so just look up an existing payee here.
+        let payee = store.existingPayee(named: payeeName)
 
         let pinnedCategoryId = await store.existingCategoryId(explicitCategoryId)
         let categoryId: String? = if let pinnedCategoryId {
             pinnedCategoryId
-        } else {
+        } else if let payee {
             try await store.payeeHistoryCategoryId(forPayeeId: payee.id)
+        } else {
+            nil
         }
 
         // Use the un-normalized merchant string as imported_payee so user rules
@@ -106,8 +110,8 @@ final class TransactionLogger {
             accountId: accountId,
             date: Transaction.yyyymmdd(from: date),
             amount: amountCents,
-            payeeId: payee.id,
-            payeeName: payee.name,
+            payeeId: payee?.id,
+            payeeName: payee?.name ?? payeeName,
             categoryId: categoryId,
             categoryName: nil,
             notes: notes,
@@ -126,7 +130,11 @@ final class TransactionLogger {
         do {
             // A pinned category is a user choice, so keep rules from replacing
             // it — the add form does the same for a picked category.
-            switch try await store.createTransaction(transaction, preserveCategory: pinnedCategoryId != nil) {
+            switch try await store.createTransaction(
+                transaction,
+                preserveCategory: pinnedCategoryId != nil,
+                resolvePayeeName: true
+            ) {
             case .inserted(let id):
                 persistedTransactionId = id
             case .duplicate:
@@ -140,8 +148,13 @@ final class TransactionLogger {
             // and keep the pending import available for explicit recovery.
             throw LoggerError.transactionNeedsRecovery
         }
+        guard let persistedTransaction = try await database.fetchTransaction(id: persistedTransactionId) else {
+            throw LoggerError.noBudgetLoaded
+        }
         // With when-in-use permission, background automations get no fix and silently skip.
-        store.recordPayeeLocationIfAppropriate(payeeId: payee.id)
+        if let payeeId = persistedTransaction.payeeId {
+            store.recordPayeeLocationIfAppropriate(payeeId: payeeId)
+        }
         // Writes push in the background so the UI never waits on the network
         // (issue #125), but an App Intent runs headless and can be frozen the
         // moment it returns — wait for the push here so a Siri/Shortcuts log
@@ -154,10 +167,7 @@ final class TransactionLogger {
             dataset: Transaction.datasetName,
             row: persistedTransactionId
         ))
-        guard let persistedTransaction = try await database.fetchTransaction(id: persistedTransactionId) else {
-            throw LoggerError.noBudgetLoaded
-        }
-        logger.info("Logged transaction \(persistedTransaction.id, privacy: .public) for \(payee.name, privacy: .public), synced: \(synced, privacy: .public)")
+        logger.info("Logged transaction \(persistedTransaction.id, privacy: .public) for \(persistedTransaction.payeeName ?? payeeName, privacy: .public), synced: \(synced, privacy: .public)")
         return Result(transaction: persistedTransaction, synced: synced)
     }
 }

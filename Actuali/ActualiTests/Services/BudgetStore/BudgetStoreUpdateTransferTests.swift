@@ -10,23 +10,26 @@ import Testing
 /// leg whose partner account is off-budget.
 @MainActor
 struct BudgetStoreUpdateTransferTests {
-    /// Three accounts with the transfer payees Actual maintains for them.
+    /// Four accounts with the transfer payees Actual maintains for them.
     private func makeDatabase() async throws -> (BudgetDatabase, URL) {
         try await makeTestDatabase(TestSchema.core + ["""
         INSERT INTO accounts (id, name, offbudget) VALUES
             ('acct-checking',  'Checking',  0),
             ('acct-savings',   'Savings',   0),
-            ('acct-brokerage', 'Brokerage', 1);
+            ('acct-brokerage', 'Brokerage', 1),
+            ('acct-card',      'Card',      0);
 
         INSERT INTO payees (id, name, transfer_acct) VALUES
             ('payee-checking',  NULL, 'acct-checking'),
             ('payee-savings',   NULL, 'acct-savings'),
-            ('payee-brokerage', NULL, 'acct-brokerage');
+            ('payee-brokerage', NULL, 'acct-brokerage'),
+            ('payee-card',      NULL, 'acct-card');
 
         INSERT INTO payee_mapping (id, targetId) VALUES
             ('payee-checking',  'payee-checking'),
             ('payee-savings',   'payee-savings'),
-            ('payee-brokerage', 'payee-brokerage');
+            ('payee-brokerage', 'payee-brokerage'),
+            ('payee-card',      'payee-card');
         """])
     }
 
@@ -42,11 +45,14 @@ struct BudgetStoreUpdateTransferTests {
                     offBudget: false, closed: false, sortOrder: 1, balance: 0),
             Account(id: "acct-brokerage", name: "Brokerage", type: .investment,
                     offBudget: true, closed: false, sortOrder: 2, balance: 0),
+            Account(id: "acct-card", name: "Card", type: .credit,
+                    offBudget: false, closed: false, sortOrder: 3, balance: 0),
         ]
         store.payees = [
             Payee(id: "payee-checking", name: "", transferAccountId: "acct-checking", tombstone: false),
             Payee(id: "payee-savings", name: "", transferAccountId: "acct-savings", tombstone: false),
             Payee(id: "payee-brokerage", name: "", transferAccountId: "acct-brokerage", tombstone: false),
+            Payee(id: "payee-card", name: "", transferAccountId: "acct-card", tombstone: false),
         ]
         return store
     }
@@ -79,7 +85,8 @@ struct BudgetStoreUpdateTransferTests {
         transferToAccountId: String? = "acct-savings",
         categoryId: String? = nil,
         notes: String = "",
-        cleared: Bool = false
+        cleared: Bool = false,
+        openedLegIsSource: Bool = true
     ) -> BudgetStore.TransactionForm {
         BudgetStore.TransactionForm(
             accountId: accountId,
@@ -90,7 +97,8 @@ struct BudgetStoreUpdateTransferTests {
             categoryId: categoryId,
             notes: notes,
             date: Transaction.date(fromYYYYMMDD: 20_260_715),
-            cleared: cleared
+            cleared: cleared,
+            transferOpenedLegIsSource: openedLegIsSource
         )
     }
 
@@ -159,11 +167,75 @@ struct BudgetStoreUpdateTransferTests {
 
         // The user opened the +$25.00 leg in Savings; the form still speaks
         // in From/To (Checking → Savings).
-        try await store.saveTransaction(form(amount: "10.00"), editing: target)
+        try await store.saveTransaction(form(amount: "10.00", openedLegIsSource: false), editing: target)
 
         let byId = try rows(path: path)
         #expect(try #require(byId["leg-out"])["amount"] == -1000)
         #expect(try #require(byId["leg-in"])["amount"] == 1000)
+    }
+
+    /// Columns with a CRDT message for `row`, to show what a save wrote.
+    private func messagedColumns(_ database: BudgetDatabase, row: String) async throws -> Set<String> {
+        try await database.dbQueueForTesting.read { db in
+            try Set(String.fetchAll(db, sql: "SELECT column FROM messages_crdt WHERE row = ?", arguments: [row]))
+        }
+    }
+
+    /// Flipping the sign reverses the transfer (GH #844). As in Actual, each
+    /// leg stays in its own account with its payee, and only the amounts swap.
+    @Test(arguments: ["leg-out", "leg-in"])
+    func reversingATransferFlipsBothLegsInPlace(openedLeg: String) async throws {
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        let (source, target) = try seedTransfer(into: database)
+        let opened = openedLeg == source.id ? source : target
+
+        // The form now reads Savings → Checking, whichever leg was opened.
+        try await store.saveTransaction(
+            form(accountId: "acct-savings", transferToAccountId: "acct-checking",
+                 openedLegIsSource: opened.id == target.id),
+            editing: opened
+        )
+
+        let byId = try rows(path: path)
+        let out = try #require(byId["leg-out"])
+        let inn = try #require(byId["leg-in"])
+        #expect(out["acct"] == "acct-checking")
+        #expect(inn["acct"] == "acct-savings")
+        #expect(out["amount"] == 2500)
+        #expect(inn["amount"] == -2500)
+        #expect(out["description"] == "payee-savings")
+        #expect(inn["description"] == "payee-checking")
+        #expect(try await messagedColumns(database, row: "leg-out") == ["amount", "date"])
+        #expect(try await messagedColumns(database, row: "leg-in") == ["amount", "date"])
+    }
+
+    /// Moving both ends and flipping the sign leaves no old account to match,
+    /// so the opened row's side comes from the form: it lands in the form's
+    /// account, not the partner's.
+    @Test func reversingWhileMovingBothAccountsKeepsTheOpenedRowInTheFormsAccount() async throws {
+        let (database, path) = try await makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        let (source, _) = try seedTransfer(into: database)
+
+        // Opened the Checking leg, set its account to Brokerage and the
+        // partner to Card, then flipped: Card → Brokerage.
+        try await store.saveTransaction(
+            form(accountId: "acct-card", transferToAccountId: "acct-brokerage", openedLegIsSource: false),
+            editing: source
+        )
+
+        let byId = try rows(path: path)
+        let out = try #require(byId["leg-out"])
+        let inn = try #require(byId["leg-in"])
+        #expect(out["acct"] == "acct-brokerage")
+        #expect(out["amount"] == 2500)
+        #expect(out["description"] == "payee-card")
+        #expect(inn["acct"] == "acct-card")
+        #expect(inn["amount"] == -2500)
+        #expect(inn["description"] == "payee-brokerage")
     }
 
     @Test func categoryIsClearedWhenBothAccountsAreOnBudget() async throws {

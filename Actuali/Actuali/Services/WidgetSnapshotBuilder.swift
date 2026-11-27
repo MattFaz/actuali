@@ -15,12 +15,17 @@ extension BudgetStore {
             month: month.month,
             balancesHidden: hideBalances,
             generatedAt: Date(),
-            format: displayBalance
+            format: displayBalance,
+            accounts: accounts,
+            budgetMonth: month,
+            schedules: schedules,
+            scheduleStatuses: scheduleStatuses,
+            payees: payees
         )
         // Keep the footer's refresh time current without reloading unchanged balances.
-        let contentChanged = snapshot.month != previous?.month
-            || snapshot.balancesHidden != previous?.balancesHidden
-            || snapshot.categories != previous?.categories
+        var comparable = snapshot
+        comparable.generatedAt = previous?.generatedAt ?? .distantPast
+        let contentChanged = comparable != previous
         do {
             try store.write(snapshot)
             lastWidgetSnapshot = (store.fileURL, snapshot)
@@ -53,22 +58,111 @@ extension WidgetSnapshot {
         month: String,
         balancesHidden: Bool,
         generatedAt: Date,
-        format: (Int) -> String
+        format: (Int) -> String,
+        accounts: [Account] = [],
+        budgetMonth: BudgetMonth? = nil,
+        schedules: [ScheduleSummary] = [],
+        scheduleStatuses: [String: ScheduleStatus] = [:],
+        payees: [Payee] = []
     ) -> WidgetSnapshot {
-        WidgetSnapshot(
+        let sortedCategories = budgets
+            .sorted { ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder) }
+            .map {
+                WidgetCategoryBalance(
+                    id: $0.categoryId,
+                    name: $0.categoryName,
+                    available: $0.available,
+                    formattedAvailable: format($0.available)
+                )
+            }
+
+        let openAccounts = accounts.filter { !$0.closed }
+        let widgetAccounts = openAccounts
+            .sorted { $0.sortOrder < $1.sortOrder }
+            .map {
+                WidgetAccountBalance(
+                    id: $0.id,
+                    name: $0.name,
+                    balance: $0.balance,
+                    formattedBalance: format($0.balance),
+                    type: $0.type.rawValue,
+                    offBudget: $0.offBudget
+                )
+            }
+
+        let netWorth = openAccounts.reduce(0) { $0 + $1.balance }
+
+        let payeeMap = Dictionary(payees.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let activeAccountIds = Set(openAccounts.map(\.id))
+        let billItems = Self.buildUpcomingBills(
+            schedules: schedules,
+            statuses: scheduleStatuses,
+            activeAccountIds: activeAccountIds,
+            payeeMap: payeeMap,
+            format: format
+        )
+
+        var snapshot = WidgetSnapshot(
             month: month,
             generatedAt: generatedAt,
             balancesHidden: balancesHidden,
-            categories: budgets
-                .sorted { ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder) }
-                .map {
-                    WidgetCategoryBalance(
-                        id: $0.categoryId,
-                        name: $0.categoryName,
-                        available: $0.available,
-                        formattedAvailable: format($0.available)
-                    )
-                }
+            categories: sortedCategories
         )
+        snapshot.accounts = widgetAccounts
+        snapshot.netWorth = netWorth
+        snapshot.formattedNetWorth = format(netWorth)
+        snapshot.toBudget = budgetMonth?.toBudget
+        snapshot.formattedToBudget = budgetMonth?.toBudget.map { format($0) }
+        snapshot.totalBudgeted = budgetMonth?.totalBudgeted
+        snapshot.formattedTotalBudgeted = budgetMonth.map { format($0.totalBudgeted) }
+        snapshot.totalSpent = budgetMonth?.totalSpent
+        snapshot.formattedTotalSpent = budgetMonth.map { format($0.totalSpent) }
+        snapshot.formattedTotalIncome = budgetMonth.map { format($0.totalIncome) }
+        snapshot.upcomingBills = billItems
+        return snapshot
+    }
+
+    /// Extracts the next upcoming bills from schedules. Keeps it simple:
+    /// non-completed, non-paid schedules for open accounts with a nextDate,
+    /// sorted by date, capped at 8.
+    private static func buildUpcomingBills(
+        schedules: [ScheduleSummary],
+        statuses: [String: ScheduleStatus],
+        activeAccountIds: Set<String>,
+        payeeMap: [String: String],
+        format: (Int) -> String
+    ) -> [WidgetBillItem] {
+        schedules
+            .filter { schedule in
+                guard !schedule.completed,
+                      statuses[schedule.id] != .paid,
+                      let accountId = schedule.accountId,
+                      activeAccountIds.contains(accountId)
+                else { return false }
+                return true
+            }
+            .compactMap { schedule in schedule.nextDate.map { (schedule, $0) } }
+            .sorted { $0.1 < $1.1 }
+            .prefix(8)
+            .map { schedule, date in
+                let title = schedule.name.flatMap { $0.isEmpty ? nil : $0 }
+                    ?? schedule.payeeId.flatMap { payeeMap[$0] }
+                    ?? String(localized: "Scheduled")
+                let status: WidgetBillItem.Status = switch statuses[schedule.id] {
+                case .missed: .overdue
+                case .due: .due
+                default: .upcoming
+                }
+                return WidgetBillItem(
+                    id: schedule.id,
+                    title: title,
+                    amount: schedule.postAmount,
+                    formattedAmount: format(abs(schedule.postAmount)),
+                    dueDay: date.day,
+                    dueMonth: date.month,
+                    dueYear: date.year,
+                    status: status
+                )
+            }
     }
 }

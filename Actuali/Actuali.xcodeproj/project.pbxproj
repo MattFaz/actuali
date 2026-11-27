@@ -605,7 +605,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0.15;
+				MARKETING_VERSION = 1.0.16;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -685,7 +685,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0.15;
+				MARKETING_VERSION = 1.0.16;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
@@ -730,6 +730,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
 				INFOPLIST_KEY_NSFinancialDataUsageDescription = "Actuali imports the Wallet transactions you select into your budget. They are stored in your budget file on your own server.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Actuali connects to your Actual Budget server, which may be on your local network.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Actuali uses your location to suggest nearby payees and remember where you transact. Location data stays in your budget file on your own server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -774,6 +775,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
 				INFOPLIST_KEY_NSFinancialDataUsageDescription = "Actuali imports the Wallet transactions you select into your budget. They are stored in your budget file on your own server.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Actuali connects to your Actual Budget server, which may be on your local network.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Actuali uses your location to suggest nearby payees and remember where you transact. Location data stays in your budget file on your own server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

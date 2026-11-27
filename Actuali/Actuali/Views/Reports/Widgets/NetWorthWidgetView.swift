@@ -10,7 +10,7 @@ struct NetWorthWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(displayName).font(.headline)
+                ReportCardTitle(displayName)
                 Spacer()
                 if let last = data.points.last {
                     Text(budgetStore.displayBalanceWholeUnits(last.balanceCents, locale: locale))

@@ -131,6 +131,25 @@ struct BudgetDatabaseIncomeTests {
         #expect(history[0].spent == -25000)
     }
 
+    @Test func budgetMonthReadsWithoutMovingTheBudgetTab() async throws {
+        let (db, url) = try await makeDatabase()
+        defer { cleanup(url) }
+
+        try insertTransaction(db, date: 20_260_501, category: "cat-groceries", amount: -25000)
+        let store = BudgetStore.previewInstance()
+        store.configureForTesting(
+            database: db,
+            syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        )
+        let browsed = store.currentBudgetMonth?.month
+
+        let may = try #require(await store.budgetMonth("2026-05"))
+
+        #expect(may.month == "2026-05")
+        #expect(may.allCategoryBudgets.first { $0.categoryId == "cat-groceries" }?.spent == -25000)
+        #expect(store.currentBudgetMonth?.month == browsed)
+    }
+
     @Test func transactionsOnADeletedAccountAreExcluded() async throws {
         // Deleting an account takes its transactions with it; one left alive on
         // a tombstoned account is a sync-race orphan, and counting it would put

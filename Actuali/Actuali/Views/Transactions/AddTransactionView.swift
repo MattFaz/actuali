@@ -7,6 +7,7 @@ struct AddTransactionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.isPresented) private var isPresented
     @Environment(\.locale) private var locale
+    @Environment(\.scenePhase) private var scenePhase
 
     private let editing: Transaction?
     /// Called after a successful save (not on cancel). The optional id is the
@@ -50,7 +51,15 @@ struct AddTransactionView: View {
     @State private var nearbyPayees: [NearbyPayee] = []
     @State private var showPayeePicker = false
     @State private var showCategoryPicker = false
+    @State private var showAccountPicker = false
     @State private var saveLocation = true
+    /// Set once the user flips Save Location, so the at-home default never
+    /// overrides their choice for this entry (GH #845).
+    @State private var saveLocationChosen = false
+    /// Bumped per fresh entry and on return to the foreground: the
+    /// tab-hosted form outlives a trip away from Home, and the at-home
+    /// default must follow the phone rather than the last entry.
+    @State private var homeCheck = 0
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
     /// True while the edit form's "Remove Split" is toggled on an existing
     /// split parent: the lines are kept in memory (so tapping "Split into
@@ -284,6 +293,12 @@ struct AddTransactionView: View {
         unsplitRequested: Bool
     ) -> Bool {
         !isTransfer && (!isEditingSplitParent || unsplitRequested)
+    }
+
+    /// The budget month the transaction lands in, whose balances the
+    /// category picker shows.
+    private var balanceMonth: String {
+        TransactionImpact.month(forDate: Transaction.yyyymmdd(from: date))
     }
 
     /// Cents still unassigned across the split lines, nil while the total
@@ -574,13 +589,23 @@ struct AddTransactionView: View {
                 .listRowSeparator(.hidden, edges: .all)
 
                 Section {
-                    Picker(selection: $selectedAccountId) {
-                        ForEach(orderedOpenAccounts) { account in
-                            Text(account.name).tag(account.id)
-                        }
+                    Button {
+                        dismissKeyboard()
+                        showAccountPicker = true
                     } label: {
-                        Label(String(localized: AddTransactionLocalization.account, locale: locale), systemImage: "building.columns")
+                        HStack {
+                            Label(String(localized: AddTransactionLocalization.account, locale: locale), systemImage: "building.columns")
+                            Spacer()
+                            Text(budgetStore.accounts.first { $0.id == selectedAccountId }?.name ?? "")
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("addTransaction.account")
                     .onChange(of: selectedAccountId) { oldValue, newValue in
                         if transferToAccountId == newValue {
@@ -662,15 +687,21 @@ struct AddTransactionView: View {
                     Toggle(isOn: $cleared) {
                         Label("Cleared", systemImage: "checkmark.circle")
                     }
-                    // Only the paths that record locations (adds and split
-                    // edits) get the per-save opt-out; standard edits never
-                    // record, so the toggle would be a no-op there.
-                    if !isEditing || isEditingSplitParent, !isTransfer,
+                    // Only adds record locations (GH #794), so the per-save
+                    // opt-out would be a no-op on an edit.
+                    if !isEditing, !isTransfer,
                        budgetStore.payeeLocationWritesEnabled,
                        budgetStore.recordPayeeLocations {
-                        Toggle(isOn: $saveLocation) {
+                        Toggle(isOn: Binding(
+                            get: { saveLocation },
+                            set: {
+                                saveLocation = $0
+                                saveLocationChosen = true
+                            }
+                        )) {
                             Label("Save Location", systemImage: "location")
                         }
+                        .accessibilityIdentifier("addTransaction.saveLocation")
                     }
                 }
 
@@ -808,10 +839,17 @@ struct AddTransactionView: View {
             .navigationDestination(isPresented: $showCategoryPicker) {
                 CategoryPickerView(
                     selectedCategoryId: $selectedCategoryId,
-                    autofocusSearch: true
+                    autofocusSearch: true,
+                    balanceMonth: balanceMonth
                 ) {
                     userPickedCategory = true
                 }
+            }
+            .navigationDestination(isPresented: $showAccountPicker) {
+                AccountPickerView(
+                    selectedAccountId: $selectedAccountId,
+                    accounts: orderedOpenAccounts
+                )
             }
             .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
             .navigationBarTitleDisplayMode(canDismiss ? .automatic : .inline)
@@ -831,6 +869,13 @@ struct AddTransactionView: View {
                 // to them, mirroring Actual's cascade rule.
                 await loadSplitChildren()
             }
+            .task(id: homeCheck) {
+                guard !isEditing else { return }
+                let atHome = await budgetStore.isAtHome()
+                if !saveLocationChosen {
+                    saveLocation = !atHome
+                }
+            }
             .task(id: automaticCategoryInput) {
                 let input = automaticCategoryInput
                 // Keep every rule input; cancellation skips lookup while typing.
@@ -839,6 +884,11 @@ struct AddTransactionView: View {
                     try await Task.sleep(for: .milliseconds(300))
                 } catch { return }
                 await applyAutomaticCategory(for: input)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    homeCheck += 1
+                }
             }
             .onChange(of: amount) { _, newValue in
                 if !newValue.isEmpty {
@@ -873,9 +923,7 @@ struct AddTransactionView: View {
                 childId: child.id,
                 categoryId: child.categoryId,
                 amount: SplitEntryMath.amountString(fromCents: abs(child.amount)),
-                // A child running against the parent's direction — a refund
-                // inside a spend split — keeps its flip on reload (GH #216).
-                isOpposite: (child.amount < 0) != (editing.amount < 0),
+                isOpposite: SplitEntryMath.isOpposite(childCents: child.amount, parentCents: editing.amount),
                 notes: child.notes ?? "",
                 payeeName: overridesParentPayee
                     ? budgetStore.payees.first(where: { $0.id == child.payeeId }).map {
@@ -896,6 +944,7 @@ struct AddTransactionView: View {
                 line: $line,
                 accountId: selectedAccountId,
                 txType: txType,
+                balanceMonth: balanceMonth,
                 remainingCents: splitRemainingCents,
                 nearbyPayees: $nearbyPayees,
                 onOpenPayeePicker: loadNearbyPayees,
@@ -976,14 +1025,13 @@ struct AddTransactionView: View {
     /// The sign is the direction, as in Actual. A split parent flips as a
     /// whole once its lines load: the save plan applies the new direction to
     /// every line and keeps each line's flip, and a transfer line's partner
-    /// follows its amount as it does for a per-line flip. Existing transfers
-    /// stay fixed by their two legs; converting a row keeps its own side.
+    /// follows its amount as it does for a per-line flip. An existing transfer
+    /// reverses both legs (GH #844); converting a row keeps its own side.
     private var canToggleDirection: Bool {
         Self.canToggleDirection(
             isEditingSplitParent: isEditingSplitParent,
             // Before the lines load, a save would keep the parent's old amount.
             splitLoaded: unsplitRequested || !splitLines.isEmpty,
-            isEditingTransfer: isEditingTransfer,
             isConvertingToTransfer: isConvertingToTransfer,
             isTransfer: isTransfer,
             hasTransferPartner: transferToAccountId != nil
@@ -993,12 +1041,11 @@ struct AddTransactionView: View {
     nonisolated static func canToggleDirection(
         isEditingSplitParent: Bool,
         splitLoaded: Bool,
-        isEditingTransfer: Bool,
         isConvertingToTransfer: Bool,
         isTransfer: Bool,
         hasTransferPartner: Bool
     ) -> Bool {
-        guard !isEditingTransfer, !isConvertingToTransfer, !isEditingSplitParent || splitLoaded else { return false }
+        guard !isConvertingToTransfer, !isEditingSplitParent || splitLoaded else { return false }
         return !isTransfer || hasTransferPartner
     }
 
@@ -1088,8 +1135,9 @@ struct AddTransactionView: View {
         if isTransfer, transferToAccountId == nil {
             return true
         }
-        // A blank line reads as zero for the remainder display, but the store
-        // rejects zero-amount children — keep save blocked until it's filled.
+        // A blank line reads as zero for the remainder display, but an
+        // unfilled line isn't an intentional 0 — keep save blocked until it's
+        // filled in or removed.
         if showsSplitEntry,
            splitRemainingCents != 0 || hasBlankSplitLine {
             return true
@@ -1198,9 +1246,11 @@ struct AddTransactionView: View {
             splits: isTransfer ? [] : (unsplitRequested ? [] : splitLines),
             collapseSplit: unsplitRequested,
             recordLocation: saveLocation,
+            recordLocationNearHome: saveLocationChosen,
             reviewConfirmations: confirmedReviewRequirements,
             categoryIsExplicit: userPickedCategory,
-            automaticCategoryPreview: automaticCategoryPreview
+            automaticCategoryPreview: automaticCategoryPreview,
+            transferOpenedLegIsSource: !isInflow
         )
     }
 
@@ -1221,6 +1271,8 @@ struct AddTransactionView: View {
         // discarded manual pick must not keep suppressing the lookup.
         userPickedCategory = false
         automaticCategoryPreview = nil
+        saveLocationChosen = false
+        homeCheck += 1
         // A reset can arrive with the amount or payee field still focused —
         // Esc or ⌘Return from a hardware keyboard — and a fresh form doesn't
         // keep the old keyboard up.
@@ -1257,6 +1309,13 @@ enum SplitEntryMath {
         return totalCents - assigned
     }
 
+    /// Whether a child runs against the parent's direction — a refund inside
+    /// a spend split keeps its flip on reload (GH #216). A 0 child has no
+    /// sign, so it follows the parent (GH #815).
+    static func isOpposite(childCents: Int, parentCents: Int) -> Bool {
+        childCents != 0 && (childCents < 0) != (parentCents < 0)
+    }
+
     /// Plain dot-decimal string for non-negative cents, the format
     /// AmountInputField keeps in its binding.
     static func amountString(fromCents cents: Int) -> String {
@@ -1273,6 +1332,7 @@ private struct SplitLineRow: View {
     /// The transaction's direction, so the line's sign glyph can show its
     /// effective direction relative to it.
     var txType: TransactionType
+    var balanceMonth: String
     /// The section-wide unassigned remainder; a positive value on a line with
     /// no amount yet offers one-tap fill instead of mental arithmetic.
     var remainingCents: Int?
@@ -1406,7 +1466,8 @@ private struct SplitLineRow: View {
             NavigationStack {
                 CategoryPickerView(
                     selectedCategoryId: $line.categoryId,
-                    autofocusSearch: true
+                    autofocusSearch: true,
+                    balanceMonth: balanceMonth
                 )
             }
         }
@@ -1485,6 +1546,32 @@ struct AmountInputField: UIViewRepresentable {
         }
     }
 
+    /// The bar's host view. The iOS 26 prominent Done pill needs about 400pt
+    /// beside the symbol keys, so on narrower bars the keys tighten up and the
+    /// pill stays on screen (GH #746). The accessory view is sized to the
+    /// keyboard, which follows the window in iPad split view, so read the
+    /// width here rather than the screen's.
+    final class AccessoryBarView: UIView {
+        var keyButtons: [UIButton] = []
+        private var keyInset: CGFloat?
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            let inset: CGFloat = if #available(iOS 26, *), bounds.width < 410 {
+                6
+            } else {
+                10
+            }
+            guard inset != keyInset else { return }
+            keyInset = inset
+            for button in keyButtons {
+                button.configuration?.contentInsets = NSDirectionalEdgeInsets(
+                    top: 8, leading: inset, bottom: 8, trailing: inset
+                )
+            }
+        }
+    }
+
     func makeUIView(context: Context) -> UITextField {
         let field = AutofocusTextField()
         field.wantsAutofocus = autofocus
@@ -1511,6 +1598,7 @@ struct AmountInputField: UIViewRepresentable {
         // field, or to do arithmetic in it.
         let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
         var items: [UIBarButtonItem] = []
+        var keyButtons: [UIButton] = []
         if allowsNegative || onToggleSign != nil {
             // The decimal pad has no minus key, so this button is the only
             // keyboard affordance for flipping an amount's sign.
@@ -1521,14 +1609,21 @@ struct AmountInputField: UIViewRepresentable {
             )
             context.coordinator.signButton = item.customView as? UIButton
             context.coordinator.signButton?.isEnabled = signToggleEnabled
+            if let button = item.customView as? UIButton {
+                keyButtons.append(button)
+            }
             items.append(item)
         }
         for op in Coordinator.Operator.allCases {
-            items.append(Self.keyItem(
+            let item = Self.keyItem(
                 symbol: op.symbolName,
                 label: op.accessibilityLabel,
                 target: context.coordinator, action: op.selector
-            ))
+            )
+            if let button = item.customView as? UIButton {
+                keyButtons.append(button)
+            }
+            items.append(item)
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
         // `.prominent` is iOS 26+; `.done` is the pre-26 equivalent emphasis.
@@ -1547,9 +1642,10 @@ struct AmountInputField: UIViewRepresentable {
         // toolbar with a gap we host it in a taller, transparent container and
         // pin the toolbar to the top — the leftover strip below is the space.
         let gap: CGFloat = 4
-        let container = UIView(
+        let container = AccessoryBarView(
             frame: CGRect(x: 0, y: 0, width: toolbar.frame.width, height: toolbar.frame.height + gap)
         )
+        container.keyButtons = keyButtons
         container.backgroundColor = .clear
         toolbar.frame = CGRect(x: 0, y: 0, width: container.frame.width, height: toolbar.frame.height)
         toolbar.autoresizingMask = [.flexibleWidth]
@@ -2034,9 +2130,24 @@ struct CategoryPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedCategoryId: String?
     var autofocusSearch = false
+    /// The "yyyy-MM" month whose available balances show beside each
+    /// category. Upstream's picker uses the transaction date's month, not the
+    /// month the Budget tab browses. nil (the quick-categorize flows) shows none.
+    var balanceMonth: String?
     var onPick: (() -> Void)?
     @State private var searchText = ""
     @State private var searchFocused = false
+    @State private var balances: [String: Int] = [:]
+
+    /// Available balance per category, hidden ones included because the
+    /// browse list shows hidden categories in visible groups. Income
+    /// categories have no envelope balance, so they get none.
+    nonisolated static func availableBalances(in budget: BudgetMonth?) -> [String: Int] {
+        Dictionary(
+            (budget?.allCategoryBudgets ?? []).map { ($0.categoryId, $0.available) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
 
     var body: some View {
         List {
@@ -2070,6 +2181,12 @@ struct CategoryPickerView: View {
                                 Text(category.name)
                                     .foregroundStyle(.primary)
                                 Spacer()
+                                if let balance = balances[category.id] {
+                                    Text(budgetStore.displayBalance(balance))
+                                        .font(.subheadline)
+                                        .foregroundStyle(balanceColor(for: balance))
+                                        .accessibilityIdentifier("categoryPicker.balance.\(category.id)")
+                                }
                                 if selectedCategoryId == category.id {
                                     Image(systemName: "checkmark")
                                         .foregroundStyle(.tint)
@@ -2091,6 +2208,10 @@ struct CategoryPickerView: View {
         }
         // The navigation transition must settle before UIKit can claim the
         // first responder for this destination.
+        .task(id: balanceMonth) {
+            guard let balanceMonth else { return }
+            balances = await Self.availableBalances(in: budgetStore.budgetMonth(balanceMonth))
+        }
         .task {
             guard autofocusSearch else { return }
             try? await Task.sleep(for: .milliseconds(250))
@@ -2101,20 +2222,26 @@ struct CategoryPickerView: View {
 
     private var filteredGroups: [CategoryGroup] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return budgetStore.categoryGroups.filter { !$0.hidden }
-        }
-        return budgetStore.categoryGroups.compactMap { group in
-            let matches = group.categories.filter { category in
-                !category.hidden &&
-                    (category.name.localizedCaseInsensitiveContains(trimmed) ||
-                        group.name.localizedCaseInsensitiveContains(trimmed))
+        let groups: [CategoryGroup] = if trimmed.isEmpty {
+            budgetStore.categoryGroups.filter { !$0.hidden }
+        } else {
+            budgetStore.categoryGroups.compactMap { group -> CategoryGroup? in
+                let matches = group.categories.filter { category in
+                    !category.hidden &&
+                        (category.name.localizedCaseInsensitiveContains(trimmed) ||
+                            group.name.localizedCaseInsensitiveContains(trimmed))
+                }
+                guard !matches.isEmpty else { return nil }
+                var copy = group
+                copy.categories = matches
+                return copy
             }
-            guard !matches.isEmpty else { return nil }
-            var copy = group
-            copy.categories = matches
-            return copy
         }
+        return Self.incomeLast(groups)
+    }
+
+    nonisolated static func incomeLast(_ groups: [CategoryGroup]) -> [CategoryGroup] {
+        groups.filter { !$0.isIncome } + groups.filter(\.isIncome)
     }
 }
 

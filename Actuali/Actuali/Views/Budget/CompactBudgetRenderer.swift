@@ -1,4 +1,88 @@
+import Combine
 import SwiftUI
+
+/// The summary and every group header are rounded cards. Where a pinned header
+/// docks against the summary, the edge they share goes square so the two read
+/// as one card (the summary draws the single divider between them).
+enum CompactBudgetCard {
+    static let cornerRadius: CGFloat = 12
+    static let morph = Animation.easeOut(duration: 0.15)
+    /// In light mode secondarySystemBackground is the same grey as the
+    /// systemGroupedBackground behind the cards, which hides their corners,
+    /// so light mode uses a step darker. Dark mode keeps its old fill.
+    static let fill = UIColor { $0.userInterfaceStyle == .dark ? .secondarySystemBackground : .systemGray5 }
+
+    static func shape(topSquare: Bool = false, bottomSquare: Bool = false) -> UnevenRoundedRectangle {
+        let top = topSquare ? 0 : cornerRadius
+        let bottom = bottomSquare ? 0 : cornerRadius
+        return UnevenRoundedRectangle(
+            topLeadingRadius: top,
+            bottomLeadingRadius: bottom,
+            bottomTrailingRadius: bottom,
+            topTrailingRadius: top,
+            style: .continuous
+        )
+    }
+}
+
+/// Finds the header touching the summary. Geometry changes update this tracker,
+/// and only a change of touching header invalidates an observing view.
+@MainActor
+final class CompactDockTracker: ObservableObject {
+    /// The id of the header touching the summary, if any.
+    @Published private(set) var dockedID: String?
+    private var summaryBottom: CGFloat?
+    private var headerTops: [String: CGFloat] = [:]
+
+    func setSummaryBottom(_ y: CGFloat) {
+        summaryBottom = y
+        publish()
+    }
+
+    func setHeaderTop(_ y: CGFloat, for id: String) {
+        guard headerTops[id] != y else { return }
+        headerTops[id] = y
+        publish()
+    }
+
+    func removeHeader(_ id: String) {
+        guard headerTops.removeValue(forKey: id) != nil else { return }
+        publish()
+    }
+
+    private func publish() {
+        // Touching: the header's top is near the summary's bottom edge.
+        // ponytail: -4...12 accommodates the native List section-header inset.
+        // Ceiling: a different runtime or list style may use a larger inset.
+        // Upgrade path: measure the hosting inset directly if this diverges.
+        let next = summaryBottom.flatMap { bottom in
+            headerTops
+                .filter { (-4...12).contains($0.value - bottom) }
+                .min { (abs($0.value - bottom), $0.key) < (abs($1.value - bottom), $1.key) }?
+                .key
+        }
+        if next != dockedID {
+            dockedID = next
+        }
+    }
+}
+
+/// Re-renders only its own content when the docking changes. The tracker is
+/// deliberately not observed by BudgetView: a docking change there would
+/// rebuild the whole table on a scroll frame.
+struct DockObserver<Content: View>: View {
+    @ObservedObject var tracker: CompactDockTracker
+    let content: (String?) -> Content
+
+    init(_ tracker: CompactDockTracker, @ViewBuilder content: @escaping (String?) -> Content) {
+        self.tracker = tracker
+        self.content = content
+    }
+
+    var body: some View {
+        content(tracker.dockedID)
+    }
+}
 
 struct CompactBudgetSummary: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -8,6 +92,7 @@ struct CompactBudgetSummary: View {
     let budget: BudgetMonth
     let showsSpent: Bool
     let showsBudgeted: Bool
+    var isHeaderDocked = false
 
     private var overview: CompactBudgetOverview {
         CompactBudgetOverview(
@@ -78,10 +163,16 @@ struct CompactBudgetSummary: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(Color(.secondarySystemBackground))
+        .background(
+            Color(CompactBudgetCard.fill),
+            in: CompactBudgetCard.shape(bottomSquare: isHeaderDocked)
+        )
         .overlay(alignment: .bottom) {
-            Divider()
+            if isHeaderDocked {
+                Divider()
+            }
         }
+        .animation(CompactBudgetCard.morph, value: isHeaderDocked)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
             dynamicTypeSize.isAccessibilitySize
@@ -190,12 +281,17 @@ struct CompactBudgetGroupHeader: View {
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)?
     var onRename: (() -> Void)?
+    var onDelete: (() -> Void)?
     var onApplyTemplate: (() -> Void)?
     var onOverwriteTemplate: (() -> Void)?
     let totals: CategoryGroupTotals?
     let showsSpent: Bool
     let showsBudgeted: Bool
     let onToggleCollapse: () -> Void
+    /// Docked against the summary: the top corners go square.
+    var isConnectedToSummary = false
+    var dockID = ""
+    var dockTracker: CompactDockTracker?
 
     private var presentation: CompactBudgetGroupHeaderPresentation {
         CompactBudgetGroupHeaderPresentation(totals: totals, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
@@ -217,6 +313,7 @@ struct CompactBudgetGroupHeader: View {
             onOverwriteTemplate: onOverwriteTemplate,
             onRename: onRename,
             onSetHidden: onSetHidden,
+            onDelete: onDelete,
             locale: locale
         )
     }
@@ -228,7 +325,17 @@ struct CompactBudgetGroupHeader: View {
         let actions = menuActions
         headerContent
             .foregroundStyle(.primary)
-            .background(Color(.secondarySystemBackground))
+            .background(
+                Color(CompactBudgetCard.fill),
+                in: CompactBudgetCard.shape(topSquare: isConnectedToSummary)
+            )
+            .animation(CompactBudgetCard.morph, value: isConnectedToSummary)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
+                dockTracker?.setHeaderTop($0, for: dockID)
+            }
+            .onDisappear {
+                dockTracker?.removeHeader(dockID)
+            }
             .opacity(isLifted ? 0 : isHidden ? 0.5 : 1)
             .overlay {
                 ContextMenuHost(actions: actions, onTap: onToggleCollapse, onLift: { isLifted = $0 })
@@ -355,6 +462,7 @@ struct CompactCategoryBudgetRow: View {
     /// callers gate it on the goalTemplatesEnabled flag.
     var onApplyTemplate: ((CategoryBudget) -> Void)?
     let onRename: (CategoryBudget) -> Void
+    var onDelete: ((CategoryBudget) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -382,7 +490,8 @@ struct CompactCategoryBudgetRow: View {
             onShowTransactions: onShowTransactions,
             onMoveMoney: onMoveMoney,
             onApplyTemplate: onApplyTemplate,
-            onRename: onRename
+            onRename: onRename,
+            onDelete: onDelete
         ))
     }
 
@@ -585,6 +694,10 @@ struct CompactIncomeGroupHeader: View {
     let showsSpent: Bool
     let showsBudgeted: Bool
     var onToggleCollapse: () -> Void = {}
+    /// Docked against the summary: the top corners go square.
+    var isConnectedToSummary = false
+    var dockID = ""
+    var dockTracker: CompactDockTracker?
 
     private var layout: CompactBudgetTableLayout {
         CompactBudgetTableLayout(isTrackingBudget: isTrackingBudget, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
@@ -615,7 +728,17 @@ struct CompactIncomeGroupHeader: View {
         let actions = menuActions
         headerContent
             .foregroundStyle(.primary)
-            .background(Color(.secondarySystemBackground))
+            .background(
+                Color(CompactBudgetCard.fill),
+                in: CompactBudgetCard.shape(topSquare: isConnectedToSummary)
+            )
+            .animation(CompactBudgetCard.morph, value: isConnectedToSummary)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
+                dockTracker?.setHeaderTop($0, for: dockID)
+            }
+            .onDisappear {
+                dockTracker?.removeHeader(dockID)
+            }
             .opacity(isLifted ? 0 : isHidden ? 0.5 : 1)
             .overlay {
                 ContextMenuHost(actions: actions, onTap: onToggleCollapse, onLift: { isLifted = $0 })
@@ -726,7 +849,9 @@ struct CompactIncomeCategoryRow: View {
     let isTrackingBudget: Bool
     let showsSpent: Bool
     let showsBudgeted: Bool
+    var onEditBudget: (IncomeCategory) -> Void = { _ in }
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
+    var onDelete: (() -> Void)?
 
     private var layout: CompactBudgetTableLayout {
         CompactBudgetTableLayout(isTrackingBudget: isTrackingBudget, showsSpent: showsSpent, showsBudgeted: showsBudgeted)
@@ -738,7 +863,14 @@ struct CompactIncomeCategoryRow: View {
                 VStack(alignment: .leading, spacing: 8) {
                     nameButton
                     if layout.incomeColumns.contains(.budgeted) {
-                        stackedReadOnlyAmount(label: CompactBudgetColumn.budgeted.label(locale: locale, bundle: .main), amount: income.budgeted)
+                        Button {
+                            onEditBudget(income)
+                        } label: {
+                            stackedBudgetedAmount(label: CompactBudgetColumn.budgeted.label(locale: locale, bundle: .main), amount: income.budgeted)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(editBudgetAccessibilityLabel)
+                        .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
                     }
                     Button {
                         onShowTransactions(income, income.month)
@@ -786,6 +918,12 @@ struct CompactIncomeCategoryRow: View {
                     Label(isHidden ? String(localized: "Show", bundle: .main, locale: locale) : String(localized: "Hide", bundle: .main, locale: locale), systemImage: isHidden ? "eye" : "eye.slash")
                 }
             }
+            if let onDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete Category", systemImage: "trash")
+                }
+                .accessibilityIdentifier("categoryDelete.action")
+            }
         }
     }
 
@@ -808,25 +946,27 @@ struct CompactIncomeCategoryRow: View {
         ))
     }
 
-    private func stackedReadOnlyAmount(label: String, amount: Int) -> some View {
+    private func stackedBudgetedAmount(label: String, amount: Int) -> some View {
         HStack {
             Text(label)
                 .foregroundStyle(.secondary)
             Spacer()
             CompactAmountText(amount: amount)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(budgetedAccessibilityLabel)
-        .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
     }
 
     @ViewBuilder
     private func compactColumn(_ column: CompactBudgetColumn?) -> some View {
         switch column {
         case .budgeted:
-            CompactAmountText(amount: income.budgeted)
-                .accessibilityLabel(budgetedAccessibilityLabel)
-                .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
+            Button {
+                onEditBudget(income)
+            } label: {
+                CompactAmountText(amount: income.budgeted)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(editBudgetAccessibilityLabel)
+            .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
         case .received:
             Button {
                 onShowTransactions(income, income.month)
@@ -840,8 +980,8 @@ struct CompactIncomeCategoryRow: View {
         }
     }
 
-    private var budgetedAccessibilityLabel: String {
-        CompactBudgetAccessibility.incomeBudgeted(
+    private var editBudgetAccessibilityLabel: String {
+        CompactBudgetAccessibility.editBudget(
             category: income.categoryName,
             amount: budgetStore.displayBalance(income.budgeted),
             locale: locale,

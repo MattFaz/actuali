@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import Actuali
 
@@ -75,6 +76,80 @@ struct AccountsListViewTests {
         #expect(AccountGroupRowLayout.position(roundsTop: headerIsFirst, roundsBottom: nextGroupIsExpanded) == .middle)
     }
 
+    // MARK: - Group drop targets
+
+    private func groupHeaderRows(_ ids: [String]) -> [AccountListRow] {
+        ids.enumerated().map { index, id in
+            let group = AccountGroup(id: id, name: id, sortOrder: Double(index))
+            return .header(AccountListBucket(id: id, group: group, accounts: []))
+        }
+    }
+
+    @Test func groupDropTargetMovesAGroupBeforeTheNextVisibleGroup() {
+        let rows = groupHeaderRows(["first", "middle", "last"])
+        let target = AccountsListView.groupDropTarget(
+            in: rows, at: 0, moving: "last", fullOrder: ["first", "middle", "last"]
+        )
+        #expect(target?.before == "first")
+    }
+
+    @Test func groupDropTargetAnchorsAfterTheLastVisibleGroupBeforeAnUnshownGroup() {
+        let rows = groupHeaderRows(["first", "second"])
+        let target = AccountsListView.groupDropTarget(
+            in: rows, at: rows.count, moving: "first", fullOrder: ["first", "second", "empty"]
+        )
+        #expect(target?.before == "empty")
+    }
+
+    @Test func groupDropTargetIgnoresDroppingAHeaderBackIntoItsOwnPosition() {
+        let rows = groupHeaderRows(["first", "second"])
+        #expect(AccountsListView.groupDropTarget(
+            in: rows, at: 1, moving: "first", fullOrder: ["first", "second"]
+        ) == nil)
+    }
+
+    private func makeGroups(_ ids: [String]) -> [AccountGroup] {
+        ids.enumerated().map { index, id in
+            AccountGroup(id: id, name: id, sortOrder: Double(index))
+        }
+    }
+
+    @Test func groupMoveTargetMovesAGroupBeforeTheNextGroup() {
+        let groups = makeGroups(["first", "middle", "last"])
+        let target = AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integer: 2), to: 0
+        )
+        #expect(target?.before == "first")
+    }
+
+    @Test func groupMoveTargetAppendsWhenMovingToTheEnd() {
+        let groups = makeGroups(["first", "middle", "last"])
+        let target = AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integer: 0), to: groups.count
+        )
+        #expect(target?.before == nil)
+    }
+
+    @Test func groupMoveTargetIgnoresAnUnchangedOrder() {
+        let groups = makeGroups(["first", "middle", "last"])
+        #expect(AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integer: 1), to: 1
+        ) == nil)
+    }
+
+    @Test func groupMoveTargetRejectsMultipleRowsAndInvalidSources() {
+        let groups = makeGroups(["first", "middle", "last"])
+        #expect(AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integersIn: 0..<2), to: 2
+        ) == nil)
+        #expect(AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integer: 3), to: 0
+        ) == nil)
+        #expect(AccountsListView.groupMoveTarget(
+            in: groups, from: IndexSet(integer: 0), to: groups.count + 1
+        ) == nil)
+    }
+
     // MARK: - Drop slots
 
     /// Ungrouped A, B; then group Cash holding C.
@@ -134,5 +209,268 @@ struct AccountsListViewTests {
     @Test func collapseAllBeforeGroupsLoadKeepsRememberedGroups() {
         let ids = AccountsListView.collapsedGroupIDs(["a", "b"], groupIDs: [], collapsing: true)
         #expect(ids == "a,b")
+    }
+
+    // MARK: - Account payoff / term progress
+
+    @Test func progressReturnsNilForUntrackedAccount() {
+        let account = makeAccount("Checking")
+        let progress = AccountRow.progress(
+            for: account,
+            loanConfig: nil,
+            depositConfig: nil,
+            creditCardDues: nil,
+            creditCardCycle: nil
+        )
+        #expect(progress == nil)
+    }
+
+    @Test func progressReturnsNilForClosedAccountEvenWithConfigs() {
+        var account = makeAccount("Old Loan")
+        account.closed = true
+        let loan = LoanConfig(
+            originalBalance: 1_000_000,
+            annualRatePercent: 5.0,
+            minimumPayment: 20000,
+            escrowOrFees: nil
+        )
+        let progress = AccountRow.progress(
+            for: account,
+            loanConfig: loan,
+            depositConfig: nil,
+            creditCardDues: nil,
+            creditCardCycle: nil
+        )
+        #expect(progress == nil)
+    }
+
+    @Test func progressCalculatesLoanPayoffFraction() throws {
+        var account = makeAccount("Car Loan")
+        account.balance = -1_981_000
+        let loan = LoanConfig(
+            originalBalance: 2_200_000,
+            annualRatePercent: 6.0,
+            minimumPayment: 36500,
+            escrowOrFees: nil
+        )
+        let progress = AccountRow.progress(
+            for: account,
+            loanConfig: loan,
+            depositConfig: nil,
+            creditCardDues: nil,
+            creditCardCycle: nil
+        )
+        // 2,200,000 original, 1,981,000 owed -> 219,000 paid (9.95%)
+        let value = try #require(progress)
+        #expect(abs(value - 0.0995) < 0.001)
+
+        // Cleared loan -> 1.0 (100%)
+        account.balance = 0
+        #expect(AccountRow.progress(for: account, loanConfig: loan, depositConfig: nil, creditCardDues: nil, creditCardCycle: nil) == 1.0)
+
+        // Grew past original -> 0.0
+        account.balance = -2_500_000
+        #expect(AccountRow.progress(for: account, loanConfig: loan, depositConfig: nil, creditCardDues: nil, creditCardCycle: nil) == 0.0)
+    }
+
+    @Test func progressCalculatesDepositTermElapsed() {
+        let account = makeAccount("12-month CD")
+        let deposit = DepositConfig(
+            kind: .fixed,
+            amount: 1_000_000,
+            annualRatePercent: 4.5,
+            compounding: .quarterly,
+            openedOn: DayDate(year: 2026, month: 1, day: 1),
+            termMonths: 12
+        )
+        // 6 months in on July 1
+        let midDate = DayDate(year: 2026, month: 7, day: 1)
+        let midProgress = AccountRow.progress(
+            for: account,
+            loanConfig: nil,
+            depositConfig: deposit,
+            creditCardDues: nil,
+            creditCardCycle: nil,
+            today: midDate
+        )
+        #expect(midProgress == 0.5)
+
+        // Matured on or after next year
+        let matureDate = DayDate(year: 2027, month: 1, day: 1)
+        let matureProgress = AccountRow.progress(
+            for: account,
+            loanConfig: nil,
+            depositConfig: deposit,
+            creditCardDues: nil,
+            creditCardCycle: nil,
+            today: matureDate
+        )
+        #expect(matureProgress == 1.0)
+    }
+
+    @Test func progressCalculatesCreditCardStatementPayoff() {
+        let account = makeAccount("Apple Card")
+        // Feb 28 statement is due Mar 15; the open cycle closes Mar 28.
+        let cycle = CreditCardCycle(statementDay: 28)
+        let dueDate = DayDate(year: 2026, month: 3, day: 15)
+        let today = DayDate(year: 2026, month: 3, day: 1)
+
+        // 1. Partial payoff: $1000 statement balance, $300 remaining due -> 70% paid
+        let partialDue = CreditCardCycle.StatementDue(
+            statementBalance: 100_000,
+            paymentsSince: 70000,
+            remainingDue: 30000,
+            dueDate: dueDate
+        )
+        let partialProgress = AccountRow.progress(
+            for: account,
+            loanConfig: nil,
+            depositConfig: nil,
+            creditCardDues: [partialDue],
+            creditCardCycle: cycle,
+            today: today
+        )
+        #expect(partialProgress == 0.7)
+
+        // 2. Unpaid: $1000 statement balance, $1000 remaining due -> 0% paid
+        let unpaidDue = CreditCardCycle.StatementDue(
+            statementBalance: 100_000,
+            paymentsSince: 0,
+            remainingDue: 100_000,
+            dueDate: dueDate
+        )
+        let unpaidProgress = AccountRow.progress(
+            for: account,
+            loanConfig: nil,
+            depositConfig: nil,
+            creditCardDues: [unpaidDue],
+            creditCardCycle: cycle,
+            today: today
+        )
+        #expect(unpaidProgress == 0.0)
+
+        // 3. Paid: remaining due 0 -> 100% (1.0)
+        let paidDue = CreditCardCycle.StatementDue(
+            statementBalance: 100_000,
+            paymentsSince: 100_000,
+            remainingDue: 0,
+            dueDate: dueDate
+        )
+        let paidProgress = AccountRow.progress(
+            for: account,
+            loanConfig: nil,
+            depositConfig: nil,
+            creditCardDues: [paidDue],
+            creditCardCycle: cycle,
+            today: today
+        )
+        #expect(paidProgress == 1.0)
+
+        // 4. Zero statement balance -> nil (no statement debt)
+        let zeroDue = CreditCardCycle.StatementDue(
+            statementBalance: 0,
+            paymentsSince: 0,
+            remainingDue: 0,
+            dueDate: dueDate
+        )
+        let zeroProgress = AccountRow.progress(
+            for: account,
+            loanConfig: nil,
+            depositConfig: nil,
+            creditCardDues: [zeroDue],
+            creditCardCycle: cycle,
+            today: today
+        )
+        #expect(zeroProgress == nil)
+    }
+
+    /// Once the last statement is past due, the dues end with the open cycle,
+    /// which has no payments against it. The bar tracks the newest closed
+    /// statement while it is still owed, and hides once it is settled.
+    @Test func progressIgnoresOpenCreditCardCycle() {
+        let account = makeAccount("Revolut")
+        // Statements closed Dec 28, Jan 28, Feb 28; the open cycle closes Mar 28.
+        let cycle = CreditCardCycle(statementDay: 28)
+        let today = DayDate(year: 2026, month: 3, day: 20)
+        func due(_ balance: Int, remaining: Int, month: Int, day: Int) -> CreditCardCycle.StatementDue {
+            CreditCardCycle.StatementDue(
+                statementBalance: balance,
+                paymentsSince: balance - remaining,
+                remainingDue: remaining,
+                dueDate: DayDate(year: 2026, month: month, day: day)
+            )
+        }
+        let oldest = due(100_000, remaining: 50000, month: 1, day: 12)
+        let middle = due(100_000, remaining: 0, month: 2, day: 12)
+        let openCycle = due(80000, remaining: 80000, month: 4, day: 12)
+        func progress(newestClosed: CreditCardCycle.StatementDue) -> Double? {
+            AccountRow.progress(
+                for: account,
+                loanConfig: nil,
+                depositConfig: nil,
+                creditCardDues: [oldest, middle, newestClosed, openCycle],
+                creditCardCycle: cycle,
+                today: today
+            )
+        }
+
+        // Past due and still owed: tracks the Feb 28 statement, not the open cycle or `middle`.
+        #expect(progress(newestClosed: due(100_000, remaining: 75000, month: 3, day: 15)) == 0.25)
+        // Past due and settled: nothing to act on until the next statement closes.
+        #expect(progress(newestClosed: due(100_000, remaining: 0, month: 3, day: 15)) == nil)
+    }
+
+    // MARK: - Avatar icons and color tints
+
+    @Test func avatarIconMatchesAccountTypeAndConfigs() {
+        #expect(AccountTypeAvatar.icon(for: .checking) == "banknote.fill")
+        #expect(AccountTypeAvatar.icon(for: .savings) == "building.columns.fill")
+        #expect(AccountTypeAvatar.icon(for: .credit) == "creditcard.fill")
+        #expect(AccountTypeAvatar.icon(for: .investment) == "chart.line.uptrend.xyaxis")
+        #expect(AccountTypeAvatar.icon(for: .mortgage) == "house.fill")
+        #expect(AccountTypeAvatar.icon(for: .debt) == "exclamationmark.triangle.fill")
+        #expect(AccountTypeAvatar.icon(for: .other) == "dollarsign.circle.fill")
+
+        // Deposit config overrides type to lock.fill
+        #expect(AccountTypeAvatar.icon(for: .savings, hasDeposit: true) == "lock.fill")
+
+        // Loan config overrides type to house.fill
+        #expect(AccountTypeAvatar.icon(for: .other, hasLoan: true) == "house.fill")
+
+        // Credit card config overrides type to creditcard.fill
+        #expect(AccountTypeAvatar.icon(for: .checking, hasCreditCard: true) == "creditcard.fill")
+    }
+
+    @Test func avatarColorsMatchAccountTypeAndClosedStatus() {
+        // Checking uses blue
+        #expect(AccountTypeAvatar.iconColor(for: .checking) == .blue)
+
+        // Savings uses purple
+        #expect(AccountTypeAvatar.iconColor(for: .savings) == .purple)
+
+        // Credit uses orange (adaptive in light/dark mode)
+        #expect(AccountTypeAvatar.iconColor(for: .credit) == .orange)
+        #expect(AccountTypeAvatar.iconColor(for: .checking, hasCreditCard: true) == .orange)
+
+        // Deposits and investments use green
+        #expect(AccountTypeAvatar.iconColor(for: .investment) == .green)
+        #expect(AccountTypeAvatar.iconColor(for: .savings, hasDeposit: true) == .green)
+
+        // Loans use blue
+        #expect(AccountTypeAvatar.iconColor(for: .other, hasLoan: true) == .blue)
+
+        // Closed accounts use secondary
+        #expect(AccountTypeAvatar.iconColor(for: .checking, closed: true) == .secondary)
+        #expect(AccountTypeAvatar.iconColor(for: .credit, closed: true) == .secondary)
+        #expect(AccountTypeAvatar.iconColor(for: .checking, hasCreditCard: true, closed: true) == .secondary)
+    }
+
+    @Test func progressBarColorFollowsInstrumentNotAccountType() {
+        // A card can be tracked on any account type, so an unpaid bar is red
+        // whenever the account carries neither a loan nor a deposit.
+        #expect(AccountRow.progressBarColor(p: 0.4, hasLoan: false, hasDeposit: false) == .red)
+        #expect(AccountRow.progressBarColor(p: 0.4, hasLoan: true, hasDeposit: false) == .blue)
+        #expect(AccountRow.progressBarColor(p: 0.4, hasLoan: false, hasDeposit: true) == .green)
+        #expect(AccountRow.progressBarColor(p: 1.0, hasLoan: false, hasDeposit: false) == .green)
     }
 }

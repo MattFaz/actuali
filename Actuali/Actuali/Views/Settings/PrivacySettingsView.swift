@@ -18,6 +18,5 @@ struct PrivacySettingsView: View {
         .readableWidth()
         .navigationTitle(String(localized: "Privacy"))
         .navigationBarTitleDisplayMode(.inline)
-        .contentMargins(.horizontal, 6, for: .scrollContent)
     }
 }

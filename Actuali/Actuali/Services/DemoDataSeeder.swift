@@ -6,6 +6,7 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "DemoData"
 
 /// Populates a local "demo" budget with curated data suitable for App Store screenshots
 /// and for letting users (and App Review) explore the app without a server.
+/// Chequing and Savings groups exercise grouped account rendering and reordering.
 /// Overwrites any existing demo budget, and does NOT touch the server or sync.
 enum DemoDataSeeder {
     static let budgetId = "demo"
@@ -24,6 +25,7 @@ enum DemoDataSeeder {
         tracking: Bool = false,
         seedUncategorized: Bool = false,
         seedUnsupportedBankSync: Bool = false,
+        goalTemplatesEnabled: Bool = false,
         now: Date = Date()
     ) throws {
         let fileManager = BudgetFileManager.shared
@@ -54,7 +56,13 @@ enum DemoDataSeeder {
 
         try dbQueue.write { db in
             try createSchema(db, tracking: tracking)
-            try insertSeedData(db, tracking: tracking, seedUncategorized: seedUncategorized, now: now)
+            try insertSeedData(
+                db,
+                tracking: tracking,
+                seedUncategorized: seedUncategorized,
+                goalTemplatesEnabled: goalTemplatesEnabled,
+                now: now
+            )
             if seedUnsupportedBankSync {
                 try db.execute(sql: """
                 UPDATE accounts SET account_id = 'demo-' || id,
@@ -111,6 +119,7 @@ enum DemoDataSeeder {
             closed INTEGER DEFAULT 0,
             tombstone INTEGER DEFAULT 0,
             sort_order REAL,
+            account_group_id TEXT,
             account_id TEXT,
             account_sync_source TEXT,
             balance_current INTEGER,
@@ -120,6 +129,15 @@ enum DemoDataSeeder {
             official_name TEXT,
             subtype TEXT,
             bank TEXT
+        )
+        """)
+
+        try db.execute(sql: """
+        CREATE TABLE account_groups (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            sort_order REAL,
+            tombstone INTEGER DEFAULT 0
         )
         """)
 
@@ -287,6 +305,32 @@ enum DemoDataSeeder {
         )
         """)
 
+        // Same columns as BudgetDatabase's custom_reports migration, which the
+        // custom-report widgets on the "All Reports" dashboard point into.
+        try db.execute(sql: """
+        CREATE TABLE custom_reports (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            start_date TEXT,
+            end_date TEXT,
+            date_range TEXT,
+            mode TEXT,
+            group_by TEXT,
+            interval TEXT,
+            balance_type TEXT,
+            show_empty INTEGER DEFAULT 0,
+            show_offbudget INTEGER DEFAULT 0,
+            show_hidden INTEGER DEFAULT 0,
+            show_uncategorized INTEGER DEFAULT 0,
+            selected_categories TEXT,
+            graph_type TEXT,
+            conditions TEXT,
+            conditions_op TEXT,
+            metadata TEXT,
+            tombstone INTEGER NOT NULL DEFAULT 0
+        )
+        """)
+
         try db.execute(sql: """
         CREATE TABLE messages_crdt (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -334,6 +378,7 @@ enum DemoDataSeeder {
         _ db: Database,
         tracking: Bool,
         seedUncategorized: Bool,
+        goalTemplatesEnabled: Bool,
         now: Date
     ) throws {
         let cal = Calendar(identifier: .gregorian)
@@ -350,10 +395,16 @@ enum DemoDataSeeder {
         let vanguardId = UUID().uuidString
         let carLoanId = UUID().uuidString
         let cdId = UUID().uuidString
+        let chequingGroupId = UUID().uuidString
+        let savingsGroupId = UUID().uuidString
 
-        try insertAccount(db, id: chaseId, name: "Chase Checking", type: "checking", sortOrder: 0)
-        try insertAccount(db, id: allyId, name: "Ally Savings", type: "savings", sortOrder: 1)
-        try insertAccount(db, id: appleCardId, name: "Apple Card", type: "credit", sortOrder: 2)
+        try insertAccountGroup(db, id: chequingGroupId, name: "Chequing", sortOrder: 0)
+        try insertAccountGroup(db, id: savingsGroupId, name: "Savings", sortOrder: 1)
+        try insertAccount(
+            db, id: chaseId, name: "Chase Checking", type: "checking", sortOrder: 0, groupId: chequingGroupId
+        )
+        try insertAccount(db, id: allyId, name: "Ally Savings", type: "savings", sortOrder: 1, groupId: savingsGroupId)
+        try insertAccount(db, id: appleCardId, name: "Apple Card", type: "credit", sortOrder: 2, groupId: chequingGroupId)
         // Off-budget so it lifts net worth without distorting budget/spending reports.
         try insertAccount(db, id: vanguardId, name: "Vanguard Brokerage", type: "investment", sortOrder: 3, offBudget: true)
         // Off-budget like Actual's docs recommend for loans, so the loan tracker
@@ -829,6 +880,11 @@ enum DemoDataSeeder {
         try db.execute(sql: """
         INSERT INTO preferences (id, value) VALUES ('defaultCurrencyCode', 'USD'), ('flags.currency', 'true')
         """)
+        if goalTemplatesEnabled {
+            try db.execute(sql: """
+            INSERT INTO preferences (id, value) VALUES ('flags.goalTemplatesEnabled', 'true')
+            """)
+        }
         // Mirror a real tracking file: budgetType drives which budget table is
         // live when both exist (harmless here where only one does).
         if tracking {
@@ -858,10 +914,11 @@ enum DemoDataSeeder {
         // "Main" is inserted first so it's the default dashboard on open.
         let mainPageId = UUID().uuidString
         let trendsPageId = UUID().uuidString
+        let allReportsPageId = UUID().uuidString
         try db.execute(sql: """
         INSERT INTO dashboard_pages (id, name, tombstone)
-        VALUES (?, 'Main', 0), (?, 'Trends', 0)
-        """, arguments: [mainPageId, trendsPageId])
+        VALUES (?, 'Main', 0), (?, 'Trends', 0), (?, 'All Reports', 0)
+        """, arguments: [mainPageId, trendsPageId, allReportsPageId])
 
         // A curated set of widgets so the Reports tab is populated in the demo.
         // Sliding-window time frames slide their stored range forward to end at
@@ -900,6 +957,49 @@ enum DemoDataSeeder {
         {"name":"Income This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"gt","value":0}],"conditionsOp":"and"}
         """)
 
+        // The third dashboard: one of every other widget type, so each card
+        // and its detail page can be opened without a server. Last, so the
+        // first two stay the demo's opening view.
+        let sixMonths = #"{"start":"2024-01","end":"2024-06","mode":"sliding-window"}"#
+        try insertWidget(db, pageId: allReportsPageId, type: "markdown-card", y: 0, width: 12, height: 2, meta: """
+        {"content":"**Every report type** 🧪\\n\\nOne of each widget this app can show. Tap a card with a chevron to open its detail page."}
+        """)
+        try insertWidget(db, pageId: allReportsPageId, type: "summary-card", y: 1, width: 6, height: 2, meta: """
+        {"name":"Spent This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"lt","value":0}],"conditionsOp":"and"}
+        """)
+        try insertWidget(db, pageId: allReportsPageId, type: "summary-card", y: 2, width: 6, height: 2, meta: """
+        {"name":"Income This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"gt","value":0}],"conditionsOp":"and"}
+        """)
+        let customReports: [(name: String, mode: String, groupBy: String, balanceType: String, graphType: String)] = [
+            ("Spending by Category", "time", "Category", "Payment", "LineGraph"),
+            ("Spending by Group", "time", "Group", "Payment", "StackedBarGraph"),
+            ("Net by Month", "time", "Interval", "Net", "BarGraph"),
+            ("Spending Breakdown", "total", "Category", "Payment", "DonutGraph"),
+            ("Spending by Category Group", "total", "CategoryGroup", "Payment", "DonutGraph"),
+            ("Top Payees", "total", "Payee", "Payment", "TableGraph"),
+        ]
+        for (offset, report) in customReports.enumerated() {
+            let reportId = UUID().uuidString
+            try db.execute(sql: """
+            INSERT INTO custom_reports (id, name, date_range, mode, group_by, interval, balance_type, graph_type, tombstone)
+            VALUES (?, ?, 'Last 6 months', ?, ?, 'Monthly', ?, ?, 0)
+            """, arguments: [reportId, report.name, report.mode, report.groupBy, report.balanceType, report.graphType])
+            try insertWidget(db, pageId: allReportsPageId, type: "custom-report", y: 3 + offset, width: 12, height: 2,
+                             meta: #"{"id":"\#(reportId)"}"#)
+        }
+        try insertWidget(db, pageId: allReportsPageId, type: "calendar-card", y: 9, width: 12, height: 2,
+                         meta: #"{"name":"Calendar","timeFrame":{"start":"2024-05","end":"2024-06","mode":"sliding-window"}}"#)
+        try insertWidget(db, pageId: allReportsPageId, type: "sankey-card", y: 10, width: 12, height: 2,
+                         meta: #"{"name":"Money Flow","timeFrame":{"mode":"lastMonth"}}"#)
+        try insertWidget(db, pageId: allReportsPageId, type: "budget-analysis-card", y: 11, width: 12, height: 2,
+                         meta: #"{"name":"Budget Analysis","timeFrame":\#(sixMonths)}"#)
+        try insertWidget(db, pageId: allReportsPageId, type: "balance-forecast-card", y: 12, width: 12, height: 2,
+                         meta: #"{"name":"Balance Forecast"}"#)
+        try insertWidget(db, pageId: allReportsPageId, type: "crossover-card", y: 13, width: 12, height: 2,
+                         meta: #"{"name":"Crossover Point","incomeAccountIds":["\#(vanguardId)"]}"#)
+        try insertWidget(db, pageId: allReportsPageId, type: "monte-carlo-card", y: 14, width: 12, height: 2,
+                         meta: #"{"name":"Retirement Outlook","currentAge":35,"targetAge":90}"#)
+
         logger.info("Inserted \(transactions.count) demo transactions for month \(yyyymm)")
     }
 
@@ -920,18 +1020,31 @@ enum DemoDataSeeder {
 
     // MARK: - Insert helpers
 
+    private static func insertAccountGroup(
+        _ db: Database,
+        id: String,
+        name: String,
+        sortOrder: Double
+    ) throws {
+        try db.execute(sql: """
+        INSERT INTO account_groups (id, name, sort_order, tombstone)
+        VALUES (?, ?, ?, 0)
+        """, arguments: [id, name, sortOrder])
+    }
+
     private static func insertAccount(
         _ db: Database,
         id: String,
         name: String,
         type: String,
         sortOrder: Double,
-        offBudget: Bool = false
+        offBudget: Bool = false,
+        groupId: String? = nil
     ) throws {
         try db.execute(sql: """
-        INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
-        VALUES (?, ?, ?, ?, 0, 0, ?)
-        """, arguments: [id, name, type, offBudget ? 1 : 0, sortOrder])
+        INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order, account_group_id)
+        VALUES (?, ?, ?, ?, 0, 0, ?, ?)
+        """, arguments: [id, name, type, offBudget ? 1 : 0, sortOrder, groupId])
     }
 
     private static func insertCategoryGroup(

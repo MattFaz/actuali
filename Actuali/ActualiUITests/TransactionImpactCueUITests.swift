@@ -24,7 +24,13 @@ final class TransactionImpactCueUITests: XCTestCase {
             let groceries = app.buttons.matching(
                 NSPredicate(format: "identifier BEGINSWITH 'transactionRow.' AND label CONTAINS 'Whole Foods'")
             ).firstMatch
-            XCTAssertTrue(groceries.waitForExistence(timeout: 10))
+            // The register only materializes the rows it draws, and the
+            // expanded Upcoming Scheduled Transactions section (non-empty
+            // around month end) pushes Whole Foods below the fold. Swipe
+            // slowly so the long register can't glide the row past unseen —
+            // a slow swipe covers less ground, so allow more of them.
+            scrollUntilHittable(groceries, in: app, maxSwipes: 30, velocity: .slow)
+            XCTAssertTrue(groceries.isHittable, "the demo budget has a Whole Foods row in reach")
             groceries.tap()
         }
         // Duplicate lives in the bulk bar's More menu (#648).

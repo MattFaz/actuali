@@ -72,7 +72,7 @@ enum ActualServerError: LocalizedError {
         case .cannotConnectToHost:
             return String(format: String(localized: "Couldn't reach your server. If it's only available on your home network, connect to that network and try again. See %@ for help."), helpLink)
         case .notConnectedToInternet:
-            return String(localized: "Your device isn't connected to the internet.")
+            return String(localized: "Your device isn't connected to the internet. If your server is on your local network, check that Local Network access is enabled for Actuali in Settings → Privacy & Security → Local Network.")
         case .timedOut:
             return String(format: String(localized: "Your server took too long to respond. It may be offline, or blocked on this network. See %@ for help."), helpLink)
         default:
@@ -164,10 +164,11 @@ struct KeyInfoResponse: Codable, Sendable {
     }
 }
 
-// MARK: - Bank sync (server-hosted SimpleFIN)
+// MARK: - Bank sync (server-hosted)
 
-/// An error the `/simplefin/*` routes report. They answer HTTP 200 and put
-/// the failure in `data`, so a status-code check alone never sees these.
+/// An error the server's bank-sync routes (`/simplefin/*`,
+/// `/enablebanking/*`) report. They answer HTTP 200 and put the failure in
+/// `data`, so a status-code check alone never sees these.
 struct ServerBankSyncError: Decodable, Sendable, Equatable {
     let errorType: String?
     let errorCode: String?
@@ -183,6 +184,7 @@ struct ServerBankSyncError: Decodable, Sendable, Equatable {
         case "RATE_LIMIT_EXCEEDED": "rate-limit-exceeded"
         case "TIMED_OUT": "timed-out"
         case "ACCOUNT_MISSING": "account-missing"
+        case "NOT_CONFIGURED": "not-configured"
         default: "failed"
         }
     }
@@ -220,6 +222,25 @@ struct ServerBankSyncTransaction: Decodable, Sendable {
 
     struct Amount: Decodable, Sendable {
         let amount: String?
+    }
+}
+
+/// One account's answer from `/enablebanking/transactions` — the download, or
+/// the error the route put in `data` in its place; the route answers HTTP 200
+/// either way.
+enum EnableBankingDownload: Decodable, Sendable {
+    case account(ServerBankSyncAccountDownload)
+    case failure(ServerBankSyncError)
+
+    init(from decoder: any Decoder) throws {
+        // Error-first, as in `ServerBankSyncDownloads`: every field of the
+        // error is optional, so a success body decodes as one too and only
+        // counts as a failure when it names a code.
+        if let possibleFailure = try? ServerBankSyncError(from: decoder), possibleFailure.errorCode != nil {
+            self = .failure(possibleFailure)
+        } else {
+            self = try .account(ServerBankSyncAccountDownload(from: decoder))
+        }
     }
 }
 
@@ -1141,18 +1162,18 @@ actor ActualServerClient {
     /// server can't do bank sync" and fall back to the device's own key —
     /// which is why a route that isn't there and a server that can't be
     /// reached must not look the same: the latter throws.
-    func simpleFINStatus() async throws -> Bool? {
+    func simpleFINStatus(fileId: String?) async throws -> Bool? {
         let response: SimpleFINStatusResponse? = try await postBankSync(
-            path: "/simplefin/status", body: EmptyBody()
+            path: "/simplefin/status", body: EmptyBody(), fileId: fileId
         )
         return response?.data?.configured
     }
 
     /// Every account the server's SimpleFIN connection covers, in the raw
     /// bridge shape (the route passes it through untouched).
-    func simpleFINAccounts() async throws -> [SimpleFINAccount] {
+    func simpleFINAccounts(fileId: String?) async throws -> [SimpleFINAccount] {
         guard let response: SimpleFINServerAccountsResponse = try await postBankSync(
-            path: "/simplefin/accounts", body: EmptyBody()
+            path: "/simplefin/accounts", body: EmptyBody(), fileId: fileId
         ) else {
             throw ActualServerError.invalidResponse
         }
@@ -1171,7 +1192,8 @@ actor ActualServerClient {
     ///     the route rejects a mismatch.
     func simpleFINTransactions(
         accountIds: [String],
-        startDates: [String]
+        startDates: [String],
+        fileId: String?
     ) async throws -> ServerBankSyncDownloads {
         guard accountIds.count == startDates.count else {
             throw ActualServerError.invalidResponse
@@ -1181,12 +1203,48 @@ actor ActualServerClient {
         // the account's data would be.
         let body = SimpleFINTransactionsRequest(accountId: accountIds, startDate: startDates)
         guard let response: SimpleFINTransactionsResponse = try await postBankSync(
-            path: "/simplefin/transactions", body: body
+            path: "/simplefin/transactions", body: body, fileId: fileId
         ), let data = response.data else { throw ActualServerError.invalidResponse }
         return data
     }
 
+    /// One account's transactions from the server's Enable Banking connection
+    /// (upstream `downloadEnableBankingTransactions` in
+    /// `packages/loot-core/src/server/accounts/sync.ts` — one account per
+    /// request). `aspspName` is the bank's name, which the server uses to drop
+    /// PSU headers for banks that reject them on data calls. Nil when the
+    /// server has no `/enablebanking` routes.
+    func enableBankingTransactions(
+        accountId: String,
+        startDate: String,
+        aspspName: String?
+    ) async throws -> EnableBankingDownload? {
+        // ponytail: no `importPending` — the server defaults to returning
+        // everything and `BudgetStore.importBankSync` already drops pending rows
+        // per the synced preference. Upgrade path: pass the preference through
+        // to save bandwidth.
+        let body = EnableBankingTransactionsRequest(
+            accountId: accountId, startDate: startDate, aspspName: aspspName
+        )
+        // 60 s like upstream; the session default (30 s) is short for slow banks.
+        guard let response: EnableBankingTransactionsResponse = try await postBankSync(
+            path: "/enablebanking/transactions", body: body, fileId: nil, timeout: 60
+        ) else { return nil }
+        guard let data = response.data else { throw ActualServerError.invalidResponse }
+        return data
+    }
+
     private struct EmptyBody: Encodable {}
+
+    private struct EnableBankingTransactionsRequest: Encodable {
+        let accountId: String
+        let startDate: String
+        let aspspName: String?
+    }
+
+    private struct EnableBankingTransactionsResponse: Decodable {
+        let data: EnableBankingDownload?
+    }
 
     private struct SimpleFINTransactionsRequest: Encodable {
         let accountId: [String]
@@ -1220,19 +1278,28 @@ actor ActualServerClient {
         let data: ServerBankSyncDownloads?
     }
 
-    /// Shared plumbing for the `/simplefin` routes. Returns nil when the route
-    /// isn't there; throws for everything else.
+    /// Shared plumbing for the bank-sync routes. Returns nil when the route
+    /// isn't there; throws for everything else. `timeout` overrides the
+    /// session default for slow upstream banks. `fileId` is the budget's cloud
+    /// file id: since Actual 26.11 the server uses it to pick that budget's own
+    /// SimpleFIN credentials over the global ones (upstream `app-simplefin.js`).
     private func postBankSync<Response: Decodable>(
         path: String,
-        body: some Encodable
+        body: some Encodable,
+        fileId: String?,
+        timeout: TimeInterval? = nil
     ) async throws -> Response? {
         guard let serverURL else { throw ActualServerError.invalidURL }
         guard let token else { throw ActualServerError.unauthorized }
 
         var request = makeRequest(serverURL.appendingPathComponent(path))
         request.httpMethod = "POST"
+        if let timeout {
+            request.timeoutInterval = timeout
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
+        request.setValue(fileId, forHTTPHeaderField: "X-ACTUAL-FILE-ID")
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await send(

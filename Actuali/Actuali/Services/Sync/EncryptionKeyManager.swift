@@ -40,8 +40,10 @@ enum EncryptionKeyManager {
         struct Meta: Codable { let keyId: String; let algorithm: String; let iv: String; let authTag: String }
     }
 
+    private static let keychainKeyPrefix = "encryptKey."
+
     private static func keychainKey(fileId: String) -> String {
-        "encryptKey.\(fileId)"
+        keychainKeyPrefix + fileId
     }
 
     /// Derive the key from the password + server salt and validate it against the test message.
@@ -87,5 +89,11 @@ enum EncryptionKeyManager {
 
     static func remove(fileId: String) throws {
         try Keychain.remove(for: keychainKey(fileId: fileId))
+    }
+
+    /// Forget every budget's key, for when no budget on this device can
+    /// still be using one.
+    static func removeAll() {
+        Keychain.removeAll(withPrefix: keychainKeyPrefix)
     }
 }

@@ -51,6 +51,10 @@ struct BudgetDatabaseAccountsSummaryTests {
         #expect(summary.expenseCents == 150_000)
         #expect(summary.netCents == 250_000)
 
+        let payPeriod = try await db.fetchAccountsMonthSummary(dates: 20_260_805...20_260_901)
+        #expect(payPeriod.incomeCents == 10000)
+        #expect(payPeriod.expenseCents == 150_000)
+
         let withoutRent = try await db.fetchAccountsMonthSummary(
             month: "2026-08",
             excludingCategoryIds: ["cat-rent"]

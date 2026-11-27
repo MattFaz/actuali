@@ -112,6 +112,37 @@ struct BudgetStoreReloadPublicationTests {
         #expect(snapshotStore.read() != nil)
     }
 
+    /// The first publish after opening a budget must already carry the
+    /// upcoming bills: a budget with no sync client gets no refresh after it.
+    @Test func loadingBudgetPublishesUpcomingBillsToWidget() async throws {
+        let (store, manager, root) = makeFileBackedStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let directory = root.appendingPathComponent("widget")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let snapshotStore = WidgetSnapshotStore(containerURL: directory)
+        store.widgetSnapshotStore = snapshotStore
+        let budgetId = "budget-\(UUID().uuidString)"
+        try seedBudget(id: budgetId, in: manager, sql: TestSchema.upstream + TestSchema.rules + ";" + TestSchema.schedulesNextDate + """
+        ;
+        CREATE TABLE schedules (
+            id TEXT PRIMARY KEY, rule TEXT, active INTEGER DEFAULT 0,
+            completed INTEGER DEFAULT 0, posts_transaction INTEGER DEFAULT 0,
+            tombstone INTEGER DEFAULT 0, name TEXT,
+            sort_order REAL, custom_upcoming_length TEXT
+        );
+        INSERT INTO accounts (id, name, type, sort_order) VALUES ('a', 'Checking', 'checking', 1);
+        INSERT INTO rules (id, conditions, actions) VALUES ('r', '[{"op":"is","field":"account","value":"a"},{"op":"isapprox","field":"date","value":"2099-01-15"},{"op":"is","field":"amount","value":-1250}]', '[{"op":"link-schedule","value":"s"}]');
+        INSERT INTO schedules (id, rule, name) VALUES ('s', 'r', 'Rent');
+        INSERT INTO schedules_next_date (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
+            VALUES ('n', 's', 20990115, 100, 20990115, 100);
+        """)
+
+        await store.loadLocalBudget(budgetId)
+
+        #expect(store.error == nil)
+        #expect(snapshotStore.read()?.upcomingBills?.map(\.title) == ["Rent"])
+    }
+
     @Test func failedWidgetWriteRetriesAndChangingDestinationWritesAgain() throws {
         let store = BudgetStore.previewInstance()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

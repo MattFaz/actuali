@@ -1,4 +1,5 @@
 import Combine
+import CryptoKit
 import Foundation
 import GRDB
 import Testing
@@ -55,12 +56,19 @@ struct BudgetStoreInitialSyncTests {
     /// load → sync path without a server while the sync leg that follows
     /// fails fast and locally.
     private func makeStore(zip: Data, root rootDirectory: URL) async throws -> BudgetStore {
-        let session = StubTransport.session { request in
+        try await makeStore(root: rootDirectory) { request in
             guard request.url?.path.contains("download-user-file") == true else {
                 throw URLError(.cannotConnectToHost)
             }
             return StubTransport.Response(contentType: "application/zip", body: zip)
         }
+    }
+
+    private func makeStore(
+        root rootDirectory: URL,
+        respond: @escaping StubTransport.Handler
+    ) async throws -> BudgetStore {
+        let session = StubTransport.session(respond)
         let serverClient = ActualServerClient(session: session)
         try await serverClient.configure(serverURL: "https://budget.example.com")
         await serverClient.setToken("test-token")
@@ -175,6 +183,169 @@ struct BudgetStoreInitialSyncTests {
         // is gone.
         let watermark = (UserDefaults.standard.object(forKey: key) as? NSNumber)?.int64Value
         #expect(watermark != 500)
+    }
+
+    private struct KeyFixture: Codable {
+        let password: String
+        let salt: String
+        let keyId: String
+        let derivedKeyBase64: String
+        let test: String
+    }
+
+    private final class BundleToken {}
+
+    /// Unlocking an encrypted budget held the password sheet until the initial
+    /// sync finished, so a slow or stalled sync froze it with every control
+    /// disabled. Unlocking is done once the budget is open; the sync follows.
+    @Test func unlockingReturnsOnceTheBudgetIsOpenWithoutWaitingForTheInitialSync() async throws {
+        let savedBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
+        let root = try makeRootDirectory()
+        let budgetId = "test-initial-sync-\(UUID().uuidString)"
+        let remoteBudget = BudgetStore.RemoteBudget(
+            id: "cloud-file-\(UUID().uuidString)", name: "Test Budget", groupId: "group-1", isEncrypted: true
+        )
+        defer {
+            try? EncryptionKeyManager.remove(fileId: remoteBudget.id)
+            cleanUp(root: root, budgetId: budgetId, savedBudgetId: savedBudgetId)
+        }
+
+        let fixtureURL = try #require(
+            Bundle(for: BundleToken.self).url(forResource: "encryption-key-fixture", withExtension: "json")
+        )
+        let fixture = try JSONDecoder().decode(KeyFixture.self, from: Data(contentsOf: fixtureURL))
+        let key = try SymmetricKey(data: #require(Data(base64Encoded: fixture.derivedKeyBase64)))
+        let encrypted = try SyncEncryption.encrypt(makeBudgetZip(budgetId: budgetId), using: key)
+        let keyInfo = try JSONEncoder().encode(KeyInfoResponse(
+            status: "ok",
+            data: .init(id: fixture.keyId, salt: fixture.salt, test: fixture.test)
+        ))
+        let fileInfo = try JSONEncoder().encode(FileInfoResponse(
+            status: "ok",
+            data: .init(
+                fileId: remoteBudget.id,
+                groupId: remoteBudget.groupId,
+                name: remoteBudget.name,
+                deleted: 0,
+                encryptMeta: .init(
+                    keyId: fixture.keyId,
+                    algorithm: "aes-256-gcm",
+                    iv: encrypted.iv.base64EncodedString(),
+                    authTag: encrypted.authTag.base64EncodedString()
+                )
+            )
+        ))
+        let ciphertext = encrypted.data
+        let store = try await makeStore(root: root) { request in
+            let path = request.url?.path ?? ""
+            if path.contains("user-get-key") {
+                return StubTransport.Response(contentType: "application/json", body: keyInfo)
+            }
+            if path.contains("get-user-file-info") {
+                return StubTransport.Response(contentType: "application/json", body: fileInfo)
+            }
+            if path.contains("download-user-file") {
+                return StubTransport.Response(contentType: "application/zip", body: ciphertext)
+            }
+            throw URLError(.cannotConnectToHost)
+        }
+
+        let failure = await store.unlockAndOpen(remoteBudget, password: fixture.password)
+
+        #expect(failure == nil)
+        #expect(store.accounts.map(\.name) == ["Checking"])
+        #expect(store.isInitialSyncing, "unlocking waited for the initial sync")
+
+        // The sync still runs; let it land before the budget directory goes.
+        while store.isInitialSyncing {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(store.syncStatus.lastSyncTime != nil)
+    }
+
+    /// The encryption password was reset elsewhere, so the stored key is for
+    /// an older key id. The download must stop, drop the stale key and leave
+    /// the budget asking for its password again.
+    @Test func downloadWithAStaleKeyDropsItAndAsksForThePasswordAgain() async throws {
+        let savedBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
+        let root = try makeRootDirectory()
+        let remoteBudget = BudgetStore.RemoteBudget(
+            id: "cloud-file-\(UUID().uuidString)", name: "Test Budget", groupId: "group-1", isEncrypted: true
+        )
+        defer {
+            try? EncryptionKeyManager.remove(fileId: remoteBudget.id)
+            cleanUp(root: root, budgetId: nil, savedBudgetId: savedBudgetId)
+        }
+
+        try EncryptionKeyManager.store(
+            LoadedKey(keyId: "old-key", key: SymmetricKey(size: .bits256)), fileId: remoteBudget.id
+        )
+        let fileInfo = try JSONEncoder().encode(FileInfoResponse(
+            status: "ok",
+            data: .init(
+                fileId: remoteBudget.id,
+                groupId: remoteBudget.groupId,
+                name: remoteBudget.name,
+                deleted: 0,
+                encryptMeta: .init(keyId: "new-key", algorithm: "aes-256-gcm", iv: "aXY=", authTag: "dGFn")
+            )
+        ))
+        let store = try await makeStore(root: root) { request in
+            let path = request.url?.path ?? ""
+            if path.contains("get-user-file-info") {
+                return StubTransport.Response(contentType: "application/json", body: fileInfo)
+            }
+            if path.contains("download-user-file") {
+                return StubTransport.Response(contentType: "application/zip", body: Data("ciphertext".utf8))
+            }
+            throw URLError(.cannotConnectToHost)
+        }
+
+        await store.downloadBudget(remoteBudget)
+
+        #expect(store.error == "This budget's encryption key has changed. Re-enter the password.")
+        #expect(store.accounts.isEmpty)
+        #expect(store.isInitialSyncing == false)
+        #expect(EncryptionKeyManager.load(fileId: remoteBudget.id) == nil)
+        // With the key gone, picking the budget hands it back for its password.
+        #expect(store.openRemoteBudget(remoteBudget)?.id == remoteBudget.id)
+    }
+
+    /// A key stored for a budget that then failed to download used to stay in
+    /// the Keychain, so picking the budget again skipped the password sheet
+    /// and silently retried the download.
+    @Test func failedUnlockDownloadDoesNotLeaveTheKeyBehind() async throws {
+        let savedBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
+        let root = try makeRootDirectory()
+        let remoteBudget = BudgetStore.RemoteBudget(
+            id: "cloud-file-\(UUID().uuidString)", name: "Test Budget", groupId: "group-1", isEncrypted: true
+        )
+        defer {
+            try? EncryptionKeyManager.remove(fileId: remoteBudget.id)
+            cleanUp(root: root, budgetId: nil, savedBudgetId: savedBudgetId)
+        }
+
+        let fixtureURL = try #require(
+            Bundle(for: BundleToken.self).url(forResource: "encryption-key-fixture", withExtension: "json")
+        )
+        let fixture = try JSONDecoder().decode(KeyFixture.self, from: Data(contentsOf: fixtureURL))
+        let keyInfo = try JSONEncoder().encode(KeyInfoResponse(
+            status: "ok",
+            data: .init(id: fixture.keyId, salt: fixture.salt, test: fixture.test)
+        ))
+        // The password checks out, then the download itself fails.
+        let store = try await makeStore(root: root) { request in
+            guard request.url?.path.contains("user-get-key") == true else {
+                throw URLError(.cannotConnectToHost)
+            }
+            return StubTransport.Response(contentType: "application/json", body: keyInfo)
+        }
+
+        let failure = await store.unlockAndOpen(remoteBudget, password: fixture.password)
+
+        #expect(failure != nil)
+        #expect(EncryptionKeyManager.load(fileId: remoteBudget.id) == nil)
+        #expect(store.isInitialSyncing == false)
     }
 }
 

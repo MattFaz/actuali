@@ -24,29 +24,104 @@ struct DepositGrowthTests {
         amount: Int = 500_000,
         rate: Double = 7,
         compounding: DepositConfig.Compounding = .quarterly,
+        contributionFrequency: DepositConfig.ContributionFrequency = .monthly,
         termMonths: Int = 24
     ) -> DepositConfig {
         DepositConfig(
             kind: .recurring, amount: amount, annualRatePercent: rate,
-            compounding: compounding, openedOn: opened, termMonths: termMonths
+            compounding: compounding, contributionFrequency: contributionFrequency,
+            openedOn: opened, termMonths: termMonths
         )
     }
 
     // MARK: - Compounding periods
 
     @Test func periodsCountWholeCompoundingIntervalsOnly() {
-        #expect(DepositGrowth.completedPeriods(afterMonths: 0, compounding: .quarterly) == 0)
-        #expect(DepositGrowth.completedPeriods(afterMonths: 2, compounding: .quarterly) == 0)
-        #expect(DepositGrowth.completedPeriods(afterMonths: 3, compounding: .quarterly) == 1)
-        #expect(DepositGrowth.completedPeriods(afterMonths: 11, compounding: .quarterly) == 3)
-        #expect(DepositGrowth.completedPeriods(afterMonths: 12, compounding: .monthly) == 12)
-        #expect(DepositGrowth.completedPeriods(afterMonths: 12, compounding: .annually) == 1)
+        let start = DayDate(year: 2026, month: 1, day: 15)
+
+        #expect(DepositGrowth.completedPeriods(from: start, to: start, compounding: .quarterly) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(months: 2), compounding: .quarterly) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(months: 3), compounding: .quarterly) == 1)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(months: 11), compounding: .quarterly) == 3)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(months: 12), compounding: .monthly) == 12)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(months: 12), compounding: .annually) == 1)
     }
 
-    @Test func everyCompoundingFrequencyDividesTheYearEvenly() {
-        for frequency in DepositConfig.Compounding.allCases {
-            #expect(frequency.periodMonths * frequency.rawValue == 12)
+    @Test func dayBasedFrequenciesCountOnlyWholePeriods() {
+        let start = DayDate(year: 2026, month: 1, day: 1)
+
+        #expect(DepositGrowth.completedPeriods(from: start, to: start, compounding: .daily) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(days: 1), compounding: .daily) == 1)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(days: 6), compounding: .weekly) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(days: 7), compounding: .weekly) == 1)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(days: 13), compounding: .biWeekly) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(days: 14), compounding: .biWeekly) == 1)
+    }
+
+    @Test func monthBasedFrequenciesRespectClampedCalendarAnniversaries() {
+        let start = DayDate(year: 2026, month: 1, day: 31)
+        let quarterEnd = start.adding(months: 3)
+
+        #expect(quarterEnd == DayDate(year: 2026, month: 4, day: 30))
+        #expect(DepositGrowth.completedPeriods(
+            from: start, to: quarterEnd.adding(days: -1), compounding: .quarterly
+        ) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: quarterEnd, compounding: .quarterly) == 1)
+    }
+
+    @Test func compoundingFrequenciesDeclareTheirExplicitPeriods() {
+        let expected: [(DepositConfig.Compounding, DepositConfig.Period, Int)] = [
+            (.daily, .days(1), 365),
+            (.weekly, .days(7), 52),
+            (.biWeekly, .days(14), 26),
+            (.monthly, .months(1), 12),
+            (.quarterly, .months(3), 4),
+            (.semiAnnually, .months(6), 2),
+            (.annually, .months(12), 1),
+        ]
+
+        for (frequency, period, periodsPerYear) in expected {
+            #expect(frequency.period == period)
+            #expect(frequency.rawValue == periodsPerYear)
         }
+    }
+
+    @Test func contributionFrequenciesDeclareTheirExplicitPeriods() {
+        let expected: [(DepositConfig.ContributionFrequency, DepositConfig.Period)] = [
+            (.weekly, .days(7)),
+            (.biWeekly, .days(14)),
+            (.monthly, .months(1)),
+            (.quarterly, .months(3)),
+            (.annually, .months(12)),
+        ]
+
+        for (frequency, period) in expected {
+            #expect(frequency.period == period)
+        }
+    }
+
+    @Test func dayNumberDateArithmeticHandlesLeapAndCenturyBoundaries() {
+        #expect(DayDate(year: 1970, month: 1, day: 1).dayNumber == 0)
+
+        let leapDay = DayDate(year: 2024, month: 2, day: 29)
+        let february = DayDate(year: 2024, month: 2, day: 28)
+        let march = DayDate(year: 2024, month: 3, day: 1)
+        #expect(february.days(until: march) == 2)
+        #expect(february.adding(days: 1) == leapDay)
+        #expect(leapDay.adding(days: 1) == march)
+        #expect(march.adding(days: -1) == leapDay)
+
+        let nonLeapCentury = DayDate(year: 1900, month: 2, day: 28)
+        let leapCenturyFebruary28 = DayDate(year: 2000, month: 2, day: 28)
+        let leapCenturyFebruary29 = DayDate(year: 2000, month: 2, day: 29)
+        let leapCenturyMarch = DayDate(year: 2000, month: 3, day: 1)
+        #expect(nonLeapCentury.days(until: DayDate(year: 1900, month: 3, day: 1)) == 1)
+        #expect(leapCenturyFebruary28.days(until: leapCenturyMarch) == 2)
+        #expect(nonLeapCentury.adding(days: 1) == DayDate(year: 1900, month: 3, day: 1))
+        #expect(leapCenturyFebruary28.adding(days: 1) == leapCenturyFebruary29)
+        #expect(leapCenturyFebruary29.adding(days: 1) == leapCenturyMarch)
+        #expect(DayDate(year: 1900, month: 1, day: 31).adding(months: 1) == nonLeapCentury)
+        #expect(DayDate(year: 2000, month: 1, day: 31).adding(months: 1) == leapCenturyFebruary29)
     }
 
     // MARK: - Fixed deposits
@@ -90,6 +165,12 @@ struct DepositGrowthTests {
         #expect(quarterly < monthly)
     }
 
+    @Test func fixedDepositsUseActualDaysForDailyWeeklyAndBiWeeklyCompounding() {
+        #expect(DepositGrowth.value(fixedDeposit(compounding: .daily), afterMonths: 60) == 14_192_921)
+        #expect(DepositGrowth.value(fixedDeposit(compounding: .weekly), afterMonths: 60) == 14_187_336)
+        #expect(DepositGrowth.value(fixedDeposit(compounding: .biWeekly), afterMonths: 60) == 14_184_003)
+    }
+
     @Test func aZeroRateFixedDepositReturnsExactlyWhatWentIn() {
         let deposit = fixedDeposit(rate: 0)
         #expect(DepositGrowth.value(deposit, afterMonths: 60) == 10_000_000)
@@ -126,6 +207,78 @@ struct DepositGrowthTests {
         #expect(DepositGrowth.deposited(deposit, afterMonths: 100) == 12_000_000)
     }
 
+    @Test func weeklyAndBiWeeklyContributionsUseSevenAndFourteenDayIntervals() {
+        let weekly = recurringDeposit(contributionFrequency: .weekly)
+        let biWeekly = recurringDeposit(contributionFrequency: .biWeekly)
+
+        #expect(DepositGrowth.instalmentsMade(weekly, on: opened.adding(days: 6)) == 1)
+        #expect(DepositGrowth.instalmentsMade(weekly, on: opened.adding(days: 7)) == 2)
+        #expect(DepositGrowth.instalmentsMade(biWeekly, on: opened.adding(days: 13)) == 1)
+        #expect(DepositGrowth.instalmentsMade(biWeekly, on: opened.adding(days: 14)) == 2)
+    }
+
+    @Test func recurringContributionFrequenciesScheduleExpectedPayments() {
+        let weekly = recurringDeposit(contributionFrequency: .weekly, termMonths: 12)
+        let biWeekly = recurringDeposit(contributionFrequency: .biWeekly, termMonths: 12)
+        let monthly = recurringDeposit(contributionFrequency: .monthly, termMonths: 12)
+        let quarterly = recurringDeposit(contributionFrequency: .quarterly, termMonths: 12)
+        let annually = recurringDeposit(contributionFrequency: .annually, termMonths: 12)
+
+        #expect(DepositGrowth.instalmentsMade(weekly, afterMonths: 12) == 53)
+        #expect(DepositGrowth.instalmentsMade(biWeekly, afterMonths: 12) == 27)
+        #expect(DepositGrowth.instalmentsMade(monthly, afterMonths: 12) == 12)
+        #expect(DepositGrowth.instalmentsMade(quarterly, afterMonths: 12) == 4)
+        #expect(DepositGrowth.instalmentsMade(annually, afterMonths: 12) == 1)
+    }
+
+    @Test func monthEndContributionsFollowTheOpeningDayAnniversary() {
+        let openingDay = DayDate(year: 2026, month: 1, day: 31)
+        let config = DepositConfig(
+            kind: .recurring,
+            amount: 500_000,
+            annualRatePercent: 0,
+            compounding: .quarterly,
+            openedOn: openingDay,
+            termMonths: 3
+        )
+
+        #expect(DepositGrowth.instalmentsMade(config, on: DayDate(year: 2026, month: 2, day: 28)) == 2)
+        #expect(DepositGrowth.instalmentsMade(config, on: DayDate(year: 2026, month: 3, day: 30)) == 2)
+        #expect(DepositGrowth.instalmentsMade(config, on: DayDate(year: 2026, month: 3, day: 31)) == 3)
+        #expect(DepositGrowth.instalmentsMade(config, on: config.maturityDate.adding(days: -1)) == 3)
+        #expect(config.maturityValue == 1_500_000)
+    }
+
+    @Test func contributionFrequencyChangesMaturityValue() {
+        let expected: [(DepositConfig.ContributionFrequency, Int)] = [
+            (.weekly, 26_500_000),
+            (.biWeekly, 13_500_000),
+            (.monthly, 6_000_000),
+            (.quarterly, 2_000_000),
+            (.annually, 500_000),
+        ]
+        for (frequency, amount) in expected {
+            let config = recurringDeposit(
+                amount: 500_000,
+                rate: 0,
+                contributionFrequency: frequency,
+                termMonths: 12
+            )
+            #expect(config.maturityValue == amount)
+            #expect(DepositGrowth.deposited(config, on: config.maturityDate) == amount)
+        }
+    }
+
+    @Test func recurringContributionsStopBeforeMaturityDate() {
+        let config = recurringDeposit(
+            rate: 0,
+            contributionFrequency: .quarterly,
+            termMonths: 12
+        )
+        #expect(DepositGrowth.instalmentsMade(config, on: config.maturityDate.adding(days: -1)) == 4)
+        #expect(DepositGrowth.instalmentsMade(config, on: config.maturityDate) == 4)
+    }
+
     @Test func aMaturedRecurringDepositStopsGrowing() {
         let deposit = recurringDeposit()
         let atMaturity = DepositGrowth.value(deposit, afterMonths: 24)
@@ -135,6 +288,12 @@ struct DepositGrowthTests {
     @Test func aZeroRateRecurringDepositIsJustTheInstalmentsAddedUp() {
         let deposit = recurringDeposit(rate: 0)
         #expect(DepositGrowth.value(deposit, afterMonths: 24) == 12_000_000)
+    }
+
+    @Test func recurringDepositsUseActualDaysForDailyWeeklyAndBiWeeklyCompounding() {
+        #expect(DepositGrowth.value(recurringDeposit(compounding: .daily), afterMonths: 24) == 12_920_086)
+        #expect(DepositGrowth.value(recurringDeposit(compounding: .weekly), afterMonths: 24) == 12_913_992)
+        #expect(DepositGrowth.value(recurringDeposit(compounding: .biWeekly), afterMonths: 24) == 12_903_933)
     }
 
     // MARK: - Degenerate inputs
@@ -174,6 +333,21 @@ struct DepositGrowthTests {
         #expect(first.value == 10_000_000)
         #expect(last.month == DayDate(year: 2031, month: 1, day: 1))
         #expect(last.value == deposit.maturityValue)
+    }
+
+    @Test func theCurveFollowsAWeeklyContributionSchedule() throws {
+        let config = recurringDeposit(
+            rate: 0,
+            contributionFrequency: .weekly,
+            termMonths: 12
+        )
+        let curve = DepositGrowth.curve(config)
+
+        #expect(curve.count == 13)
+        let first = try #require(curve.first)
+        let last = try #require(curve.last)
+        #expect(first.deposited == 500_000)
+        #expect(last.deposited == 26_500_000)
     }
 
     @Test func theCurveNeverFallsAndCarriesItsOwnDepositedBaseline() throws {

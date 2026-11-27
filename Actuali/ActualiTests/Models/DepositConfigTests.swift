@@ -10,11 +10,13 @@ struct DepositConfigTests {
         amount: Int = 10_000_000,
         rate: Double = 7,
         compounding: DepositConfig.Compounding = .quarterly,
+        contributionFrequency: DepositConfig.ContributionFrequency = .monthly,
         termMonths: Int = 60
     ) -> DepositConfig {
         DepositConfig(
             kind: kind, amount: amount, annualRatePercent: rate,
-            compounding: compounding, openedOn: opened, termMonths: termMonths
+            compounding: compounding, contributionFrequency: contributionFrequency,
+            openedOn: opened, termMonths: termMonths
         )
     }
 
@@ -23,11 +25,17 @@ struct DepositConfigTests {
     @Test func roundTripsThroughJSON() throws {
         for kind in DepositConfig.Kind.allCases {
             for compounding in DepositConfig.Compounding.allCases {
-                let config = deposit(kind: kind, compounding: compounding)
-                let decoded = try JSONDecoder().decode(
-                    DepositConfig.self, from: JSONEncoder().encode(config)
-                )
-                #expect(decoded == config)
+                for contributionFrequency in DepositConfig.ContributionFrequency.allCases {
+                    let config = deposit(
+                        kind: kind,
+                        compounding: compounding,
+                        contributionFrequency: contributionFrequency
+                    )
+                    let decoded = try JSONDecoder().decode(
+                        DepositConfig.self, from: JSONEncoder().encode(config)
+                    )
+                    #expect(decoded == config)
+                }
             }
         }
     }
@@ -54,11 +62,24 @@ struct DepositConfigTests {
         // Quarterly is what fixed and recurring deposits overwhelmingly use,
         // so it is the safest thing to assume of a config that didn't say.
         #expect(decoded.compounding == .quarterly)
+        #expect(decoded.contributionFrequency == .monthly)
         #expect(decoded.termMonths == 60)
     }
 
-    /// Every figure is measured from the opening day, so unlike the compounding
-    /// frequency there is no sane fallback — better to fail the decode.
+    /// Missing or unknown contribution frequencies keep older saved deposits
+    /// on the established monthly schedule instead of making them unreadable.
+    @Test func anUnknownContributionFrequencyFallsBackToMonthly() throws {
+        let json = Data("""
+        {"kind":"recurring","amount":100000,"annualRatePercent":7,
+         "compounding":4,"contributionFrequency":"futureFrequency",
+         "openedOn":20260115,"termMonths":12}
+        """.utf8)
+
+        let decoded = try JSONDecoder().decode(DepositConfig.self, from: json)
+
+        #expect(decoded.contributionFrequency == .monthly)
+    }
+
     @Test func refusesAConfigWithAnImpossibleOpeningDay() {
         let json = Data("""
         {"kind":"fixed","amount":10000000,"annualRatePercent":7,
@@ -85,6 +106,17 @@ struct DepositConfigTests {
         #expect(config.monthsElapsed(on: DayDate(year: 2026, month: 2, day: 14)) == 0)
         #expect(config.monthsElapsed(on: DayDate(year: 2026, month: 2, day: 15)) == 1)
         #expect(config.monthsElapsed(on: DayDate(year: 2027, month: 1, day: 15)) == 12)
+    }
+
+    @Test func aMonthEndDepositCountsItsClampedMaturityAnniversary() {
+        let config = DepositConfig(
+            kind: .fixed, amount: 10_000_000, annualRatePercent: 7,
+            compounding: .quarterly, openedOn: DayDate(year: 2026, month: 1, day: 31), termMonths: 3
+        )
+
+        #expect(config.maturityDate == DayDate(year: 2026, month: 4, day: 30))
+        #expect(config.monthsElapsed(on: config.maturityDate) == 3)
+        #expect(config.maturityValue > config.amount)
     }
 
     @Test func aDateBeforeOpeningReadsAsMonthZero() {
@@ -135,6 +167,13 @@ struct DepositConfigTests {
         #expect(config.value(on: opened) == 500_000)
         #expect(config.deposited(on: opened) == 500_000)
         #expect(config.interestEarned(on: opened) == 0)
+    }
+
+    @Test func dailyCompoundingUpdatesAfterOneCalendarDay() {
+        let config = deposit(compounding: .daily, termMonths: 12)
+
+        #expect(config.value(on: opened) == config.amount)
+        #expect(config.value(on: opened.adding(days: 1)) == 10_001_918)
     }
 
     @Test func totalInterestOnARecurringDepositCountsEveryInstalment() {

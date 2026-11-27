@@ -15,7 +15,7 @@ final class AccountSectionCollapseUITests: XCTestCase {
         // Expansion persists across runs; normalize only the initial launch.
         if expandingSections {
             for identifier in ["on-budget", "off-budget"] {
-                let header = app.buttons["account.group.\(identifier)"]
+                let header = app.buttons["account.group.\(identifier).disclosure"]
                 XCTAssertTrue(header.waitForExistence(timeout: 10))
                 if header.label.contains("collapsed") {
                     header.tap()
@@ -23,6 +23,20 @@ final class AccountSectionCollapseUITests: XCTestCase {
             }
         }
         return app
+    }
+
+    @MainActor
+    func testBudgetSectionLeadingAreaOpensTransactions() {
+        let app = launchOnAccountsTab()
+
+        let transactionsButton = app.buttons["account.group.on-budget.transactions"]
+        XCTAssertTrue(transactionsButton.waitForExistence(timeout: 10))
+        transactionsButton.tap()
+
+        XCTAssertTrue(
+            app.navigationBars["On Budget"].waitForExistence(timeout: 10),
+            "tapping the section title and arrow should open its transactions"
+        )
     }
 
     @MainActor
@@ -37,13 +51,13 @@ final class AccountSectionCollapseUITests: XCTestCase {
         XCTAssertTrue(vanguard.waitForExistence(timeout: 10),
                       "demo data should show the off-budget accounts")
 
-        let expandedHeader = app.buttons["account.group.on-budget"]
+        let expandedHeader = app.buttons["account.group.on-budget.disclosure"]
         XCTAssertTrue(expandedHeader.waitForExistence(timeout: 10))
         expandedHeader.tap()
 
         // Collapsing hides the section's accounts but not its neighbors, and
         // the header keeps announcing the section total.
-        let collapsedHeader = app.buttons["account.group.on-budget"]
+        let collapsedHeader = app.buttons["account.group.on-budget.disclosure"]
         XCTAssertTrue(collapsedHeader.waitForExistence(timeout: 10))
         XCTAssertFalse(chase.exists,
                        "collapsing On Budget should hide its accounts")
@@ -67,15 +81,15 @@ final class AccountSectionCollapseUITests: XCTestCase {
         let chase = app.staticTexts["Chase Checking"].firstMatch
         XCTAssertTrue(chase.waitForExistence(timeout: 10))
 
-        let expandedHeader = app.buttons["account.group.on-budget"]
+        let expandedHeader = app.buttons["account.group.on-budget.disclosure"]
         XCTAssertTrue(expandedHeader.waitForExistence(timeout: 10))
         expandedHeader.tap()
-        XCTAssertTrue(app.buttons["account.group.on-budget"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["account.group.on-budget.disclosure"].waitForExistence(timeout: 10))
 
         app.terminate()
         app = launchOnAccountsTab(expandingSections: false)
 
-        let collapsedHeader = app.buttons["account.group.on-budget"]
+        let collapsedHeader = app.buttons["account.group.on-budget.disclosure"]
         XCTAssertTrue(collapsedHeader.waitForExistence(timeout: 10),
                       "the collapsed state should survive a relaunch")
         XCTAssertFalse(app.staticTexts["Chase Checking"].firstMatch.exists,

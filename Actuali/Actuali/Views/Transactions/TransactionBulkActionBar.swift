@@ -45,6 +45,7 @@ struct TransactionBulkActionBar: View {
     @State private var showingConfirmDelete = false
     @State private var showingCategoryPicker = false
     @State private var showingTagPicker = false
+    @State private var showingSchedulePicker = false
     @State private var pickedCategoryId: String?
 
     private var totalCount: Int {
@@ -110,6 +111,11 @@ struct TransactionBulkActionBar: View {
             TransactionTagPickerSheet { tag in
                 let selected = selectedTransactions
                 Task { await budgetStore.addTag(tag, to: selected) }
+            }
+        }
+        .sheet(isPresented: $showingSchedulePicker) {
+            ScheduleLinkPickerSheet { schedule in
+                linkSchedule(schedule.id)
             }
         }
         .confirmationDialog(
@@ -227,6 +233,19 @@ struct TransactionBulkActionBar: View {
                 .accessibilityLabel(TransactionBulkActionLocalization.duplicateLabel(
                     count: selectedCount, locale: locale
                 ))
+                if TransactionBulkEdit.allLinkedToSchedule(selectedTransactions) {
+                    Button {
+                        linkSchedule(nil)
+                    } label: {
+                        Label(ReportStrings.text("Unlink Schedule", locale: locale), systemImage: "calendar.badge.minus")
+                    }
+                } else {
+                    Button {
+                        showingSchedulePicker = true
+                    } label: {
+                        Label(ReportStrings.text("Link Schedule", locale: locale), systemImage: "calendar.badge.plus")
+                    }
+                }
             } label: {
                 iconLabel("ellipsis.circle")
             }
@@ -243,6 +262,17 @@ struct TransactionBulkActionBar: View {
                 count: selectedCount, locale: locale
             ))
             .disabled(selectedCount == 0)
+        }
+    }
+
+    private func linkSchedule(_ scheduleId: String?) {
+        let selected = selectedTransactions
+        Task {
+            do {
+                try await budgetStore.linkTransactions(selected, to: scheduleId)
+            } catch {
+                budgetStore.error = error.localizedDescription
+            }
         }
     }
 

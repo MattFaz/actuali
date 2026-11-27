@@ -51,6 +51,9 @@ enum NewTransactionNotifier {
                        offBudgetAccountIds: Set<String> = [],
                        settings: TransactionNotificationSettings = TransactionNotificationSettings(),
                        center: any NotificationPosting = UNUserNotificationCenter.current()) async {
+        let transactions = settings.includesOffBudget
+            ? transactions
+            : transactions.filter { !offBudgetAccountIds.contains($0.accountId) }
         guard settings.isEnabled, let request = makeRequest(for: transactions, currencyCode: currencyCode,
                                                             narrowSymbol: narrowSymbol,
                                                             numberFormat: numberFormat,

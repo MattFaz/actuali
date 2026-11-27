@@ -38,21 +38,43 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
         }
 
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        var visibleIcon: XCUIElement?
-        // SpringBoard also exposes off-screen icons with zero-sized frames.
+        let icons = springboard.icons.matching(identifier: "Actuali")
+        let screen = springboard.frame
+        // SpringBoard exposes off-page icons with zero or off-screen frames,
+        // and reading an icon attribute mid-animation fails the test outright:
+        // isHittable reports "Activation point invalid" while the app zooms back
+        // into its icon, and .frame on an element that vanished first reports
+        // "No matches found". snapshot() throws instead, so wait for an on-screen
+        // frame that holds still across two polls, then press at that frame.
+        func settledIconFrame() -> CGRect? {
+            var lastFrame: CGRect?
+            for _ in 0..<10 {
+                let frame = icons.allElementsBoundByIndex
+                    .compactMap { (try? $0.snapshot())?.frame }
+                    .first { !$0.isEmpty && screen.contains($0) }
+                if let frame, frame == lastFrame {
+                    return frame
+                }
+                lastFrame = frame
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+            return nil
+        }
+        var iconFrame: CGRect?
         for _ in 0..<4 {
-            visibleIcon = onScreenCopy(springboard.icons.matching(identifier: "Actuali"))
-            if visibleIcon?.isHittable == true {
+            iconFrame = settledIconFrame()
+            if iconFrame != nil {
                 break
             }
-            visibleIcon = nil
             springboard.swipeLeft()
         }
-        guard let icon = visibleIcon else {
+        guard let iconFrame else {
             XCTFail("Actuali Home Screen icon not reachable: \(springboard.debugDescription)")
             return
         }
-        icon.press(forDuration: 1.2)
+        springboard.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: iconFrame.midX, dy: iconFrame.minY + iconFrame.height * 0.4))
+            .press(forDuration: 1.2)
         let shortcut = springboard.descendants(matching: .any).matching(
             NSPredicate(format: "label == %@", "Add Transaction")
         ).firstMatch

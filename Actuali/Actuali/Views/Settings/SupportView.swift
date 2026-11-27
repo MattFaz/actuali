@@ -37,7 +37,6 @@ struct SupportView: View {
         .readableWidth()
         .navigationTitle(String(localized: "Support"))
         .navigationBarTitleDisplayMode(.inline)
-        .contentMargins(.horizontal, 6, for: .scrollContent)
     }
 }
 

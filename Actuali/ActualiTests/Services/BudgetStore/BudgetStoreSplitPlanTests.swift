@@ -79,16 +79,27 @@ struct BudgetStoreSplitPlanTests {
         }
     }
 
-    @Test func splitLineWithNonPositiveAmountIsRejected() {
+    @Test func splitLineWithNegativeAmountIsRejected() {
         // Direction is the line's flip, never a sign typed into the amount.
-        for bad in ["0", "-10.00"] {
-            #expect(throws: BudgetStoreError.invalidAmount) {
-                try BudgetStore.plan(for: form(
-                    amount: "10.00",
-                    splits: [line("cat-a", bad), line("cat-b", "10.00")]
-                ))
-            }
+        #expect(throws: BudgetStoreError.invalidAmount) {
+            try BudgetStore.plan(for: form(
+                amount: "10.00",
+                splits: [line("cat-a", "-10.00"), line("cat-b", "10.00")]
+            ))
         }
+    }
+
+    @Test func splitAllowsZeroAmountLine() throws {
+        // Actual only requires the lines to sum to the total (GH #815): a 0
+        // line keeps the merchant's category on a fully reimbursed spend.
+        let plan = try BudgetStore.plan(for: form(
+            type: .expense, amount: "10.00",
+            splits: [line("cat-a", "0.00"), line("cat-b", "10.00")]
+        ))
+        #expect(plan == .split(amountCents: -1000, lines: [
+            .init(categoryId: "cat-a", amountCents: 0, notes: nil),
+            .init(categoryId: "cat-b", amountCents: -1000, notes: nil),
+        ]))
     }
 
     @Test func splitAllowsOppositeDirectionLines() throws {

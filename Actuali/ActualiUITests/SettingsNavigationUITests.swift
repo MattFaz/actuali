@@ -7,10 +7,18 @@ final class SettingsNavigationUITests: XCTestCase {
         switch destination {
         case "Connection & Data":
             content = app.textFields["Server URL"]
-        case "Budget View":
-            content = app.switches["Category Status Dots"]
         case "Transactions & Automation":
             content = app.switches["Conventional Amount Entry"]
+        case "Notifications":
+            content = app.switches["notifications.newTransactionAlerts"]
+            XCTAssertTrue(
+                app.switches["notifications.creditCardDueReminders"].waitForExistence(timeout: 5),
+                "Credit Card Due Reminders should be available alongside transaction alerts"
+            )
+            XCTAssertTrue(
+                app.switches["notifications.shortcutTransactionConfirmation"].waitForExistence(timeout: 5),
+                "Shortcut Transaction Confirmation should be available in Notifications"
+            )
         case "Display":
             content = app.buttons.matching(
                 NSPredicate(format: "label BEGINSWITH 'Currency'")
@@ -30,8 +38,15 @@ final class SettingsNavigationUITests: XCTestCase {
             // RulesListView shows the list with its Add Rule toolbar button
             // instead of the no-rules-table placeholder.
             content = app.buttons["Add Rule"]
-        case "Bank Sync (SimpleFIN & Wallet)":
-            content = app.textFields["Setup token"]
+        case "Bank Sync":
+            // The hub lists the providers; the setup fields live one screen
+            // deeper. UI tests run on the simulator, where FinanceKit reports
+            // no Wallet data, so the Wallet provider row must not be offered.
+            content = app.descendants(matching: .any)["bankSync.provider.simpleFIN"]
+            XCTAssertFalse(
+                app.descendants(matching: .any)["bankSync.provider.appleWallet"].exists,
+                "Apple Wallet provider offered where FinanceKit has no data"
+            )
         case "History":
             content = app.staticTexts["No History Yet"]
         case "Support & Diagnostic":
@@ -53,15 +68,18 @@ final class SettingsNavigationUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
 
+        XCTAssertFalse(app.buttons["Budget View"].exists,
+                       "Budget View settings should be removed from the More hub")
+
         for destination in [
             "Connection & Data",
-            "Budget View",
             "Transactions & Automation",
             "Display",
+            "Notifications",
             "Privacy",
             "Scheduled Transactions",
             "Rules",
-            "Bank Sync (SimpleFIN & Wallet)",
+            "Bank Sync",
             "History",
             "Support & Diagnostic",
         ] {
@@ -70,11 +88,7 @@ final class SettingsNavigationUITests: XCTestCase {
             row.tap()
 
             let navigationBar = app.navigationBars[
-                destination == "Bank Sync (SimpleFIN & Wallet)"
-                    ? "Bank Sync"
-                    : destination == "Support & Diagnostic"
-                    ? "Support"
-                    : destination
+                destination == "Support & Diagnostic" ? "Support" : destination
             ]
             XCTAssertTrue(
                 navigationBar.waitForExistence(timeout: 5),
@@ -116,6 +130,126 @@ final class SettingsNavigationUITests: XCTestCase {
             swipes += 1
         }
         return button.exists ? button : link
+    }
+
+    /// Scroll Transactions & Automation down to its Experimental section.
+    @MainActor
+    private func experimentalToggles(in app: XCUIApplication) -> (
+        goalTemplates: XCUIElement,
+        automationsEditor: XCUIElement
+    ) {
+        let goalTemplates = app.descendants(matching: .any)["transactionAutomation.goalTemplates"]
+        let automationsEditor = app.descendants(matching: .any)["transactionAutomation.automationsEditor"]
+        // The toggles moved to Preferences → Notifications; a Form only
+        // materializes on-screen rows, so check on every page scrolled past.
+        let assertNoNotificationToggles = {
+            for toggle in ["New Transaction Alerts", "Credit Card Due Reminders"] {
+                XCTAssertFalse(app.switches[toggle].exists,
+                               "\(toggle) appeared in Transactions & Automation")
+            }
+        }
+        var swipes = 0
+        while !goalTemplates.exists || !automationsEditor.exists, swipes < 30 {
+            assertNoNotificationToggles()
+            app.swipeUp(velocity: .slow)
+            swipes += 1
+        }
+        XCTAssertTrue(goalTemplates.waitForExistence(timeout: 5),
+                      "Budget Goal Templates should live in Transactions & Automation")
+        XCTAssertTrue(automationsEditor.waitForExistence(timeout: 5),
+                      "Automations Editor should live in Transactions & Automation")
+        assertNoNotificationToggles()
+        return (goalTemplates, automationsEditor)
+    }
+
+    @MainActor
+    func testShortcutTransactionConfirmationTogglePersistsAcrossLaunches() {
+        let app = XCUIApplication()
+        let demoLaunchArguments = ["-loadDemoData", "-initialTab", "4"]
+        app.launchArguments = demoLaunchArguments + [
+            "-resetShortcutTransactionConfirmationForUITest",
+        ]
+        app.launch()
+
+        let settingsRow = rowOnHub("Notifications", in: app)
+        XCTAssertTrue(settingsRow.waitForExistence(timeout: 5))
+        settingsRow.tap()
+
+        XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 5))
+        let toggle = app.switches["notifications.shortcutTransactionConfirmation"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "1", "The test fixture should start enabled")
+
+        // Only turn the setting off. Enabling it would open the system
+        // notification-permission prompt and make the test tap nondeterministic.
+        // Some SwiftUI Form toggles expose a container switch around the
+        // actual control. Use the same inner-switch-aware helper as the
+        // other notification settings UI tests.
+        tapControl(toggle) { toggle.value as? String == "0" }
+        XCTAssertEqual(toggle.value as? String, "0")
+
+        app.terminate()
+        app.launchArguments = demoLaunchArguments
+        app.launch()
+
+        let reopenedSettingsRow = rowOnHub("Notifications", in: app)
+        XCTAssertTrue(reopenedSettingsRow.waitForExistence(timeout: 5))
+        reopenedSettingsRow.tap()
+
+        XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 5))
+        let reopenedToggle = app.switches["notifications.shortcutTransactionConfirmation"]
+        XCTAssertTrue(reopenedToggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(reopenedToggle.value as? String, "0")
+    }
+
+    @MainActor
+    func testAutomationsEditorToggleDependencyInSettings() {
+        let disabledApp = XCUIApplication()
+        disabledApp.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        disabledApp.launch()
+
+        let disabledRow = rowOnHub("Transactions & Automation", in: disabledApp)
+        XCTAssertTrue(disabledRow.waitForExistence(timeout: 5))
+        disabledRow.tap()
+        let disabledToggles = experimentalToggles(in: disabledApp)
+        XCTAssertEqual(disabledToggles.goalTemplates.value as? String, "0",
+                       "Goal Templates should start disabled in the default demo budget")
+        XCTAssertFalse(disabledToggles.automationsEditor.isEnabled,
+                       "Automations Editor requires Goal Templates")
+        disabledApp.terminate()
+
+        let enabledApp = XCUIApplication()
+        enabledApp.launchArguments = [
+            "-loadDemoData", "-demoGoalTemplatesEnabled", "-initialTab", "4",
+        ]
+        enabledApp.launch()
+
+        let enabledRow = rowOnHub("Transactions & Automation", in: enabledApp)
+        XCTAssertTrue(enabledRow.waitForExistence(timeout: 5))
+        enabledRow.tap()
+        let enabledToggles = experimentalToggles(in: enabledApp)
+        XCTAssertEqual(enabledToggles.goalTemplates.value as? String, "1",
+                       "The fixture should load the synced Goal Templates preference")
+        XCTAssertTrue(enabledToggles.automationsEditor.isEnabled,
+                      "Automations Editor should be enabled when Goal Templates is enabled")
+    }
+
+    @MainActor
+    func testShowBalanceImpactLivesInTransactionsAndAutomation() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4", "-showTransactionImpactCue", "YES"]
+        app.launch()
+
+        let row = rowOnHub("Transactions & Automation", in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        let toggle = app.switches["transactionAutomation.showBalanceImpact"]
+        for _ in 0..<8 where !toggle.exists {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "1", "launch argument seeds Show Balance Impact on")
+        tapControl(toggle) { toggle.value as? String == "0" }
     }
 
     @MainActor
@@ -184,6 +318,36 @@ final class SettingsNavigationUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Other Budget"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.buttons["Encrypted Budget"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["budget-selection-selected"].exists)
+    }
+
+    /// An encrypted budget with no key on this device (never unlocked, or its
+    /// key was dropped after the password changed) asks for the password.
+    @MainActor
+    func testBudgetSelectionPickerAsksForPasswordOfEncryptedBudget() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-connectedServerSettings",
+            "-budgetSelectionFixture",
+            "-initialTab",
+            "4",
+        ]
+        app.launch()
+
+        let row = app.buttons["Connection & Data"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        let selected = app.buttons["budget-selection-selected"]
+        XCTAssertTrue(selected.waitForExistence(timeout: 5))
+        selected.tap()
+
+        let encrypted = app.buttons["Encrypted Budget"]
+        XCTAssertTrue(encrypted.waitForExistence(timeout: 5))
+        encrypted.tap()
+
+        XCTAssertTrue(app.navigationBars["Unlock Budget"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.secureTextFields["Encryption password"].exists)
     }
 
     @MainActor

@@ -131,6 +131,65 @@ struct CustomReportEngineTests {
         #expect(s.values == [[300.0, 0.0], [0.0, 50.0]])
     }
 
+    @Test func timeModeBarsChartEachInterval() {
+        /// A single-category "by month" report: one bar per month with that
+        /// month's total, not one bar for the whole range.
+        func run(trim: Bool) -> [CustomReportData.Bar] {
+            let data = CustomReportEngine.compute(
+                config: config(mode: "time", groupBy: "Category", balance: "Payment",
+                               interval: "Monthly", graph: "BarGraph", trimIntervals: trim,
+                               staticRange: ("2026-04-01", "2026-07-31"),
+                               conditions: [WidgetRuleCondition(op: "is", field: "category", value: AnyCodable(rawJSON: Data("\"c-food\"".utf8)), options: nil, customName: nil)]),
+                transactions: sampleTxs + [tx("5", date: 20_260_705, amount: -2500, category: "c-food")],
+                reportContext: reportContext, filterContext: .empty, today: today, locale: englishLocale
+            )
+            guard case .bars(let bars, _) = data.kind else {
+                Issue.record("expected bars, got \(data.kind)"); return []
+            }
+            return bars
+        }
+        #expect(run(trim: false).map(\.label) == ["Apr '26", "May '26", "Jun '26", "Jul '26"])
+        #expect(run(trim: false).map(\.valueUnits) == [0.0, 0.0, 100.0, 25.0])
+        #expect(run(trim: true).map(\.label) == ["Jun '26", "Jul '26"])
+        #expect(run(trim: true).map(\.valueUnits) == [100.0, 25.0])
+    }
+
+    @Test func timeModeBarsSumOnlyTheRowsTheReportShows() {
+        // Food: -100 in Jun, +150 in Jul nets +50, so Net Payment drops the
+        // row. The bars must not chart Jun's 100 from the overall total.
+        let txs = [
+            tx("1", date: 20_260_601, amount: -10000, category: "c-food"),
+            tx("2", date: 20_260_701, amount: 15000, category: "c-food"),
+        ]
+        func run(_ balance: String, _ txs: [Transaction]) -> CustomReportData.Kind {
+            CustomReportEngine.compute(
+                config: config(mode: "time", groupBy: "Category", balance: balance,
+                               interval: "Monthly", graph: "BarGraph",
+                               staticRange: ("2026-06-01", "2026-07-31")),
+                transactions: txs, reportContext: reportContext, filterContext: .empty, today: today
+            ).kind
+        }
+        #expect(run("Net Payment", txs) == .bars([], signed: false))
+        // No activity at all → empty bars, so the card shows its empty state.
+        #expect(run("Payment", []) == .bars([], signed: false))
+    }
+
+    @Test func barsMarkWhetherTheyRankRows() {
+        func run(groupBy: String, mode: String = "total") -> CustomReportData {
+            CustomReportEngine.compute(
+                config: config(mode: mode, groupBy: groupBy, balance: "Payment",
+                               interval: "Monthly", graph: "BarGraph"),
+                transactions: sampleTxs, reportContext: reportContext,
+                filterContext: .empty, today: today, locale: englishLocale
+            )
+        }
+        #expect(run(groupBy: "Payee").ranksRows)
+        #expect(run(groupBy: "Category").ranksRows)
+        #expect(!run(groupBy: "Interval").ranksRows)
+        // Time-mode bars chart each interval's total, so they stay a chart.
+        #expect(!run(groupBy: "Payee", mode: "time").ranksRows)
+    }
+
     @Test func weeklyBucketsStartSunday() {
         // 2026-07-01 is a Wednesday → its Sunday week start is 2026-06-28.
         let data = CustomReportEngine.compute(
@@ -650,13 +709,78 @@ struct CustomReportEngineTests {
     @Test func reportCurrencyAxisUsesSelectedNumberFormat() {
         let locale = Locale(identifier: "en_US")
         #expect(ReportCurrencyAxisFormatting.label(
-            units: 1000.33, numberFormat: .commaDot, currencyCode: "USD",
+            units: 100.33, numberFormat: .commaDot, currencyCode: "USD",
             narrowSymbol: true, locale: locale
-        ) == "$1,000.33")
+        ) == "$100.33")
         #expect(ReportCurrencyAxisFormatting.label(
-            units: 1000.33, numberFormat: .dotComma, currencyCode: "USD",
+            units: 100.33, numberFormat: .dotComma, currencyCode: "USD",
             narrowSymbol: true, locale: locale
-        ) == "$1.000,33")
+        ) == "$100,33")
+    }
+
+    @Test func reportCurrencyAxisDropsCentsOnlyFromWholeTicks() {
+        let locale = Locale(identifier: "en_US")
+        func label(_ units: Double, _ format: ActualNumberFormat = .commaDot) -> String {
+            ReportCurrencyAxisFormatting.label(
+                units: units, numberFormat: format, currencyCode: "USD",
+                narrowSymbol: true, locale: locale
+            )
+        }
+        #expect(label(500) == "$500")
+        #expect(label(-200) == "-$200")
+        #expect(label(0) == "$0")
+        #expect(label(0.5) == "$0.50")
+    }
+
+    @Test func reportCurrencyAxisAbbreviatesFromThousands() {
+        let locale = Locale(identifier: "en_US")
+        func label(_ units: Double, _ format: ActualNumberFormat = .commaDot, code: String = "USD") -> String {
+            ReportCurrencyAxisFormatting.label(
+                units: units, numberFormat: format, currencyCode: code,
+                narrowSymbol: true, locale: locale
+            )
+        }
+        #expect(label(999) == "$999")
+        #expect(label(1000) == "$1K")
+        #expect(label(2500) == "$2.5K")
+        #expect(label(400_000) == "$400K")
+        #expect(label(-20000) == "-$20K")
+        #expect(label(12500) == "$12.5K")
+        #expect(label(1_250_000) == "$1.25M")
+        // Ticks $500 apart on a large balance keep distinct labels.
+        #expect(label(250_500) == "$250.5K")
+        #expect(label(250_000) == "$250K")
+        // So do ticks $5,000 apart on a million-scale balance.
+        #expect(label(1_195_000) == "$1.195M")
+        #expect(label(1_200_000) == "$1.2M")
+        // The decimal mark follows Actual's number format, not the locale.
+        #expect(label(12500, .dotComma) == "$12,5K")
+        #expect(label(1_250_000, .spaceComma) == "$1,25M")
+        // No currency set: a plain abbreviated number.
+        #expect(label(400_000, code: "") == "400K")
+        // German has no short form for thousands, so the label keeps its
+        // grouping, and that follows Actual's number format too.
+        func german(_ format: ActualNumberFormat) -> String {
+            ReportCurrencyAxisFormatting.label(
+                units: 100_000, numberFormat: format, currencyCode: "", narrowSymbol: true,
+                locale: Locale(identifier: "de_DE")
+            )
+        }
+        #expect(german(.dotComma) == "100.000")
+        #expect(german(.commaDot) == "100,000")
+    }
+
+    @Test func intervalAxisLabelsAreThinnedToFitAPhone() {
+        let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        #expect(ReportAxisLabels.thinned(months) == ["Mar", "Jun", "Sep", "Dec"])
+        #expect(ReportAxisLabels.thinned(Array(months.prefix(5))) == ["Jan", "Mar", "May"])
+        // Few enough to fit: untouched.
+        #expect(ReportAxisLabels.thinned(Array(months.prefix(4))) == ["Jan", "Feb", "Mar", "Apr"])
+        #expect(ReportAxisLabels.thinned([]) == [])
+        // However many intervals, never more than the limit, and the latest is kept.
+        let days = (1...365).map { "d\($0)" }
+        #expect(ReportAxisLabels.thinned(days).count <= 4)
+        #expect(ReportAxisLabels.thinned(days).last == "d365")
     }
 
     @Test func reportCurrencyAxisPreservesHiddenBalanceSemantics() {
@@ -721,5 +845,51 @@ extension CustomReportEngineTests {
         )
         guard case .bars(let bars, _) = data.kind else { Issue.record("Expected bars"); return }
         #expect(bars.map(\.label) == ["2026"])
+    }
+
+    @Test func monthlyBucketsFollowPayPeriods() {
+        // Day 25, moved back over a Fri/Sat weekend: Apr 25 and Jul 25 are
+        // Saturdays, so those periods start on the 23rd.
+        let rule = MonthStartRule(day: 25, adjustment: .previousWorkingDay, weekendDays: [6, 7])
+        let data = CustomReportEngine.compute(
+            config: config(mode: "time", groupBy: "Interval", balance: "Payment",
+                           interval: "Monthly", graph: "BarGraph", dateRange: "Last 3 months"),
+            transactions: [
+                tx("1", date: 20_260_422, amount: -1000, category: "c-food"),
+                tx("2", date: 20_260_423, amount: -2000, category: "c-food"),
+                tx("3", date: 20_260_624, amount: -4000, category: "c-food"),
+                tx("4", date: 20_260_625, amount: -8000, category: "c-food"),
+                tx("5", date: 20_260_711, amount: -16000, category: "c-food"),
+            ],
+            reportContext: reportContext, filterContext: .empty, today: today,
+            monthStartRule: rule, locale: englishLocale
+        )
+        guard case .bars(let bars, _) = data.kind else {
+            Issue.record("expected bars, got \(data.kind)"); return
+        }
+        #expect(bars.map(\.label) == ["Mar '26", "Apr '26", "May '26", "Jun '26"])
+        #expect(bars.map(\.valueUnits) == [10.0, 20.0, 40.0, 240.0])
+        #expect(data.monthStartRule == rule)
+    }
+
+    @Test func nonMonthRangesKeepCalendarBuckets() {
+        // "Year to date" isn't a month preset, so a day-25 start must not
+        // file Jan 1...24 under a "Dec '25" bar.
+        let data = CustomReportEngine.compute(
+            config: config(mode: "time", groupBy: "Interval", balance: "Payment",
+                           interval: "Monthly", graph: "BarGraph", dateRange: "Year to date"),
+            transactions: [
+                tx("1", date: 20_260_105, amount: -1000, category: "c-food"),
+                tx("2", date: 20_260_130, amount: -2000, category: "c-food"),
+            ],
+            reportContext: reportContext, filterContext: .empty, today: today,
+            monthStartRule: MonthStartRule(day: 25), locale: englishLocale
+        )
+        guard case .bars(let bars, _) = data.kind else {
+            Issue.record("expected bars, got \(data.kind)"); return
+        }
+        #expect(bars.first?.label == "Jan '26")
+        #expect(bars.first?.valueUnits == 30.0)
+        #expect(data.monthStartRule == .calendarMonth)
     }
 }

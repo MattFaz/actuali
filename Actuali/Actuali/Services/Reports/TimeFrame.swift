@@ -34,6 +34,29 @@ enum TimeFrame {
         }
     }
 
+    /// Month-shaped widget ranges can follow the device's reporting periods.
+    /// ponytail: year, static and full frames return nil and stay on calendar
+    /// months, as do engines that don't take the rule (Calendar, Net Worth,
+    /// Age of Money, Budget Analysis, Formula, Forecast). Extend per engine if asked.
+    static func adjustedRange(_ tf: WidgetTimeFrame?, asOf today: Date, rule: MonthStartRule) -> (Date, Date)? {
+        guard !rule.isCalendarMonth else { return nil }
+        switch tf?.mode {
+        case nil:
+            return rule.range(relativeTo: today, first: 0, last: 0)
+        case .lastMonth:
+            return rule.range(relativeTo: today, first: -1, last: -1)
+        case .slidingWindow:
+            let length = if let start = parseMonth(tf?.start), let end = parseMonth(tf?.end) {
+                max(0, calendar.dateComponents([.month], from: start, to: end).month ?? 0)
+            } else {
+                0
+            }
+            return rule.range(relativeTo: today, first: -length, last: 0)
+        default:
+            return nil
+        }
+    }
+
     /// "Sliding window" preserves the configured window size and slides it forward
     /// each month relative to today. Stored start/end are YYYY-MM strings marking
     /// the window when configured; we compute the difference between today's

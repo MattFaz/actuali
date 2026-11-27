@@ -156,7 +156,7 @@ struct BillsCalendarEngineTests {
         )
 
         let summary = BillsCalendarEngine.summarize(items: [item1, item2, item3])
-        #expect(summary.upcomingTotal == 12500)
+        #expect(summary.upcomingBills == 12500)
         #expect(summary.overdueTotal == 5000)
         #expect(summary.paidTotal == 1500)
         #expect(summary.clearedCount == 1)
@@ -173,6 +173,92 @@ struct BillsCalendarEngineTests {
 
         let dateFilter = BillsCalendarEngine.filter(items: [item1, item2, item3], filter: .all, selectedDate: DayDate(year: 2026, month: 9, day: 7))
         #expect(dateFilter.map(\.id) == ["1"])
+    }
+
+    @Test func summarizeSeparatesUpcomingBillsAndIncomeAndCalculatesNet() {
+        let bill1 = BillCalendarItem(
+            id: "b1",
+            date: DayDate(year: 2026, month: 10, day: 5),
+            title: "Rent",
+            amount: -5000,
+            categoryName: "Housing",
+            accountName: "Checking",
+            status: .upcoming,
+            kind: .creditCard,
+            relativeDueText: "Due in 3 days"
+        )
+        let bill2 = BillCalendarItem(
+            id: "b2",
+            date: DayDate(year: 2026, month: 10, day: 10),
+            title: "Electric",
+            amount: -5000,
+            categoryName: "Utilities",
+            accountName: "Checking",
+            status: .due,
+            kind: .creditCard,
+            relativeDueText: "Due today"
+        )
+        let bill3 = BillCalendarItem(
+            id: "b3",
+            date: DayDate(year: 2026, month: 10, day: 15),
+            title: "Internet",
+            amount: -5000,
+            categoryName: "Utilities",
+            accountName: "Checking",
+            status: .scheduled,
+            kind: .creditCard,
+            relativeDueText: "Due in 10 days"
+        )
+        let deposit = BillCalendarItem(
+            id: "d1",
+            date: DayDate(year: 2026, month: 10, day: 12),
+            title: "Paycheck",
+            amount: 6000, // positive deposit: +60.00 €
+            categoryName: "Income",
+            accountName: "Checking",
+            status: .upcoming,
+            kind: .creditCard,
+            relativeDueText: "Due in 7 days"
+        )
+        let missedDeposit = BillCalendarItem(
+            id: "d2",
+            date: DayDate(year: 2026, month: 10, day: 1),
+            title: "Late Payment from Friend",
+            amount: 3000,
+            categoryName: "Income",
+            accountName: "Checking",
+            status: .missed,
+            kind: .creditCard,
+            relativeDueText: "Overdue"
+        )
+        let completedDeposit = BillCalendarItem(
+            id: "d3",
+            date: DayDate(year: 2026, month: 10, day: 2),
+            title: "Bonus",
+            amount: 5000,
+            categoryName: "Income",
+            accountName: "Checking",
+            status: .paid,
+            kind: .creditCard,
+            relativeDueText: "Paid"
+        )
+
+        let summary = BillsCalendarEngine.summarize(items: [bill1, bill2, bill3, deposit, missedDeposit, completedDeposit])
+        // Bills only (150 €)
+        #expect(summary.upcomingBills == 15000)
+        // Income only (+60 €)
+        #expect(summary.upcomingIncome == 6000)
+        // Net needed (150 € - 60 € = 90 €)
+        #expect(summary.upcomingNet == 9000)
+        // Income above bills is a surplus, i.e. a negative net — the sign the
+        // summary strip and popover use to pick "+" and "Net Surplus".
+        #expect(BillsCalendarEngine.summarize(items: [deposit]).upcomingNet == -6000)
+        // Missed deposit should NOT add to overdue liabilities
+        #expect(summary.overdueTotal == 0)
+        // Completed deposit counts toward cleared items count, but does NOT add to paid bills total
+        #expect(summary.paidTotal == 0)
+        #expect(summary.clearedCount == 1)
+        #expect(summary.totalCount == 6)
     }
 
     @Test func projectsCreditCardBillsIntoMonth() {

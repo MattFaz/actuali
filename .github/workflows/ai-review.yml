@@ -1,11 +1,11 @@
 name: AI Code Review
 
 # pull_request_target: runs the base-branch workflow with secrets, so fork PRs
-# get reviewed too. Safety depends on never EXECUTING PR-head code — the
-# checkout below is GitHub's test-merge commit (PR + latest main), but nothing
-# builds or runs it: no build/test steps, and the agent's Bash is capped to
-# `gh` subcommands. PR files are untrusted input the agent reads, same trust
-# level as the diff; worst case is a bad review comment.
+# get reviewed too. Safety depends on PR-head code never reaching the runner:
+# the checkout below is the base branch, the agent reads the PR only through
+# `gh pr diff`/`gh pr view`, nothing builds or runs anything, and the agent's
+# Bash is capped to `gh` subcommands. The diff is untrusted input the agent
+# reads; worst case is a bad review comment.
 on:
   pull_request_target:
     types: [opened, ready_for_review, labeled]
@@ -42,18 +42,12 @@ jobs:
       - id: pr
         run: echo "number=${{ github.event.pull_request.number || github.event.issue.number }}" >> "$GITHUB_OUTPUT"
 
-      # The test-merge ref = PR head merged into current main, so the review
-      # always sees the branch as if it were up to date with main. If the PR
-      # conflicts with main this ref doesn't exist and the job fails — fine,
-      # a conflicted PR can't be meaningfully reviewed anyway.
-      - uses: actions/checkout@v6
+      # Default ref under pull_request_target/issue_comment is the base branch,
+      # so AGENTS.md, CLAUDE.md and .claude/ come from main, not the fork.
+      # Context files are current main; the PR's changes come from the diff.
+      - uses: actions/checkout@v7
         with:
-          ref: refs/pull/${{ steps.pr.outputs.number }}/merge
           fetch-depth: 1
-          # checkout@v6 refuses PR refs under pull_request_target without this.
-          # "Unsafe" means executing the code — which nothing in this job does;
-          # see the header comment for why reading it is acceptable.
-          allow-unsafe-pr-checkout: true
 
       - uses: anthropics/claude-code-action@v1
         with:
@@ -66,6 +60,10 @@ jobs:
           # blocks every fork PR. Safe to waive here: the job's token is the
           # capped GITHUB_TOKEN and checkout never touches PR-head code.
           allowed_non_write_users: "*"
+          # v1 now defaults this to false and silently skips fork PRs (the step
+          # still passes). Safe because the checkout stays on the base ref: no
+          # fork file reaches the runner, and the agent only reads the diff.
+          allow_fork_prs: "true"
           # Unpinned third-party plugin: its content loads into the agent's
           # context each run, so we're trusting the author's future updates.
           # Token is capped and checkout stays on base, so worst case is a bad

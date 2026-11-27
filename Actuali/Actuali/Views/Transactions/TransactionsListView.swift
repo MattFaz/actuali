@@ -1,10 +1,39 @@
 import SwiftUI
 
+enum AccountTransactionsScope: String, Hashable {
+    case onBudget
+    case offBudget
+
+    var title: String {
+        switch self {
+        case .onBudget: String(localized: "On Budget")
+        case .offBudget: String(localized: "Off Budget")
+        }
+    }
+
+    func accountIds(in accounts: [Account]) -> [String] {
+        accounts
+            .filter { !$0.closed && $0.offBudget == (self == .offBudget) }
+            .map(\.id)
+    }
+
+    func scoped(_ entries: [UpcomingScheduleEntry], accounts: [Account]) -> [UpcomingScheduleEntry] {
+        let scopedAccountIds = Set(accountIds(in: accounts))
+        return entries.filter { entry in
+            guard let accountId = entry.schedule.accountId else { return false }
+            return scopedAccountIds.contains(accountId)
+        }
+    }
+}
+
 struct TransactionsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    var scope: AccountTransactionsScope?
     @AppStorage("showUpcomingScheduledTransactions") private var showUpcomingSchedules = true
     @State private var pager: TransactionPager?
     @State private var searchText = ""
+    @State private var isTransactionSearchActive = false
+    @FocusState private var isTransactionSearchFocused: Bool
     @State private var editingTransaction: Transaction?
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
@@ -15,7 +44,9 @@ struct TransactionsListView: View {
     }
 
     private var upcomingScheduleEntries: [UpcomingScheduleEntry] {
-        budgetStore.upcomingRegisterEntries()
+        let entries = budgetStore.upcomingRegisterEntries()
+        guard let scope else { return entries }
+        return scope.scoped(entries, accounts: budgetStore.accounts)
     }
 
     nonisolated static func showsEmptyState(
@@ -28,18 +59,20 @@ struct TransactionsListView: View {
         showUpcomingSchedules: Bool = true
     ) -> Bool {
         transactionsEmpty && !isLoading
-            && (isSearching || statusFilter != .all || !showUpcomingSchedules
+            && (isSearching || !statusFilter.includesUpcomingSchedules || !showUpcomingSchedules
                 || (schedulesLoaded && !hasUpcomingSchedules))
     }
 
     nonisolated static func showsScheduleLoadFailure(
         transactionsEmpty: Bool,
         isLoading: Bool,
+        statusFilter: TransactionStatusFilter,
         schedulesLoaded: Bool,
         scheduleLoadFailed: Bool,
         showUpcomingSchedules: Bool = true
     ) -> Bool {
-        showUpcomingSchedules && transactionsEmpty && !isLoading && schedulesLoaded && scheduleLoadFailed
+        statusFilter == .all && showUpcomingSchedules
+            && transactionsEmpty && !isLoading && schedulesLoaded && scheduleLoadFailed
     }
 
     /// Wraps `isSelecting` so every path that leaves selection mode — the
@@ -69,8 +102,10 @@ struct TransactionsListView: View {
             return pager
         }
         let store = budgetStore
+        let scope = scope
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
+                accountIds: scope?.accountIds(in: store.accounts),
                 limit: limit, offset: offset, search: search,
                 statusFilter: store.transactionStatusFilter
             )
@@ -84,11 +119,17 @@ struct TransactionsListView: View {
     }
 
     var body: some View {
+        let shouldShowUpcomingSchedules = showUpcomingSchedules
+            && searchQuery == nil && budgetStore.transactionStatusFilter.includesUpcomingSchedules
+        let scheduledEntries = shouldShowUpcomingSchedules && budgetStore.schedulesLoaded
+            ? upcomingScheduleEntries : []
+
         Group {
-            if let pager, searchQuery == nil, budgetStore.transactionStatusFilter == .all,
+            if let pager, shouldShowUpcomingSchedules,
                Self.showsScheduleLoadFailure(
                    transactionsEmpty: pager.transactions.isEmpty,
                    isLoading: budgetStore.isLoading,
+                   statusFilter: budgetStore.transactionStatusFilter,
                    schedulesLoaded: budgetStore.schedulesLoaded,
                    scheduleLoadFailed: budgetStore.scheduleLoadError != nil,
                    showUpcomingSchedules: showUpcomingSchedules
@@ -99,7 +140,7 @@ struct TransactionsListView: View {
                         systemImage: "exclamationmark.triangle"
                     )
                 }
-            } else if let pager, showUpcomingSchedules, searchQuery == nil, budgetStore.transactionStatusFilter == .all,
+            } else if let pager, shouldShowUpcomingSchedules,
                       pager.transactions.isEmpty, !budgetStore.schedulesLoaded {
                 ProgressView()
             } else if let pager, Self.showsEmptyState(
@@ -108,7 +149,7 @@ struct TransactionsListView: View {
                 isSearching: searchQuery != nil,
                 statusFilter: budgetStore.transactionStatusFilter,
                 schedulesLoaded: budgetStore.schedulesLoaded,
-                hasUpcomingSchedules: !upcomingScheduleEntries.isEmpty,
+                hasUpcomingSchedules: !scheduledEntries.isEmpty,
                 showUpcomingSchedules: showUpcomingSchedules
             ) {
                 if searchQuery != nil {
@@ -132,7 +173,7 @@ struct TransactionsListView: View {
                 }
             } else if let pager {
                 List {
-                    if showUpcomingSchedules, searchQuery == nil, budgetStore.transactionStatusFilter == .all {
+                    if shouldShowUpcomingSchedules {
                         if budgetStore.scheduleLoadError != nil {
                             Section {
                                 Label(
@@ -142,9 +183,9 @@ struct TransactionsListView: View {
                                 .foregroundStyle(.secondary)
                             }
                         }
-                        if budgetStore.schedulesLoaded, !upcomingScheduleEntries.isEmpty {
+                        if !scheduledEntries.isEmpty {
                             UpcomingScheduleSections(
-                                entries: upcomingScheduleEntries
+                                entries: scheduledEntries
                             )
                         }
                     }
@@ -189,12 +230,22 @@ struct TransactionsListView: View {
                         }
                     }
                 }
+            } else {
+                // The pager is created by the `.task` below, which needs a view
+                // to attach to; an empty Group drops it (and the title and
+                // toolbar) on iOS 18, leaving a blank screen.
+                Color.clear
             }
         }
-        .contentMargins(.horizontal, 6, for: .scrollContent)
         .readableWidth()
-        .navigationTitle("All Accounts")
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .navigationTitle(scope?.title ?? String(localized: "All Accounts"))
+        .onDemandSearch(
+            text: $searchText,
+            isPresented: $isTransactionSearchActive,
+            isFocused: $isTransactionSearchFocused,
+            prompt: "Search transactions",
+            accessibilityPrefix: "transactions"
+        )
         .task { await budgetStore.loadSchedules() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -427,32 +478,24 @@ struct TransactionRow: View {
         transaction.transferId != nil || transaction.transferAcct != nil
     }
 
-    /// Split parents may resolve no payee (mixed child payees) — label them
-    /// "Split" like the desktop app, not "Unknown". Off-budget rows say
-    /// "No payee": they're commonly payee-less (balance adjustments) and
-    /// "Unknown" read as a bug (GH #123).
-    nonisolated static func payeeLabel(
-        payeeName: String?,
-        isParent: Bool,
-        isInOffBudgetAccount: Bool,
-        locale: Locale
-    ) -> String {
-        payeeName ?? (isParent
-            ? String(localized: TransactionsListLocalization.split, locale: locale)
-            : (isInOffBudgetAccount
-                ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
-                : String(localized: TransactionsListLocalization.unknown, locale: locale)))
+    /// Payee-less rows read "No payee", as the PWA does; "Unknown" read as a
+    /// bug (GH #123). Split parents with mixed child payees land here too:
+    /// "Split" sits on the category line, so the payee line doesn't repeat it.
+    nonisolated static func payeeLabel(payeeName: String?, locale: Locale) -> String {
+        if let payeeName,
+           !payeeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return payeeName
+        }
+        return String(localized: TransactionsListLocalization.noPayee, locale: locale)
     }
 
     /// Caption under the payee. Off-budget accounts aren't categorized at all
-    /// ("Off budget", GH #123); split parents say "Split" (as the PWA does)
-    /// with each child's line beneath it, so the split reads at a glance
-    /// without opening it (GH #552); transfers that can't take a category
-    /// show "Transfer" instead of nagging "Uncategorized" (GH #104).
+    /// ("Off budget", GH #123); split parents say "Split" (as the PWA does);
+    /// transfers that can't take a category show "Transfer" instead of
+    /// nagging "Uncategorized" (GH #104).
     nonisolated static func categoryLabel(
         categoryName: String?,
         isParent: Bool,
-        splitBreakdown: String?,
         isInOffBudgetAccount: Bool,
         isTransfer: Bool,
         needsCategory: Bool,
@@ -462,8 +505,7 @@ struct TransactionRow: View {
             return String(localized: TransactionsListLocalization.offBudget, locale: locale)
         }
         if isParent {
-            let split = String(localized: TransactionsListLocalization.split, locale: locale)
-            return splitBreakdown.map { "\(split)\n\($0)" } ?? split
+            return String(localized: TransactionsListLocalization.split, locale: locale)
         }
         if categoryName == nil, isTransfer, !needsCategory {
             return String(localized: TransactionsListLocalization.transfer, locale: locale)
@@ -472,22 +514,10 @@ struct TransactionRow: View {
             ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
     }
 
-    /// One "Food $6.00" line per child: outflows unsigned, inflows keep a "+"
-    /// so a credit line inside a spend split stays distinguishable (GH #216).
-    private var splitBreakdown: String? {
-        guard let portions = transaction.splitPortions, !portions.isEmpty else { return nil }
-        return portions.map { portion in
-            let name = portion.categoryName
-                ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
-            return "\(name) \(budgetStore.displaySpentCaption(portion.amount))"
-        }.joined(separator: "\n")
-    }
-
     private var categoryLabel: String {
         Self.categoryLabel(
             categoryName: transaction.categoryName,
             isParent: transaction.isParent,
-            splitBreakdown: splitBreakdown,
             isInOffBudgetAccount: isInOffBudgetAccount,
             isTransfer: isTransfer,
             needsCategory: transaction.needsCategory(
@@ -540,21 +570,7 @@ struct TransactionRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if isSelectionMode {
-                // No button needed: the row itself toggles selection. The
-                // cleared dot stays in view — the bulk bar acts on it.
-                HStack(spacing: 6) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 20))
-                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                    ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
-                }
-                .frame(width: 48, height: 28)
-                .accessibilityLabel(TransactionsListLocalization.selectionLabel(
-                    isSelected: isSelected,
-                    locale: locale
-                ))
-            } else if let onToggleCleared {
+            if let onToggleCleared, !isSelectionMode {
                 Button {
                     if transaction.reconciled {
                         confirmingUnlock = true
@@ -579,22 +595,17 @@ struct TransactionRow: View {
                     Button("Unlock") { onToggleCleared() }
                 }
             } else {
-                // Same footprint as the tappable variant so mixed lists
-                // (split children under parents) keep their columns aligned.
+                // Selection mode needs no button: the row itself toggles
+                // selection and the bulk bar acts on cleared status. Same
+                // footprint as the tappable variant so mixed lists (split
+                // children under parents) keep their columns aligned.
                 ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
                     .frame(width: 28, height: 28)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(Self.payeeLabel(
-                    payeeName: transaction.payeeName,
-                    isParent: transaction.isParent,
-                    isInOffBudgetAccount: isInOffBudgetAccount,
-                    locale: locale
-                ))
-                .font(.body)
-                // First-baseline so the split glyph stays beside "Split"
-                // rather than centring on the stacked child lines.
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(Self.payeeLabel(payeeName: transaction.payeeName, locale: locale))
+                    .font(.body)
+                HStack(spacing: 4) {
                     if transaction.isParent {
                         Image(systemName: "arrow.triangle.branch")
                             .font(.caption2)
@@ -631,6 +642,17 @@ struct TransactionRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            if isSelectionMode {
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 20))
+                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    .frame(width: 28, height: 28)
+                    .accessibilityIdentifier("transaction.select.\(transaction.id)")
+                    .accessibilityLabel(TransactionsListLocalization.selectionLabel(
+                        isSelected: isSelected,
+                        locale: locale
+                    ))
             }
         }
         .padding(.vertical, 2)
@@ -688,7 +710,6 @@ enum TransactionsListLocalization {
     static let transfer: String.LocalizationValue = "Transfer"
     static let uncleared: String.LocalizationValue = "Uncleared"
     static let uncategorized: String.LocalizationValue = "Uncategorized"
-    static let unknown: String.LocalizationValue = "Unknown"
     static let unknownAccount: String.LocalizationValue = "Unknown Account"
 
     static func text(

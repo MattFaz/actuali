@@ -42,8 +42,18 @@ struct DayDate: Comparable, Hashable {
     }
 
     static func lastDay(year: Int, month: Int) -> Int {
-        let date = utcCalendar.date(from: DateComponents(year: year, month: month, day: 1))!
-        return utcCalendar.range(of: .day, in: .month, for: date)!.count
+        switch month {
+        case 2:
+            isLeapYear(year) ? 29 : 28
+        case 4, 6, 9, 11:
+            30
+        default:
+            31
+        }
+    }
+
+    private static func isLeapYear(_ year: Int) -> Bool {
+        year.isMultiple(of: 4) && (!year.isMultiple(of: 100) || year.isMultiple(of: 400))
     }
 
     /// This calendar day as a `Date`, pinned to midday UTC so a timezone shift
@@ -59,10 +69,32 @@ struct DayDate: Comparable, Hashable {
         utcDate.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: .gmt))
     }
 
+    /// Gregorian day number relative to 1970-01-01. Integer-only so schedule
+    /// calculations can use it inside contribution and compounding loops.
+    var dayNumber: Int {
+        let adjustedYear = month <= 2 ? year - 1 : year
+        let era = (adjustedYear >= 0 ? adjustedYear : adjustedYear - 399) / 400
+        let yearOfEra = adjustedYear - era * 400
+        let adjustedMonth = month + (month > 2 ? -3 : 9)
+        let dayOfYear = (153 * adjustedMonth + 2) / 5 + day - 1
+        let dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
+        return era * 146_097 + dayOfEra - 719_468
+    }
+
     func adding(days: Int) -> DayDate {
-        let d = DayDate.utcCalendar.date(byAdding: .day, value: days, to: utcDate)!
-        let c = DayDate.utcCalendar.dateComponents([.year, .month, .day], from: d)
-        return DayDate(year: c.year!, month: c.month!, day: c.day!)
+        let shiftedDay = dayNumber + days + 719_468
+        let era = (shiftedDay >= 0 ? shiftedDay : shiftedDay - 146_096) / 146_097
+        let dayOfEra = shiftedDay - era * 146_097
+        let yearOfEra = (
+            dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146_096
+        ) / 365
+        var year = yearOfEra + era * 400
+        let dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100)
+        let monthPrime = (5 * dayOfYear + 2) / 153
+        let day = dayOfYear - (153 * monthPrime + 2) / 5 + 1
+        let month = monthPrime + (monthPrime < 10 ? 3 : -9)
+        year += month <= 2 ? 1 : 0
+        return DayDate(year: year, month: month, day: day)
     }
 
     /// 1 = Sunday ... 7 = Saturday.
@@ -80,11 +112,10 @@ struct DayDate: Comparable, Hashable {
         return DayDate(year: c.year!, month: c.month!, day: c.day!)
     }
 
-    /// Whole calendar days from this day to `other`; negative when `other` is
-    /// earlier. Both ends are anchored at UTC noon, so no DST transition can
-    /// round the difference off by one.
+    /// Whole calendar days from this day to `other`; negative when `other`
+    /// is earlier. Integer day numbers avoid timezone and DST conversions.
     func days(until other: DayDate) -> Int {
-        DayDate.utcCalendar.dateComponents([.day], from: utcDate, to: other.utcDate).day ?? 0
+        other.dayNumber - dayNumber
     }
 
     /// Shifted by whole months, clamped to the target month's length

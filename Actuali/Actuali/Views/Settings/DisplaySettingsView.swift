@@ -79,7 +79,16 @@ let currencyOptions = [
 struct DisplaySettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
+    @ObservedObject private var accountIconStore = AccountIconCustomizationStore.shared
     @State private var dashboardPages: [DashboardPage] = []
+    @AppStorage(SideMargin.storageKey) private var sideMargin = SideMargin.standard
+
+    private var showAccountTypeIcons: Binding<Bool> {
+        Binding(
+            get: { accountIconStore.iconsEnabled(for: budgetStore.currentBudgetId) },
+            set: { accountIconStore.setIconsEnabled($0, for: budgetStore.currentBudgetId) }
+        )
+    }
 
     /// Routes the picker's selection through `setCurrencyCode`, which
     /// persists the choice into the budget's own `preferences` table (not
@@ -146,6 +155,28 @@ struct DisplaySettingsView: View {
                         Text(mode.label(locale: locale)).tag(mode)
                     }
                 }
+
+                Toggle("Show Account Icons", isOn: showAccountTypeIcons)
+
+                // This list moves as the slider does, which is the preview.
+                VStack(alignment: .leading) {
+                    Text("Side Margins")
+                        .accessibilityHidden(true)
+                    Slider(value: $sideMargin, in: SideMargin.range, step: 2) {
+                        Text("Side Margins")
+                    }
+                    .accessibilityValue(Text(sideMargin, format: .number))
+                    .accessibilityIdentifier("displaySettings.sideMargin")
+                }
+            }
+
+            if budgetStore.currentBudgetId != nil {
+                Section {
+                    NavigationLink("Report Month Start") {
+                        MonthStartSettingsView()
+                    }
+                    .accessibilityIdentifier("displaySettings.monthStart")
+                }
             }
 
             Section {
@@ -175,7 +206,6 @@ struct DisplaySettingsView: View {
         .readableWidth()
         .navigationTitle("Display")
         .navigationBarTitleDisplayMode(.inline)
-        .contentMargins(.horizontal, 6, for: .scrollContent)
         .task(id: currentLoadRequest) { [request = currentLoadRequest] in
             await reloadDashboardPages(request: request)
         }

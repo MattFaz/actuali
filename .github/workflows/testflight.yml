@@ -25,7 +25,9 @@ jobs:
     # Forks don't get secrets. Manual runs must also archive main: off-main
     # commit counts can collide with main builds and produce incorrect notes.
     if: github.repository == 'MattFaz/actuali' && github.ref == 'refs/heads/main'
-    runs-on: macos-26
+    # Xcode 27 image: App Store Connect rejects uploads built with an SDK
+    # older than iOS 27 from April 2027 (ITMS-90725).
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       # Full history: the build number is stamped as 100 + commit count, so a
@@ -40,7 +42,10 @@ jobs:
           DIST_CERT_P12_PASSWORD: ${{ secrets.DIST_CERT_P12_PASSWORD }}
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
-          KEYCHAIN_PASSWORD="$(uuidgen)"
+          # Empty password: on the xcode-27 image, unlocking a keychain created
+          # with a non-empty password fails (actions/runner-images#14837). The
+          # keychain dies with the ephemeral runner, so the password guards nothing.
+          KEYCHAIN_PASSWORD=""
           echo -n "$DIST_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 3600 "$KEYCHAIN_PATH"

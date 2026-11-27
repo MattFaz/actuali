@@ -40,4 +40,17 @@ struct SplitEntryMathTests {
         #expect(SplitEntryMath.amountString(fromCents: 100) == "1.00")
         #expect(SplitEntryMath.amountString(fromCents: 1234) == "12.34")
     }
+
+    @Test func childAgainstParentDirectionIsOpposite() {
+        #expect(SplitEntryMath.isOpposite(childCents: 500, parentCents: -1000))
+        #expect(SplitEntryMath.isOpposite(childCents: -500, parentCents: 1000))
+        #expect(!SplitEntryMath.isOpposite(childCents: -500, parentCents: -1000))
+        #expect(!SplitEntryMath.isOpposite(childCents: 500, parentCents: 1000))
+    }
+
+    @Test func zeroChildFollowsParentDirection() {
+        // GH #815: a 0 line in an expense split must not reload as an inflow.
+        #expect(!SplitEntryMath.isOpposite(childCents: 0, parentCents: -1000))
+        #expect(!SplitEntryMath.isOpposite(childCents: 0, parentCents: 1000))
+    }
 }

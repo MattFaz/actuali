@@ -37,7 +37,6 @@ struct CustomHeadersEditor: View {
         .readableWidth()
         .navigationTitle("Custom HTTP Headers")
         .navigationBarTitleDisplayMode(.inline)
-        .contentMargins(.horizontal, 6, for: .scrollContent)
         .toolbar { EditButton() }
         .onAppear {
             if draft.isEmpty {

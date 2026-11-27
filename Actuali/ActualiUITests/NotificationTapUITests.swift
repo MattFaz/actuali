@@ -61,7 +61,10 @@ final class NotificationTapUITests: XCTestCase {
     @MainActor
     func testTappingSuccessNotificationOpensAllAccounts() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-postSuccessNotification"]
+        app.launchArguments = [
+            "-loadDemoData", "-postSuccessNotification",
+            "-resetShortcutTransactionConfirmationForUITest",
+        ]
         app.launch()
 
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
