@@ -72,7 +72,8 @@ extension WidgetSnapshot {
                     id: $0.categoryId,
                     name: $0.categoryName,
                     available: $0.available,
-                    formattedAvailable: format($0.available)
+                    formattedAvailable: format($0.available),
+                    budgeted: $0.budgeted
                 )
             }
 
@@ -117,6 +118,7 @@ extension WidgetSnapshot {
         snapshot.formattedTotalBudgeted = budgetMonth.map { format($0.totalBudgeted) }
         snapshot.totalSpent = budgetMonth?.totalSpent
         snapshot.formattedTotalSpent = budgetMonth.map { format($0.totalSpent) }
+        snapshot.formattedTotalSpending = budgetMonth.map { format(-$0.totalSpent) }
         snapshot.formattedTotalIncome = budgetMonth.map { format($0.totalIncome) }
         snapshot.upcomingBills = billItems
         return snapshot
@@ -124,7 +126,7 @@ extension WidgetSnapshot {
 
     /// Extracts the next upcoming bills from schedules. Keeps it simple:
     /// non-completed, non-paid schedules for open accounts with a nextDate,
-    /// sorted by date, capped at 8.
+    /// sorted by date, capped at 12 so Extra Large Portrait can fill its rows.
     private static func buildUpcomingBills(
         schedules: [ScheduleSummary],
         statuses: [String: ScheduleStatus],
@@ -143,7 +145,7 @@ extension WidgetSnapshot {
             }
             .compactMap { schedule in schedule.nextDate.map { (schedule, $0) } }
             .sorted { $0.1 < $1.1 }
-            .prefix(8)
+            .prefix(12)
             .map { schedule, date in
                 let title = schedule.name.flatMap { $0.isEmpty ? nil : $0 }
                     ?? schedule.payeeId.flatMap { payeeMap[$0] }

@@ -10,6 +10,10 @@ struct WidgetCategoryBalance: Codable, Equatable, Identifiable {
     /// color overspent categories without parsing the display text.
     let available: Int
     let formattedAvailable: String
+    /// Cents assigned this month; 0 marks the category as unbudgeted for the
+    /// To Be Budgeted widget. nil only in snapshots written before this field
+    /// existed, and counts as unknown rather than unbudgeted.
+    var budgeted: Int?
 
     var isOverspent: Bool {
         available < 0
@@ -77,12 +81,15 @@ struct WidgetSnapshot: Codable, Equatable {
     /// Negative (money out), net of inflows.
     var totalSpent: Int?
     var formattedTotalSpent: String?
+    /// totalSpent as a positive amount, matching the category rows'
+    /// formattedSpent, for headers that sit above those rows.
+    var formattedTotalSpending: String?
     var formattedTotalIncome: String?
 
     // MARK: - Bills
 
-    /// Next upcoming bills, sorted by due date. Capped at 8 to keep the
-    /// snapshot small.
+    /// Next upcoming bills, sorted by due date. Capped at 12 (the Extra
+    /// Large Portrait row count) to keep the snapshot small.
     var upcomingBills: [WidgetBillItem]?
 
     /// Same format as BudgetStore's yearMonthFormatter — the two must agree
@@ -108,6 +115,34 @@ struct WidgetSnapshot: Codable, Equatable {
         guard !ids.isEmpty else { return Array(categories.prefix(limit)) }
         let byId = Dictionary(categories.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return Array(ids.compactMap { byId[$0] }.prefix(limit))
+    }
+
+    /// Categories with nothing budgeted this month, in budget order, capped
+    /// at `limit`. Balance plays no part: carryover can leave money in an
+    /// unbudgeted category.
+    func unbudgetedCategories(limit: Int) -> [WidgetCategoryBalance] {
+        Array(categories.filter { $0.budgeted == 0 }.prefix(limit))
+    }
+
+    /// Share of the month's budget spent, capped at 1 for the Monthly
+    /// Spending progress bar. 0 when hidden — the raw cents ride along under
+    /// the mask, and the fill would leak the ratio — or with nothing to
+    /// measure against.
+    var spentFraction: Double {
+        guard !balancesHidden, let totalSpent, let totalBudgeted, totalBudgeted > 0 else { return 0 }
+        return min(Double(abs(totalSpent)) / Double(totalBudgeted), 1.0)
+    }
+
+    /// False when hidden, so the red tint can't leak through the mask.
+    var isOverbudget: Bool {
+        guard !balancesHidden, let totalSpent, let totalBudgeted, totalBudgeted > 0 else { return false }
+        return abs(totalSpent) > totalBudgeted
+    }
+
+    /// The next bills by due date, capped at `limit`; empty for snapshots
+    /// written before bills existed.
+    func nextBills(limit: Int) -> [WidgetBillItem] {
+        Array((upcomingBills ?? []).prefix(limit))
     }
 
     /// The user's chosen accounts in their chosen order, capped at `limit`.
