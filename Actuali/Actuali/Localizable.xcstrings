@@ -15733,48 +15733,48 @@
         }
       }
     },
-    "Add Button" : {
+    "Show Add Transaction Button" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hinzufügen-Button"
+            "value" : "Button „Transaktion hinzufügen“ anzeigen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Add Button"
+            "value" : "Show Add Transaction Button"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Botón Añadir"
+            "value" : "Mostrar botón Añadir transacción"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bouton Ajouter"
+            "value" : "Afficher le bouton Ajouter une transaction"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pulsante Aggiungi"
+            "value" : "Mostra pulsante Aggiungi transazione"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Knop Toevoegen"
+            "value" : "Knop ‘Transactie toevoegen’ tonen"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Botão Adicionar"
+            "value" : "Mostrar botão Adicionar transação"
           }
         }
       }

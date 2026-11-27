@@ -204,7 +204,7 @@ struct DisplaySettingsView: View {
             }
 
             Section {
-                Toggle("Add Button", isOn: $budgetStore.showsAddButton)
+                Toggle("Show Add Transaction Button", isOn: $budgetStore.showsAddButton)
                     .accessibilityIdentifier("displaySettings.addButton")
             } footer: {
                 Text("Shows a + button on Budget, Accounts and Reports for adding a transaction.")
