@@ -28449,31 +28449,31 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "YTD"
+            "value" : "Acumulado del año"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "YTD"
+            "value" : "Depuis le début de l'année"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "YTD"
+            "value" : "Da inizio anno"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "YTD"
+            "value" : "Sinds begin van het jaar"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "YTD"
+            "value" : "Acumulado no ano"
           }
         }
       }
