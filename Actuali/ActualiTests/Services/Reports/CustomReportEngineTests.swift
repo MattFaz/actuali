@@ -175,9 +175,9 @@ struct CustomReportEngineTests {
     }
 
     @Test func barsMarkWhetherTheyRankRows() {
-        func run(groupBy: String) -> CustomReportData {
+        func run(groupBy: String, mode: String = "total") -> CustomReportData {
             CustomReportEngine.compute(
-                config: config(mode: "total", groupBy: groupBy, balance: "Payment",
+                config: config(mode: mode, groupBy: groupBy, balance: "Payment",
                                interval: "Monthly", graph: "BarGraph"),
                 transactions: sampleTxs, reportContext: reportContext,
                 filterContext: .empty, today: today, locale: englishLocale
@@ -186,6 +186,8 @@ struct CustomReportEngineTests {
         #expect(run(groupBy: "Payee").ranksRows)
         #expect(run(groupBy: "Category").ranksRows)
         #expect(!run(groupBy: "Interval").ranksRows)
+        // Time-mode bars chart each interval's total, so they stay a chart.
+        #expect(!run(groupBy: "Payee", mode: "time").ranksRows)
     }
 
     @Test func weeklyBucketsStartSunday() {
