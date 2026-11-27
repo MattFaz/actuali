@@ -7,6 +7,23 @@ struct FlowLayout: Layout {
     var spacing: CGFloat = 6
     var lineSpacing: CGFloat = 6
 
+    private struct InlineSeparatorKey: LayoutValueKey {
+        static let defaultValue = false
+    }
+
+    /// A separator is only visible when the adjacent items share a line.
+    struct InlineSeparator: View {
+        var body: some View {
+            Text(verbatim: "•")
+                .font(.caption)
+                .foregroundStyle(Color.secondary.opacity(0.8))
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .clipped()
+                .accessibilityHidden(true)
+                .layoutValue(key: InlineSeparatorKey.self, value: true)
+        }
+    }
+
     private struct Line {
         var indices: [Int] = []
         var width: CGFloat = 0
@@ -24,6 +41,16 @@ struct FlowLayout: Layout {
         var lines = [Line()]
         for (index, subview) in subviews.enumerated() {
             let size = size(of: subview, in: width)
+            if subview[InlineSeparatorKey.self] {
+                guard let last = lines.last, !last.indices.isEmpty, index + 1 < subviews.count else { continue }
+                let next = self.size(of: subviews[index + 1], in: width)
+                if last.width + spacing * 2 + size.width + next.width > width {
+                    // Wrap at the field boundary instead of leaving a bullet
+                    // dangling at either edge of a line.
+                    lines.append(Line())
+                    continue
+                }
+            }
             if let last = lines.last, !last.indices.isEmpty, last.width + spacing + size.width > width {
                 lines.append(Line())
             }
@@ -42,8 +69,15 @@ struct FlowLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        let lines = lines(for: bounds.width, subviews)
+        let placed = Set(lines.flatMap(\.indices))
+        // SwiftUI may otherwise place omitted subviews at its default position.
+        for index in subviews.indices where !placed.contains(index) {
+            subviews[index].place(at: bounds.origin, proposal: .zero)
+        }
+
         var y = bounds.minY
-        for line in lines(for: bounds.width, subviews) {
+        for line in lines {
             var x = bounds.minX
             for index in line.indices {
                 let size = size(of: subviews[index], in: bounds.width)

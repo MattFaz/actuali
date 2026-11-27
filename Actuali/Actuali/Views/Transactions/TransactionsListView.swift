@@ -514,6 +514,10 @@ struct TransactionRow: View {
             ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
     }
 
+    nonisolated static func metadataAccessibilityLabel(category: String, notes: String) -> String {
+        "\(category), \(notes)"
+    }
+
     private var categoryLabel: String {
         Self.categoryLabel(
             categoryName: transaction.categoryName,
@@ -527,33 +531,67 @@ struct TransactionRow: View {
         )
     }
 
-    /// The note, wrapping over as many lines as it needs, with each `#tag`
-    /// drawn as a colored chip in place so the tags read as part of the note.
-    private func noteLine(_ notes: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(notes.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).enumerated()), id: \.offset) { _, line in
-                if line.allSatisfy(\.isWhitespace) {
-                    Text(verbatim: " ").font(.caption)
-                } else {
+    private var categoryCaption: some View {
+        HStack(spacing: 4) {
+            if transaction.isParent {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Text(categoryLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Share the category line before wrapping, without flattening intentional
+    /// note newlines or separating a tag from the note it belongs to.
+    @ViewBuilder
+    private func metadataLine(_ notes: String?) -> some View {
+        if let notes, !notes.allSatisfy(\.isWhitespace) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(
+                    Array(notes.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).enumerated()),
+                    id: \.offset
+                ) { index, line in
                     FlowLayout(spacing: 4, lineSpacing: 2) {
-                        ForEach(Array(TagFilter.noteSegments(String(line)).enumerated()), id: \.offset) { _, segment in
-                            switch segment {
-                            case .text(let text):
-                                ForEach(Array(text.split(separator: " ").enumerated()), id: \.offset) { _, word in
-                                    Text(word)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                        if index == 0 {
+                            categoryCaption
+                            if !line.allSatisfy(\.isWhitespace) {
+                                FlowLayout.InlineSeparator()
+                            }
+                        }
+                        if line.allSatisfy(\.isWhitespace) {
+                            if index != 0 {
+                                Text(verbatim: " ").font(.caption)
+                            }
+                        } else {
+                            ForEach(
+                                Array(TagFilter.noteSegments(String(line)).enumerated()),
+                                id: \.offset
+                            ) { _, segment in
+                                switch segment {
+                                case .text(let text):
+                                    ForEach(Array(text.split(whereSeparator: \.isWhitespace).enumerated()), id: \.offset) { _, word in
+                                        Text(word)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                case .tag(let rawTag):
+                                    tagChip(rawTag)
                                 }
-                            case .tag(let rawTag):
-                                tagChip(rawTag)
                             }
                         }
                     }
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Self.metadataAccessibilityLabel(category: categoryLabel, notes: notes))
+        } else {
+            categoryCaption
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(categoryLabel)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(notes)
     }
 
     private func tagChip(_ rawTag: String) -> some View {
@@ -562,6 +600,7 @@ struct TransactionRow: View {
         return Text(rawTag)
             .font(.system(size: 10, weight: .semibold))
             .lineLimit(1)
+            .truncationMode(.tail)
             .padding(.horizontal, 5)
             .padding(.vertical, 1.5)
             .background(tagColor.opacity(0.15), in: Capsule())
@@ -605,19 +644,7 @@ struct TransactionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(Self.payeeLabel(payeeName: transaction.payeeName, locale: locale))
                     .font(.body)
-                HStack(spacing: 4) {
-                    if transaction.isParent {
-                        Image(systemName: "arrow.triangle.branch")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(categoryLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let notes = transaction.notes, !notes.isEmpty {
-                    noteLine(notes)
-                }
+                metadataLine(transaction.notes)
             }
             // Take all the width the amount column leaves. A trailing Spacer
             // would claim half of it, wrapping notes well before the amount.
