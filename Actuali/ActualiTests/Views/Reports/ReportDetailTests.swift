@@ -288,9 +288,9 @@ struct ReportDetailTests {
         dated.axisLabels = ["Jan", "", ""]
         dated.caption = "Last 3 months"
         #expect(dated.rangeCaption == "Last 3 months")
-        #expect(dated.spanLabel == "Jan – Mar")
+        #expect(dated.spanLabel == "Jan - Mar")
         dated.caption = ""
-        #expect(dated.rangeCaption == "Jan – Mar")
+        #expect(dated.rangeCaption == "Jan - Mar")
         #expect(dated.spanLabel == nil)
 
         // The list runs largest first: over the range for bars, at the
@@ -467,7 +467,7 @@ struct ReportDetailTests {
         #expect(detail.intervals == ["Oct '26", "Nov '26"])
         // The axis names the months; the dates they span lead the page.
         #expect(detail.axisLabels == ["Oct", "Nov"])
-        #expect(detail.rangeCaption == "Oct '26 – Nov '26")
+        #expect(detail.rangeCaption == "Oct '26 - Nov '26")
         #expect(detail.series.map(\.values) == [[1000, 1250.5]])
         #expect(detail.readoutValue(at: 1) == 1250.5)
         // A balance is a level, so the range is summed up as change, high and low.

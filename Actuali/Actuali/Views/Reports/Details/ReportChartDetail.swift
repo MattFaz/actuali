@@ -114,8 +114,8 @@ struct ReportChartDetail: Equatable {
 
     private var span: String? {
         guard axisLabels != nil, let first = intervals.first, let last = intervals.last else { return nil }
-        // One interval has no span; "Oct '26 – Oct '26" reads as a bug.
-        return first == last ? first : first + " – " + last
+        // One interval has no span; "Oct '26 - Oct '26" reads as a bug.
+        return first == last ? first : first + " - " + last
     }
 
     /// Two or three series that can't be switched off read better beside the
