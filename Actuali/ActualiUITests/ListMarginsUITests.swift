@@ -69,8 +69,8 @@ final class ListMarginsUITests: XCTestCase {
     }
 
     /// Leading and trailing insets of a card on More, Accounts, Budget and
-    /// Add Transaction, which is visited last because its keyboard covers the
-    /// tab bar.
+    /// Add Transaction, which is opened last, as a sheet over Budget, because
+    /// the sheet covers the tab bar.
     @MainActor
     private func cardInsets(_ app: XCUIApplication) -> [(String, (leading: CGFloat, trailing: CGFloat))] {
         let window = app.windows.firstMatch
@@ -91,8 +91,10 @@ final class ListMarginsUITests: XCTestCase {
         measure(topBox("accounts.topBox"), "Accounts summary")
         app.tabBars.buttons["Budget"].tap()
         measure(topBox("budget.topBox"), "Clean budget summary")
-        app.tabBars.buttons["Add"].tap()
-        measure(app.cells.firstMatch, "Add Transaction")
+        openAddTransactionSheet(in: app)
+        // The amount row, found by the close button beside the amount: the
+        // pages under the sheet stay in the hierarchy.
+        measure(app.cells.containing(.button, identifier: "addTransaction.close").firstMatch, "Add Transaction")
         return result
     }
 }

@@ -17,6 +17,18 @@ extension XCTestCase {
         XCTFail("Control did not update after tapping \(control.label)")
     }
 
+    /// Tap the floating add button on the current page and wait for the entry
+    /// sheet. By identifier: the account detail's "+" has the same label. The
+    /// sheet carries no title, so its close button marks it.
+    @MainActor
+    func openAddTransactionSheet(in app: XCUIApplication) {
+        let addButton = app.buttons["floatingAdd.button"]
+        XCTAssertTrue(addButton.waitForExistence(timeout: 10), "floating add button not found")
+        addButton.tap()
+        XCTAssertTrue(app.buttons["addTransaction.close"].waitForExistence(timeout: 10),
+                      "add sheet did not present")
+    }
+
     /// Open the Budget View submenu from the Budget tab's ellipsis menu.
     @MainActor
     func openBudgetViewMenu(in app: XCUIApplication) {

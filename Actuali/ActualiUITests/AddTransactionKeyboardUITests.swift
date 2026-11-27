@@ -12,7 +12,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     @MainActor
     func testAmountFieldShowsDoneBarAndDismissesKeyboard() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let amountField = app.textFields.matching(
@@ -38,17 +38,23 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5),
                       "keyboard did not dismiss after tapping Done")
 
-        // With the keyboard gone the tab bar is reachable again — the
-        // reporter's actual goal was backing out to another tab.
+        // With the keyboard gone the close button is reachable — the
+        // reporter's actual goal was backing out, and the sheet blocks the
+        // tab bar until it closes.
+        let close = app.buttons["addTransaction.close"]
+        XCTAssertTrue(close.isHittable, "close button not reachable after dismissing the keyboard")
+        close.tap()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5), "add sheet did not close")
+        XCTAssertTrue(app.tabBars.buttons["Accounts"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.tabBars.buttons["Accounts"].isHittable,
-                      "tab bar not reachable after dismissing the keyboard")
+                      "tab bar not reachable after closing the sheet")
     }
 
     /// The operators sit on the keypad as one-tap keys.
     @MainActor
     func testOperatorKeyInsertsOperator() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
 
         let amountField = app.textFields.matching(
@@ -59,7 +65,6 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                       "keyboard did not appear")
         amountField.typeText("12")
 
-        // "Add" would also match the Add tab, so use an unambiguous key.
         let multiply = app.buttons["Multiply"]
         XCTAssertTrue(multiply.waitForExistence(timeout: 5), "no operator keys on the keypad")
         multiply.tap()
@@ -75,7 +80,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     @MainActor
     func testSaveButtonHidesWhileTheKeypadIsUp() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
 
         XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10), "keypad did not come up")
@@ -91,11 +96,12 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     /// enters — so the keyboard must come up without a tap and keypad input
     /// must land in that field.
     @MainActor
-    func testAddTabAutofocusesAmountField() {
+    func testSheetOpenedFromTheFloatingButtonFocusesTheAmount() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-initialTab", "0"]
         app.launch()
 
+        openAddTransactionSheet(in: app)
         XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
                       "keyboard did not come up on its own for the amount field")
 
@@ -109,39 +115,43 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                        "keypad input did not land in the amount field")
     }
 
-    /// The add form stays alive while another tab is selected, so selecting
-    /// Add again must issue a fresh focus request even when the amount has
-    /// already been started.
+    /// Each opening builds a fresh form, so a closed entry never carries
+    /// over, and the amount is focused again for the next one.
     @MainActor
-    func testReturningToAddTabRefocusesAmountField() {
+    func testReopeningTheSheetStartsWithAnEmptyFocusedAmount() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-initialTab", "0"]
         app.launch()
 
+        openAddTransactionSheet(in: app)
         let amountField = app.textFields.matching(
             NSPredicate(format: "placeholderValue == '0.00'")
         ).firstMatch
         XCTAssertTrue(amountField.waitForExistence(timeout: 10), "amount field not found")
         XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
-                      "keyboard did not come up on the initial Add tab")
+                      "keyboard did not come up on the first opening")
         app.keys["5"].tap()
         XCTAssertEqual(amountField.value as? String, "0.05")
 
-        app.buttons["Done"].tap()
-        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5))
-        app.tabBars.buttons["Accounts"].tap()
+        let close = app.buttons["addTransaction.close"]
+        close.tap()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 10), "add sheet did not close")
 
-        app.tabBars.buttons["Add"].tap()
+        openAddTransactionSheet(in: app)
         XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
-                      "keyboard did not return when Add was selected again")
-        XCTAssertEqual(amountField.value as? String, "0.05",
-                       "returning to Add should preserve the partial amount")
+                      "keyboard did not come up when the sheet was reopened")
+        // An empty amount reads as its placeholder or as nothing.
+        XCTAssertTrue(["", "0.00"].contains(amountField.value as? String ?? ""),
+                      "reopening should start with an empty amount, got \(String(describing: amountField.value))")
+        app.keys["7"].tap()
+        XCTAssertEqual(amountField.value as? String, "0.07",
+                       "keypad input did not land in the reopened amount field")
     }
 
     @MainActor
     func testCategoryPickerAutofocusesSearchField() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let done = app.buttons["Done"]
@@ -166,7 +176,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     @MainActor
     func testReturningFromCategoryPickerDoesNotRefocusAmountField() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let done = app.buttons["Done"]
@@ -200,7 +210,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     @MainActor
     func testPickingPayeeWithAmountFocusedLeavesKeyboardDown() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
@@ -225,7 +235,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     @MainActor
     func testPickingCategoryWithAmountFocusedLeavesKeyboardDown() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
@@ -254,7 +264,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     @MainActor
     func testPickingSplitLineCategoryWithAmountFocusedLeavesKeyboardDown() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
@@ -286,7 +296,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     @MainActor
     func testPickingSplitLinePayeeWithAmountFocusedLeavesKeyboardDown() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),

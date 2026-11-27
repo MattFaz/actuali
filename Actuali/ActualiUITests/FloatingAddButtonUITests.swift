@@ -1,0 +1,75 @@
+import XCTest
+
+/// The round + that replaced the Add tab (#350): it floats over Budget,
+/// Accounts and Reports, opens the entry form as a sheet, and More → Display
+/// can hide it.
+final class FloatingAddButtonUITests: XCTestCase {
+    /// `-showsAddButton YES` forces the setting on through the arguments
+    /// domain, so a value left behind by an earlier run stays out of the test.
+    @MainActor
+    private func launch(initialTab: Int) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", String(initialTab), "-showsAddButton", "YES"]
+        app.launch()
+        return app
+    }
+
+    @MainActor
+    func testButtonShowsOnBudgetAccountsAndReportsButNotMore() {
+        let app = launch(initialTab: 0)
+        let addButton = app.buttons["floatingAdd.button"]
+
+        for tab in ["Accounts", "Budget", "Reports"] {
+            app.tabBars.buttons[tab].tap()
+            XCTAssertTrue(addButton.waitForExistence(timeout: 10), "no floating add button on \(tab)")
+        }
+
+        app.tabBars.buttons["More"].tap()
+        XCTAssertTrue(addButton.waitForNonExistence(timeout: 10), "floating add button showing on More")
+    }
+
+    @MainActor
+    func testTappingTheButtonOpensTheFormWithTheAmountFocused() {
+        let app = launch(initialTab: 0)
+
+        openAddTransactionSheet(in: app)
+        XCTAssertTrue(app.buttons["addTransaction.payee"].waitForExistence(timeout: 10),
+                      "the sheet should show the transaction form")
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
+                      "the amount should be focused, with the keypad up")
+
+        let amountField = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == '0.00'")
+        ).firstMatch
+        app.keys["5"].tap()
+        XCTAssertEqual(amountField.value as? String, "0.05",
+                       "keypad input did not land in the amount field")
+    }
+
+    @MainActor
+    func testAddButtonSettingHidesAndRestoresTheButton() {
+        let app = launch(initialTab: 4)
+
+        app.buttons["Display"].tap()
+        let toggle = app.switches["displaySettings.addButton"]
+        for _ in 0..<8 where !toggle.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Add Button switch not found in Display")
+        XCTAssertEqual(toggle.value as? String, "1", "the button should be on by default")
+
+        tapControl(toggle) { toggle.value as? String == "0" }
+        app.tabBars.buttons["Accounts"].tap()
+        XCTAssertTrue(app.buttons["accounts.topBox"].waitForExistence(timeout: 10), "Accounts did not open")
+        XCTAssertTrue(app.buttons["floatingAdd.button"].waitForNonExistence(timeout: 10),
+                      "the button stayed on Accounts after switching it off")
+
+        // More keeps Display open, so the switch is still there.
+        app.tabBars.buttons["More"].tap()
+        XCTAssertTrue(toggle.waitForExistence(timeout: 10), "Display did not stay open on More")
+        tapControl(toggle) { toggle.value as? String == "1" }
+        app.tabBars.buttons["Accounts"].tap()
+        XCTAssertTrue(app.buttons["floatingAdd.button"].waitForExistence(timeout: 10),
+                      "the button did not return on Accounts after switching it on")
+    }
+}

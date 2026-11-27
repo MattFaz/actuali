@@ -4,9 +4,9 @@ import XCTest
 /// Transfer control, and a transfer is made by choosing an account as the
 /// payee. The sign then says which way the money goes.
 final class AddTransactionTransferUITests: XCTestCase {
-    @MainActor private func launchAddTab() -> XCUIApplication {
+    @MainActor private func launchAddSheet() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
         XCTAssertTrue(app.buttons["addTransaction.payee"].waitForExistence(timeout: 10))
         return app
@@ -14,7 +14,7 @@ final class AddTransactionTransferUITests: XCTestCase {
 
     @MainActor
     func testThereIsNoTypeControl() {
-        let app = launchAddTab()
+        let app = launchAddSheet()
         XCTAssertEqual(app.segmentedControls.count, 0, "the type control is gone")
         for name in ["Expense", "Income", "Transfer"] {
             XCTAssertFalse(app.buttons[name].exists, "no \(name) button on the form")
@@ -23,7 +23,7 @@ final class AddTransactionTransferUITests: XCTestCase {
 
     @MainActor
     func testChoosingAnAccountAsThePayeeMakesATransfer() {
-        let app = launchAddTab()
+        let app = launchAddSheet()
         XCTAssertTrue(app.buttons["addTransaction.category"].exists, "a regular transaction has a category")
 
         app.buttons["addTransaction.payee"].tap()
@@ -51,7 +51,7 @@ final class AddTransactionTransferUITests: XCTestCase {
 
     @MainActor
     func testPickingARegularPayeeAfterATransferBringsTheCategoryBack() {
-        let app = launchAddTab()
+        let app = launchAddSheet()
         app.buttons["addTransaction.payee"].tap()
         let account = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'payeePicker.transfer.'"))
             .element(boundBy: 0)
@@ -71,18 +71,18 @@ final class AddTransactionTransferUITests: XCTestCase {
     }
 
     @MainActor
-    func testSavingATransferWritesItAndLandsOnTheAccount() {
+    func testSavingATransferWritesItAndClosesTheForm() {
         saveTransfer(isInflow: false)
     }
 
     @MainActor
-    func testSavingAnIncomingTransferLandsOnTheFormsAccount() {
+    func testSavingAnIncomingTransferWritesItToTheFormsAccount() {
         saveTransfer(isInflow: true)
     }
 
     @MainActor
     private func saveTransfer(isInflow: Bool) {
-        let app = launchAddTab()
+        let app = launchAddSheet()
         let amountField = app.textFields.matching(NSPredicate(format: "placeholderValue == '0.00'")).firstMatch
         XCTAssertTrue(amountField.waitForExistence(timeout: 10))
         amountField.typeText("1234")
@@ -104,9 +104,17 @@ final class AddTransactionTransferUITests: XCTestCase {
         XCTAssertTrue(save.isHittable, "the form saves as a transfer")
         save.tap()
 
+        // Saved: the sheet closes, and the form's account lists the new row.
+        XCTAssertTrue(app.buttons["addTransaction.payee"].waitForNonExistence(timeout: 10),
+                      "the form should close after saving a transfer")
+        app.tabBars.buttons["Accounts"].tap()
+        let accountRow = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'Chase Checking'")
+        ).firstMatch
+        XCTAssertTrue(accountRow.waitForExistence(timeout: 10), "Chase Checking row not found")
+        accountRow.tap()
         XCTAssertTrue(app.navigationBars["Chase Checking"].waitForExistence(timeout: 10),
-                      "a transfer should land on the account shown in the form")
-        // Saved: the form resets and the account's list shows the new row.
+                      "the form's account should open")
         let row = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '12.34'")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15), "the transfer shows in the account's list")
     }
@@ -162,7 +170,7 @@ final class AddTransactionTransferUITests: XCTestCase {
 
     @MainActor
     func testDoneWithoutAPayeePreservesANewTransfer() {
-        let app = launchAddTab()
+        let app = launchAddSheet()
         app.buttons["addTransaction.payee"].tap()
         let account = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'payeePicker.transfer.'")).firstMatch
         XCTAssertTrue(account.waitForExistence(timeout: 5))
@@ -177,7 +185,7 @@ final class AddTransactionTransferUITests: XCTestCase {
 
     @MainActor
     func testReopeningATransferDoesNotSearchForThePreviousRegularPayee() {
-        let app = launchAddTab()
+        let app = launchAddSheet()
         app.buttons["addTransaction.payee"].tap()
         let search = app.textFields["Search payees"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
@@ -195,7 +203,7 @@ final class AddTransactionTransferUITests: XCTestCase {
 
     @MainActor
     func testSelectingTheTransferPartnerAsTheAccountKeepsATransfer() {
-        let app = launchAddTab()
+        let app = launchAddSheet()
         app.buttons["addTransaction.payee"].tap()
         let partner = app.buttons.matching(NSPredicate(
             format: "identifier BEGINSWITH 'payeePicker.transfer.' AND label CONTAINS 'Ally Savings'"
@@ -203,10 +211,20 @@ final class AddTransactionTransferUITests: XCTestCase {
         XCTAssertTrue(partner.waitForExistence(timeout: 5))
         partner.tap()
         app.buttons["addTransaction.account"].tap()
-        let savings = app.buttons["Ally Savings"].exists
-            ? app.buttons["Ally Savings"] : app.staticTexts["Ally Savings"]
-        XCTAssertTrue(savings.waitForExistence(timeout: 5))
-        savings.tap()
+        // The Accounts page stays in the hierarchy behind the sheet and names
+        // Ally Savings too; only the picker's row is hittable.
+        let rows = app.buttons["Ally Savings"].exists
+            ? app.buttons.matching(identifier: "Ally Savings")
+            : app.staticTexts.matching(identifier: "Ally Savings")
+        var savings: XCUIElement?
+        for _ in 0..<10 where savings == nil {
+            savings = rows.allElementsBoundByIndex.first { $0.isHittable }
+            if savings == nil {
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+        }
+        XCTAssertNotNil(savings, "Ally Savings row not found in the account picker")
+        savings?.tap()
 
         let payee = app.buttons["addTransaction.payee"]
         XCTAssertTrue(payee.waitForExistence(timeout: 5))

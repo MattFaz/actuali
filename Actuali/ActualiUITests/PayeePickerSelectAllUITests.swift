@@ -7,7 +7,7 @@ final class PayeePickerSelectAllUITests: XCTestCase {
     @MainActor
     func testTransfersFollowSuggestedPayeesAndPrecedeAllPayees() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let payeeRow = app.buttons["addTransaction.payee"]
@@ -39,7 +39,7 @@ final class PayeePickerSelectAllUITests: XCTestCase {
     @MainActor
     func testTypingReplacesPrefilledPayeeName() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launchArguments = ["-loadDemoData", "-presentAddTransaction"]
         app.launch()
 
         let payeeRow = app.buttons["addTransaction.payee"]
