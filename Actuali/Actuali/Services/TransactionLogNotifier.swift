@@ -20,14 +20,19 @@ enum TransactionLoggedMarker {
 
 @MainActor
 enum TransactionLogNotifier {
+    /// Tests that drive `LogTransactionIntent.perform` bind a stub here: the real
+    /// center shows a permission prompt on a fresh simulator that nothing answers.
+    @TaskLocal static var center: any NotificationPosting = UNUserNotificationCenter.current()
+
     /// - Parameter synced: false when the row is written locally but hasn't
     ///   reached the server yet, which the banner says outright — otherwise the
     ///   transaction looks logged while the budget on the server is unchanged.
     static func notifySuccess(payee: String, amountCents: Int, currencyCode: String,
                               narrowSymbol: Bool = false, synced: Bool = true,
                               numberFormat: ActualNumberFormat = .commaDot,
+                              needsOpeningBudget: Bool = false,
                               settings: TransactionLogNotificationSettings = .init(),
-                              center: any NotificationPosting = UNUserNotificationCenter.current()) async {
+                              center: any NotificationPosting = TransactionLogNotifier.center) async {
         // A locally saved row still needs its warning when ordinary
         // Shortcut success confirmations are disabled.
         guard !synced || settings.showsSuccessNotification else { return }
@@ -47,9 +52,12 @@ enum TransactionLogNotifier {
             : String(localized: "Saved locally")
         content.body = composeSuccessBody(payee: payee, amountCents: amountCents,
                                           currencyCode: currencyCode, narrowSymbol: narrowSymbol,
-                                          synced: synced, numberFormat: numberFormat)
-        // No sound — quiet success banner that auto-dismisses.
-        content.userInfo = TransactionLoggedMarker.userInfo
+                                          synced: synced, numberFormat: numberFormat,
+                                          needsOpeningBudget: needsOpeningBudget)
+        // A non-active budget must not route a tap to the active account list.
+        if !needsOpeningBudget {
+            content.userInfo = TransactionLoggedMarker.userInfo
+        }
 
         let request = UNNotificationRequest(
             identifier: "com.mfazz.Actuali.logTransactionSuccess.\(UUID().uuidString)",
@@ -68,7 +76,7 @@ enum TransactionLogNotifier {
                               currencyCode: String, narrowSymbol: Bool = false,
                               prefill: TransactionPrefill? = nil,
                               numberFormat: ActualNumberFormat = .commaDot,
-                              center: any NotificationPosting = UNUserNotificationCenter.current()) async {
+                              center: any NotificationPosting = TransactionLogNotifier.center) async {
         // Request permission lazily on first call. Quietly ignore denial — without
         // permission we can't notify, but we still want the AppIntent to throw a
         // banner-visible error so the user isn't left in the dark.
@@ -105,10 +113,10 @@ enum TransactionLogNotifier {
         }
     }
 
-    static func composeBody(message: String, payee: String?, amountCents: Int?,
-                            currencyCode: String, narrowSymbol: Bool = false,
-                            locale: Locale = .autoupdatingCurrent,
-                            numberFormat: ActualNumberFormat = .commaDot) -> String {
+    nonisolated static func composeBody(message: String, payee: String?, amountCents: Int?,
+                                        currencyCode: String, narrowSymbol: Bool = false,
+                                        locale: Locale = .autoupdatingCurrent,
+                                        numberFormat: ActualNumberFormat = .commaDot) -> String {
         var parts: [String] = []
         if let amountCents {
             let amountString = CurrencyAmountFormat.string(cents: amountCents,
@@ -127,10 +135,11 @@ enum TransactionLogNotifier {
             : String(format: String(localized: "%@. %@", locale: locale), prefix, message)
     }
 
-    static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
-                                   narrowSymbol: Bool, synced: Bool = true,
-                                   locale: Locale = .autoupdatingCurrent,
-                                   numberFormat: ActualNumberFormat = .commaDot) -> String {
+    nonisolated static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
+                                               narrowSymbol: Bool, synced: Bool = true,
+                                               locale: Locale = .autoupdatingCurrent,
+                                               numberFormat: ActualNumberFormat = .commaDot,
+                                               needsOpeningBudget: Bool = false) -> String {
         let amountString = CurrencyAmountFormat.string(cents: amountCents,
                                                        currencyCode: currencyCode,
                                                        narrowSymbol: narrowSymbol,
@@ -143,7 +152,9 @@ enum TransactionLogNotifier {
             return String(
                 format: String(localized: "%@. %@", locale: locale),
                 prefix,
-                String(localized: "Couldn't reach your server — it will sync when you open Actuali.", locale: locale)
+                needsOpeningBudget
+                    ? String(localized: "Open Actuali and select a budget first.", locale: locale)
+                    : String(localized: "Couldn't reach your server — it will sync when you open Actuali.", locale: locale)
             )
         }
         return prefix

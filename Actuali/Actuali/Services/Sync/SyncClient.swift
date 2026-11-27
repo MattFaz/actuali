@@ -2452,13 +2452,14 @@ actor SyncClient {
     }
 
     /// Force immediate sync (pull-to-refresh)
-    func syncNow() async {
+    @discardableResult
+    func syncNow() async -> Bool {
         logger.info("syncNow() called - forcing immediate sync")
         let retryTask = syncTask
         syncTask = nil
         retryTask?.cancel()
         await retryTask?.value
-        await performSync()
+        return await performSync()
     }
 
     /// Recover from a stuck out-of-sync state by discarding the last-synced
