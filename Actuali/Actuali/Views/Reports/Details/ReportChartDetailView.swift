@@ -47,37 +47,44 @@ struct ReportChartDetailView: View {
                     .unredacted()
                     .accessibilityIdentifier("reportDetail.chartView")
                 }
-                readout
-                chart
                 Group {
-                    // A range change can leave an interval that is gone.
-                    if selected.flatMap(detail.intervals.firstIndex(of:)) != nil {
-                        Button(ReportStrings.text("Clear selection", locale: locale)) { selected = nil }
-                            .accessibilityIdentifier("reportDetail.clearSelection")
-                    } else {
-                        Text(ReportStrings.text("Drag across the chart to inspect a point.", locale: locale))
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
+                    readout
+                    chart
+                    selectionHint
+                    switch breakdown {
+                    case .series: seriesList
+                    case .intervals: intervalList
+                    case .none: EmptyView()
+                    }
+                    if !detail.stats.isEmpty {
+                        statsList
+                    }
+                    if !detail.events.isEmpty {
+                        eventsList
                     }
                 }
-                .font(.footnote)
-                switch breakdown {
-                case .series: seriesList
-                case .intervals: intervalList
-                case .none: EmptyView()
-                }
-                if !detail.stats.isEmpty {
-                    statsList
-                }
-                if !detail.events.isEmpty {
-                    eventsList
-                }
+                .loadingShimmer()
             }
             .padding()
         }
         .navigationTitle(detail.name)
         .navigationBarTitleDisplayMode(.large)
         .toolbar(.visible, for: .navigationBar)
+    }
+
+    private var selectionHint: some View {
+        Group {
+            // A range change can leave an interval that is gone.
+            if selected.flatMap(detail.intervals.firstIndex(of:)) != nil {
+                Button(ReportStrings.text("Clear selection", locale: locale)) { selected = nil }
+                    .accessibilityIdentifier("reportDetail.clearSelection")
+            } else {
+                Text(ReportStrings.text("Drag across the chart to inspect a point.", locale: locale))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .font(.footnote)
     }
 
     // MARK: - Readout
@@ -178,7 +185,7 @@ struct ReportChartDetailView: View {
             set: { selected = ReportDetailChart.pinned(selected, scrubbedTo: $0) }
         ))
             .sensoryFeedback(.selection, trigger: selected)
-            .dimmedWhileLoading()
+            .loadingSkeleton(detail.style == .lines || detail.style == .area ? .line : .bars)
             // The interval list below already reads every figure. The other
             // lists carry one interval, and VoiceOver can't drag to move it,
             // so there the chart stands in for the whole table.

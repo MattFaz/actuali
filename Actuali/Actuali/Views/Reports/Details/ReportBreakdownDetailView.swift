@@ -91,15 +91,16 @@ struct ReportBreakdownDetailView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 ReportRangePicker()
-                readout
+                readout.loadingShimmer()
                 if let donut = breakdown.donut {
                     ReportDonutChart(slices: donut.slices, groups: donut.groups, highlighted: selected)
                         .frame(height: 220)
-                        .dimmedWhileLoading()
+                        .loadingSkeleton(.donut)
+                        .loadingShimmer()
                         // The list below carries the same numbers as text.
                         .accessibilityHidden(true)
                 }
-                list
+                list.loadingShimmer()
             }
             .padding()
         }
