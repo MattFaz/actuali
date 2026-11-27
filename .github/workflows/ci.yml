@@ -140,20 +140,29 @@ jobs:
             xcrun simctl runtime list >&2
             exit 1
           fi
+          # A downloaded runtime has no dyld shared cache yet. CoreSimulator
+          # builds it in the background, and a first boot racing that build
+          # sat in "Waiting on Data Migration" for 8+ minutes and never came
+          # up (15+ locally, with the cache still unbuilt). Building it first
+          # takes ~4 minutes and brings the boot down to ~3.
+          xcrun simctl runtime dyld_shared_cache update "$RT"
           # From the runtime's own supported list: the image's newest iPhone
           # device types don't run on older runtimes.
           DEVICE_TYPE=$(xcrun simctl list runtimes --json \
             | jq -r --arg rt "$RT" '[.runtimes[] | select(.identifier == $rt) | .supportedDeviceTypes[] | select(.productFamily == "iPhone")][0].identifier')
           SIM_ID=$(xcrun simctl create "ci-ios$IOS" "$DEVICE_TYPE" "$RT")
-          xcrun simctl bootstatus "$SIM_ID" -b
+          # The device reads as Booted while still migrating, and bootstatus
+          # can exit 0 on "Data Migration Failed", so require its terminal
+          # "Finished" status (4294967295) as well.
+          xcrun simctl bootstatus "$SIM_ID" -b | tee "$RUNNER_TEMP/bootstatus.log"
           STATE=$(xcrun simctl list devices --json \
             | jq -r --arg rt "$RT" --arg id "$SIM_ID" '.devices[$rt][]? | select(.udid == $id) | .state')
-          if [ "$STATE" != "Booted" ]; then
-            echo "Simulator $SIM_ID on $RT is '${STATE:-missing}', not Booted" >&2
+          if [ "$STATE" != "Booted" ] || ! grep -q 'Status=4294967295' "$RUNNER_TEMP/bootstatus.log"; then
+            echo "::error::Simulator $SIM_ID on $RT is '${STATE:-missing}' and did not finish booting"
             xcrun simctl list devices >&2
             exit 1
           fi
-          echo "Booted $SIM_ID ($DEVICE_TYPE, $RT)"
+          echo "::notice::Booted $SIM_ID ($DEVICE_TYPE, $RT)"
           echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
 
       # UI tests run nightly in ui-tests.yml so the PR signal stays fast.
@@ -164,7 +173,11 @@ jobs:
       # xcbeautify (preinstalled on macOS runners) keeps the log readable;
       # --quiet drops passing-task noise but keeps warnings and errors;
       # pipefail preserves xcodebuild's exit code through the pipe.
+      # The result bundle then proves what ran: the job fails unless tests ran
+      # on an iOS N device, and the counts land as an annotation on the check.
       - name: Build and run unit tests on iOS ${{ matrix.ios }}
+        env:
+          IOS: ${{ matrix.ios }}
         run: |
           set -o pipefail
           xcodebuild test \
@@ -174,4 +187,21 @@ jobs:
             -testLanguage en \
             -testRegion US \
             -skip-testing:ActualiUITests \
+            -resultBundlePath "$RUNNER_TEMP/unit.xcresult" \
             | xcbeautify --quiet
+          SUMMARY=$(xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/unit.xcresult")
+          OS=$(jq -r '.devicesAndConfigurations[0].device.osVersion' <<< "$SUMMARY")
+          TOTAL=$(jq -r '.totalTestCount' <<< "$SUMMARY")
+          echo "::notice::$(jq -r '"\(.passedTests) of \(.totalTestCount) tests passed (\(.failedTests) failed, \(.skippedTests) skipped) on \(.devicesAndConfigurations[0].device | "\(.modelName), iOS \(.osVersion) (\(.osBuildNumber))")"' <<< "$SUMMARY")"
+          if [[ "$OS" != "$IOS".* ]] || [ "$TOTAL" -eq 0 ]; then
+            echo "::error::Expected unit tests on iOS $IOS, got $TOTAL tests on iOS $OS"
+            exit 1
+          fi
+
+      # Tells a test failure apart from the runtime or device going away under
+      # it (runner-images #15374), on the check page itself.
+      - name: Simulator state on failure
+        if: failure() && steps.sim.outputs.id
+        run: |
+          echo "::error::Runtimes: $(xcrun simctl list runtimes | grep 'iOS ${{ matrix.ios }}\.' | tr '\n' ' ')"
+          echo "::error::Device: $(xcrun simctl list devices | grep '${{ steps.sim.outputs.id }}' || echo '${{ steps.sim.outputs.id }} is gone')"
