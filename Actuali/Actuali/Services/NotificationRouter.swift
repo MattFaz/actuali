@@ -37,17 +37,15 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
     /// `AccountsListView` consumes the id by pushing the account.
     @Published var pendingAccountNavigation: String?
 
-    /// Account of the transaction the tab-hosted add flow just saved (see
-    /// `AddTransactionView.saveTransaction`). Not set by notifications, but
-    /// this router is the app's cross-tab navigation channel. Consumed like
-    /// `pendingAccountNavigation`, except that All Accounts stays showing
-    /// because it already lists the transaction (GH #722).
-    @Published var pendingSavedTransactionAccount: String?
-
-    /// Tab tag to select after the tab-hosted add flow cancels (the user's
-    /// Start Page, GH #281). Also not set by notifications; consumed by
-    /// `MainTabView`.
+    /// Tab tag to select for an `actuali://` widget link. Not set by
+    /// notifications, but this router is the app's cross-tab navigation
+    /// channel; consumed by `MainTabView`.
     @Published var pendingTabNavigation: Int?
+
+    /// Set to open the add-transaction sheet: by the floating add button, the
+    /// Home Screen quick action and the `actuali://add-transaction` link.
+    /// `MainTabView` presents the sheet, and dismissing it clears the flag.
+    @Published var pendingAddTransaction = false
 
     /// From a tapped new-transaction notification.
     @Published var destination: NotificationDestination?

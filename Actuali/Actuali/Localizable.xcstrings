@@ -15733,6 +15733,52 @@
         }
       }
     },
+    "Add Button" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzufügen-Button"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Button"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botón Añadir"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bouton Ajouter"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulsante Aggiungi"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Knop Toevoegen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botão Adicionar"
+          }
+        }
+      }
+    },
     "Add Card Mapping" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -77451,6 +77497,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mostrar coluna gasta"
+          }
+        }
+      }
+    },
+    "Shows a + button on Budget, Accounts and Reports for adding a transaction." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt in Budget, Konten und Berichten einen +-Button zum Hinzufügen einer Transaktion an."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows a + button on Budget, Accounts and Reports for adding a transaction."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra un botón + en Presupuesto, Cuentas e Informes para añadir una transacción."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affiche un bouton + sur Budget, Comptes et Rapports pour ajouter une transaction."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra un pulsante + in Budget, Conti e Report per aggiungere una transazione."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toont een +-knop op Begroting, Rekeningen en Rapporten om een transactie toe te voegen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra um botão + em Orçamento, Contas e Relatórios para adicionar uma transação."
           }
         }
       }

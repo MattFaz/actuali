@@ -8,7 +8,7 @@ enum ActualiHomeScreenShortcut {
     static var addTransaction: UIApplicationShortcutItem {
         UIApplicationShortcutItem(
             type: addTransactionType,
-            localizedTitle: StartTab.addTransaction.label(locale: .current),
+            localizedTitle: String(localized: "Add Transaction"),
             localizedSubtitle: nil,
             icon: UIApplicationShortcutIcon(systemImageName: "plus")
         )
@@ -23,26 +23,24 @@ final class ActualiSceneDelegate: NSObject, UIWindowSceneDelegate {
         options connectionOptions: UIScene.ConnectionOptions
     ) {
         guard let shortcutItem = connectionOptions.shortcutItem,
-              let tab = Self.tab(for: shortcutItem) else {
+              Self.isAddTransaction(shortcutItem) else {
             return
         }
-        NotificationRouter.shared.pendingTabNavigation = tab
+        NotificationRouter.shared.pendingAddTransaction = true
     }
 
     func windowScene(
         _ windowScene: UIWindowScene,
         performActionFor shortcutItem: UIApplicationShortcutItem
     ) async -> Bool {
-        guard let tab = Self.tab(for: shortcutItem) else {
+        guard Self.isAddTransaction(shortcutItem) else {
             return false
         }
-        NotificationRouter.shared.pendingTabNavigation = tab
+        NotificationRouter.shared.pendingAddTransaction = true
         return true
     }
 
-    nonisolated static func tab(for shortcutItem: UIApplicationShortcutItem) -> Int? {
+    nonisolated static func isAddTransaction(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
         shortcutItem.type == ActualiHomeScreenShortcut.addTransactionType
-            ? StartTab.addTransaction.tabTag
-            : nil
     }
 }

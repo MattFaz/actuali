@@ -4,7 +4,6 @@ import Foundation
 enum StartTab: String, CaseIterable, Identifiable {
     case accounts
     case budget
-    case addTransaction
     case reports
 
     var id: String {
@@ -16,7 +15,6 @@ enum StartTab: String, CaseIterable, Identifiable {
         switch self {
         case .accounts: 0
         case .budget: 1
-        case .addTransaction: 2
         case .reports: 3
         }
     }
@@ -25,13 +23,14 @@ enum StartTab: String, CaseIterable, Identifiable {
         switch self {
         case .accounts: ReportStrings.text("Accounts", locale: locale, bundle: bundle)
         case .budget: ReportStrings.text("Budget", locale: locale, bundle: bundle)
-        case .addTransaction: ReportStrings.text("Add Transaction", locale: locale, bundle: bundle)
         case .reports: ReportStrings.text("Reports", locale: locale, bundle: bundle)
         }
     }
 
     static let defaultsKey = "startTab"
 
+    /// Anything unrecognised opens Accounts, including "addTransaction" stored
+    /// back when Add was a tab.
     static func resolved(from raw: String?) -> StartTab {
         raw.flatMap(StartTab.init(rawValue:)) ?? .accounts
     }
