@@ -91,8 +91,14 @@ final class AmountKeypadView: UIInputView, UIInputViewAudioFeedback {
         // keys that wide stop reading as a keypad, so the grid caps out.
         let fullWidth = keys.widthAnchor.constraint(equalTo: safeAreaLayoutGuide.widthAnchor, constant: -2 * spacing)
         fullWidth.priority = .defaultHigh
+        // Self-sizing reads the keypad's height from the keys, but while it
+        // animates in, the system pins it to the initial frame's height;
+        // just under required lets the keys give way then instead of
+        // logging a constraint conflict.
+        let keyHeight = firstKey.heightAnchor.constraint(equalToConstant: 50)
+        keyHeight.priority = UILayoutPriority(999)
         NSLayoutConstraint.activate([
-            firstKey.heightAnchor.constraint(equalToConstant: 50),
+            keyHeight,
             delete.button.heightAnchor.constraint(equalTo: firstKey.heightAnchor),
             keys.topAnchor.constraint(equalTo: topAnchor, constant: spacing),
             keys.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -spacing),
