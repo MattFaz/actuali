@@ -1071,6 +1071,11 @@ struct AccountDetailView: View {
         .contentMargins(.top, 8, for: .scrollContent)
         .listSectionSpacing(.compact)
         .readableWidth()
+        // Adds to this account. Selecting hides the tab bar and puts the bulk
+        // action bar at the bottom, where the button would sit on it.
+        .quickAddButton(isVisible: !isSelecting && !account.closed) {
+            showingAddTransaction = true
+        }
         .navigationTitle(account.name)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: accountIconPhotoLoadID) {

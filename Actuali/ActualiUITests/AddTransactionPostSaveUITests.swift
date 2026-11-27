@@ -46,9 +46,8 @@ final class AddTransactionPostSaveUITests: XCTestCase {
         XCTAssertTrue(accountRow.waitForExistence(timeout: 10), "Chase Checking row not found")
         accountRow.tap()
 
-        let addButton = app.navigationBars.buttons["Add Transaction"]
-        XCTAssertTrue(addButton.waitForExistence(timeout: 5), "'+' toolbar button not found")
-        addButton.tap()
+        // Quick Add, not the toolbar "+": a phone-width screen doesn't show it.
+        openAddTransactionSheet(in: app)
 
         // The sheet carries no title, so its close button marks it.
         let addSheet = app.buttons["addTransaction.close"]

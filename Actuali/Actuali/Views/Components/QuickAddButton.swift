@@ -3,19 +3,27 @@ import SwiftUI
 extension View {
     /// Floats the round "+" over the bottom-right corner (just above the tab
     /// bar inside a tab) and leaves scroll content room to clear it. Apply it
-    /// to a navigation stack's root content, so pushed screens don't show it.
-    func quickAddButton() -> some View {
-        modifier(QuickAddButtonModifier())
+    /// to a screen's own content, inside its navigation container, so screens
+    /// pushed on top don't inherit it.
+    ///
+    /// Without an `action` it opens the form for the default account. A screen
+    /// that stands for one account passes its own, to add to that account.
+    /// `isVisible` hides the button the same way the setting does, without
+    /// rebuilding the page underneath.
+    func quickAddButton(isVisible: Bool = true, action: (() -> Void)? = nil) -> some View {
+        modifier(QuickAddButtonModifier(isVisible: isVisible, action: action))
     }
 }
 
 private struct QuickAddButtonModifier: ViewModifier {
     @EnvironmentObject private var budgetStore: BudgetStore
+    let isVisible: Bool
+    let action: (() -> Void)?
 
-    /// Off by choice, or nothing to add to: without an open account the form
-    /// has no account to open on.
+    /// Hidden by the caller or by choice, or nothing to add to: without an
+    /// open account the form has no account to open on.
     private var isShown: Bool {
-        budgetStore.showsQuickAddButton && budgetStore.accounts.contains { !$0.closed }
+        isVisible && budgetStore.showsQuickAddButton && budgetStore.accounts.contains { !$0.closed }
     }
 
     func body(content: Content) -> some View {
@@ -27,7 +35,7 @@ private struct QuickAddButtonModifier: ViewModifier {
             .safeAreaPadding(.bottom, isShown ? QuickAddButton.clearance : 0)
             .overlay(alignment: .bottomTrailing) {
                 if isShown {
-                    QuickAddButton()
+                    QuickAddButton(action: action ?? { NotificationRouter.shared.pendingAddTransaction = true })
                         .padding(QuickAddButton.margin)
                         // A search keyboard covers the button rather than
                         // pushing it up over the results.
@@ -44,10 +52,10 @@ private struct QuickAddButton: View {
     /// on both sides, so the last row can scroll clear of it.
     static let clearance = diameter + 2 * margin
 
+    let action: () -> Void
+
     var body: some View {
-        Button {
-            NotificationRouter.shared.pendingAddTransaction = true
-        } label: {
+        Button(action: action) {
             Image(systemName: "plus")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(Color.accentColor)

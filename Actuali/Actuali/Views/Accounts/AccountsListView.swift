@@ -831,7 +831,8 @@ struct AccountsListView: View {
                 TopBoxLayout.verticalContentMargin,
                 for: .scrollContent
             )
-            .quickAddButton()
+            // The split layout's detail column carries its own.
+            .quickAddButton(isVisible: !usesSplitLayout)
             .overlay {
                 if hasNoSearchResults {
                     ContentUnavailableView.search(text: accountSearchText)

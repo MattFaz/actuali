@@ -1,7 +1,8 @@
 import XCTest
 
 /// The round + that replaced the Add tab (#350): it floats over Budget,
-/// Accounts and Reports, opens the entry form as a sheet, and More → Display
+/// Accounts, Reports and the transaction screens, opens the entry form as a
+/// sheet (on an account's own screen, for that account), and More → Display
 /// can hide it.
 final class QuickAddButtonUITests: XCTestCase {
     /// `-showsQuickAddButton YES` forces the setting on through the arguments
@@ -44,6 +45,41 @@ final class QuickAddButtonUITests: XCTestCase {
         app.keys["5"].tap()
         XCTAssertEqual(amountField.value as? String, "0.05",
                        "keypad input did not land in the amount field")
+    }
+
+    @MainActor
+    func testOnAnAccountTheButtonOpensTheFormForThatAccount() {
+        let app = launch(initialTab: 0)
+
+        // Demo data sets no default account, so a form that ignored the screen
+        // would open on the first open account, Chase Checking.
+        let accountRow = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'Ally Savings'")
+        ).firstMatch
+        XCTAssertTrue(accountRow.waitForExistence(timeout: 10), "Ally Savings row not found")
+        accountRow.tap()
+
+        openAddTransactionSheet(in: app)
+        let account = app.buttons["addTransaction.account"]
+        XCTAssertTrue(account.waitForExistence(timeout: 10), "the form has no account row")
+        XCTAssertTrue(account.label.contains("Ally Savings"),
+                      "the form should open on the account Quick Add was tapped in, not \(account.label)")
+    }
+
+    @MainActor
+    func testButtonShowsOnAllAccountsUntilTransactionsAreBeingSelected() {
+        let app = launch(initialTab: 0)
+
+        let allAccounts = app.buttons["accounts.topBox"]
+        XCTAssertTrue(allAccounts.waitForExistence(timeout: 20), "Accounts did not open")
+        allAccounts.tap()
+        XCTAssertTrue(app.navigationBars["All Accounts"].waitForExistence(timeout: 10), "All Accounts did not open")
+        XCTAssertTrue(app.buttons["quickAdd.button"].waitForExistence(timeout: 10),
+                      "no Quick Add button on All Accounts")
+
+        app.buttons["transactions.selectionMode"].tap()
+        XCTAssertTrue(app.buttons["quickAdd.button"].waitForNonExistence(timeout: 10),
+                      "the button stays up while transactions are being selected")
     }
 
     /// Starts switched off through the arguments domain, which is never
