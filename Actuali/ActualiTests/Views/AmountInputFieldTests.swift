@@ -125,6 +125,29 @@ struct AmountInputFieldTests {
         #expect(!labels(in: makeKeypad(for: plain)).contains("Flip sign"))
     }
 
+    /// While the caller's sign can't flip (a transfer with no partner, say),
+    /// the keypad's ± goes dead with it, and comes back when it can.
+    @Test func keypadSignFollowsTheCallersSignState() {
+        func signKey(in view: UIView) -> UIButton? {
+            for subview in view.subviews {
+                if let button = subview as? UIButton, button.accessibilityLabel == "Flip sign" {
+                    return button
+                }
+                if let found = signKey(in: subview) {
+                    return found
+                }
+            }
+            return nil
+        }
+        let (coordinator, _, _) = makeField(onToggleSign: {})
+        let keypad = makeKeypad(for: coordinator, hasSign: true)
+        #expect(signKey(in: keypad)?.isEnabled == true)
+        keypad.isSignEnabled = false
+        #expect(signKey(in: keypad)?.isEnabled == false)
+        keypad.isSignEnabled = true
+        #expect(signKey(in: keypad)?.isEnabled == true)
+    }
+
     @Test func calculatorModeShiftsDigitsIntoCents() {
         let (coordinator, textField, box) = makeField()
         type("120", into: coordinator, textField)

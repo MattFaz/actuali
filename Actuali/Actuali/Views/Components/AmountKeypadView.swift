@@ -15,11 +15,18 @@ import UIKit
 /// entry logic (cent shifting, replacing a selected amount) stays in one place.
 final class AmountKeypadView: UIInputView, UIInputViewAudioFeedback {
     private var decimalKey: UIButton?
+    private var signKey: UIButton?
 
     /// Follows the budget's number format, so the key matches what the
     /// field shows. The field accepts either separator.
     var decimalSeparator: String {
         didSet { decimalKey?.configuration?.title = decimalSeparator }
+    }
+
+    /// Follows the caller's own sign control, so ± can't sit live while the
+    /// button beside the field refuses to flip.
+    var isSignEnabled = true {
+        didSet { signKey?.isEnabled = isSignEnabled }
     }
 
     var enableInputClicksWhenVisible: Bool {
@@ -88,6 +95,7 @@ final class AmountKeypadView: UIInputView, UIInputViewAudioFeedback {
         addSubview(keys)
 
         decimalKey = decimal.button
+        signKey = sign?.button
         let firstKey = columns[0][0].button
         // Full width on a phone, but an iPad keyboard spans the screen and
         // keys that wide stop reading as a keypad, so the grid caps out.

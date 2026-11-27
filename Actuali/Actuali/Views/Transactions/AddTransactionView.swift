@@ -578,7 +578,8 @@ struct AddTransactionView: View {
                             textStyle: .extraLargeTitle,
                             weight: .bold,
                             autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty),
-                            onToggleSign: toggleDirection
+                            onToggleSign: toggleDirection,
+                            canToggleSign: canToggleDirection
                         )
                         .fixedSize(horizontal: true, vertical: false)
                         .frame(minWidth: amountMinWidth)
@@ -1562,6 +1563,8 @@ struct AmountInputField: UIViewRepresentable {
     /// sheets whose whole purpose is entering an amount.
     var autofocus = false
     var onToggleSign: (@MainActor () -> Void)?
+    /// Disables the keypad's ± while the caller's sign can't flip.
+    var canToggleSign = true
 
     /// becomeFirstResponder is a no-op until the view joins a window, and
     /// during a sheet presentation that happens well after makeUIView —
@@ -1633,6 +1636,7 @@ struct AmountInputField: UIViewRepresentable {
         let formatChanged = context.coordinator.numberFormat != budgetStore.numberFormat
         context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.parent = self
+        (uiView.inputView as? AmountKeypadView)?.isSignEnabled = canToggleSign
 
         if formatChanged {
             (uiView.inputView as? AmountKeypadView)?.decimalSeparator = budgetStore.numberFormat.decimalSeparator
