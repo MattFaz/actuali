@@ -151,6 +151,27 @@ struct CustomReportEngineTests {
         #expect(run(trim: false).map(\.label) == ["Apr '26", "May '26", "Jun '26", "Jul '26"])
         #expect(run(trim: false).map(\.valueUnits) == [0.0, 0.0, 100.0, 25.0])
         #expect(run(trim: true).map(\.label) == ["Jun '26", "Jul '26"])
+        #expect(run(trim: true).map(\.valueUnits) == [100.0, 25.0])
+    }
+
+    @Test func timeModeBarsSumOnlyTheRowsTheReportShows() {
+        // Food: -100 in Jun, +150 in Jul nets +50, so Net Payment drops the
+        // row. The bars must not chart Jun's 100 from the overall total.
+        let txs = [
+            tx("1", date: 20_260_601, amount: -10000, category: "c-food"),
+            tx("2", date: 20_260_701, amount: 15000, category: "c-food"),
+        ]
+        func run(_ balance: String, _ txs: [Transaction]) -> CustomReportData.Kind {
+            CustomReportEngine.compute(
+                config: config(mode: "time", groupBy: "Category", balance: balance,
+                               interval: "Monthly", graph: "BarGraph",
+                               staticRange: ("2026-06-01", "2026-07-31")),
+                transactions: txs, reportContext: reportContext, filterContext: .empty, today: today
+            ).kind
+        }
+        #expect(run("Net Payment", txs) == .bars([], signed: false))
+        // No activity at all → empty bars, so the card shows its empty state.
+        #expect(run("Payment", []) == .bars([], signed: false))
     }
 
     @Test func weeklyBucketsStartSunday() {

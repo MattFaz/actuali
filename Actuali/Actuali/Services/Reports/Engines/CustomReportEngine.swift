@@ -336,11 +336,9 @@ enum CustomReportEngine {
         }
         // Upstream trimIntervals.ts: span from the first to the last interval
         // where any surviving row, or the overall total, is non-zero.
-        var intervalTotals = overall
         if config.trimIntervals {
             let range = trimmedRange(rows.map(\.perBucket) + [overall])
             labels = Array(labels[range])
-            intervalTotals = Array(overall[range])
             for i in rows.indices {
                 rows[i].perBucket = Array(rows[i].perBucket[range])
             }
@@ -367,9 +365,14 @@ enum CustomReportEngine {
                 .map { .init(label: $0.name, valueUnits: $0.total, group: nil) },
                 groups: [])
         case "BarGraph" where config.mode == "time":
-            // A time report charts its intervals, so a single-category report
-            // over six months shows six bars rather than one six-month total.
-            data.kind = .bars(zip(labels, intervalTotals).map { .init(label: $0, valueUnits: $1) },
+            // Diverges from upstream: BarGraph.tsx charts the rows here, so a
+            // one-category "by month" report is a single bar. The web UI never
+            // saves this pair (ReportSidebar onChangeMode swaps in
+            // StackedBarGraph), so chart that graph's column totals instead.
+            // Sum the surviving rows, not `overall`: Net Payment / Net Deposit
+            // clip per row, and the bars must agree with the report's rows.
+            let totals = labels.indices.map { i in rows.reduce(0) { $0 + $1.perBucket[i] } }
+            data.kind = .bars(rows.isEmpty ? [] : zip(labels, totals).map { .init(label: $0, valueUnits: $1) },
                               signed: signed)
         default:
             data.kind = .bars(rows.map { .init(label: $0.name, valueUnits: $0.total) }, signed: signed)
