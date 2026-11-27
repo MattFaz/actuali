@@ -140,8 +140,17 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
                     return
                 }
                 let transactions = transactions
+                let started = ContinuousClock.now
                 if let value = try? await ReportComputation.compute(transactions: transactions, using: { recompute(range, $0) }) {
-                    ranged = (range, value)
+                    // Most ranges compute in a frame or two. Hold a newly
+                    // picked one for a full sweep of the shimmer, so the
+                    // placeholders read as loading rather than a flicker.
+                    if Self.isPending(ranged: ranged, range: range) {
+                        try? await Task.sleep(until: started + .milliseconds(800), clock: .continuous)
+                    }
+                    if !Task.isCancelled {
+                        ranged = (range, value)
+                    }
                 }
             }
     }

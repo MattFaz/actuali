@@ -101,7 +101,7 @@ private struct ReportShimmerSweep: View {
         }
         .allowsHitTesting(false)
         .onAppear {
-            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) { swept = true }
+            withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) { swept = true }
         }
     }
 }
