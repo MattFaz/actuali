@@ -593,6 +593,102 @@
         }
       }
     },
+    "Actual Server" : {
+      "comment" : "Enable Banking overview: label of the status row for the person's Actual server",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actual-Server"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actual Server"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidor Actual"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serveur Actual"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server Actual"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actual-server"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidor Actual"
+          }
+        }
+      }
+    },
+    "Reauthorize" : {
+      "comment" : "Enable Banking menu action on a linked account: send the person to its bank to approve access again",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut autorisieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reauthorize"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reautorizar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réautoriser"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riautorizza"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opnieuw autoriseren"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reautorizar"
+          }
+        }
+      }
+    },
     "Select the Correct Budget" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -683,6 +779,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abra Conexão e dados para baixar ou desbloquear o orçamento e tente novamente."
+          }
+        }
+      }
+    },
+    "Set Up" : {
+      "comment" : "Enable Banking overview: status value meaning the server has been configured (an adjective, not the verb)",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingerichtet"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set Up"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configuré"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurato"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingesteld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurado"
           }
         }
       }
@@ -19135,54 +19279,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No fim do mês, as fontes cedem seu saldo restante e os destinos o recebem, dividido por peso. Os pools limitam a troca aos seus membros."
-          }
-        }
-      }
-    },
-    "Authorize Again" : {
-      "comment" : "Enable Banking menu action on a linked account that sends the person to its bank again",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Erneut autorisieren"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Authorize Again"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Autorizar de nuevo"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Autoriser de nouveau"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Autorizza di nuovo"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Opnieuw autoriseren"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Autorizar novamente"
           }
         }
       }
@@ -40565,54 +40661,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enable Banking"
-          }
-        }
-      }
-    },
-    "Enable Banking is set up on your Actual server." : {
-      "comment" : "Enable Banking overview: status line shown when the Actual server has Enable Banking credentials",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enable Banking ist auf deinem Actual-Server eingerichtet."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enable Banking is set up on your Actual server."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enable Banking está configurado en tu servidor Actual."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enable Banking est configuré sur votre serveur Actual."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enable Banking è configurato sul tuo server Actual."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enable Banking is ingesteld op je Actual-server."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O Enable Banking está configurado no seu servidor Actual."
           }
         }
       }
@@ -92767,54 +92815,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Seu servidor Actual não oferece o Enable Banking. Atualize o servidor e tente novamente."
-          }
-        }
-      }
-    },
-    "Your Actual server holds the Enable Banking credentials, so this app and the web app share one connection. Accounts you link in either place work in both." : {
-      "comment" : "Enable Banking overview: footer under the status line",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dein Actual-Server verwaltet die Enable-Banking-Zugangsdaten, sodass diese App und die Web-App eine gemeinsame Verbindung nutzen. Konten, die du an einer Stelle verknüpfst, funktionieren an beiden."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Your Actual server holds the Enable Banking credentials, so this app and the web app share one connection. Accounts you link in either place work in both."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tu servidor Actual guarda las credenciales de Enable Banking, por lo que esta app y la app web comparten una sola conexión. Las cuentas que vincules en cualquiera de los dos lugares funcionan en ambos."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Votre serveur Actual conserve les identifiants Enable Banking, de sorte que cette app et l'app web partagent une seule connexion. Les comptes que vous liez à un endroit fonctionnent aux deux."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Il tuo server Actual conserva le credenziali Enable Banking, quindi questa app e l'app web condividono un'unica connessione. I conti che colleghi in un punto funzionano in entrambi."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Je Actual-server bewaart de Enable Banking-inloggegevens, zodat deze app en de webapp één verbinding delen. Rekeningen die je op een van beide plekken koppelt, werken in beide."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seu servidor Actual guarda as credenciais do Enable Banking, então este app e o app web compartilham uma única conexão. Contas que você vincula em qualquer um dos dois funcionam em ambos."
           }
         }
       }

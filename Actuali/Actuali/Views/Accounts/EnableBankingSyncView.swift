@@ -13,7 +13,7 @@ struct EnableBankingSyncView: View {
         case failed(String)
     }
 
-    /// What "Authorize Again" pushes: the connect screen with the account's
+    /// What "Reauthorize" pushes: the connect screen with the account's
     /// bank already chosen.
     private struct Reauthorization: Hashable {
         let bankName: String?
@@ -128,7 +128,7 @@ struct EnableBankingSyncView: View {
                     // Only the dots open the menu: a menu on the whole row tints
                     // it and hides the account while the menu is up.
                     Menu {
-                        Button("Authorize Again") {
+                        Button("Reauthorize") {
                             reauthorization = Reauthorization(bankName: account.institutionName)
                         }
                         .disabled(readiness != .ready)
@@ -192,8 +192,6 @@ struct EnableBankingSyncView: View {
                 Label("Connect a Bank", systemImage: "plus")
             }
             .accessibilityIdentifier("enableBanking.connect")
-        } footer: {
-            Text("You approve access on your bank's own page. Actuali never sees your bank sign-in details.")
         }
     }
 
@@ -232,15 +230,16 @@ struct EnableBankingSyncView: View {
             }
         case .ready:
             Section {
-                Label {
-                    Text("Enable Banking is set up on your Actual server.")
-                } icon: {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                LabeledContent("Actual Server") {
+                    Label {
+                        Text("Set Up")
+                    } icon: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                    .labelStyle(.titleAndIcon)
                 }
                 .accessibilityIdentifier("enableBanking.status")
-            } footer: {
-                Text("Your Actual server holds the Enable Banking credentials, so this app and the web app share one connection. Accounts you link in either place work in both.")
             }
         case .failed(let message):
             Section {
