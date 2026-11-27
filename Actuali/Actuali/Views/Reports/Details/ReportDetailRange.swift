@@ -169,6 +169,7 @@ extension ReportRangePicker {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .id(option)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
                 .accessibilityIdentifier("reportDetail.range.\(option?.titleKey ?? "Saved")")
             }
@@ -191,8 +192,13 @@ struct ReportRangePicker: View {
                 // even that doesn't fit.
                 ViewThatFits(in: .horizontal) {
                     options(range)
-                    ScrollView(.horizontal) { options(range) }
-                        .scrollIndicators(.hidden)
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal) { options(range) }
+                            .scrollIndicators(.hidden)
+                            // Picking a range rebuilds the page, and the row
+                            // with it: bring the pick back into view.
+                            .onAppear { proxy.scrollTo(range.wrappedValue, anchor: .center) }
+                    }
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel(ReportStrings.text("Time range", locale: locale))
