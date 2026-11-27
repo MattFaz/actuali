@@ -884,3 +884,58 @@ private extension OverspentAlertsEntry {
     OverspentAlertsEntry.previewSample(count: 12, balancesHidden: true)
     OverspentAlertsEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: true)
 }
+
+// MARK: - Overview
+
+private extension OverviewEntry {
+    /// Preview-only: the sample with every section filled, masked the way
+    /// the app writes it when hidden. Both variants share one date, since the
+    /// preview timeline orders entries by date.
+    static func previewSample(balancesHidden: Bool = false) -> OverviewEntry {
+        let sample = OverviewEntry.sample
+        let mask = { (text: String?) in balancesHidden ? "\u{2022}\u{2022}\u{2022}\u{2022}" : text }
+        return OverviewEntry(
+            date: .now.addingTimeInterval(-300),
+            balancesHidden: balancesHidden,
+            netWorth: sample.netWorth,
+            formattedNetWorth: mask(sample.formattedNetWorth),
+            toBudget: sample.toBudget,
+            formattedToBudget: mask(sample.formattedToBudget),
+            formattedTotalSpending: mask(sample.formattedTotalSpending),
+            formattedTotalBudgeted: mask(sample.formattedTotalBudgeted),
+            spentFraction: balancesHidden ? 0 : sample.spentFraction,
+            isOverbudget: false,
+            accounts: sample.accounts.map {
+                WidgetAccountBalance(
+                    id: $0.id, name: $0.name, balance: $0.balance, formattedBalance: mask($0.formattedBalance) ?? "",
+                    type: $0.type, offBudget: $0.offBudget
+                )
+            },
+            categories: sample.categories.map {
+                WidgetCategoryBalance(id: $0.id, name: $0.name, available: $0.available, formattedAvailable: mask($0.formattedAvailable) ?? "")
+            },
+            transactions: sample.transactions.map {
+                WidgetTransaction(
+                    id: $0.id, payeeName: $0.payeeName, categoryName: $0.categoryName,
+                    amount: balancesHidden ? 0 : $0.amount, formattedAmount: mask($0.formattedAmount) ?? "", date: $0.date
+                )
+            },
+            bills: sample.bills.map {
+                WidgetBillItem(
+                    id: $0.id, title: $0.title, amount: $0.amount, formattedAmount: mask($0.formattedAmount) ?? "",
+                    dueDay: $0.dueDay, dueMonth: $0.dueMonth, dueYear: $0.dueYear, status: $0.status
+                )
+            },
+            hasSnapshot: true
+        )
+    }
+}
+
+@available(iOS 27.0, *)
+#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+    OverviewWidget()
+} timeline: {
+    OverviewEntry.previewSample()
+    OverviewEntry.previewSample(balancesHidden: true)
+    OverviewEntry.empty
+}

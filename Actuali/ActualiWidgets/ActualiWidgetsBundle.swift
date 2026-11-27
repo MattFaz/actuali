@@ -16,6 +16,9 @@ struct ActualiWidgetsBundle: WidgetBundle {
         SpendingComparisonWidget()
         LargestTransactionsWidget()
         OverspentAlertsWidget()
+        if #available(iOS 27.0, *) {
+            OverviewWidget()
+        }
         QuickAddTransactionWidget()
     }
 }

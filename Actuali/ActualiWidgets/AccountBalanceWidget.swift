@@ -179,8 +179,8 @@ struct AccountBalanceWidgetView: View {
         return account.balance < 0 ? .red : .primary
     }
 
-    /// Also used by the Net Worth account rows, so every account row
-    /// carries the same symbol.
+    /// Also used by the Net Worth and Overview account rows, so every
+    /// account row carries the same symbol.
     nonisolated static func iconName(for type: String) -> String {
         switch type {
         case "checking": "banknote"

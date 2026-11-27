@@ -1364,6 +1364,53 @@
         }
       }
     },
+    "Net worth, budget, accounts, categories, transactions, and bills at a glance." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nettovermögen, Budget, Konten, Kategorien, Transaktionen und Rechnungen auf einen Blick."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Net worth, budget, accounts, categories, transactions, and bills at a glance."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Patrimonio neto, presupuesto, cuentas, categorías, transacciones y facturas de un vistazo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Patrimoine net, budget, comptes, catégories, transactions et factures en un coup d’œil."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Patrimonio netto, budget, conti, categorie, transazioni e fatture a colpo d’occhio."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nettovermogen, budget, bankrekeningen, categorieën, transacties en rekeningen in één oogopslag."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Patrimônio líquido, orçamento, contas, categorias, transações e faturas em um relance."
+          }
+        }
+      }
+    },
     "Net Worth: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2253,6 +2300,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alertas de excesso"
+          }
+        }
+      }
+    },
+    "Overview" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übersicht"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overview"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resumen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vue d’ensemble"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panoramica"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overzicht"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visão geral"
           }
         }
       }

@@ -2405,4 +2405,95 @@ struct WidgetSnapshotTests {
         #expect(top.formattedSpendingDifference == budgetStore.displayBalance(20000))
         #expect(snapshot.totalSpentLastMonth == -18000)
     }
+
+    // MARK: Overview Extra Large Portrait (#862)
+
+    // OverviewProvider's fixed section sizes; the widget is Extra Large
+    // Portrait only, so there is one limit per section rather than per family.
+    private let overviewAccountLimit = 3
+    private let overviewCategoryLimit = 4
+    private let overviewTransactionLimit = 3
+    private let overviewBillLimit = 3
+
+    private func overviewSnapshot(balancesHidden: Bool = false) -> WidgetSnapshot {
+        let budgets = (0..<6).map { index in
+            CategoryBudget(
+                month: "2026-08", categoryId: "c\(index)", categoryName: "Category \(index)",
+                groupId: "g1", groupName: "Everyday", groupSortOrder: 0, categorySortOrder: Double(index),
+                budgeted: 50000, spent: -30000, available: 20000, carryover: 0
+            )
+        }
+        let accounts = (0..<5).map {
+            Account(id: "a\($0)", name: "Account \($0)", type: .checking, offBudget: $0 == 1, closed: false, sortOrder: $0, balance: 10000)
+        }
+        return WidgetSnapshot.make(
+            from: budgets, month: "2026-08", balancesHidden: balancesHidden, generatedAt: Date(),
+            format: { balancesHidden ? "••••" : "$\($0)" },
+            accounts: accounts,
+            budgetMonth: BudgetMonth(month: "2026-08", categoryBudgets: budgets, toBudget: 62900),
+            schedules: billSchedules(count: 5).reversed(),
+            transactions: (1...5).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: -100) }
+        )
+    }
+
+    @Test func overviewFillsEverySectionToItsFixedSize() {
+        let snapshot = overviewSnapshot()
+
+        // Headline: Net Worth counts the off-budget account the rows skip.
+        #expect(snapshot.formattedNetWorth == "$50000")
+        #expect(snapshot.formattedToBudget == "$62900")
+        #expect(snapshot.formattedTotalSpending == "$180000")
+        #expect(snapshot.formattedTotalBudgeted == "$300000")
+        #expect(snapshot.spentFraction == 0.6)
+
+        #expect(snapshot.accounts(matching: [], limit: overviewAccountLimit).map(\.id) == ["a0", "a2", "a3"])
+        #expect(snapshot.categories(matching: [], limit: overviewCategoryLimit).map(\.id) == ["c0", "c1", "c2", "c3"])
+        #expect(snapshot.latestTransactions(limit: overviewTransactionLimit).map(\.id) == ["t5", "t4", "t3"])
+        #expect(snapshot.nextBills(limit: overviewBillLimit).map(\.id) == ["s1", "s2", "s3"])
+    }
+
+    @Test func overviewShowsChosenCategoriesInChosenOrderCappedAtFour() {
+        let snapshot = overviewSnapshot()
+
+        #expect(snapshot.categories(matching: ["c5", "c0", "c3", "c1", "c2"], limit: overviewCategoryLimit).map(\.id) == ["c5", "c0", "c3", "c1"])
+        #expect(snapshot.categories(matching: ["c4", "gone"], limit: overviewCategoryLimit).map(\.id) == ["c4"])
+    }
+
+    /// Each section's own empty line covers this: a budget with no accounts,
+    /// transactions or bills still shows its headline and categories.
+    @Test func overviewSectionsWithoutDataAreEmpty() {
+        let snapshot = sampleSnapshot()
+
+        #expect(snapshot.accounts(matching: [], limit: overviewAccountLimit).isEmpty)
+        #expect(snapshot.latestTransactions(limit: overviewTransactionLimit).isEmpty)
+        #expect(snapshot.nextBills(limit: overviewBillLimit).isEmpty)
+        #expect(snapshot.categories(matching: [], limit: overviewCategoryLimit).count == 3)
+    }
+
+    @Test @MainActor func hiddenBalancesMaskEveryOverviewAmount() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.accounts = [onBudgetAccount]
+        budgetStore.schedules = billSchedules(count: 5)
+        budgetStore.transactions = (1...5).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: -100) }
+        budgetStore.widgetBudgetMonth = spendingMonth("2026-08", spent: -42000)
+        budgetStore.hideBalances = true
+        defer { budgetStore.hideBalances = false }
+
+        let snapshot = try #require(store.read())
+        let hidden = BudgetStore.hiddenBalanceText
+
+        #expect(snapshot.balancesHidden)
+        #expect(snapshot.formattedNetWorth == hidden)
+        #expect(snapshot.formattedTotalSpending == hidden)
+        #expect(snapshot.formattedTotalBudgeted == hidden)
+        #expect(snapshot.spentFraction == 0)
+        #expect(snapshot.accounts(matching: [], limit: overviewAccountLimit).allSatisfy { $0.formattedBalance == hidden })
+        #expect(snapshot.categories(matching: [], limit: overviewCategoryLimit).allSatisfy { $0.formattedAvailable == hidden })
+        #expect(snapshot.latestTransactions(limit: overviewTransactionLimit).allSatisfy { $0.formattedAmount == hidden && $0.amount == 0 })
+        let bills = snapshot.nextBills(limit: overviewBillLimit)
+        #expect(bills.count == overviewBillLimit)
+        #expect(bills.allSatisfy { $0.formattedAmount == hidden })
+    }
 }
