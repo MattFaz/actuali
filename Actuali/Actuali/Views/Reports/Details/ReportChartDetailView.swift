@@ -48,15 +48,15 @@ struct ReportChartDetailView: View {
                 }
                 readout
                 chart
-                HStack(alignment: .firstTextBaseline) {
-                    Text(ReportStrings.text("Drag across the chart to inspect a point.", locale: locale))
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    Spacer()
+                Group {
                     // A range change can leave an interval that is gone.
                     if selected.flatMap(detail.intervals.firstIndex(of:)) != nil {
                         Button(ReportStrings.text("Clear selection", locale: locale)) { selected = nil }
                             .accessibilityIdentifier("reportDetail.clearSelection")
+                    } else {
+                        Text(ReportStrings.text("Drag across the chart to inspect a point.", locale: locale))
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                     }
                 }
                 .font(.footnote)
@@ -176,6 +176,7 @@ struct ReportChartDetailView: View {
             get: { selected },
             set: { selected = ReportDetailChart.pinned(selected, scrubbedTo: $0) }
         ))
+            .sensoryFeedback(.selection, trigger: selected)
             // The interval list below already reads every figure. The other
             // lists carry one interval, and VoiceOver can't drag to move it,
             // so there the chart stands in for the whole table.
@@ -199,8 +200,9 @@ struct ReportChartDetailView: View {
 
     private var seriesList: some View {
         VStack(spacing: 0) {
-            ForEach(detail.series.indices, id: \.self) { index in
-                if index > 0 {
+            let ranked = detail.rankedSeries
+            ForEach(ranked, id: \.self) { index in
+                if index != ranked.first {
                     Divider()
                 }
                 if detail.canHideSeries {
@@ -232,6 +234,12 @@ struct ReportChartDetailView: View {
             Spacer()
             Text(isHidden ? ReportStrings.text("Hidden", locale: locale) : amount(detail.value(of: index, at: shownInterval)))
                 .monospacedDigit()
+            // Shares give the proportions away, so they hide with the amounts.
+            if !budgetStore.hideBalances, let share = detail.share(of: index, at: shownInterval, hiding: hidden) {
+                Text(share.formatted(.percent.precision(.fractionLength(0)).locale(locale)))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
         }
         .font(.subheadline)
         .foregroundStyle(isHidden ? .secondary : .primary)

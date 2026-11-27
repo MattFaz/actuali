@@ -152,6 +152,23 @@ struct ReportChartDetail: Equatable {
         interval.map { self.series[series].values[$0] } ?? self.series[series].values.reduce(0, +)
     }
 
+    /// The order of the list under the chart: largest first, over the range
+    /// for bars and at the latest interval for levels. Not by the selected
+    /// interval, so the rows hold still while the chart is scrubbed.
+    var rankedSeries: [Int] {
+        let size = series.indices.map { abs(value(of: $0, at: sumsOverRange ? nil : intervals.indices.last)) }
+        return series.indices.sorted { size[$0] != size[$1] ? size[$0] > size[$1] : $0 < $1 }
+    }
+
+    /// A series' part of the headline sum; nil where there is no sum, or
+    /// mixed signs leave no whole to be a part of.
+    func share(of series: Int, at interval: Int?, hiding hidden: Set<Int> = []) -> Double? {
+        guard readout == .total, !hidden.contains(series),
+              let total = readoutValue(at: interval, hiding: hidden), total != 0 else { return nil }
+        let share = value(of: series, at: interval) / total
+        return (0...1).contains(share) ? share : nil
+    }
+
     /// The headline at an interval, or over the whole range when nil.
     func readoutValue(at interval: Int?, hiding hidden: Set<Int> = []) -> Double? {
         switch readout {

@@ -275,6 +275,27 @@ struct ReportDetailTests {
         var line = total
         line.style = .lines
         #expect(!line.sumsOverRange)
+
+        // The list runs largest first: over the range for bars, at the
+        // latest interval for levels. Equal sizes keep the legend's order.
+        #expect(total.rankedSeries == [0, 1, 2])
+        var reordered = total
+        reordered.series[2].values = [0, 0, 900]
+        reordered.series[1].values = [50, 50, 100]
+        #expect(reordered.rankedSeries == [2, 0, 1])
+        reordered.style = .lines
+        #expect(reordered.rankedSeries == [2, 0, 1])
+        reordered.series[0].values = [0, 0, 100]
+        #expect(reordered.rankedSeries == [2, 0, 1])
+
+        // A share is a part of the headline sum, so only sums have one.
+        #expect(total.share(of: 1, at: 2) == 30.0 / 333)
+        #expect(total.share(of: 1, at: 2, hiding: [0]) == 30.0 / 33)
+        #expect(total.share(of: 1, at: 2, hiding: [1]) == nil)
+        #expect(total.share(of: 1, at: nil) == 60.0 / 266)
+        // Mixed signs leave no whole to be a part of.
+        #expect(total.share(of: 0, at: 1) == nil)
+        #expect(difference.share(of: 0, at: 2) == nil)
         // Three series that can't be switched off sit beside the headline; four go in a list.
         #expect(difference.showsInlineLegend)
         difference.series.append(difference.series[0])
