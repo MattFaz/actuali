@@ -132,6 +132,19 @@ struct EnableBankingSyncView: View {
             ForEach(linkedAccounts) { account in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(account.name)
+                    if let bank = account.institutionName {
+                        Text(bank)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let lastSync = account.lastSync {
+                        HStack(spacing: 4) {
+                            Text("Last Bank Sync")
+                            Text(lastSync, format: .relative(presentation: .named))
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                     if let message = account.attentionMessage {
                         Text(message)
                             .font(.caption)
