@@ -19,7 +19,7 @@ extension XCTestCase {
         // The sheet autofocuses the field; the decimal pad appearing is the
         // signal that it's ready. Enter the amount by tapping keypad keys —
         // typeText's focus-dependent event synthesis flakes on CI runners.
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
                       "keyboard did not appear for the amount field")
 
         // A loaded runner can still be settling the sheet when the first keys

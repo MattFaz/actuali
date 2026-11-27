@@ -53,6 +53,10 @@ struct AddTransactionView: View {
     @State private var showCategoryPicker = false
     @State private var showAccountPicker = false
     @State private var showDiscardConfirmation = false
+    /// The floating save buttons step aside while a keyboard is up: the
+    /// keypad's Done is the action then, and the buttons would sit over the
+    /// form's last rows.
+    @State private var keyboardShown = false
     @State private var saveLocation = true
     /// Set once the user flips Save Location, so the at-home default never
     /// overrides their choice for this entry (GH #845).
@@ -829,42 +833,50 @@ struct AddTransactionView: View {
                 }
             }
             .readableWidth()
-            // The save action floats at the foot of the screen, so it's in
-            // reach right above the keypad: enter an amount, then save,
-            // without dropping the keypad or scrolling first.
+            // The save action floats at the foot of the screen, in reach
+            // without scrolling to the end of the form.
             .safeAreaInset(edge: .bottom) {
-                HStack(spacing: 12) {
-                    if canScheduleTransaction {
+                if !keyboardShown {
+                    HStack(spacing: 12) {
+                        if canScheduleTransaction {
+                            Button {
+                                Task { await scheduleTransaction() }
+                            } label: {
+                                Text("Schedule")
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("addTransaction.schedule")
+                        }
                         Button {
-                            Task { await scheduleTransaction() }
+                            Task { await saveTransaction() }
                         } label: {
-                            Text("Schedule")
+                            Text(saveButtonTitle)
                                 .fontWeight(.semibold)
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("addTransaction.schedule")
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("addTransaction.save")
+                        // Hardware-keyboard commit, for the iPad case where the
+                        // form is filled without ever leaving the keys. Return on
+                        // its own belongs to the focused field; ⌘Return is the
+                        // whole form. Inert while the save is disabled.
+                        .keyboardShortcut(.return, modifiers: .command)
                     }
-                    Button {
-                        Task { await saveTransaction() }
-                    } label: {
-                        Text(saveButtonTitle)
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    // Hardware-keyboard commit, for the iPad case where the
-                    // form is filled without ever leaving the keys. Return on
-                    // its own belongs to the focused field; ⌘Return is the
-                    // whole form. Inert while the save is disabled.
-                    .keyboardShortcut(.return, modifiers: .command)
+                    .controlSize(.large)
+                    .buttonBorderShape(.capsule)
+                    .disabled(saveDisabled)
+                    .readableWidth()
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
                 }
-                .controlSize(.large)
-                .buttonBorderShape(.capsule)
-                .disabled(saveDisabled)
-                .readableWidth()
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                keyboardShown = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                keyboardShown = false
             }
             // The form's default ~35pt top inset is dead space on the
             // header-less tab root; 8pt keeps the first section off the status
@@ -1540,9 +1552,8 @@ private struct SplitLineRow: View {
 /// and collapses to "18.50" when editing ends. Evaluation is strictly
 /// left-to-right with no operator precedence — this is an entry aid, not a
 /// calculator. The binding always holds the plain evaluated decimal, never
-/// the expression, so a save taken mid-expression (the save button sits
-/// above the keypad and doesn't end editing) still commits a parseable
-/// amount.
+/// the expression, so a save taken mid-expression (⌘Return on a hardware
+/// keyboard doesn't end editing) still commits a parseable amount.
 struct AmountInputField: UIViewRepresentable {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Binding var text: String

@@ -89,14 +89,14 @@ final class HomeScreenQuickActionsUITests: XCTestCase {
 
     @MainActor
     private func setStartPage(_ page: String, in app: XCUIApplication) throws -> String {
-        if app.keyboards.firstMatch.exists {
+        if app.amountKeypad.exists {
             app.buttons["Done"].firstMatch.tap()
-            if !app.keyboards.firstMatch.waitForNonExistence(timeout: 3) {
+            if !app.amountKeypad.waitForNonExistence(timeout: 3) {
                 app.buttons["Done"].firstMatch.tap()
             }
             // The tab bar sits behind the keyboard; tapping More before it
             // finishes dismissing lands on the keyboard instead.
-            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+            XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5),
                           "the keyboard stayed up over the tab bar")
         }
         let more = app.tabBars.buttons["More"]

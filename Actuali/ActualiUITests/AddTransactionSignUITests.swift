@@ -14,7 +14,7 @@ final class AddTransactionSignUITests: XCTestCase {
         XCTAssertTrue(sign.waitForExistence(timeout: 10))
         XCTAssertEqual(sign.value as? String, "Outflow", "a new transaction starts as an expense")
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "keyboard did not appear")
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10), "keyboard did not appear")
         XCTAssertFalse(app.buttons["Flip sign"].exists, "keyboard bar repeats the sign button")
 
         sign.tap()

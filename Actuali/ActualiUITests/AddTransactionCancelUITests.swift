@@ -16,7 +16,7 @@ final class AddTransactionCancelUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(amountField.waitForExistence(timeout: 10), "amount field not found")
         amountField.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 5),
                       "keyboard did not appear")
         amountField.typeText("500")
         XCTAssertFalse(app.buttons["Cancel"].exists, "add flow still shows a Cancel row")
