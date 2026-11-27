@@ -406,3 +406,155 @@ private extension SpendingSummaryEntry {
     SpendingSummaryEntry.previewSample(count: 8, overbudget: true)
     SpendingSummaryEntry.previewSample(count: 8, balancesHidden: true)
 }
+
+// MARK: - RecentTransactions
+
+private extension RecentTransactionsEntry {
+    /// Preview-only: long payee and category names plus a four-digit income
+    /// amount, so truncation always lands on the names. 12 rows so Large (8)
+    /// and Extra Large Portrait (12) fill to their provider limits.
+    static func previewSample(count: Int, balancesHidden: Bool = false) -> RecentTransactionsEntry {
+        let rows: [(String, String, Int, Int)] = [
+            ("Corner Café & Bakery", "Dining Out", -1250, 20_261_124),
+            ("Fresh Market Grocery", "Groceries", -6342, 20_261_123),
+            ("Acme Corporation Payroll", "Income", 245_000, 20_261_121),
+            ("City Transit Authority", "Transport", -275, 20_261_120),
+            ("Streaming Subscription Bundle", "Subscriptions", -2299, 20_261_118),
+            ("Hardware Depot", "Home Maintenance", -8915, 20_261_117),
+            ("Neighbourhood Pharmacy", "Health & Fitness", -1840, 20_261_116),
+            ("City Power & Light", "Utilities", -11260, 20_261_115),
+            ("Bookshop on Main", "Fun Money", -2400, 20_261_114),
+            ("Sunday Farmers Market", "Groceries", -3150, 20_261_113),
+            ("Refund: Outdoor Gear Co", "Clothing", 4999, 20_261_112),
+            ("Petrol Station", "Transport", -6020, 20_261_111),
+        ]
+        let format = FloatingPointFormatStyle<Double>.Currency(code: "USD").locale(Locale(identifier: "en_US"))
+        return RecentTransactionsEntry(
+            date: .now.addingTimeInterval(-300),
+            balancesHidden: balancesHidden,
+            transactions: rows.prefix(count).enumerated().map { index, row in
+                WidgetTransaction(
+                    id: "preview-\(index)",
+                    payeeName: row.0,
+                    // Mirrors the snapshot: a hidden category's name is blank under the mask.
+                    categoryName: balancesHidden && index == 1 ? nil : row.1,
+                    amount: balancesHidden ? 0 : row.2,
+                    formattedAmount: balancesHidden ? "\u{2022}\u{2022}\u{2022}\u{2022}" : (Double(row.2) / 100).formatted(format),
+                    date: row.3
+                )
+            },
+            formattedMonthTotal: balancesHidden ? "\u{2022}\u{2022}\u{2022}\u{2022}" : "$1,842.00",
+            hasSnapshot: true
+        )
+    }
+}
+
+#Preview("Small", as: .systemSmall) {
+    RecentTransactionsWidget()
+} timeline: {
+    RecentTransactionsEntry.previewSample(count: 3)
+    RecentTransactionsEntry.previewSample(count: 3, balancesHidden: true)
+    RecentTransactionsEntry(date: .now, balancesHidden: false, transactions: [], formattedMonthTotal: nil, hasSnapshot: true)
+}
+
+#Preview("Medium", as: .systemMedium) {
+    RecentTransactionsWidget()
+} timeline: {
+    RecentTransactionsEntry.previewSample(count: 5)
+    RecentTransactionsEntry.previewSample(count: 5, balancesHidden: true)
+}
+
+#Preview("Large", as: .systemLarge) {
+    RecentTransactionsWidget()
+} timeline: {
+    RecentTransactionsEntry.previewSample(count: 8)
+    RecentTransactionsEntry.previewSample(count: 8, balancesHidden: true)
+    RecentTransactionsEntry.previewSample(count: 2)
+    RecentTransactionsEntry(date: .now, balancesHidden: false, transactions: [], formattedMonthTotal: nil, hasSnapshot: false)
+}
+
+@available(iOS 27.0, *)
+#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+    RecentTransactionsWidget()
+} timeline: {
+    RecentTransactionsEntry.previewSample(count: 12)
+    RecentTransactionsEntry.previewSample(count: 12, balancesHidden: true)
+}
+
+// MARK: - LargestTransactions
+
+private extension LargestTransactionsEntry {
+    /// Preview-only: long payee and category names plus a four-digit amount,
+    /// so truncation always lands on the names. Hidden rows arrive newest
+    /// first, as the snapshot orders them.
+    static func previewSample(count: Int, balancesHidden: Bool = false) -> LargestTransactionsEntry {
+        let mask = "\u{2022}\u{2022}\u{2022}\u{2022}"
+        let largestFirst: [(String, String, Int, Int)] = [
+            ("Riverside Apartments Management", "Rent", -145_000, 20_261_101),
+            ("Fresh Market Grocery", "Groceries", -18342, 20_261_118),
+            ("City Power & Light Company", "Utilities", -9611, 20_261_109),
+            ("Northside Auto Repair", "Car Maintenance", -8450, 20_261_112),
+            ("Lumen Internet", "Utilities", -6999, 20_261_105),
+            ("Corner Café", "Dining Out", -4215, 20_261_120),
+            ("Metro Transit", "Transport", -3500, 20_261_103),
+            ("Bookworm Books", "Entertainment", -2899, 20_261_115),
+        ]
+        let rows = balancesHidden ? largestFirst.sorted { $0.3 > $1.3 } : largestFirst
+        let format = FloatingPointFormatStyle<Double>.Currency(code: "USD").locale(Locale(identifier: "en_US"))
+        return LargestTransactionsEntry(
+            date: .now.addingTimeInterval(-300),
+            balancesHidden: balancesHidden,
+            transactions: rows.prefix(count).enumerated().map { index, row in
+                WidgetTransaction(
+                    id: "preview-\(index)",
+                    payeeName: row.0,
+                    // Mirrors the snapshot: a hidden category's name is blank under the mask.
+                    categoryName: balancesHidden && index == 0 ? nil : row.1,
+                    amount: balancesHidden ? 0 : row.2,
+                    formattedAmount: balancesHidden ? mask : (Double(row.2) / 100).formatted(format),
+                    date: row.3
+                )
+            },
+            hasSnapshot: true,
+            formattedTotalSpending: balancesHidden ? mask : "$1,842.00"
+        )
+    }
+}
+
+#Preview("Small", as: .systemSmall) {
+    LargestTransactionsWidget()
+} timeline: {
+    LargestTransactionsEntry.previewSample(count: 1)
+    LargestTransactionsEntry.previewSample(count: 1, balancesHidden: true)
+    LargestTransactionsEntry(date: .now, balancesHidden: false, transactions: [], hasSnapshot: true)
+    LargestTransactionsEntry(date: .now, balancesHidden: false, transactions: [], hasSnapshot: false)
+}
+
+#Preview("Medium", as: .systemMedium) {
+    LargestTransactionsWidget()
+} timeline: {
+    LargestTransactionsEntry.previewSample(count: 3)
+    LargestTransactionsEntry.previewSample(count: 1)
+    LargestTransactionsEntry.previewSample(count: 3, balancesHidden: true)
+    LargestTransactionsEntry(date: .now, balancesHidden: false, transactions: [], hasSnapshot: true)
+}
+
+#Preview("Large", as: .systemLarge) {
+    LargestTransactionsWidget()
+} timeline: {
+    LargestTransactionsEntry.previewSample(count: 5)
+    LargestTransactionsEntry.previewSample(count: 2)
+    LargestTransactionsEntry.previewSample(count: 5, balancesHidden: true)
+    LargestTransactionsEntry(date: .now, balancesHidden: false, transactions: [], hasSnapshot: true)
+    LargestTransactionsEntry(date: .now, balancesHidden: false, transactions: [], hasSnapshot: false)
+}
+
+@available(iOS 27.0, *)
+#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+    LargestTransactionsWidget()
+} timeline: {
+    LargestTransactionsEntry.previewSample(count: 8)
+    LargestTransactionsEntry.previewSample(count: 3)
+    LargestTransactionsEntry.previewSample(count: 8, balancesHidden: true)
+    LargestTransactionsEntry(date: .now, balancesHidden: false, transactions: [], hasSnapshot: true)
+}

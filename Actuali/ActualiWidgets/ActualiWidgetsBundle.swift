@@ -10,6 +10,8 @@ struct ActualiWidgetsBundle: WidgetBundle {
         ToBeBudgetedWidget()
         UpcomingBillsWidget()
         SpendingSummaryWidget()
+        RecentTransactionsWidget()
+        LargestTransactionsWidget()
         QuickAddTransactionWidget()
     }
 }

@@ -1004,4 +1004,385 @@ struct WidgetSnapshotTests {
             #expect(shown.allSatisfy { $0.formattedAmount == BudgetStore.hiddenBalanceText })
         }
     }
+
+    // MARK: - Group 1: Transactions
+
+    private func spendingMonth(_ month: String, spent: Int, budgeted: Int = 100_000) -> BudgetMonth {
+        BudgetMonth(month: month, categoryBudgets: [
+            CategoryBudget(
+                month: month, categoryId: "c1", categoryName: "Groceries",
+                groupId: "g1", groupName: "Everyday", groupSortOrder: 0, categorySortOrder: 0,
+                budgeted: budgeted, spent: spent, available: budgeted + spent, carryover: 0
+            ),
+        ])
+    }
+
+    private func makeTransaction(
+        id: String, date: Int, amount: Int, accountId: String = "a1",
+        sortOrder: Double? = nil, transferAcct: String? = nil,
+        categoryId: String = "c1", categoryName: String = "Groceries"
+    ) -> Transaction {
+        var transaction = Transaction(
+            id: id, accountId: accountId, date: date, amount: amount,
+            payeeId: nil, payeeName: "Payee \(id)", categoryId: categoryId, categoryName: categoryName,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: false, parentId: nil, tombstone: false, sortOrder: sortOrder, importedPayee: nil
+        )
+        transaction.transferAcct = transferAcct
+        return transaction
+    }
+
+    private let onBudgetAccount = Account(id: "a1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 1, balance: 0)
+    private let offBudgetAccount = Account(id: "off", name: "Brokerage", type: .investment, offBudget: true, closed: false, sortOrder: 2, balance: 0)
+
+    private func transactionSnapshot(_ transactions: [Transaction], balancesHidden: Bool = false) -> WidgetSnapshot {
+        WidgetSnapshot.make(
+            from: [], month: "2026-08", balancesHidden: balancesHidden, generatedAt: Date(),
+            format: { balancesHidden ? "••••" : "$\($0)" },
+            accounts: [onBudgetAccount, offBudgetAccount], transactions: transactions
+        )
+    }
+
+    @Test func recentTransactionsAreNewestFirstAndCappedAtTwelve() throws {
+        // Shuffled, with two same-day rows that only sort order separates —
+        // BudgetStore appends new saves to the end of its list.
+        let transactions = (1...15).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: -100) }
+            + [makeTransaction(id: "late", date: 20_260_815, amount: -100, sortOrder: 2),
+               makeTransaction(id: "early", date: 20_260_815, amount: -100, sortOrder: 1)]
+
+        let snapshot = transactionSnapshot(transactions.shuffled())
+
+        let recent = try #require(snapshot.recentTransactions)
+        #expect(recent.map(\.id) == ["late", "early", "t15", "t14", "t13", "t12", "t11", "t10", "t9", "t8", "t7", "t6"])
+        let first = try #require(recent.first)
+        #expect(first.payeeName == "Payee late")
+        #expect(first.categoryName == "Groceries")
+        #expect(first.amount == -100)
+        #expect(first.formattedAmount == "$-100")
+        #expect(first.date == 20_260_815)
+    }
+
+    @Test func largestTransactionsAreThisMonthsSpendingOnlyAndCappedAtTwelve() throws {
+        let spending = (1...15).map { makeTransaction(id: "s\($0)", date: 20_260_810, amount: -1000 * $0) }
+        let excluded = [
+            makeTransaction(id: "income", date: 20_260_810, amount: 999_999),
+            makeTransaction(id: "last-month", date: 20_260_731, amount: -999_999),
+            makeTransaction(id: "transfer", date: 20_260_810, amount: -999_999, transferAcct: "off"),
+            makeTransaction(id: "off-budget", date: 20_260_810, amount: -999_999, accountId: "off"),
+        ]
+
+        let snapshot = transactionSnapshot((spending + excluded).shuffled())
+
+        let largest = try #require(snapshot.largestTransactions)
+        #expect(largest.map(\.id) == (4...15).reversed().map { "s\($0)" })
+        #expect(largest.allSatisfy { $0.amount < 0 })
+    }
+
+    @Test func hiddenBalancesPickLargestTransactionsByDateNotAmount() throws {
+        // The biggest purchases are the oldest, so an amount ranking would
+        // surface s1...s3; under the mask only recency may choose the rows.
+        let spending = (1...15).map { makeTransaction(id: "s\($0)", date: 20_260_800 + $0, amount: -100_000 + 1000 * $0) }
+
+        let snapshot = transactionSnapshot(spending.shuffled(), balancesHidden: true)
+
+        let largest = try #require(snapshot.largestTransactions)
+        #expect(largest.map(\.id) == (4...15).reversed().map { "s\($0)" })
+        #expect(largest.allSatisfy { $0.amount == 0 && $0.formattedAmount == "••••" })
+    }
+
+    @Test func hiddenBalancesBlankHiddenCategoryNamesOnTransactionRows() throws {
+        var month = BudgetMonth(month: "2026-08", categoryBudgets: [])
+        month.hiddenCategoryBudgets = [CategoryBudget(
+            month: "2026-08", categoryId: "secret", categoryName: "Therapy",
+            groupId: "g1", groupName: "Health", groupSortOrder: 0, categorySortOrder: 0,
+            budgeted: 0, spent: -500, available: -500, carryover: 0, hidden: true
+        )]
+        let transactions = [
+            makeTransaction(id: "hidden-cat", date: 20_260_810, amount: -500, categoryId: "secret", categoryName: "Therapy"),
+            makeTransaction(id: "visible-cat", date: 20_260_809, amount: -300),
+        ]
+
+        let snapshot = WidgetSnapshot.make(
+            from: [], month: "2026-08", balancesHidden: true, generatedAt: Date(), format: { _ in "••••" },
+            accounts: [onBudgetAccount], budgetMonth: month, transactions: transactions
+        )
+
+        let rows = try #require(snapshot.recentTransactions) + #require(snapshot.largestTransactions)
+        #expect(rows.count == 4)
+        for row in rows {
+            #expect(row.categoryName == (row.id == "hidden-cat" ? nil : "Groceries"))
+        }
+        // Shown balances keep the name, matching what the Budget tab lists.
+        let shown = WidgetSnapshot.make(
+            from: [], month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" },
+            accounts: [onBudgetAccount], budgetMonth: month, transactions: transactions
+        )
+        #expect(shown.recentTransactions?.first?.categoryName == "Therapy")
+    }
+
+    @Test func transactionListsAreEmptyWithoutTransactions() {
+        let snapshot = transactionSnapshot([])
+
+        #expect(snapshot.recentTransactions == [])
+        #expect(snapshot.largestTransactions == [])
+    }
+
+    @Test @MainActor func publishCarriesStoreTransactionsAndMasksThemWhenHidden() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.accounts = [onBudgetAccount]
+        budgetStore.transactions = (1...15).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: $0.isMultiple(of: 2) ? 500 : -500) }
+        budgetStore.widgetBudgetMonth = BudgetMonth(month: "2026-08", categoryBudgets: [])
+        budgetStore.hideBalances = true
+        defer { budgetStore.hideBalances = false }
+
+        let snapshot = try #require(store.read())
+        let recent = try #require(snapshot.recentTransactions)
+        let largest = try #require(snapshot.largestTransactions)
+
+        #expect(recent.count == 12)
+        #expect(largest.count == 8)
+        // Raw cents are zeroed too, so neither the amount nor an income sign
+        // can leak through the mask.
+        for row in recent + largest {
+            #expect(row.formattedAmount == BudgetStore.hiddenBalanceText)
+            #expect(row.amount == 0)
+        }
+    }
+
+    // RecentTransactionsProvider's per-family limits; the provider lives in
+    // the widget extension, so the tests mirror them here.
+    private let recentSmallLimit = 3
+    private let recentMediumLimit = 4
+
+    @Test func recentTransactionsShowNewestUpToFamilyLimit() {
+        let snapshot = transactionSnapshot((1...15).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: -100) }.shuffled())
+
+        #expect(snapshot.latestTransactions(limit: recentSmallLimit).map(\.id) == ["t15", "t14", "t13"])
+        #expect(snapshot.latestTransactions(limit: recentMediumLimit).map(\.id) == ["t15", "t14", "t13", "t12"])
+    }
+
+    @Test func recentTransactionsFewerThanLimitShowsOnlyWhatExists() {
+        let snapshot = transactionSnapshot([
+            makeTransaction(id: "old", date: 20_260_801, amount: -100),
+            makeTransaction(id: "new", date: 20_260_802, amount: -100),
+        ])
+
+        for limit in [recentSmallLimit, recentMediumLimit] {
+            #expect(snapshot.latestTransactions(limit: limit).map(\.id) == ["new", "old"])
+        }
+        // Snapshots written before transactions existed decode with nil.
+        #expect(sampleSnapshot().latestTransactions(limit: recentMediumLimit).isEmpty)
+    }
+
+    @Test @MainActor func hiddenBalancesMaskEverySmallAndMediumRecentTransaction() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.accounts = [onBudgetAccount]
+        // Amounts grow with age, so only a date ordering yields t15 first.
+        budgetStore.transactions = (1...15).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: -100_000 + 1000 * $0) }
+        budgetStore.widgetBudgetMonth = BudgetMonth(month: "2026-08", categoryBudgets: [])
+        budgetStore.hideBalances = true
+        defer { budgetStore.hideBalances = false }
+
+        let snapshot = try #require(store.read())
+
+        #expect(snapshot.balancesHidden)
+        for limit in [recentSmallLimit, recentMediumLimit] {
+            let shown = snapshot.latestTransactions(limit: limit)
+            #expect(shown.map(\.id) == (16 - limit...15).reversed().map { "t\($0)" })
+            #expect(shown.allSatisfy { $0.formattedAmount == BudgetStore.hiddenBalanceText && $0.amount == 0 })
+        }
+    }
+
+    // RecentTransactionsProvider's Large / Extra Large Portrait limits (#862).
+    private let recentLargeLimit = 8
+    private let recentExtraLargePortraitLimit = 12
+
+    @Test func recentTransactionsLargeAndExtraLargeShowNewestUpToFamilyLimit() {
+        let snapshot = transactionSnapshot((1...15).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: -100) }.shuffled())
+
+        #expect(snapshot.latestTransactions(limit: recentLargeLimit).map(\.id) == (8...15).reversed().map { "t\($0)" })
+        // The snapshot itself caps at 12, so Extra Large Portrait is exactly full.
+        #expect(snapshot.latestTransactions(limit: recentExtraLargePortraitLimit).map(\.id) == (4...15).reversed().map { "t\($0)" })
+    }
+
+    @Test func recentTransactionsLargeAndExtraLargeFewerThanLimitShowsOnlyWhatExists() {
+        let snapshot = transactionSnapshot([
+            makeTransaction(id: "old", date: 20_260_801, amount: -100),
+            makeTransaction(id: "new", date: 20_260_802, amount: -100),
+        ])
+
+        for limit in [recentLargeLimit, recentExtraLargePortraitLimit] {
+            #expect(snapshot.latestTransactions(limit: limit).map(\.id) == ["new", "old"])
+            #expect(sampleSnapshot().latestTransactions(limit: limit).isEmpty)
+        }
+    }
+
+    @Test func recentTransactionsLargeHeaderCarriesMonthTotal() {
+        let snapshot = WidgetSnapshot.make(
+            from: [], month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" },
+            budgetMonth: spendingMonth("2026-08", spent: -42000)
+        )
+
+        #expect(snapshot.formattedTotalSpent == "$-42000")
+        // The header reads positive, like Top Spending's and Monthly Spending under budget.
+        #expect(snapshot.formattedTotalSpending == "$42000")
+    }
+
+    @Test @MainActor func hiddenBalancesMaskEveryLargeAndExtraLargeRecentTransactionAndMonthTotal() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.accounts = [onBudgetAccount]
+        // Amounts grow with age, so only a date ordering yields t15 first.
+        budgetStore.transactions = (1...15).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: -100_000 + 1000 * $0) }
+        budgetStore.widgetBudgetMonth = spendingMonth("2026-08", spent: -42000)
+        budgetStore.hideBalances = true
+        defer { budgetStore.hideBalances = false }
+
+        let snapshot = try #require(store.read())
+
+        #expect(snapshot.balancesHidden)
+        #expect(snapshot.formattedTotalSpent == BudgetStore.hiddenBalanceText)
+        for limit in [recentLargeLimit, recentExtraLargePortraitLimit] {
+            let shown = snapshot.latestTransactions(limit: limit)
+            #expect(shown.map(\.id) == (16 - limit...15).reversed().map { "t\($0)" })
+            #expect(shown.allSatisfy { $0.formattedAmount == BudgetStore.hiddenBalanceText && $0.amount == 0 })
+        }
+    }
+
+    @Test func snapshotWrittenBeforePhaseTwoDecodesWithNewFieldsNil() throws {
+        let legacy = """
+        {"month":"2026-08","generatedAt":0,"balancesHidden":false,
+         "categories":[{"id":"a","name":"Dining","available":100,"formattedAvailable":"$1.00"}]}
+        """
+        let snapshot = try JSONDecoder().decode(WidgetSnapshot.self, from: Data(legacy.utf8))
+
+        #expect(snapshot.recentTransactions == nil)
+        #expect(snapshot.largestTransactions == nil)
+    }
+
+    // MARK: Largest Transactions widget
+
+    // LargestTransactionsProvider's per-family limits; the provider lives in
+    // the widget extension, so the tests mirror them here.
+    private let largestSmallLimit = 1
+    private let largestMediumLimit = 3
+
+    @Test func largestTransactionsShowBiggestSpendingUpToFamilyLimit() {
+        let spending = (1...5).map { makeTransaction(id: "s\($0)", date: 20_260_800 + $0, amount: -1000 * $0) }
+        let income = makeTransaction(id: "income", date: 20_260_810, amount: 999_999)
+
+        let snapshot = transactionSnapshot((spending + [income]).shuffled())
+
+        #expect(snapshot.largestTransactions(limit: largestSmallLimit).map(\.id) == ["s5"])
+        #expect(snapshot.largestTransactions(limit: largestMediumLimit).map(\.id) == ["s5", "s4", "s3"])
+        #expect(snapshot.largestTransactions(limit: largestMediumLimit).map(\.formattedAmount) == ["$-5000", "$-4000", "$-3000"])
+    }
+
+    @Test func largestTransactionsFewerThanLimitShowsOnlyWhatExists() {
+        let snapshot = transactionSnapshot([
+            makeTransaction(id: "only", date: 20_260_801, amount: -100),
+            makeTransaction(id: "income", date: 20_260_802, amount: 5000),
+        ])
+        let incomeOnly = transactionSnapshot([makeTransaction(id: "income", date: 20_260_802, amount: 5000)])
+
+        for limit in [largestSmallLimit, largestMediumLimit] {
+            #expect(snapshot.largestTransactions(limit: limit).map(\.id) == ["only"])
+            // Income alone leaves the widget to its empty state.
+            #expect(incomeOnly.largestTransactions(limit: limit).isEmpty)
+            // Snapshots written before transactions existed decode with nil.
+            #expect(sampleSnapshot().largestTransactions(limit: limit).isEmpty)
+        }
+    }
+
+    @Test @MainActor func hiddenBalancesShowSmallAndMediumLargestTransactionsByDateMasked() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.accounts = [onBudgetAccount]
+        // Amounts shrink with recency, so an amount ranking would put t1
+        // first; under the mask only the newest may lead.
+        budgetStore.transactions = (1...15).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: -100_000 + 1000 * $0) }
+        budgetStore.widgetBudgetMonth = BudgetMonth(month: "2026-08", categoryBudgets: [])
+        budgetStore.hideBalances = true
+        defer { budgetStore.hideBalances = false }
+
+        let snapshot = try #require(store.read())
+
+        for limit in [largestSmallLimit, largestMediumLimit] {
+            let shown = snapshot.largestTransactions(limit: limit)
+            #expect(shown.map(\.id) == (16 - limit...15).reversed().map { "t\($0)" })
+            #expect(shown.allSatisfy { $0.formattedAmount == BudgetStore.hiddenBalanceText && $0.amount == 0 })
+        }
+    }
+
+    // LargestTransactionsProvider's Large / Extra Large Portrait limits (#862).
+    private let largestLargeLimit = 5
+    private let largestExtraLargePortraitLimit = 8
+
+    @Test func largestTransactionsLargeAndExtraLargeShowBiggestSpendingUpToFamilyLimit() {
+        let spending = (1...10).map { makeTransaction(id: "s\($0)", date: 20_260_800 + $0, amount: -1000 * $0) }
+        let income = makeTransaction(id: "income", date: 20_260_810, amount: 999_999)
+
+        let snapshot = transactionSnapshot((spending + [income]).shuffled())
+
+        #expect(snapshot.largestTransactions(limit: largestLargeLimit).map(\.id) == (6...10).reversed().map { "s\($0)" })
+        #expect(snapshot.largestTransactions(limit: largestExtraLargePortraitLimit).map(\.id) == (3...10).reversed().map { "s\($0)" })
+        // Amounts arrive pre-formatted, so the widget never formats them itself.
+        #expect(snapshot.largestTransactions(limit: largestLargeLimit).first?.formattedAmount == "$-10000")
+    }
+
+    @Test func largestTransactionsLargeAndExtraLargeFewerThanLimitShowsOnlyWhatExists() {
+        let snapshot = transactionSnapshot([
+            makeTransaction(id: "small", date: 20_260_801, amount: -100),
+            makeTransaction(id: "big", date: 20_260_802, amount: -900),
+            makeTransaction(id: "income", date: 20_260_803, amount: 5000),
+        ])
+
+        for limit in [largestLargeLimit, largestExtraLargePortraitLimit] {
+            #expect(snapshot.largestTransactions(limit: limit).map(\.id) == ["big", "small"])
+            // Snapshots written before transactions existed decode with nil.
+            #expect(sampleSnapshot().largestTransactions(limit: limit).isEmpty)
+        }
+    }
+
+    @Test func largestTransactionsLargeHeaderCarriesTotalSpent() {
+        let snapshot = WidgetSnapshot.make(
+            from: [], month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" },
+            accounts: [onBudgetAccount], budgetMonth: spendingMonth("2026-08", spent: -42000),
+            transactions: [makeTransaction(id: "s1", date: 20_260_810, amount: -500)]
+        )
+
+        #expect(snapshot.formattedTotalSpent == "$-42000")
+        // The total row reads positive, like Top Spending's header.
+        #expect(snapshot.formattedTotalSpending == "$42000")
+        #expect(snapshot.largestTransactions(limit: largestLargeLimit).map(\.id) == ["s1"])
+    }
+
+    @Test @MainActor func hiddenBalancesShowLargeAndExtraLargeLargestTransactionsByDateMaskedWithTotal() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.accounts = [onBudgetAccount]
+        // Amounts shrink with recency, so an amount ranking would put t1
+        // first; under the mask only the newest may lead.
+        budgetStore.transactions = (1...15).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: -100_000 + 1000 * $0) }
+        budgetStore.widgetBudgetMonth = spendingMonth("2026-08", spent: -42000)
+        budgetStore.hideBalances = true
+        defer { budgetStore.hideBalances = false }
+
+        let snapshot = try #require(store.read())
+
+        #expect(snapshot.balancesHidden)
+        #expect(snapshot.formattedTotalSpent == BudgetStore.hiddenBalanceText)
+        for limit in [largestLargeLimit, largestExtraLargePortraitLimit] {
+            let shown = snapshot.largestTransactions(limit: limit)
+            #expect(shown.map(\.id) == (16 - limit...15).reversed().map { "t\($0)" })
+            #expect(shown.allSatisfy { $0.formattedAmount == BudgetStore.hiddenBalanceText && $0.amount == 0 })
+        }
+    }
 }

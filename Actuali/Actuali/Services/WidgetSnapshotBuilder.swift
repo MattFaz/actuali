@@ -20,7 +20,8 @@ extension BudgetStore {
             budgetMonth: month,
             schedules: schedules,
             scheduleStatuses: scheduleStatuses,
-            payees: payees
+            payees: payees,
+            transactions: transactions
         )
         // Keep the footer's refresh time current without reloading unchanged balances.
         var comparable = snapshot
@@ -63,7 +64,8 @@ extension WidgetSnapshot {
         budgetMonth: BudgetMonth? = nil,
         schedules: [ScheduleSummary] = [],
         scheduleStatuses: [String: ScheduleStatus] = [:],
-        payees: [Payee] = []
+        payees: [Payee] = [],
+        transactions: [Transaction] = []
     ) -> WidgetSnapshot {
         let sortedCategories = budgets
             .sorted { ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder) }
@@ -121,7 +123,59 @@ extension WidgetSnapshot {
         snapshot.formattedTotalSpending = budgetMonth.map { format(-$0.totalSpent) }
         snapshot.formattedTotalIncome = budgetMonth.map { format($0.totalIncome) }
         snapshot.upcomingBills = billItems
+        snapshot.addTransactions(
+            transactions,
+            accounts: accounts,
+            hiddenCategoryIds: Set(budgetMonth.map { $0.hiddenCategoryBudgets.map(\.categoryId) + $0.hiddenIncomeCategories.map(\.categoryId) } ?? []),
+            format: format
+        )
         return snapshot
+    }
+
+    /// `format` already masks when balances are hidden; the raw cents are
+    /// zeroed as well so nothing leaks through the unformatted fields. Hidden
+    /// categories' names are blanked under the mask too, matching the
+    /// category rows, which leave hidden categories out entirely.
+    private mutating func addTransactions(
+        _ transactions: [Transaction],
+        accounts: [Account],
+        hiddenCategoryIds: Set<String>,
+        format: (Int) -> String
+    ) {
+        let hidden = balancesHidden
+        let row = { (transaction: Transaction) in
+            WidgetTransaction(
+                id: transaction.id,
+                payeeName: transaction.payeeName,
+                categoryName: hidden && transaction.categoryId.map(hiddenCategoryIds.contains) == true
+                    ? nil : transaction.categoryName,
+                amount: hidden ? 0 : transaction.amount,
+                formattedAmount: format(transaction.amount),
+                date: transaction.date
+            )
+        }
+        // ponytail: reads BudgetStore.transactions, the newest 500-row page
+        // across all accounts. A month with more rows than that ranks only
+        // its newest 500; a dedicated month query is the upgrade path.
+        let newestFirst = { (a: Transaction, b: Transaction) in
+            (a.date, a.sortOrder ?? 0) > (b.date, b.sortOrder ?? 0)
+        }
+        recentTransactions = transactions
+            .sorted(by: newestFirst)
+            .prefix(12)
+            .map(row)
+        let offBudgetIds = Set(accounts.filter(\.offBudget).map(\.id))
+        let monthKey = Int(month.replacingOccurrences(of: "-", with: ""))
+        // Hidden balances pick and order by date: ranking by amount, even
+        // under masked amounts, would still reveal which purchases were biggest.
+        largestTransactions = transactions
+            .filter {
+                $0.amount < 0 && $0.date / 100 == monthKey
+                    && $0.transferAcct == nil && !offBudgetIds.contains($0.accountId)
+            }
+            .sorted(by: hidden ? newestFirst : { ($0.amount, -$0.date) < ($1.amount, -$1.date) })
+            .prefix(12)
+            .map(row)
     }
 
     /// Extracts the next upcoming bills from schedules. Keeps it simple:

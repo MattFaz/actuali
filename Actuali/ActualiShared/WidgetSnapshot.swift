@@ -30,6 +30,18 @@ struct WidgetAccountBalance: Codable, Equatable, Identifiable {
     let offBudget: Bool
 }
 
+/// One transaction row for the widget. Amount is 0 when balances are
+/// hidden, so neither the size nor an income sign leaks past the mask, and
+/// categoryName is nil for a hidden category.
+struct WidgetTransaction: Codable, Equatable, Identifiable {
+    let id: String
+    let payeeName: String?
+    let categoryName: String?
+    let amount: Int // cents (negative = outflow)
+    let formattedAmount: String
+    let date: Int // YYYYMMDD
+}
+
 /// One upcoming bill for the widget.
 struct WidgetBillItem: Codable, Equatable, Identifiable {
     let id: String
@@ -92,6 +104,15 @@ struct WidgetSnapshot: Codable, Equatable {
     /// Large Portrait row count) to keep the snapshot small.
     var upcomingBills: [WidgetBillItem]?
 
+    // MARK: - Transactions
+
+    /// Newest first across all accounts, capped at 12.
+    var recentTransactions: [WidgetTransaction]?
+    /// This month's on-budget outflows, largest first, capped at 12; newest
+    /// first instead when balances are hidden, so the list can't rank by size.
+    /// Income, transfers and off-budget accounts are excluded.
+    var largestTransactions: [WidgetTransaction]?
+
     /// Same format as BudgetStore's yearMonthFormatter — the two must agree
     /// or the widget would flag every snapshot as stale.
     private static let yearMonthFormatter: DateFormatter = {
@@ -143,6 +164,19 @@ struct WidgetSnapshot: Codable, Equatable {
     /// written before bills existed.
     func nextBills(limit: Int) -> [WidgetBillItem] {
         Array((upcomingBills ?? []).prefix(limit))
+    }
+
+    /// The newest transactions, capped at `limit`; empty for snapshots
+    /// written before transactions existed.
+    func latestTransactions(limit: Int) -> [WidgetTransaction] {
+        Array((recentTransactions ?? []).prefix(limit))
+    }
+
+    /// This month's biggest purchases, capped at `limit` — newest instead
+    /// when hidden (see largestTransactions); empty for snapshots written
+    /// before transactions existed.
+    func largestTransactions(limit: Int) -> [WidgetTransaction] {
+        Array((largestTransactions ?? []).prefix(limit))
     }
 
     /// The user's chosen accounts in their chosen order, capped at `limit`.
