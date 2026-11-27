@@ -47,6 +47,20 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     /// The add flow autofocuses the amount field — the first thing anyone
     /// enters — so the keyboard must come up without a tap and keypad input
     /// must land in that field.
+    /// Swiping the operator bar down drops the keyboard without reaching Done.
+    @MainActor
+    func testSwipingOperatorBarDownDismissesKeyboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "keyboard did not appear")
+        app.buttons["Flip sign"].swipeDown()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                      "keyboard did not dismiss after swiping the operator bar down")
+    }
+
     @MainActor
     func testAddTabAutofocusesAmountField() {
         let app = XCUIApplication()

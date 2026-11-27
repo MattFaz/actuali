@@ -1669,6 +1669,11 @@ struct AmountInputField: UIViewRepresentable {
         toolbar.frame = CGRect(x: 0, y: 0, width: container.frame.width, height: toolbar.frame.height)
         toolbar.autoresizingMask = [.flexibleWidth]
         container.addSubview(toolbar)
+        // Swiping the bar down drops the keyboard, so dismissing never depends
+        // on reaching Done — which narrow bars fold into an overflow menu.
+        let swipeDown = UISwipeGestureRecognizer(target: field, action: #selector(UIResponder.resignFirstResponder))
+        swipeDown.direction = .down
+        container.addGestureRecognizer(swipeDown)
         field.inputAccessoryView = container
         context.coordinator.textField = field
         context.coordinator.numberFormat = budgetStore.numberFormat
