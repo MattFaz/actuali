@@ -864,7 +864,7 @@ struct AddTransactionView: View {
                 .disabled(saveDisabled)
                 .readableWidth()
                 .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+                .padding(.bottom, 16)
             }
             // The form's default ~35pt top inset is dead space on the
             // header-less tab root; 8pt keeps the first section off the status
