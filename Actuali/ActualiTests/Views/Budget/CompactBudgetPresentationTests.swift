@@ -402,12 +402,25 @@ struct CompactBudgetPresentationTests {
             == [radius, radius, radius, radius])
     }
 
+    @Test func budgetScreenBackgroundIsWhiteInLightMode() {
+        let traits = UITraitCollection(userInterfaceStyle: .light)
+        #expect(BudgetScreenAppearance.background.resolvedColor(with: traits) == UIColor.white)
+    }
+
+    @Test func budgetScreenBackgroundPreservesGroupedBackgroundInDarkMode() {
+        let traits = UITraitCollection(userInterfaceStyle: .dark)
+        #expect(
+            BudgetScreenAppearance.background.resolvedColor(with: traits)
+                == UIColor.systemGroupedBackground.resolvedColor(with: traits)
+        )
+    }
+
     @Test func cardFillStandsOutFromTheBackdropInBothAppearances() {
         for style in [UIUserInterfaceStyle.light, .dark] {
             let traits = UITraitCollection(userInterfaceStyle: style)
             #expect(
                 CompactBudgetCard.fill.resolvedColor(with: traits)
-                    != UIColor.systemGroupedBackground.resolvedColor(with: traits)
+                    != BudgetScreenAppearance.background.resolvedColor(with: traits)
             )
         }
     }

@@ -1,5 +1,9 @@
 import SwiftUI
 
+enum BudgetScreenAppearance {
+    static let background = UIColor { $0.userInterfaceStyle == .dark ? .systemGroupedBackground : .white }
+}
+
 private let yearMonthFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM"
@@ -777,14 +781,14 @@ struct BudgetView: View {
                     isCompact ? 0 : sideMargin
                 )
                 .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
-                .background(Color(.systemGroupedBackground).ignoresSafeArea())
+                .background(Color(BudgetScreenAppearance.background).ignoresSafeArea())
             } else if !isCompact, budget.toBudget != nil {
                 // With the Clean overview hidden, what's left to budget stays
                 // in view as a single filled row, as in Actua's plan view.
                 ReadyToBudgetRow(budget: budget)
                     .padding(.horizontal, sideMargin)
                     .padding(.vertical, TopBoxLayout.verticalContentMargin)
-                    .background(Color(.systemGroupedBackground).ignoresSafeArea())
+                    .background(Color(BudgetScreenAppearance.background).ignoresSafeArea())
             }
 
             budgetTable(budget)
@@ -806,7 +810,7 @@ struct BudgetView: View {
         // stretched to iPad width it becomes a category name and its numbers
         // separated by a foot of nothing.
         .readableWidth()
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .background(Color(BudgetScreenAppearance.background).ignoresSafeArea())
     }
 
     /// The scrolling budget table: a pinned-header ScrollView in Clean style
@@ -1857,7 +1861,7 @@ struct BudgetGroupHeader: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Color(BudgetScreenAppearance.background))
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contentShape(Rectangle())
         .contextMenu {

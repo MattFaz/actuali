@@ -7,9 +7,7 @@ import SwiftUI
 enum CompactBudgetCard {
     static let cornerRadius: CGFloat = 12
     static let morph = Animation.easeOut(duration: 0.15)
-    /// In light mode secondarySystemBackground is the same grey as the
-    /// systemGroupedBackground behind the cards, which hides their corners,
-    /// so light mode uses a step darker. Dark mode keeps its old fill.
+    /// Keep the cards distinct from the Budget screen backdrop in both appearances.
     static let fill = UIColor { $0.userInterfaceStyle == .dark ? .secondarySystemBackground : .systemGray5 }
 
     static func shape(topSquare: Bool = false, bottomSquare: Bool = false) -> UnevenRoundedRectangle {
