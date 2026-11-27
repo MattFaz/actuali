@@ -191,6 +191,11 @@ struct ReportDetailTests {
         #expect(Page.shown(initial: 1, ranged: (.sixMonths, 6), range: .sixMonths) == 6)
         // The new range is still computing: not the old range's value.
         #expect(Page.shown(initial: 1, ranged: (.sixMonths, 6), range: .year) == 1)
+        // ...and the page says so until the new one arrives.
+        #expect(Page.isPending(ranged: (.sixMonths, 6), range: .year))
+        #expect(Page.isPending(ranged: nil, range: .year))
+        #expect(!Page.isPending(ranged: (.sixMonths, 6), range: .sixMonths))
+        #expect(!Page.isPending(ranged: (.sixMonths, 6), range: nil))
     }
 
     @Test func calendarDayIdentifiersNameTheirMonth() {

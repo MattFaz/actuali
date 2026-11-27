@@ -91,8 +91,19 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
         ranged.flatMap { $0.range == range ? $0.value : nil } ?? initial
     }
 
+    /// A range was picked and its report hasn't arrived: what's on screen
+    /// is still the card's.
+    nonisolated static func isPending(ranged: (range: ReportDetailRange, value: Value)?, range: ReportDetailRange?) -> Bool {
+        range != nil && ranged?.range != range
+    }
+
     var body: some View {
+        let pending = Self.isPending(ranged: ranged, range: range)
         content(Self.shown(initial: initial, ranged: ranged, range: range))
+            // Stepped back until the picked range's numbers replace the
+            // card's, so they aren't read as the new range.
+            .opacity(pending ? 0.4 : 1)
+            .animation(.default, value: pending)
             // A new range is a new report: selection and hidden series from
             // the old one don't carry over.
             .id(range)
@@ -120,14 +131,26 @@ struct ReportRangePicker: View {
 
     var body: some View {
         if let range {
-            Picker(ReportStrings.text("Time range", locale: locale), selection: range) {
-                Text(ReportStrings.text("Default", locale: locale)).tag(ReportDetailRange?.none)
-                ForEach(ReportDetailRange.allCases, id: \.self) { range in
-                    Text(ReportStrings.text(range.titleKey, locale: locale)).tag(ReportDetailRange?.some(range))
+            VStack(alignment: .leading, spacing: 6) {
+                Picker(ReportStrings.text("Time range", locale: locale), selection: range) {
+                    Text(ReportStrings.text("Saved", locale: locale)).tag(ReportDetailRange?.none)
+                    ForEach(ReportDetailRange.allCases, id: \.self) { range in
+                        Text(ReportStrings.text(range.titleKey, locale: locale)).tag(ReportDetailRange?.some(range))
+                    }
                 }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("reportDetail.range")
+                // Which range is the report's own, and that picking another
+                // doesn't write back to it.
+                Text(ReportStrings.text(
+                    range.wrappedValue == nil
+                        ? "The range saved with this report in Actual Budget."
+                        : "Shown here only. The report keeps its saved range.",
+                    locale: locale
+                ))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("reportDetail.range")
         }
     }
 }
