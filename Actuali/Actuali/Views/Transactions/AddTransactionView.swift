@@ -579,18 +579,17 @@ struct AddTransactionView: View {
                         )
                         .fixedSize(horizontal: true, vertical: false)
                         .frame(minWidth: amountMinWidth)
-                        if isEditing {
-                            Color.clear
-                                .frame(width: amountSignWidth, height: 1)
-                                .accessibilityHidden(true)
-                        } else {
-                            // The add flow opens with the keyboard up, which
-                            // hides the Cancel row at the foot of the form.
-                            // This is the one-tap way out of an accidental
-                            // open, and it fills the slot that balances the
-                            // sign, so the amount stays centered. It sits a
-                            // thumb's width from the amount, so anything
-                            // already typed is confirmed before it's dropped.
+                        Color.clear
+                            .frame(width: amountSignWidth, height: 1)
+                            .accessibilityHidden(true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    // The add flow opens with the keyboard up, which hides the
+                    // Cancel row at the foot of the form. This is the one-tap
+                    // way out of an accidental open; anything already typed is
+                    // confirmed before it's dropped.
+                    .overlay(alignment: .topTrailing) {
+                        if !isEditing {
                             Button {
                                 if hasEntry {
                                     showDiscardConfirmation = true
@@ -599,9 +598,9 @@ struct AddTransactionView: View {
                                 }
                             } label: {
                                 Image(systemName: "xmark")
-                                    .font(.body.weight(.semibold))
+                                    .font(.footnote.weight(.bold))
                                     .foregroundStyle(.secondary)
-                                    .frame(width: amountSignWidth, height: amountSignWidth)
+                                    .frame(width: 30, height: 30)
                                     .background(Color.secondary.opacity(0.14), in: Circle())
                                     .contentShape(Circle())
                             }
@@ -617,7 +616,6 @@ struct AddTransactionView: View {
                             }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .center)
                     .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
                 }
                 .listRowBackground(Color.clear)
