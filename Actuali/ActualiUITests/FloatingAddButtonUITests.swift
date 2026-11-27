@@ -64,7 +64,7 @@ final class FloatingAddButtonUITests: XCTestCase {
         for _ in 0..<8 where !toggle.exists {
             app.swipeUp()
         }
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Show Add Transaction Button switch not found in Display")
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Show Quick Add Button switch not found in Display")
         XCTAssertEqual(toggle.value as? String, "0", "the switch should reflect the stored setting")
 
         tapControl(toggle) { toggle.value as? String == "1" }

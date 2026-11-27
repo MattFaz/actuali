@@ -15733,48 +15733,48 @@
         }
       }
     },
-    "Show Add Transaction Button" : {
+    "Show Quick Add Button" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Button „Transaktion hinzufügen“ anzeigen"
+            "value" : "Button „Schnell hinzufügen“ anzeigen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Show Add Transaction Button"
+            "value" : "Show Quick Add Button"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostrar botón Añadir transacción"
+            "value" : "Mostrar botón Añadir rápido"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Afficher le bouton Ajouter une transaction"
+            "value" : "Afficher le bouton Ajout rapide"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostra pulsante Aggiungi transazione"
+            "value" : "Mostra pulsante Aggiunta rapida"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Knop ‘Transactie toevoegen’ tonen"
+            "value" : "Knop ‘Snel toevoegen’ tonen"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostrar botão Adicionar transação"
+            "value" : "Mostrar botão Adição rápida"
           }
         }
       }

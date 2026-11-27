@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Actuali
 
-/// The "Show Add Transaction Button" setting must default on, write through to UserDefaults
+/// The "Show Quick Add Button" setting must default on, write through to UserDefaults
 /// under the key `init()` reads back, and come back after a relaunch.
 @MainActor
 @Suite(.serialized)
