@@ -140,7 +140,7 @@ struct SettingsView: View {
                 } footer: {
                     Text(String(localized: "Before using a shortcut, set up Card & Account Mappings in More → Transactions & Automation so purchases route to the right account."))
                 }
-                Section(String(localized: "Information")) {
+                Section {
                     ForEach(Self.informationLinkItems, id: \.title) { item in
                         Link(destination: item.url) {
                             LinkRowLabel(title: item.title, systemImage: item.systemImage)
@@ -154,12 +154,13 @@ struct SettingsView: View {
                             Label(item.title, systemImage: item.systemImage)
                         }
                     }
-                    HStack {
-                        Text(String(localized: "Version"))
-                        Spacer()
-                        Text(appVersion)
-                            .foregroundStyle(.secondary)
-                    }
+                } header: {
+                    Text(String(localized: "Information"))
+                } footer: {
+                    Text("App Version \(appVersion)")
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("settings.appVersion")
                 }
             }
             .readableWidth()

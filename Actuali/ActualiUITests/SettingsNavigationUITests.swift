@@ -97,18 +97,25 @@ final class SettingsNavigationUITests: XCTestCase {
             assertExpectedContent(for: destination, in: app)
             navigationBar.buttons.element(boundBy: 0).tap()
             if destination == "Support & Diagnostic" {
-                // GH #533: Privacy Policy and Version moved into the Information
-                // section beside Support; assert them once back on the hub, where
-                // that section is on screen, so a regression can't silently drop
-                // either row.
+                // Assert Privacy Policy and the App Version footer once back on
+                // the hub, where the Information section is on screen.
                 XCTAssertTrue(
                     app.descendants(matching: .any)["settings.privacyPolicy"].waitForExistence(timeout: 5),
                     "Privacy Policy row missing from the Information section"
                 )
+                let appVersion = app.staticTexts["settings.appVersion"]
+                // The footer may still be below the fold on smaller devices.
+                var swipes = 0
+                while !appVersion.exists, swipes < 8 {
+                    app.swipeUp()
+                    swipes += 1
+                }
                 XCTAssertTrue(
-                    app.staticTexts["Version"].waitForExistence(timeout: 5),
-                    "Version row missing from the Information section"
+                    appVersion.waitForExistence(timeout: 5),
+                    "App Version footer missing below the Information section"
                 )
+                XCTAssertTrue(appVersion.label.hasPrefix("App Version "))
+                XCTAssertTrue(appVersion.label.hasSuffix(")"))
             }
         }
     }
