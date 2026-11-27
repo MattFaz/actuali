@@ -4,6 +4,18 @@ import WidgetKit
 // Preview-only sample entries and previews for every widget, kept out of the
 // widget files. The gallery and placeholders use each entry's `sample`.
 
+private extension WidgetFamily {
+    /// `systemExtraLargePortrait` is iOS 27-only and older SDKs reject it even
+    /// under `@available`, so it's resolved behind `#available` like each
+    /// widget's `families`; before iOS 27 the preview falls back to Large.
+    static var previewExtraLargePortrait: WidgetFamily {
+        if #available(iOS 27.0, *) {
+            return .systemExtraLargePortrait
+        }
+        return .systemLarge
+    }
+}
+
 // MARK: - CategoryBalance
 
 private extension CategoryBalanceEntry {
@@ -56,8 +68,7 @@ private extension CategoryBalanceEntry {
     CategoryBalanceEntry.previewSample(count: 8, balancesHidden: true)
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     CategoryBalanceWidget()
 } timeline: {
     CategoryBalanceEntry.previewSample(count: 12)
@@ -120,8 +131,7 @@ private extension AccountBalanceEntry {
     AccountBalanceEntry.previewSample(count: 8, balancesHidden: true)
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     AccountBalanceWidget()
 } timeline: {
     AccountBalanceEntry.previewSample(count: 12)
@@ -190,8 +200,7 @@ private extension NetWorthEntry {
     NetWorthEntry.previewSample(count: 6, balancesHidden: true)
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     NetWorthWidget()
 } timeline: {
     NetWorthEntry.previewSample(count: 10)
@@ -260,8 +269,7 @@ private extension ToBeBudgetedEntry {
     ToBeBudgetedEntry.previewSample(count: 0)
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     ToBeBudgetedWidget()
 } timeline: {
     ToBeBudgetedEntry.previewSample(count: 8)
@@ -326,8 +334,7 @@ private extension UpcomingBillsEntry {
     UpcomingBillsEntry.previewSample(count: 6, balancesHidden: true)
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     UpcomingBillsWidget()
 } timeline: {
     UpcomingBillsEntry.previewSample(count: 12)
@@ -398,8 +405,7 @@ private extension SpendingSummaryEntry {
     SpendingSummaryEntry.previewSample(count: 0)
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     SpendingSummaryWidget()
 } timeline: {
     SpendingSummaryEntry.previewSample(count: 8)
@@ -473,8 +479,7 @@ private extension RecentTransactionsEntry {
     RecentTransactionsEntry(date: .now, balancesHidden: false, transactions: [], formattedMonthTotal: nil, hasSnapshot: false)
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     RecentTransactionsWidget()
 } timeline: {
     RecentTransactionsEntry.previewSample(count: 12)
@@ -548,8 +553,7 @@ private extension TopSpendingEntry {
     TopSpendingEntry(date: .now, balancesHidden: false, categories: [], formattedTotalSpending: nil, hasSnapshot: true)
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     TopSpendingWidget()
 } timeline: {
     TopSpendingEntry.previewSample(count: 8)
@@ -604,8 +608,7 @@ private extension DailyBurnRateEntry {
     DailyBurnRateEntry(date: .now, formattedAverageSpendPerDay: nil, formattedSafeDailyRate: nil, isOverbudget: false)
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     DailyBurnRateWidget()
 } timeline: {
     DailyBurnRateEntry.previewSample()
@@ -698,8 +701,7 @@ private extension SpendingComparisonEntry {
     SpendingComparisonEntry.empty
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     SpendingComparisonWidget()
 } timeline: {
     SpendingComparisonEntry.previewSample(trend: .more)
@@ -777,8 +779,7 @@ private extension LargestTransactionsEntry {
     LargestTransactionsEntry(date: .now, balancesHidden: false, transactions: [], hasSnapshot: false)
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     LargestTransactionsWidget()
 } timeline: {
     LargestTransactionsEntry.previewSample(count: 8)
@@ -875,8 +876,7 @@ private extension OverspentAlertsEntry {
     OverspentAlertsEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: false)
 }
 
-@available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     OverspentAlertsWidget()
 } timeline: {
     OverspentAlertsEntry.previewSample(count: 12)
