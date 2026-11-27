@@ -1361,7 +1361,7 @@ private struct TwoLineName: View {
 struct BudgetCheckInStrip: View {
     let budget: BudgetMonth
     @Binding var selection: BudgetCategoryFilter
-    var unselectedFill: Color = Color(.secondarySystemGroupedBackground)
+    var unselectedFill = Color(.secondarySystemGroupedBackground)
     @Environment(\.locale) private var locale
 
     var body: some View {
