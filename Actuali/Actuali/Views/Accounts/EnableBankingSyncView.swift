@@ -230,14 +230,11 @@ struct EnableBankingSyncView: View {
             }
         case .ready:
             Section {
-                LabeledContent("Actual Server") {
-                    Label {
-                        Text("Set Up")
-                    } icon: {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
-                    .labelStyle(.titleAndIcon)
+                Label {
+                    Text("Enable Banking is set up")
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
                 }
                 .accessibilityIdentifier("enableBanking.status")
             }

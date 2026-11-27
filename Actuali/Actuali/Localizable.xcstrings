@@ -593,54 +593,6 @@
         }
       }
     },
-    "Actual Server" : {
-      "comment" : "Enable Banking overview: label of the status row for the person's Actual server",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Actual-Server"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Actual Server"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Servidor Actual"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Serveur Actual"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Server Actual"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Actual-server"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Servidor Actual"
-          }
-        }
-      }
-    },
     "Reauthorize" : {
       "comment" : "Enable Banking menu action on a linked account: send the person to its bank to approve access again",
       "extractionState" : "stale",
@@ -779,54 +731,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abra Conexão e dados para baixar ou desbloquear o orçamento e tente novamente."
-          }
-        }
-      }
-    },
-    "Set Up" : {
-      "comment" : "Enable Banking overview: status value meaning the server has been configured (an adjective, not the verb)",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eingerichtet"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Set Up"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configurado"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configuré"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configurato"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ingesteld"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configurado"
           }
         }
       }
@@ -40661,6 +40565,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enable Banking"
+          }
+        }
+      }
+    },
+    "Enable Banking is set up" : {
+      "comment" : "Enable Banking overview: one-line status shown when the Actual server has Enable Banking credentials",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking ist eingerichtet"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking is set up"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking está configurado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking est configuré"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking è configurato"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking is ingesteld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Enable Banking está configurado"
           }
         }
       }
