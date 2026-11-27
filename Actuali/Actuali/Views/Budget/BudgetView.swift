@@ -6,6 +6,15 @@ enum BudgetScreenAppearance {
     static func background(isCompact: Bool) -> UIColor {
         isCompact ? compactBackground : .systemGroupedBackground
     }
+
+    /// White header surfaces need a contrasting fill only on the Compact light backdrop.
+    static func headerFill(isCompact: Bool, defaultFill: UIColor) -> UIColor {
+        guard isCompact else { return defaultFill }
+        return UIColor { traits in
+            let fill = traits.userInterfaceStyle == .dark ? defaultFill : CompactBudgetCard.fill
+            return fill.resolvedColor(with: traits)
+        }
+    }
 }
 
 private let yearMonthFormatter: DateFormatter = {
@@ -693,11 +702,16 @@ struct BudgetView: View {
     /// budget month has loaded. Extracted from `body` so the whole screen
     /// stays within the compiler's type-check budget.
     private func loadedBudgetContent(_ budget: BudgetMonth) -> some View {
-        VStack(spacing: 0) {
+        let backdrop = Color(BudgetScreenAppearance.background(isCompact: isCompact))
+        return VStack(spacing: 0) {
             if budgetStore.showBudgetCheckInStrip {
                 BudgetCheckInStrip(
                     budget: budget,
-                    selection: $categoryFilter
+                    selection: $categoryFilter,
+                    unselectedFill: Color(BudgetScreenAppearance.headerFill(
+                        isCompact: isCompact,
+                        defaultFill: .secondarySystemGroupedBackground
+                    ))
                 )
                 // Since GH #546 the strip is the top surface whenever it's
                 // shown, so it carries the standardized top gutter (GH #542).
@@ -730,7 +744,10 @@ struct BudgetView: View {
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        Color(isCompact ? .systemBackground : .secondarySystemGroupedBackground),
+                        Color(BudgetScreenAppearance.headerFill(
+                            isCompact: isCompact,
+                            defaultFill: isCompact ? .systemBackground : .secondarySystemGroupedBackground
+                        )),
                         in: uncategorizedShape
                     )
                 }
@@ -785,7 +802,7 @@ struct BudgetView: View {
                     isCompact ? 0 : sideMargin
                 )
                 .padding(.vertical, isCompact ? 0 : TopBoxLayout.verticalContentMargin)
-                .background(Color(BudgetScreenAppearance.background(isCompact: isCompact)).ignoresSafeArea())
+                .background(backdrop.ignoresSafeArea())
             } else if !isCompact, budget.toBudget != nil {
                 // With the Clean overview hidden, what's left to budget stays
                 // in view as a single filled row, as in Actua's plan view.
@@ -813,8 +830,8 @@ struct BudgetView: View {
         // The budget table is a fixed grid of narrow amount columns;
         // stretched to iPad width it becomes a category name and its numbers
         // separated by a foot of nothing.
-        .readableWidth()
-        .background(Color(BudgetScreenAppearance.background(isCompact: isCompact)).ignoresSafeArea())
+        .readableWidth(background: backdrop)
+        .background(backdrop.ignoresSafeArea())
     }
 
     /// The scrolling budget table: a pinned-header ScrollView in Clean style
@@ -1344,6 +1361,7 @@ private struct TwoLineName: View {
 struct BudgetCheckInStrip: View {
     let budget: BudgetMonth
     @Binding var selection: BudgetCategoryFilter
+    var unselectedFill: Color = Color(.secondarySystemGroupedBackground)
     @Environment(\.locale) private var locale
 
     var body: some View {
@@ -1358,7 +1376,7 @@ struct BudgetCheckInStrip: View {
                             isTrackingBudget: budget.isTrackingBudget,
                             locale: locale
                         ))
-                        .filterChip(isSelected: selection == filter)
+                        .filterChip(isSelected: selection == filter, unselectedFill: unselectedFill)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(ReportStrings.format("Show %@ categories", filter.title(

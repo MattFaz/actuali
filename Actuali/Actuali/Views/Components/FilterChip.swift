@@ -3,7 +3,7 @@ import SwiftUI
 /// Capsule chip styling shared by the Budget tab's check-in strip and the
 /// transaction lists' status strip, so the two strips can't drift apart.
 extension View {
-    func filterChip(isSelected: Bool) -> some View {
+    func filterChip(isSelected: Bool, unselectedFill: Color = Color(.secondarySystemGroupedBackground)) -> some View {
         self
             .font(.footnote.weight(.semibold))
             .foregroundStyle(isSelected ? Color.white : Color.primary)
@@ -12,7 +12,7 @@ extension View {
             .background {
                 Capsule().fill(isSelected
                     ? Color.accentColor
-                    : Color(.secondarySystemGroupedBackground))
+                    : unselectedFill)
             }
             .overlay {
                 if !isSelected {

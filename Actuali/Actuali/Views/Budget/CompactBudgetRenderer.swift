@@ -7,8 +7,8 @@ import SwiftUI
 enum CompactBudgetCard {
     static let cornerRadius: CGFloat = 12
     static let morph = Animation.easeOut(duration: 0.15)
-    /// Keep the cards distinct from the Budget screen backdrop in both appearances.
-    static let fill = UIColor { $0.userInterfaceStyle == .dark ? .secondarySystemBackground : .systemGray5 }
+    /// The white Compact backdrop makes the native secondary fill sufficient to show card corners.
+    static let fill = UIColor.secondarySystemBackground
 
     static func shape(topSquare: Bool = false, bottomSquare: Bool = false) -> UnevenRoundedRectangle {
         let top = topSquare ? 0 : cornerRadius

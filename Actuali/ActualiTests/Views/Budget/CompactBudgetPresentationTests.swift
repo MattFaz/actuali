@@ -425,6 +425,41 @@ struct CompactBudgetPresentationTests {
         }
     }
 
+    @Test func compactHeaderSurfacesStandOutInLightMode() {
+        let traits = UITraitCollection(userInterfaceStyle: .light)
+        let expected = UIColor.secondarySystemBackground.resolvedColor(with: traits)
+        for defaultFill in [UIColor.systemBackground, .secondarySystemGroupedBackground] {
+            let fill = BudgetScreenAppearance.headerFill(isCompact: true, defaultFill: defaultFill)
+            #expect(fill.resolvedColor(with: traits) == expected)
+            #expect(fill.resolvedColor(with: traits) != UIColor.white)
+        }
+    }
+
+    @Test func headerSurfacesPreserveTheirOriginalFillOutsideCompactLightMode() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            for defaultFill in [UIColor.systemBackground, .secondarySystemGroupedBackground] {
+                let expected = defaultFill.resolvedColor(with: traits)
+                let clean = BudgetScreenAppearance.headerFill(isCompact: false, defaultFill: defaultFill)
+                #expect(clean.resolvedColor(with: traits) == expected)
+                if style == .dark {
+                    let compact = BudgetScreenAppearance.headerFill(isCompact: true, defaultFill: defaultFill)
+                    #expect(compact.resolvedColor(with: traits) == expected)
+                }
+            }
+        }
+    }
+
+    @Test func compactCardUsesNativeSecondaryFill() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            #expect(
+                CompactBudgetCard.fill.resolvedColor(with: traits)
+                    == UIColor.secondarySystemBackground.resolvedColor(with: traits)
+            )
+        }
+    }
+
     @Test func cardFillStandsOutFromTheBackdropInBothAppearances() {
         for style in [UIUserInterfaceStyle.light, .dark] {
             let traits = UITraitCollection(userInterfaceStyle: style)
