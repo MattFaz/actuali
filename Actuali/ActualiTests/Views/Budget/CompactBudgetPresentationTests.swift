@@ -402,17 +402,27 @@ struct CompactBudgetPresentationTests {
             == [radius, radius, radius, radius])
     }
 
-    @Test func budgetScreenBackgroundIsWhiteInLightMode() {
+    @Test func compactBudgetBackgroundIsWhiteInLightMode() {
         let traits = UITraitCollection(userInterfaceStyle: .light)
-        #expect(BudgetScreenAppearance.background.resolvedColor(with: traits) == UIColor.white)
+        #expect(BudgetScreenAppearance.background(isCompact: true).resolvedColor(with: traits) == UIColor.white)
     }
 
-    @Test func budgetScreenBackgroundPreservesGroupedBackgroundInDarkMode() {
+    @Test func compactBudgetBackgroundPreservesGroupedBackgroundInDarkMode() {
         let traits = UITraitCollection(userInterfaceStyle: .dark)
         #expect(
-            BudgetScreenAppearance.background.resolvedColor(with: traits)
+            BudgetScreenAppearance.background(isCompact: true).resolvedColor(with: traits)
                 == UIColor.systemGroupedBackground.resolvedColor(with: traits)
         )
+    }
+
+    @Test func cleanBudgetBackgroundPreservesGroupedBackgroundInBothAppearances() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            #expect(
+                BudgetScreenAppearance.background(isCompact: false).resolvedColor(with: traits)
+                    == UIColor.systemGroupedBackground.resolvedColor(with: traits)
+            )
+        }
     }
 
     @Test func cardFillStandsOutFromTheBackdropInBothAppearances() {
@@ -420,7 +430,7 @@ struct CompactBudgetPresentationTests {
             let traits = UITraitCollection(userInterfaceStyle: style)
             #expect(
                 CompactBudgetCard.fill.resolvedColor(with: traits)
-                    != BudgetScreenAppearance.background.resolvedColor(with: traits)
+                    != BudgetScreenAppearance.background(isCompact: true).resolvedColor(with: traits)
             )
         }
     }
