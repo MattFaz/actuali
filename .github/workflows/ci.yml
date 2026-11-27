@@ -69,30 +69,68 @@ jobs:
           unzip -o swiftformat.zip
       - run: ./swiftformat --lint --strict Actuali
 
-  # Skipped on draft PRs, as is test-ios18: a draft can't merge, and each push
-  # to one would otherwise spend two macOS test runs on work in progress.
-  # SwiftFormat still runs there, since it's quick; tests-gate above is what
-  # keeps the skip from reading as a pass. The negation keeps workflow_dispatch
-  # running: there is no PR there, and `!null` is true.
-  test-ios26:
-    name: Unit Tests (iOS 26)
+  # Skipped on draft PRs: a draft can't merge, and each push to one would
+  # otherwise spend two macOS test runs on work in progress. SwiftFormat still
+  # runs there, since it's quick; tests-gate above is what keeps the skip from
+  # reading as a pass. The negation keeps workflow_dispatch running: there is
+  # no PR there, and `!null` is true.
+  #
+  # One leg per pinned runtime. iOS 18 is the IPHONEOS_DEPLOYMENT_TARGET floor:
+  # the compiler rejects an unavailable API, but a missing SF Symbol or a
+  # behaviour difference only shows up when the tests actually run there.
+  # The names are the required checks, so they must stay "Unit Tests (iOS N)".
+  # fail-fast off: each leg reports on its own, as separate jobs did.
+  test:
+    name: Unit Tests (iOS ${{ matrix.ios }})
     if: ${{ !github.event.pull_request.draft }}
-    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ios: 26
+            download: "26.5"
+          - ios: 18
+            download: "18.5"
+    # Xcode 27 image: the widgets use the iOS 27 SDK (systemExtraLargePortrait),
+    # which Xcode 26 lacks, and Xcode 27 needs macOS 26.6+, so neither macos-26
+    # nor macos-15 can build them. The image ships only iOS 27 runtimes, so
+    # each leg downloads its own (~9 GB, a few minutes).
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
-      # Pinned to iOS 26 rather than "first available iPhone": paired with the
-      # test-ios18 job, that names which runtime each leg actually covers. The
-      # runner image ships iOS 26, so this never needs a runtime download.
-      - name: Select iOS 26 simulator
+      # The image defaults to an older Xcode 27; pin the release used locally
+      # so CI and local builds compile with the same SDK.
+      - run: sudo xcode-select -s /Applications/Xcode_27.2.app
+
+      - name: Select iOS ${{ matrix.ios }} simulator
         id: sim
+        env:
+          IOS: ${{ matrix.ios }}
+          DOWNLOAD: ${{ matrix.download }}
         run: |
-          SIM_ID=$(xcrun simctl list devices available --json \
-            | jq -r '[.devices | to_entries[] | select(.key | contains("iOS-26")) | .value[] | select(.name | startswith("iPhone"))][0].udid')
-          if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
-            echo "No available iOS 26 iPhone simulator on this runner" >&2
+          runtime() {
+            xcrun simctl list runtimes --json \
+              | jq -r --arg ios "iOS-$IOS-" '[.runtimes[] | select(.isAvailable) | select(.identifier | contains($ios))][0].identifier'
+          }
+          RT=$(runtime)
+          if [ -z "$RT" ] || [ "$RT" = "null" ]; then
+            xcodebuild -downloadPlatform iOS -buildVersion "$DOWNLOAD"
+            RT=$(runtime)
+          fi
+          if [ -z "$RT" ] || [ "$RT" = "null" ]; then
+            echo "No iOS $IOS runtime available and the download did not provide one" >&2
             exit 1
+          fi
+          SIM_ID=$(xcrun simctl list devices available --json \
+            | jq -r --arg rt "$RT" '[.devices[$rt][]? | select(.name | startswith("iPhone"))][0].udid')
+          if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
+            # From the runtime's own supported list: the image's newest iPhone
+            # device types don't run on older runtimes.
+            DEVICE_TYPE=$(xcrun simctl list runtimes --json \
+              | jq -r --arg rt "$RT" '[.runtimes[] | select(.identifier == $rt) | .supportedDeviceTypes[] | select(.productFamily == "iPhone")][0].identifier')
+            SIM_ID=$(xcrun simctl create "ci-ios$IOS" "$DEVICE_TYPE" "$RT")
           fi
           echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
 
@@ -104,64 +142,7 @@ jobs:
       # xcbeautify (preinstalled on macOS runners) keeps the log readable;
       # --quiet drops passing-task noise but keeps warnings and errors;
       # pipefail preserves xcodebuild's exit code through the pipe.
-      - name: Build and run unit tests on iOS 26
-        run: |
-          set -o pipefail
-          xcodebuild test \
-            -project Actuali/Actuali.xcodeproj \
-            -scheme Actuali \
-            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
-            -testLanguage en \
-            -testRegion US \
-            -skip-testing:ActualiUITests \
-            | xcbeautify --quiet
-
-  # IPHONEOS_DEPLOYMENT_TARGET is 18.0, so the floor needs a runtime of its
-  # own: the compiler rejects an unavailable API, but a missing SF Symbol or
-  # a behaviour difference only shows up when the tests actually run there.
-  # macos-15 rather than macos-26: its image ships iOS 18 runtimes and devices
-  # alongside Xcode 26, which saves the ~9 GB runtime download macos-26 needs
-  # (~4 min, plus a slower build while the fresh runtime settles). The
-  # download below stays as a fallback for when the image drops them.
-  test-ios18:
-    name: Unit Tests (iOS 18)
-    if: ${{ !github.event.pull_request.draft }}
-    runs-on: macos-15
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7
-
-      # macos-15 defaults to Xcode 16, which lacks the iOS 26 SDK. Take the
-      # newest Xcode 26 on the image rather than pinning one the image may
-      # later prune; the iOS 26 leg still builds on the current toolchain.
-      - run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
-
-      - name: Select iOS 18 simulator
-        id: sim
-        run: |
-          runtime() {
-            xcrun simctl list runtimes --json \
-              | jq -r '[.runtimes[] | select(.isAvailable) | select(.identifier | contains("iOS-18"))][0].identifier'
-          }
-          RT=$(runtime)
-          if [ -z "$RT" ] || [ "$RT" = "null" ]; then
-            xcodebuild -downloadPlatform iOS -buildVersion 18.5
-            RT=$(runtime)
-          fi
-          if [ -z "$RT" ] || [ "$RT" = "null" ]; then
-            echo "No iOS 18 runtime available and the download did not provide one" >&2
-            exit 1
-          fi
-          SIM_ID=$(xcrun simctl list devices available --json \
-            | jq -r --arg rt "$RT" '[.devices[$rt][]? | select(.name | startswith("iPhone"))][0].udid')
-          if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
-            DEVICE_TYPE=$(xcrun simctl list devicetypes --json \
-              | jq -r '[.devicetypes[] | select(.productFamily == "iPhone")][-1].identifier')
-            SIM_ID=$(xcrun simctl create ci-ios18 "$DEVICE_TYPE" "$RT")
-          fi
-          echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
-
-      - name: Build and run unit tests on iOS 18
+      - name: Build and run unit tests on iOS ${{ matrix.ios }}
         run: |
           set -o pipefail
           xcodebuild test \
