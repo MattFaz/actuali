@@ -449,7 +449,7 @@ struct AmountInputFieldTests {
         #expect(box.value == "-1.20")
     }
 
-    // MARK: - Toolbar arithmetic
+    // MARK: - Keypad arithmetic
 
     @Test func additionEvaluatesWhenEditingEnds() {
         let (coordinator, textField, box) = makeField()

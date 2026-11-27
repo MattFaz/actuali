@@ -26,9 +26,9 @@ final class AddTransactionKeyboardUITests: XCTestCase {
 
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5),
-                      "no Done button above the decimal pad for the amount field")
-        // GH #746: the bar's keys must leave the iOS 26 Done pill on screen
-        // even on a 375pt phone (iPhone 13 mini, SE).
+                      "no Done key on the amount keypad")
+        // GH #746: Done must stay on screen even on a 375pt phone (iPhone
+        // 13 mini, SE).
         XCTAssertLessThanOrEqual(
             done.frame.maxX, app.windows.firstMatch.frame.maxX,
             "Done runs past the screen edge: done=\(done.frame)"
@@ -60,10 +60,10 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                       "keyboard did not appear")
         amountField.typeText("12")
 
-        XCTAssertFalse(app.buttons["Flip sign"].exists, "keyboard bar repeats the sign button")
+        XCTAssertFalse(app.buttons["Flip sign"].exists, "keypad repeats the sign button")
         // "Add" would also match the Add tab, so use an unambiguous key.
         let multiply = app.buttons["Multiply"]
-        XCTAssertTrue(multiply.waitForExistence(timeout: 5), "no operator keys on the keyboard bar")
+        XCTAssertTrue(multiply.waitForExistence(timeout: 5), "no operator keys on the keypad")
         multiply.tap()
         amountField.typeText("3")
 

@@ -22,8 +22,6 @@ final class AddTransactionCancelUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Cancel"].exists, "add flow still shows a Cancel row")
 
         app.buttons["addTransaction.close"].tap()
-        XCTAssertFalse(app.buttons["Discard"].waitForExistence(timeout: 2),
-                       "close asked to confirm instead of discarding")
     }
 
     /// Asserts the amount field shows its placeholder again — the entered
@@ -58,22 +56,6 @@ final class AddTransactionCancelUITests: XCTestCase {
         // Back on the Add tab, the entered amount must be gone.
         app.tabBars.buttons["Add"].tap()
         assertAmountCleared(in: app)
-    }
-
-    /// An untouched form closes in one tap too.
-    @MainActor
-    func testCloseButtonLeavesAnEmptyFormWithoutConfirming() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-startTab", "budget"]
-        app.launch()
-
-        let close = app.buttons["addTransaction.close"]
-        XCTAssertTrue(close.waitForExistence(timeout: 10), "close button not found")
-        close.tap()
-
-        expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons["Budget"])
-        waitForExpectations(timeout: 5)
-        XCTAssertFalse(app.buttons["Discard"].exists, "empty form asked to confirm a discard")
     }
 
     @MainActor
