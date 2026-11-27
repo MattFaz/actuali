@@ -95,54 +95,57 @@ struct EnableBankingSyncView: View {
     private var linkedSection: some View {
         Section {
             ForEach(linkedAccounts) { account in
-                Menu {
-                    Button("Authorize Again") {
-                        reauthorization = Reauthorization(bankName: account.institutionName)
-                    }
-                    .disabled(readiness != .ready)
-                    .accessibilityIdentifier("enableBanking.reauthorize.\(account.id)")
-                    Button("Unlink", role: .destructive) {
-                        unlinkTarget = account
-                    }
-                    .accessibilityIdentifier("enableBanking.unlink.\(account.id)")
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            // Explicit styles keep the menu from tinting the row.
-                            Text(account.name)
-                                .foregroundStyle(.primary)
-                            if let bank = account.institutionName {
-                                Text(bank)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            if let lastSync = account.lastSync {
-                                HStack(spacing: 4) {
-                                    Text("Last Bank Sync")
-                                    Text(lastSync, format: .relative(presentation: .named))
-                                }
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(account.name)
+                        if let bank = account.institutionName {
+                            Text(bank)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            }
-                            if let endsBy = account.permissionEndsBy {
-                                Text("Bank permission ends by \(endsBy.formatted(date: .abbreviated, time: .omitted))")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            if let message = account.attentionMessage {
-                                Text(message)
-                                    .font(.caption)
-                                    .foregroundStyle(.red)
-                            }
                         }
-                        Spacer()
-                        // Shows that the row opens a menu.
-                        Image(systemName: "ellipsis")
+                        if let lastSync = account.lastSync {
+                            HStack(spacing: 4) {
+                                Text("Last Bank Sync")
+                                Text(lastSync, format: .relative(presentation: .named))
+                            }
+                            .font(.caption)
                             .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
+                        }
+                        if let endsBy = account.permissionEndsBy {
+                            Text("Bank permission ends by \(endsBy.formatted(date: .abbreviated, time: .omitted))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let message = account.attentionMessage {
+                            Text(message)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
                     }
                     .accessibilityElement(children: .combine)
-                    .contentShape(Rectangle())
+                    .accessibilityIdentifier("enableBanking.linked.\(account.id)")
+                    Spacer()
+                    // Only the dots open the menu: a menu on the whole row tints
+                    // it and hides the account while the menu is up.
+                    Menu {
+                        Button("Authorize Again") {
+                            reauthorization = Reauthorization(bankName: account.institutionName)
+                        }
+                        .disabled(readiness != .ready)
+                        .accessibilityIdentifier("enableBanking.reauthorize.\(account.id)")
+                        Button("Unlink", role: .destructive) {
+                            unlinkTarget = account
+                        }
+                        .accessibilityIdentifier("enableBanking.unlink.\(account.id)")
+                    } label: {
+                        Label("More", systemImage: "ellipsis")
+                            .labelStyle(.iconOnly)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    // Keeps the tap on the dots instead of the whole row.
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("enableBanking.linkedMenu.\(account.id)")
                 }
                 // A full swipe slides the row away as if it were already deleted, but the
                 // confirmation can still be cancelled.
@@ -153,7 +156,6 @@ struct EnableBankingSyncView: View {
                         Text("Unlink")
                     }
                 }
-                .accessibilityIdentifier("enableBanking.linked.\(account.id)")
             }
             Button {
                 let ids = linkedAccounts.map(\.id)
