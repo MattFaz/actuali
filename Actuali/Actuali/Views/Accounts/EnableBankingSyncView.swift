@@ -189,7 +189,7 @@ struct EnableBankingSyncView: View {
             NavigationLink {
                 EnableBankingConnectView()
             } label: {
-                Label("Connect a Bank", systemImage: "plus")
+                Label("Connect Bank", systemImage: "plus")
             }
             .accessibilityIdentifier("enableBanking.connect")
         }
@@ -275,7 +275,7 @@ struct EnableBankingSyncView: View {
     private func loadReadiness() async {
         // Popping back from the connect screen runs this again. A server
         // already known to be ready isn't asked twice, so a network blip can't
-        // take the Connect a Bank row away.
+        // take the Connect Bank row away.
         guard readiness != .ready else { return }
         do {
             let status = try await budgetStore.enableBankingStatus()

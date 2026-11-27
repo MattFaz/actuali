@@ -45,7 +45,7 @@ struct EnableBankingConnectView: View {
                 remoteAccountsSection
             }
         }
-        .navigationTitle("Connect a Bank")
+        .navigationTitle("Connect Bank")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { authorizationTask?.cancel() }
         .sheet(item: $linkTarget, onDismiss: syncAfterLink, content: { remote in

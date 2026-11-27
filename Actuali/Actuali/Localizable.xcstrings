@@ -31966,7 +31966,7 @@
         }
       }
     },
-    "Connect a Bank" : {
+    "Connect Bank" : {
       "comment" : "Enable Banking row that opens the connect screen, and that screen's title",
       "extractionState" : "stale",
       "localizations" : {
@@ -31979,7 +31979,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connect a Bank"
+            "value" : "Connect Bank"
           }
         },
         "es" : {
