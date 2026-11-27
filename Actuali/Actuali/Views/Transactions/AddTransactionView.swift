@@ -139,8 +139,8 @@ struct AddTransactionView: View {
     }
 
     /// Presented flows (edit, account-detail "+", notification prefill) can
-    /// close themselves; the tab-hosted add flow can't. Cancel, post-save
-    /// behavior, and the header all branch on this.
+    /// close themselves; the tab-hosted add flow can't. Cancel and post-save
+    /// behavior branch on this.
     private var canDismiss: Bool {
         isEditing || isPresented
     }
@@ -577,7 +577,9 @@ struct AddTransactionView: View {
                             alignment: .center,
                             textStyle: .extraLargeTitle,
                             weight: .bold,
-                            autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty)
+                            autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty),
+                            onToggleSign: toggleDirection,
+                            canToggleSign: canToggleDirection
                         )
                         .fixedSize(horizontal: true, vertical: false)
                         .frame(minWidth: amountMinWidth)
@@ -875,13 +877,13 @@ struct AddTransactionView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                 keyboardShown = false
             }
-            // The form's default ~35pt top inset is dead space on the
-            // header-less tab root; 8pt keeps the first section off the status
-            // bar without it. Presented flows have a title up there and keep
-            // the stock inset.
-            .contentMargins(.top, canDismiss ? nil : 8, for: .scrollContent)
-            // Presented flows keep their sheet titles; the tab root shows no
-            // header, matching the Accounts and Budget tabs.
+            // The form's default ~35pt top inset is dead space without a
+            // header; 8pt keeps the first section off the status bar. Edits
+            // have a title up there and keep the stock inset.
+            .contentMargins(.top, isEditing ? nil : 8, for: .scrollContent)
+            // Only edits carry a title. Every add flow, tab or sheet, opens
+            // on the amount alone: the sheet's close button sits beside it,
+            // so a title bar would only push the form down.
             .navigationDestination(isPresented: $showCategoryPicker) {
                 CategoryPickerView(
                     selectedCategoryId: $selectedCategoryId,
@@ -897,8 +899,8 @@ struct AddTransactionView: View {
                     accounts: orderedOpenAccounts
                 )
             }
-            .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
-            .navigationBarTitleDisplayMode(canDismiss ? .automatic : .inline)
+            .navigationTitle(isEditing ? "Edit Transaction" : "")
+            .navigationBarTitleDisplayMode(isEditing ? .automatic : .inline)
             .listSectionSpacing(.compact)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
@@ -1535,7 +1537,8 @@ private struct SplitLineRow: View {
 ///
 /// With `allowsNegative`, a ± key on the keypad flips the text's own sign.
 /// Without it the text stays unsigned and the sign is the caller's: the add
-/// flow's sign button beside the amount, a split line's flip.
+/// flow's sign button beside the amount, a split line's flip. A caller that
+/// passes `onToggleSign` gets the ± key too, wired to its own sign.
 ///
 /// `textStyle` picks the Dynamic Type text style the font scales from.
 ///
@@ -1559,6 +1562,9 @@ struct AmountInputField: UIViewRepresentable {
     /// Bring up the keyboard as soon as the field lands on screen. For
     /// sheets whose whole purpose is entering an amount.
     var autofocus = false
+    var onToggleSign: (@MainActor () -> Void)?
+    /// Disables the keypad's ± while the caller's sign can't flip.
+    var canToggleSign = true
 
     /// becomeFirstResponder is a no-op until the view joins a window, and
     /// during a sheet presentation that happens well after makeUIView —
@@ -1615,7 +1621,7 @@ struct AmountInputField: UIViewRepresentable {
             decimalSeparator: budgetStore.numberFormat.decimalSeparator,
             onType: { [weak coordinator] in coordinator?.type($0) },
             onOperator: { [weak coordinator] in coordinator?.pushOperator($0) },
-            onToggleSign: allowsNegative ? { [weak coordinator] in coordinator?.toggleSign() } : nil,
+            onToggleSign: allowsNegative || onToggleSign != nil ? { [weak coordinator] in coordinator?.toggleSign() } : nil,
             onDone: { [weak field] in field?.resignFirstResponder() }
         )
         context.coordinator.textField = field
@@ -1630,6 +1636,7 @@ struct AmountInputField: UIViewRepresentable {
         let formatChanged = context.coordinator.numberFormat != budgetStore.numberFormat
         context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.parent = self
+        (uiView.inputView as? AmountKeypadView)?.isSignEnabled = canToggleSign
 
         if formatChanged {
             (uiView.inputView as? AmountKeypadView)?.decimalSeparator = budgetStore.numberFormat.decimalSeparator
@@ -1825,7 +1832,10 @@ struct AmountInputField: UIViewRepresentable {
         }
 
         func toggleSign() {
-            guard parent.allowsNegative else { return }
+            guard parent.allowsNegative else {
+                parent.onToggleSign?()
+                return
+            }
             isNegative.toggle()
             if let textField {
                 applyDisplay(to: textField)

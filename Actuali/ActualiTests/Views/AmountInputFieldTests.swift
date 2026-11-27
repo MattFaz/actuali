@@ -18,13 +18,15 @@ struct AmountInputFieldTests {
     private func makeField(
         initial: String = "",
         allowsNegative: Bool = false,
-        conventionalAmountEntry: Bool = false
+        conventionalAmountEntry: Bool = false,
+        onToggleSign: (@MainActor () -> Void)? = nil
     ) -> (coordinator: AmountInputField.Coordinator, textField: UITextField, box: TextBox) {
         let box = TextBox(initial)
         let field = AmountInputField(
             text: Binding(get: { box.value }, set: { box.value = $0 }),
             conventionalAmountEntry: conventionalAmountEntry,
-            allowsNegative: allowsNegative
+            allowsNegative: allowsNegative,
+            onToggleSign: onToggleSign
         )
         let coordinator = field.makeCoordinator()
         let textField = UITextField()
@@ -73,13 +75,13 @@ struct AmountInputFieldTests {
 
     private func makeKeypad(
         for coordinator: AmountInputField.Coordinator,
-        allowsNegative: Bool = false
+        hasSign: Bool = false
     ) -> AmountKeypadView {
         AmountKeypadView(
             decimalSeparator: ".",
             onType: { coordinator.type($0) },
             onOperator: { coordinator.pushOperator($0) },
-            onToggleSign: allowsNegative ? { coordinator.toggleSign() } : nil,
+            onToggleSign: hasSign ? { coordinator.toggleSign() } : nil,
             onDone: {}
         )
     }
@@ -99,22 +101,51 @@ struct AmountInputFieldTests {
         #expect(textField.text == "1.00 + 0.20")
     }
 
-    /// ± only replaces 00 where the field can hold a negative; elsewhere the
-    /// sign lives beside the field.
-    @Test func keypadOffersSignOnlyWhereTheFieldIsSigned() {
+    /// ± flips a signed field's own text, and on an unsigned field hands the
+    /// flip to the caller's sign. 00 stays either way.
+    @Test func keypadSignFlipsTheFieldOrTheCallersSign() {
+        func labels(in view: UIView) -> [String] {
+            view.subviews.flatMap { ($0 as? UIButton).map { [$0.accessibilityLabel ?? ""] } ?? labels(in: $0) }
+        }
         let (coordinator, textField, box) = makeField(initial: "5.00", allowsNegative: true)
-        let keypad = makeKeypad(for: coordinator, allowsNegative: true)
+        let keypad = makeKeypad(for: coordinator, hasSign: true)
+        #expect(labels(in: keypad).contains("00"))
         press("Flip sign", on: keypad)
         #expect(box.value == "-5.00")
         #expect(textField.text == "-5.00")
 
-        let (unsigned, _, _) = makeField()
-        let unsignedKeypad = makeKeypad(for: unsigned)
-        func labels(in view: UIView) -> [String] {
-            view.subviews.flatMap { ($0 as? UIButton).map { [$0.accessibilityLabel ?? ""] } ?? labels(in: $0) }
+        var flips = 0
+        let (unsigned, unsignedField, unsignedBox) = makeField(initial: "5.00", onToggleSign: { flips += 1 })
+        press("Flip sign", on: makeKeypad(for: unsigned, hasSign: true))
+        #expect(flips == 1)
+        #expect(unsignedBox.value == "5.00")
+        #expect(unsignedField.text == "5.00")
+
+        let (plain, _, _) = makeField()
+        #expect(!labels(in: makeKeypad(for: plain)).contains("Flip sign"))
+    }
+
+    /// While the caller's sign can't flip (a transfer with no partner, say),
+    /// the keypad's ± goes dead with it, and comes back when it can.
+    @Test func keypadSignFollowsTheCallersSignState() {
+        func signKey(in view: UIView) -> UIButton? {
+            for subview in view.subviews {
+                if let button = subview as? UIButton, button.accessibilityLabel == "Flip sign" {
+                    return button
+                }
+                if let found = signKey(in: subview) {
+                    return found
+                }
+            }
+            return nil
         }
-        #expect(labels(in: unsignedKeypad).contains("00"))
-        #expect(!labels(in: unsignedKeypad).contains("Flip sign"))
+        let (coordinator, _, _) = makeField(onToggleSign: {})
+        let keypad = makeKeypad(for: coordinator, hasSign: true)
+        #expect(signKey(in: keypad)?.isEnabled == true)
+        keypad.isSignEnabled = false
+        #expect(signKey(in: keypad)?.isEnabled == false)
+        keypad.isSignEnabled = true
+        #expect(signKey(in: keypad)?.isEnabled == true)
     }
 
     @Test func calculatorModeShiftsDigitsIntoCents() {

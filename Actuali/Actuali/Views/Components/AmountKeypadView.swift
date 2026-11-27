@@ -3,23 +3,30 @@ import UIKit
 /// The amount field's keyboard, laid out like a calculator (and like YNAB's):
 ///
 ///     1  2  3   ÷  ⌫
-///     4  5  6   ×
+///     4  5  6   ×  ±
 ///     7  8  9   −  Done
 ///     .  0  00  +
 ///
 /// The system decimal pad can't carry operator or Done keys, and a bar of
-/// them floating above it read as a second keyboard. On fields that allow a
-/// negative, ± takes the place of 00.
+/// them floating above it read as a second keyboard. ± only shows where the
+/// field has a sign to flip; without it Done takes its row as well.
 ///
 /// The keypad only reports keys; the field's coordinator applies them, so the
 /// entry logic (cent shifting, replacing a selected amount) stays in one place.
 final class AmountKeypadView: UIInputView, UIInputViewAudioFeedback {
     private var decimalKey: UIButton?
+    private var signKey: UIButton?
 
     /// Follows the budget's number format, so the key matches what the
     /// field shows. The field accepts either separator.
     var decimalSeparator: String {
         didSet { decimalKey?.configuration?.title = decimalSeparator }
+    }
+
+    /// Follows the caller's own sign control, so ± can't sit live while the
+    /// button beside the field refuses to flip.
+    var isSignEnabled = true {
+        didSet { signKey?.isEnabled = isSignEnabled }
     }
 
     var enableInputClicksWhenVisible: Bool {
@@ -51,20 +58,20 @@ final class AmountKeypadView: UIInputView, UIInputViewAudioFeedback {
         let decimal = Key(title: decimalSeparator, label: decimalSeparator, style: .digit, typesText: true) {
             onType(".")
         }
-        let thirdColumnBottom = onToggleSign.map {
-            Key(symbol: "plus.forwardslash.minus", label: String(localized: "Flip sign"), style: .digit, action: $0)
-        } ?? type("00")
         let operators: [AmountInputField.Coordinator.Operator] = [.divide, .multiply, .subtract, .add]
         let columns: [[Key]] = [
             [type("1"), type("4"), type("7"), decimal],
             [type("2"), type("5"), type("8"), type("0")],
-            [type("3"), type("6"), type("9"), thirdColumnBottom],
+            [type("3"), type("6"), type("9"), type("00")],
             operators.map { op in
                 Key(symbol: op.symbolName, label: op.accessibilityLabel, style: .function) { onOperator(op) }
             },
         ]
         let delete = Key(symbol: "delete.left", label: String(localized: "Delete"), style: .function, typesText: true) {
             onType("")
+        }
+        let sign = onToggleSign.map {
+            Key(symbol: "plus.forwardslash.minus", label: String(localized: "Flip sign"), style: .function, action: $0)
         }
         let done = Key(title: String(localized: "Done"), label: String(localized: "Done"), style: .done, action: onDone)
 
@@ -76,7 +83,9 @@ final class AmountKeypadView: UIInputView, UIInputViewAudioFeedback {
             stack.distribution = .fillEqually
             return stack
         }
-        let lastColumn = UIStackView(arrangedSubviews: [delete.button, done.button])
+        // Done fills whatever rows delete and ± leave it.
+        let fixedKeys = [delete.button] + (sign.map { [$0.button] } ?? [])
+        let lastColumn = UIStackView(arrangedSubviews: fixedKeys + [done.button])
         lastColumn.axis = .vertical
         lastColumn.spacing = spacing
         let keys = UIStackView(arrangedSubviews: columnStacks + [lastColumn])
@@ -86,6 +95,7 @@ final class AmountKeypadView: UIInputView, UIInputViewAudioFeedback {
         addSubview(keys)
 
         decimalKey = decimal.button
+        signKey = sign?.button
         let firstKey = columns[0][0].button
         // Full width on a phone, but an iPad keyboard spans the screen and
         // keys that wide stop reading as a keypad, so the grid caps out.
@@ -97,9 +107,8 @@ final class AmountKeypadView: UIInputView, UIInputViewAudioFeedback {
         // logging a constraint conflict.
         let keyHeight = firstKey.heightAnchor.constraint(equalToConstant: 50)
         keyHeight.priority = UILayoutPriority(999)
-        NSLayoutConstraint.activate([
+        NSLayoutConstraint.activate(fixedKeys.map { $0.heightAnchor.constraint(equalTo: firstKey.heightAnchor) } + [
             keyHeight,
-            delete.button.heightAnchor.constraint(equalTo: firstKey.heightAnchor),
             keys.topAnchor.constraint(equalTo: topAnchor, constant: spacing),
             keys.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -spacing),
             keys.centerXAnchor.constraint(equalTo: safeAreaLayoutGuide.centerXAnchor),
