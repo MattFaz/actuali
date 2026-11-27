@@ -593,6 +593,241 @@
         }
       }
     },
+    "Select the Correct Budget" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das richtige Budget auswählen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select the Correct Budget"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecciona el presupuesto correcto"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sélectionner le bon budget"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seleziona il budget corretto"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecteer het juiste budget"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecione o orçamento correto"
+          }
+        }
+      }
+    },
+    "Open Connection & Data to download or unlock the budget, then retry." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne „Verbindung & Daten“, um das Budget herunterzuladen oder zu entsperren, und versuche es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Connection & Data to download or unlock the budget, then retry."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre Conexión y datos para descargar o desbloquear el presupuesto e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrez Connexion et données pour télécharger ou déverrouiller le budget, puis réessayez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apri Connessione e dati per scaricare o sbloccare il budget, poi riprova."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Verbinding en gegevens om het budget te downloaden of ontgrendelen en probeer het opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abra Conexão e dados para baixar ou desbloquear o orçamento e tente novamente."
+          }
+        }
+      }
+    },
+    "Switch to the transaction's budget to finish adding it." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wechsle zum Budget der Transaktion, um sie fertig hinzuzufügen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to the transaction's budget to finish adding it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambia al presupuesto de la transacción para terminar de añadirla."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passez au budget de la transaction pour terminer son ajout."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passa al budget della transazione per completare l'aggiunta."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schakel over naar het budget van de transactie om deze toe te voegen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mude para o orçamento da transação para concluir o lançamento."
+          }
+        }
+      }
+    },
+    "Switch to %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu %@ wechseln"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiar a %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passer à %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passa a %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overschakelen naar %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mudar para %@"
+          }
+        }
+      }
+    },
+    "This budget already has a local copy. Open Actuali to manage it." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für dieses Budget gibt es bereits eine lokale Kopie. Öffne Actuali, um sie zu verwalten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This budget already has a local copy. Open Actuali to manage it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este presupuesto ya tiene una copia local. Abre Actuali para gestionarla."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce budget possède déjà une copie locale. Ouvrez Actuali pour la gérer."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo budget ha già una copia locale. Apri Actuali per gestirla."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit budget heeft al een lokale kopie. Open Actuali om deze te beheren."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este orçamento já tem uma cópia local. Abra o Actuali para gerenciá-la."
+          }
+        }
+      }
+    },
     "Add Holiday" : {
       "localizations" : {
         "de" : {
@@ -52800,49 +53035,49 @@
         }
       }
     },
-    "Log \\(\\.$amount) at \\(\\.$payee) in \\(\\.$account)" : {
-      "extractionState" : "stale",
+    "Log \\(\\.$amount) at \\(\\.$payee) for \\(\\.$budget) in \\(\\.$account)" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erfasse \\(\\.$amount) bei \\(\\.$payee) in \\(\\.$account)"
+            "value" : "Erfasse \\(\\.$amount) bei \\(\\.$payee) für das Budget \\(\\.$budget) auf dem Konto \\(\\.$account)"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Log \\(\\.$amount) at \\(\\.$payee) in \\(\\.$account)"
+            "value" : "Log \\(\\.$amount) at \\(\\.$payee) for \\(\\.$budget) in \\(\\.$account)"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registrar \\(\\.$amount) en \\(\\.$payee) en \\(\\.$account)"
+            "value" : "Registrar \\(\\.$amount) en \\(\\.$payee) para el presupuesto \\(\\.$budget) en la cuenta \\(\\.$account)"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Enregistrer \\(\\.$amount) chez \\(\\.$payee) dans \\(\\.$account)"
+            "value" : "Enregistrer \\(\\.$amount) chez \\(\\.$payee) pour le budget \\(\\.$budget) sur le compte \\(\\.$account)"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registra \\(\\.$amount) a \\(\\.$payee) in \\(\\.$account)"
+            "value" : "Registra \\(\\.$amount) presso \\(\\.$payee) per il budget \\(\\.$budget) sul conto \\(\\.$account)"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Boek \\(\\.$amount) bij \\(\\.$payee) op \\(\\.$account)"
+            "value" : "Boek \\(\\.$amount) bij \\(\\.$payee) voor budget \\(\\.$budget) op rekening \\(\\.$account)"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registrar \\(\\.$amount) em \\(\\.$payee) na conta \\(\\.$account)"
+            "value" : "Registrar \\(\\.$amount) em \\(\\.$payee) para o orçamento \\(\\.$budget) na conta \\(\\.$account)"
           }
         }
       }

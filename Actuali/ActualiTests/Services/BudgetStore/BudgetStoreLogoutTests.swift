@@ -99,6 +99,58 @@ struct BudgetStoreLogoutTests {
         #expect(store.remoteBudgets.map(\.name) == ["Test Budget"])
     }
 
+    /// A download that is waiting at the import boundary must not recreate
+    /// budget files after disconnect has wiped the device.
+    @Test func logoutCancelsPendingShortcutDownloadBeforeDeletingFiles() async throws {
+        let savedBudgetId = UserDefaults.standard.object(forKey: "currentBudgetId")
+        defer { UserDefaults.standard.set(savedBudgetId, forKey: "currentBudgetId") }
+
+        let (store, manager) = try makeIsolatedStore()
+        let files = try JSONEncoder().encode(ListFilesResponse(
+            status: "ok",
+            data: [
+                .init(
+                    fileId: "remote-cloud-file", groupId: "remote-group",
+                    name: "Remote", deleted: 0, encryptKeyId: nil
+                ),
+            ]
+        ))
+        let client = ActualServerClient(session: StubTransport.session { request in
+            if request.url?.path.contains("list-user-files") == true {
+                return StubTransport.Response(contentType: "application/json", body: files)
+            }
+            // The test suspends before this would be passed to the ZIP importer.
+            return StubTransport.Response(
+                contentType: "application/zip", body: Data("stale snapshot".utf8)
+            )
+        })
+        try await client.configure(serverURL: "https://budget.example.com")
+        await client.setToken("test-token")
+        store.setServerClientForTesting(client)
+        store.isConnected = true
+
+        let importGate = Gate()
+        let importStarted = Gate()
+        store.intentDownloadReadyToImportForTesting = {
+            importStarted.open()
+            await importGate.wait()
+        }
+        let logoutStarted = Gate()
+        store.logoutStartedForTesting = { logoutStarted.open() }
+
+        let shortcut = Task { try? await store.localBudgetIDForIntent("remote-cloud-file") }
+        await importStarted.wait()
+        let disconnect = Task { await store.logout() }
+        await logoutStarted.wait()
+
+        importGate.open()
+        await disconnect.value
+        let resolvedBudget = await shortcut.value
+        #expect(resolvedBudget == nil)
+        #expect(manager.listLocalBudgets().isEmpty)
+        #expect(store.currentBudgetId == nil)
+    }
+
     @Test func deletesEveryLocalBudgetFromDisk() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
