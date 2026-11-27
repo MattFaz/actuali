@@ -932,7 +932,7 @@ private extension OverviewEntry {
 }
 
 @available(iOS 27.0, *)
-#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+#Preview("Extra Large Portrait", as: .previewExtraLargePortrait) {
     OverviewWidget()
 } timeline: {
     OverviewEntry.previewSample()
