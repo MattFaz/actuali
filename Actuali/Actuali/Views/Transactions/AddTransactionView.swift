@@ -5,7 +5,6 @@ import SwiftUI
 struct AddTransactionView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.isPresented) private var isPresented
     @Environment(\.locale) private var locale
     @Environment(\.scenePhase) private var scenePhase
 
@@ -129,13 +128,6 @@ struct AddTransactionView: View {
 
     private var isEditing: Bool {
         editing != nil
-    }
-
-    /// Every flow the app presents can close itself. A form hosted without a
-    /// presentation (the unit tests do this) has nothing to dismiss, so Cancel
-    /// and post-save reset it instead.
-    private var canDismiss: Bool {
-        isEditing || isPresented
     }
 
     /// A transfer is a transaction whose payee is another account. An existing
@@ -939,14 +931,8 @@ struct AddTransactionView: View {
         }
     }
 
-    /// A presented flow closes on Cancel; one with nothing to dismiss discards
-    /// the entry instead.
     private func cancelEntry() {
-        if canDismiss {
-            dismiss()
-        } else {
-            resetForm()
-        }
+        dismiss()
     }
 
     /// Load a split parent's children as editable lines. Inherited payees
@@ -1202,11 +1188,7 @@ struct AddTransactionView: View {
                 try await budgetStore.saveTransaction(form, editing: editing)
             }
             try onSaved?(savedTransactionId)
-            if canDismiss {
-                dismiss()
-            } else {
-                resetForm()
-            }
+            dismiss()
         } catch {
             errorMessage = PendingImportApprover.localizedErrorMessage(
                 for: error, locale: locale

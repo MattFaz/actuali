@@ -46,30 +46,30 @@ final class FloatingAddButtonUITests: XCTestCase {
                        "keypad input did not land in the amount field")
     }
 
+    /// Starts switched off through the arguments domain, which is never
+    /// written back, and only ever switches the setting on: a failure midway
+    /// can't leave the button hidden for the tests that run after this one.
     @MainActor
-    func testAddButtonSettingHidesAndRestoresTheButton() {
-        let app = launch(initialTab: 4)
+    func testSwitchedOffTheButtonIsHiddenUntilSwitchedBackOn() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "0", "-showsAddButton", "NO"]
+        app.launch()
 
+        XCTAssertTrue(app.buttons["accounts.topBox"].waitForExistence(timeout: 20), "Accounts did not open")
+        XCTAssertFalse(app.buttons["floatingAdd.button"].exists, "the button shows on Accounts while switched off")
+
+        app.tabBars.buttons["More"].tap()
         app.buttons["Display"].tap()
         let toggle = app.switches["displaySettings.addButton"]
         for _ in 0..<8 where !toggle.exists {
             app.swipeUp()
         }
         XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Show Add Transaction Button switch not found in Display")
-        XCTAssertEqual(toggle.value as? String, "1", "the button should be on by default")
+        XCTAssertEqual(toggle.value as? String, "0", "the switch should reflect the stored setting")
 
-        tapControl(toggle) { toggle.value as? String == "0" }
-        app.tabBars.buttons["Accounts"].tap()
-        XCTAssertTrue(app.buttons["accounts.topBox"].waitForExistence(timeout: 10), "Accounts did not open")
-        XCTAssertTrue(app.buttons["floatingAdd.button"].waitForNonExistence(timeout: 10),
-                      "the button stayed on Accounts after switching it off")
-
-        // More keeps Display open, so the switch is still there.
-        app.tabBars.buttons["More"].tap()
-        XCTAssertTrue(toggle.waitForExistence(timeout: 10), "Display did not stay open on More")
         tapControl(toggle) { toggle.value as? String == "1" }
         app.tabBars.buttons["Accounts"].tap()
         XCTAssertTrue(app.buttons["floatingAdd.button"].waitForExistence(timeout: 10),
-                      "the button did not return on Accounts after switching it on")
+                      "the button did not appear on Accounts after switching it on")
     }
 }

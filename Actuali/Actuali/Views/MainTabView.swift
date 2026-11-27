@@ -71,6 +71,14 @@ struct MainTabView: View {
         .sheet(isPresented: $notificationRouter.pendingAddTransaction) {
             AddTransactionSheet()
         }
+        // Here rather than on the floating button, which isn't on More and
+        // can be switched off. Invisible, like the form's Command-Return.
+        .background {
+            Button { notificationRouter.pendingAddTransaction = true } label: { EmptyView() }
+                .keyboardShortcut("n", modifiers: .command)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
         #if DEBUG
         // Lets UI tests start with the form open.
         .onAppear {
@@ -122,6 +130,7 @@ struct MainTabView: View {
 
 /// The add-transaction form for the default account, else the first open one.
 struct AddTransactionSheet: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var showingDefaultAccountAlert = false
 
@@ -153,11 +162,15 @@ struct AddTransactionSheet: View {
                 Text(String(localized: "Your default account is no longer available. Please configure a new default in More → Transactions & Automation."))
             }
         } else {
-            ContentUnavailableView(
-                "No Accounts",
-                systemImage: "building.columns",
-                description: Text("Add an account to create transactions")
-            )
+            // Reached from the quick action or the widget link; the floating
+            // button is hidden without an open account.
+            ContentUnavailableView {
+                Label("No Accounts", systemImage: "building.columns")
+            } description: {
+                Text("Add an account to create transactions")
+            } actions: {
+                Button("Close") { dismiss() }
+            }
         }
     }
 }

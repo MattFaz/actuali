@@ -12,15 +12,21 @@ extension View {
 private struct FloatingAddButtonModifier: ViewModifier {
     @EnvironmentObject private var budgetStore: BudgetStore
 
+    /// Off by choice, or nothing to add to: without an open account the form
+    /// has no account to open on.
+    private var isShown: Bool {
+        budgetStore.showsAddButton && budgetStore.accounts.contains { !$0.closed }
+    }
+
     func body(content: Content) -> some View {
-        // Both parts keep `content` in place when the setting flips, so the
-        // page underneath isn't rebuilt. The room under the scroll content is
-        // safe area padding, not `contentMargins`: a scroll view that sets its
-        // own bottom margin (Budget's cards do) would replace an outer one.
+        // Both parts keep `content` in place when the button comes or goes, so
+        // the page underneath isn't rebuilt. The room under the scroll content
+        // is safe area padding, not `contentMargins`: a scroll view that sets
+        // its own bottom margin (Budget's cards do) would replace an outer one.
         content
-            .safeAreaPadding(.bottom, budgetStore.showsAddButton ? FloatingAddButton.clearance : 0)
+            .safeAreaPadding(.bottom, isShown ? FloatingAddButton.clearance : 0)
             .overlay(alignment: .bottomTrailing) {
-                if budgetStore.showsAddButton {
+                if isShown {
                     FloatingAddButton()
                         .padding(FloatingAddButton.margin)
                         // A search keyboard covers the button rather than
@@ -49,7 +55,6 @@ private struct FloatingAddButton: View {
                 .contentShape(Circle())
         }
         .modifier(FloatingAddBackground())
-        .keyboardShortcut("n", modifiers: .command)
         .accessibilityLabel("Add Transaction")
         .accessibilityIdentifier("floatingAdd.button")
     }
