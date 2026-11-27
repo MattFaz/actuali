@@ -24,6 +24,7 @@ struct AddTransactionView: View {
     /// text style so it never clips at accessibility sizes. The same width is
     /// reserved on the opposite side so the amount itself stays centered.
     @ScaledMetric(relativeTo: .title2) private var amountSignWidth: CGFloat = 40
+    @ScaledMetric(relativeTo: .footnote) private var closeSize: CGFloat = 30
     /// Floor for the content-sized amount field: keeps an empty field wide
     /// enough to stay tappable and keep its placeholder visible at every
     /// text size.
@@ -596,9 +597,12 @@ struct AddTransactionView: View {
                                 Image(systemName: "xmark")
                                     .font(.footnote.weight(.bold))
                                     .foregroundStyle(.red)
-                                    .frame(width: 30, height: 30)
+                                    .frame(width: closeSize, height: closeSize)
                                     .background(Color.red.opacity(0.14), in: Circle())
-                                    .contentShape(Circle())
+                                    // A one-tap discard needs the full 44pt
+                                    // target, not just the drawn circle.
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Close")
@@ -843,11 +847,6 @@ struct AddTransactionView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .accessibilityIdentifier("addTransaction.save")
-                        // Hardware-keyboard commit, for the iPad case where the
-                        // form is filled without ever leaving the keys. Return on
-                        // its own belongs to the focused field; ⌘Return is the
-                        // whole form. Inert while the save is disabled.
-                        .keyboardShortcut(.return, modifiers: .command)
                     }
                     .controlSize(.large)
                     .buttonBorderShape(.capsule)
@@ -856,6 +855,19 @@ struct AddTransactionView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 16)
                 }
+            }
+            // Hardware-keyboard commit, for the iPad case where the form is
+            // filled without ever leaving the keys. Return on its own belongs
+            // to the focused field; ⌘Return is the whole form. It lives
+            // outside the floating buttons because they leave the view tree
+            // while a keyboard is up, which is exactly when it's needed.
+            // Inert while the save is disabled.
+            .background {
+                Button { Task { await saveTransaction() } } label: { EmptyView() }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(saveDisabled)
+                    .opacity(0)
+                    .accessibilityHidden(true)
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                 keyboardShown = true

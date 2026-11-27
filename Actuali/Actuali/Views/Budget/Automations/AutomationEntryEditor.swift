@@ -522,7 +522,9 @@ struct AutomationAmountField: View {
             .frame(maxWidth: 120)
         }
         .onAppear { syncText() }
-        .onChange(of: text) { amount = Self.amount(for: text) }
+        .onChange(of: text) {
+            amount = Self.amount(for: text, current: amount, conventionalAmountEntry: budgetStore.conventionalAmountEntry)
+        }
         .onChange(of: amount) { syncText() }
     }
 
@@ -542,6 +544,13 @@ struct AutomationAmountField: View {
 
     nonisolated static func amount(for text: String) -> Double? {
         text.isEmpty ? nil : Double(text)
+    }
+
+    /// Text that still reads as the current amount leaves it alone: seeding
+    /// the field shows two decimals, and writing that back would round a
+    /// stored 12.345 before the user touched it.
+    nonisolated static func amount(for text: String, current: Double?, conventionalAmountEntry: Bool) -> Double? {
+        text == Self.text(for: current, conventionalAmountEntry: conventionalAmountEntry) ? current : amount(for: text)
     }
 }
 

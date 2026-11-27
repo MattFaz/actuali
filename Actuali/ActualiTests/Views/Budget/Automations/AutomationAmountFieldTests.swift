@@ -21,4 +21,13 @@ struct AutomationAmountFieldTests {
         #expect(AutomationAmountField.amount(for: "18.50") == 18.5)
         #expect(AutomationAmountField.amount(for: "") == nil)
     }
+
+    /// Opening the editor seeds "12.35" for a stored 12.345; that echo must
+    /// not round the template, but a real edit still lands.
+    @Test func seededTextKeepsTheStoredAmount() {
+        #expect(AutomationAmountField.amount(for: "12.35", current: 12.345, conventionalAmountEntry: false) == 12.345)
+        #expect(AutomationAmountField.amount(for: "12.36", current: 12.345, conventionalAmountEntry: false) == 12.36)
+        #expect(AutomationAmountField.amount(for: "", current: 12.345, conventionalAmountEntry: false) == nil)
+        #expect(AutomationAmountField.amount(for: "0.00", current: nil, conventionalAmountEntry: false) == 0)
+    }
 }
