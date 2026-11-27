@@ -21,7 +21,8 @@ extension BudgetStore {
             schedules: schedules,
             scheduleStatuses: scheduleStatuses,
             payees: payees,
-            transactions: transactions
+            transactions: transactions,
+            spentLastMonthByCategory: widgetSpentLastMonthByCategory
         )
         // Keep the footer's refresh time current without reloading unchanged balances.
         var comparable = snapshot
@@ -65,12 +66,17 @@ extension WidgetSnapshot {
         schedules: [ScheduleSummary] = [],
         scheduleStatuses: [String: ScheduleStatus] = [:],
         payees: [Payee] = [],
-        transactions: [Transaction] = []
+        transactions: [Transaction] = [],
+        spentLastMonthByCategory: [String: Int] = [:]
     ) -> WidgetSnapshot {
         let sortedCategories = budgets
             .sorted { ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder) }
             .map {
-                WidgetCategoryBalance(
+                // Spending vs Last Month's movers, signed like spendingDifference;
+                // a category quiet last month compares against nothing spent.
+                let difference = spentLastMonthByCategory.isEmpty
+                    ? nil : spentLastMonthByCategory[$0.categoryId, default: 0] - $0.spent
+                return WidgetCategoryBalance(
                     id: $0.categoryId,
                     name: $0.categoryName,
                     available: $0.available,
@@ -78,7 +84,9 @@ extension WidgetSnapshot {
                     budgeted: $0.budgeted,
                     spent: balancesHidden ? 0 : $0.spent,
                     formattedSpent: format(-$0.spent),
-                    formattedBudgeted: format($0.budgeted)
+                    formattedBudgeted: format($0.budgeted),
+                    spendingDifference: balancesHidden ? difference.map { _ in 0 } : difference,
+                    formattedSpendingDifference: difference.map(format)
                 )
             }
 
@@ -133,6 +141,7 @@ extension WidgetSnapshot {
             format: format
         )
         if let budgetMonth {
+            snapshot.addMonthComparison(budgetMonth, spentLastMonthByCategory: spentLastMonthByCategory, format: format)
             snapshot.addDailyRates(budgetMonth, now: generatedAt, format: format)
         }
         return snapshot
@@ -182,6 +191,35 @@ extension WidgetSnapshot {
             .sorted(by: hidden ? newestFirst : { ($0.amount, -$0.date) < ($1.amount, -$1.date) })
             .prefix(12)
             .map(row)
+    }
+
+    /// Spending is compared as a positive amount (-totalSpent). This month to
+    /// date against last month through the same day (BudgetStore.spentLastMonthToDate),
+    /// summed across categories.
+    private mutating func addMonthComparison(
+        _ budgetMonth: BudgetMonth, spentLastMonthByCategory: [String: Int], format: (Int) -> String
+    ) {
+        guard !spentLastMonthByCategory.isEmpty else { return }
+        let spentLastMonthToDate = spentLastMonthByCategory.values.reduce(0, +)
+        let lastSpending = -spentLastMonthToDate
+        let difference = -budgetMonth.totalSpent - lastSpending
+        if balancesHidden {
+            // format masks every amount when hidden, so format(0) is the mask
+            // text without reaching for BudgetStore's main-actor constant.
+            totalSpentLastMonth = 0
+            spendingDifference = 0
+            spendingPercentChange = 0
+            formattedSpendingPercentChange = format(0)
+        } else {
+            totalSpentLastMonth = spentLastMonthToDate
+            spendingDifference = difference
+            spendingPercentChange = lastSpending > 0 ? Double(difference) / Double(lastSpending) : nil
+            formattedSpendingPercentChange = spendingPercentChange?.formatted(
+                .percent.precision(.fractionLength(0)).sign(strategy: .always(includingZero: false))
+            )
+        }
+        formattedTotalSpendingLastMonth = format(lastSpending)
+        formattedSpendingDifference = format(difference)
     }
 
     /// Only for the calendar month `now` falls in; a stale month has no

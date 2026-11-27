@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import Actuali
 
@@ -1016,16 +1017,6 @@ struct WidgetSnapshotTests {
 
     // MARK: - Group 1: Transactions
 
-    private func spendingMonth(_ month: String, spent: Int, budgeted: Int = 100_000) -> BudgetMonth {
-        BudgetMonth(month: month, categoryBudgets: [
-            CategoryBudget(
-                month: month, categoryId: "c1", categoryName: "Groceries",
-                groupId: "g1", groupName: "Everyday", groupSortOrder: 0, categorySortOrder: 0,
-                budgeted: budgeted, spent: spent, available: budgeted + spent, carryover: 0
-            ),
-        ])
-    }
-
     private func makeTransaction(
         id: String, date: Int, amount: Int, accountId: String = "a1",
         sortOrder: Double? = nil, transferAcct: String? = nil,
@@ -1272,6 +1263,8 @@ struct WidgetSnapshotTests {
 
         #expect(snapshot.recentTransactions == nil)
         #expect(snapshot.largestTransactions == nil)
+        #expect(snapshot.totalSpentLastMonth == nil)
+        #expect(snapshot.spendingPercentChange == nil)
         #expect(snapshot.rankedCategories == [])
         #expect(snapshot.categories.first?.spent == nil)
         #expect(snapshot.averageSpendPerDay == nil)
@@ -1399,6 +1392,274 @@ struct WidgetSnapshotTests {
             #expect(shown.map(\.id) == (16 - limit...15).reversed().map { "t\($0)" })
             #expect(shown.allSatisfy { $0.formattedAmount == BudgetStore.hiddenBalanceText && $0.amount == 0 })
         }
+    }
+
+    // MARK: - Group 2: Month aggregates
+
+    private func spendingMonth(_ month: String, spent: Int, budgeted: Int = 100_000) -> BudgetMonth {
+        BudgetMonth(month: month, categoryBudgets: [
+            CategoryBudget(
+                month: month, categoryId: "c1", categoryName: "Groceries",
+                groupId: "g1", groupName: "Everyday", groupSortOrder: 0, categorySortOrder: 0,
+                budgeted: budgeted, spent: spent, available: budgeted + spent, carryover: 0
+            ),
+        ])
+    }
+
+    private func aggregateSnapshot(this: BudgetMonth, last: Int?, balancesHidden: Bool = false) -> WidgetSnapshot {
+        WidgetSnapshot.make(
+            from: this.categoryBudgets, month: this.month, balancesHidden: balancesHidden, generatedAt: Date(),
+            format: { balancesHidden ? "••••" : "$\($0)" },
+            budgetMonth: this, spentLastMonthByCategory: last.map { ["c1": $0] } ?? [:]
+        )
+    }
+
+    @Test func lastMonthDifferenceAndPercentChangeCompareSpending() {
+        let snapshot = aggregateSnapshot(
+            this: spendingMonth("2026-08", spent: -60000),
+            last: -40000
+        )
+
+        #expect(snapshot.totalSpent == -60000)
+        #expect(snapshot.totalSpentLastMonth == -40000)
+        #expect(snapshot.formattedTotalSpendingLastMonth == "$40000")
+        // Positive means spending more this month than last.
+        #expect(snapshot.spendingDifference == 20000)
+        #expect(snapshot.formattedSpendingDifference == "$20000")
+        #expect(snapshot.spendingPercentChange == 0.5)
+        #expect(snapshot.formattedSpendingPercentChange == 0.5.formatted(
+            .percent.precision(.fractionLength(0)).sign(strategy: .always(includingZero: false))
+        ))
+    }
+
+    @Test func spendingLessThanLastMonthIsNegativeChange() {
+        let snapshot = aggregateSnapshot(
+            this: spendingMonth("2026-08", spent: -30000),
+            last: -40000
+        )
+
+        #expect(snapshot.spendingDifference == -10000)
+        #expect(snapshot.spendingPercentChange == -0.25)
+    }
+
+    @Test func noLastMonthDataLeavesComparisonNil() {
+        let snapshot = aggregateSnapshot(this: spendingMonth("2026-08", spent: -30000), last: nil)
+
+        #expect(snapshot.totalSpentLastMonth == nil)
+        #expect(snapshot.formattedTotalSpendingLastMonth == nil)
+        #expect(snapshot.spendingDifference == nil)
+        #expect(snapshot.formattedSpendingDifference == nil)
+        #expect(snapshot.spendingPercentChange == nil)
+        #expect(snapshot.formattedSpendingPercentChange == nil)
+    }
+
+    @Test func noSpendingLastMonthHasDifferenceButNoPercent() {
+        let snapshot = aggregateSnapshot(
+            this: spendingMonth("2026-08", spent: -30000),
+            last: 0
+        )
+
+        #expect(snapshot.totalSpentLastMonth == 0)
+        #expect(snapshot.spendingDifference == 30000)
+        #expect(snapshot.spendingPercentChange == nil)
+        #expect(snapshot.formattedSpendingPercentChange == nil)
+    }
+
+    @Test func hiddenBalancesNeutralizeMonthAggregates() {
+        let snapshot = aggregateSnapshot(
+            this: spendingMonth("2026-08", spent: -60000),
+            last: -40000,
+            balancesHidden: true
+        )
+
+        #expect(snapshot.totalSpentLastMonth == 0)
+        #expect(snapshot.spendingDifference == 0)
+        #expect(snapshot.spendingPercentChange == 0)
+        #expect(snapshot.formattedTotalSpendingLastMonth == "••••")
+        #expect(snapshot.formattedSpendingDifference == "••••")
+        #expect(snapshot.formattedSpendingPercentChange == "••••")
+    }
+
+    @Test func spendingTrendFollowsTheDifferenceSign() {
+        let more = aggregateSnapshot(this: spendingMonth("2026-08", spent: -60000), last: -40000)
+        let less = aggregateSnapshot(this: spendingMonth("2026-08", spent: -30000), last: -40000)
+        let same = aggregateSnapshot(this: spendingMonth("2026-08", spent: -40000), last: -40000)
+
+        #expect(more.spendingTrend == .more)
+        #expect(less.spendingTrend == .less)
+        #expect(same.spendingTrend == .same)
+    }
+
+    @Test func spendingTrendWithNoSpendingLastMonthIsMore() {
+        let snapshot = aggregateSnapshot(this: spendingMonth("2026-08", spent: -30000), last: 0)
+
+        #expect(snapshot.spendingTrend == .more)
+    }
+
+    @Test func spendingTrendIsNilWithoutLastMonthData() {
+        let snapshot = aggregateSnapshot(this: spendingMonth("2026-08", spent: -30000), last: nil)
+
+        #expect(snapshot.spendingTrend == nil)
+    }
+
+    /// The zeroed difference would otherwise read as "same", and an arrow or
+    /// red would leak the direction through the mask.
+    @Test func spendingTrendIsNilWhenBalancesHidden() {
+        let snapshot = aggregateSnapshot(
+            this: spendingMonth("2026-08", spent: -60000),
+            last: -40000,
+            balancesHidden: true
+        )
+
+        #expect(snapshot.spendingTrend == nil)
+        #expect(snapshot.formattedSpendingDifference == "••••")
+    }
+
+    @Test func legacySnapshotHasNoSpendingTrend() throws {
+        let legacy = """
+        {"month":"2026-08","generatedAt":0,"balancesHidden":false,"categories":[]}
+        """
+        let snapshot = try JSONDecoder().decode(WidgetSnapshot.self, from: Data(legacy.utf8))
+
+        #expect(snapshot.spendingTrend == nil)
+    }
+
+    // MARK: Last month to date
+
+    private func lastMonthDatabase(_ rows: String) async throws -> (BudgetDatabase, URL) {
+        let (db, url) = try await makeTestDatabase(
+            TestSchema.accounts, TestSchema.payees, TestSchema.payeeMapping,
+            TestSchema.categories, TestSchema.categoryMapping, TestSchema.transactions
+        )
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO accounts (id, name, offbudget) VALUES ('on', 'Checking', 0), ('off', 'Brokerage', 1);
+                INSERT INTO categories (id, name) VALUES ('food', 'Food'), ('fun', 'Fun'), ('secret', 'Secret');
+                INSERT INTO category_mapping (id, transferId) VALUES ('food', NULL), ('fun', NULL), ('secret', NULL);
+            """ + rows)
+        }
+        return (db, url)
+    }
+
+    @Test func lastMonthToDateSumsLastMonthThroughTheSameDay() async throws {
+        let (db, url) = try await lastMonthDatabase("""
+            INSERT INTO transactions (id, acct, category, amount, date) VALUES
+                ('first-day', 'on',  'food',   -1000, 20261001),
+                ('refund',    'on',  'fun',      200, 20261012),
+                ('same-day',  'on',  'fun',     -500, 20261025),
+                ('day-after', 'on',  'food',   -9000, 20261026),
+                ('hidden',    'on',  'secret', -7000, 20261005),
+                ('off-budget','off', 'food',   -7000, 20261005),
+                ('this-month','on',  'food',   -7000, 20261103),
+                ('prior',     'on',  'food',   -7000, 20260930);
+        """)
+        defer { cleanup(url) }
+
+        let spent = try await BudgetStore.spentLastMonthToDate(
+            in: db, categoryIds: ["food", "fun"], now: dayOfMonth(25, month: 11)
+        )
+
+        // Oct 1–25 only, net of the refund: not October's full total.
+        #expect(spent == ["food": -1000, "fun": -300])
+    }
+
+    @Test func lastMonthToDateClampsToTheEndOfAShorterMonth() async throws {
+        let (db, url) = try await lastMonthDatabase("""
+            INSERT INTO transactions (id, acct, category, amount, date) VALUES
+                ('feb-28', 'on', 'food', -400, 20260228),
+                ('mar-1',  'on', 'food', -900, 20260301);
+        """)
+        defer { cleanup(url) }
+
+        let spent = try await BudgetStore.spentLastMonthToDate(
+            in: db, categoryIds: ["food"], now: dayOfMonth(31, month: 3)
+        )
+
+        #expect(spent == ["food": -400])
+    }
+
+    @Test func lastMonthToDateIsEmptyWithoutLastMonthData() async throws {
+        let (db, url) = try await lastMonthDatabase("""
+            INSERT INTO transactions (id, acct, category, amount, date) VALUES
+                ('this-month', 'on', 'food', -400, 20261103),
+                ('day-after',  'on', 'food', -400, 20261026);
+        """)
+        defer { cleanup(url) }
+
+        let spent = try await BudgetStore.spentLastMonthToDate(
+            in: db, categoryIds: ["food"], now: dayOfMonth(25, month: 11)
+        )
+
+        #expect(spent.isEmpty)
+    }
+
+    @Test @MainActor func publishFillsLastMonthComparisonFromTheStore() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.widgetSpentLastMonthByCategory = ["c1": -40000]
+        budgetStore.widgetBudgetMonth = spendingMonth("2026-08", spent: -60000)
+
+        budgetStore.publishWidgetSnapshot()
+
+        let snapshot = try #require(store.read())
+
+        #expect(snapshot.totalSpentLastMonth == -40000)
+        #expect(snapshot.formattedTotalSpendingLastMonth == budgetStore.displayBalance(40000))
+        #expect(snapshot.spendingDifference == 20000)
+        #expect(snapshot.formattedSpendingDifference == budgetStore.displayBalance(20000))
+        #expect(snapshot.spendingPercentChange == 0.5)
+        #expect(snapshot.formattedSpendingPercentChange != nil)
+    }
+
+    @Test @MainActor func publishLeavesComparisonNilWithoutLastMonthData() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.widgetSpentLastMonthByCategory = [:]
+        budgetStore.widgetBudgetMonth = spendingMonth("2026-08", spent: -60000)
+
+        budgetStore.publishWidgetSnapshot()
+
+        let snapshot = try #require(store.read())
+
+        #expect(snapshot.totalSpent == -60000)
+        #expect(snapshot.totalSpentLastMonth == nil)
+        #expect(snapshot.formattedTotalSpendingLastMonth == nil)
+        #expect(snapshot.spendingDifference == nil)
+        #expect(snapshot.formattedSpendingDifference == nil)
+        #expect(snapshot.spendingPercentChange == nil)
+        #expect(snapshot.formattedSpendingPercentChange == nil)
+    }
+
+    @Test @MainActor func publishMasksEveryComparisonAmountAndRateWhenHidden() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.widgetSpentLastMonthByCategory = ["c1": -40000]
+        budgetStore.hideBalances = true
+        defer { budgetStore.hideBalances = false }
+        // The current month, so the daily rates are filled too.
+        let month = Calendar.current.dateComponents([.year, .month], from: Date())
+        budgetStore.widgetBudgetMonth = spendingMonth(
+            String(format: "%04d-%02d", month.year ?? 0, month.month ?? 0), spent: -60000
+        )
+
+        budgetStore.publishWidgetSnapshot()
+
+        let snapshot = try #require(store.read())
+
+        let mask = BudgetStore.hiddenBalanceText
+        #expect(snapshot.totalSpentLastMonth == 0)
+        #expect(snapshot.spendingDifference == 0)
+        #expect(snapshot.spendingPercentChange == 0)
+        #expect(snapshot.averageSpendPerDay == 0)
+        #expect(snapshot.safeDailyRate == 0)
+        #expect(snapshot.formattedTotalSpendingLastMonth == mask)
+        #expect(snapshot.formattedSpendingDifference == mask)
+        #expect(snapshot.formattedSpendingPercentChange == mask)
+        #expect(snapshot.formattedAverageSpendPerDay == mask)
+        #expect(snapshot.formattedSafeDailyRate == mask)
     }
 
     // MARK: - Group 3: Ranked categories
@@ -2012,5 +2273,136 @@ struct WidgetSnapshotTests {
         #expect(snapshot.formattedAverageSpendPerWeek == mask)
         #expect(snapshot.formattedSafeWeeklyRate == mask)
         #expect(snapshot.monthProgress != nil)
+    }
+
+    // MARK: Spending vs Last Month Large / Extra Large Portrait (#862)
+
+    // SpendingComparisonWidget's Large / Extra Large Portrait mover counts;
+    // the widget lives in its extension, so the tests mirror them here.
+    private let moverLargeLimit = 1
+    private let moverExtraLargePortraitLimit = 4
+
+    private func moverSnapshot(
+        _ budgets: [CategoryBudget], last: [String: Int], balancesHidden: Bool = false
+    ) -> WidgetSnapshot {
+        WidgetSnapshot.make(
+            from: budgets, month: "2026-08", balancesHidden: balancesHidden, generatedAt: Date(),
+            format: { balancesHidden ? "••••" : "$\($0)" },
+            budgetMonth: BudgetMonth(month: "2026-08", categoryBudgets: budgets),
+            spentLastMonthByCategory: last
+        )
+    }
+
+    /// food up 200, fun down 30, new up 20 (nothing last month), idle unchanged.
+    private var moverBudgets: [CategoryBudget] {
+        [
+            rankedBudget("idle", order: 0, budgeted: 0, spent: 0),
+            rankedBudget("fun", order: 1, budgeted: 0, spent: -5000),
+            rankedBudget("new", order: 2, budgeted: 0, spent: -2000),
+            rankedBudget("food", order: 3, budgeted: 0, spent: -30000),
+        ]
+    }
+
+    private let moverLastMonth = ["fun": -8000, "food": -10000]
+
+    @Test func categoryDifferenceComparesWithLastMonthToDate() {
+        let snapshot = moverSnapshot(moverBudgets, last: moverLastMonth)
+        let byId = Dictionary(uniqueKeysWithValues: snapshot.categories.map { ($0.id, $0) })
+
+        // Positive means spending more this month, like spendingDifference.
+        #expect(byId["food"]?.spendingDifference == 20000)
+        #expect(byId["food"]?.formattedSpendingDifference == "$20000")
+        #expect(byId["fun"]?.spendingDifference == -3000)
+        #expect(byId["fun"]?.formattedSpendingDifference == "$-3000")
+        // No rows last month compares against nothing spent.
+        #expect(byId["new"]?.spendingDifference == 2000)
+        #expect(byId["idle"]?.spendingDifference == 0)
+        // The per-category figures add up to the headline difference.
+        #expect(snapshot.categories.compactMap(\.spendingDifference).reduce(0, +) == snapshot.spendingDifference)
+    }
+
+    @Test func moversRankByLargestChangeEitherWayAndDropUnchanged() {
+        let snapshot = moverSnapshot(moverBudgets, last: moverLastMonth)
+
+        // Large's top mover is the biggest swing, up or down.
+        #expect(snapshot.categoryMovers(limit: moverLargeLimit).map(\.id) == ["food"])
+        // Fewer movers than Extra Large's limit shows only what moved.
+        #expect(snapshot.categoryMovers(limit: moverExtraLargePortraitLimit).map(\.id) == ["food", "fun", "new"])
+    }
+
+    @Test func moversCapAtTheLimitAndTiesKeepBudgetOrder() {
+        let budgets = (0..<6).map { rankedBudget("c\($0)", order: Double($0), budgeted: 0, spent: $0 < 2 ? -900 : -100 * $0) }
+
+        // One zero row last month is enough to switch the comparison on.
+        let snapshot = moverSnapshot(budgets.shuffled(), last: ["c0": 0])
+
+        #expect(snapshot.categoryMovers(limit: moverExtraLargePortraitLimit).map(\.id) == ["c0", "c1", "c5", "c4"])
+    }
+
+    @Test func moverTrendFollowsEachCategorysDifference() throws {
+        let snapshot = moverSnapshot(moverBudgets, last: moverLastMonth)
+        let movers = snapshot.categoryMovers(limit: moverExtraLargePortraitLimit)
+
+        #expect(movers.map { snapshot.spendingTrend(of: $0) } == [.more, .less, .more])
+        let idle = try #require(snapshot.categories.first { $0.id == "idle" })
+        #expect(snapshot.spendingTrend(of: idle) == .same)
+    }
+
+    @Test func noLastMonthDataLeavesNoMovers() throws {
+        let noComparison = WidgetSnapshot.make(
+            from: moverBudgets, month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" },
+            budgetMonth: BudgetMonth(month: "2026-08", categoryBudgets: moverBudgets)
+        )
+        let legacy = try JSONDecoder().decode(WidgetSnapshot.self, from: Data("""
+        {"month":"2026-08","generatedAt":0,"balancesHidden":false,
+         "categories":[{"id":"a","name":"A","available":0,"formattedAvailable":"$0","spent":-100}]}
+        """.utf8))
+
+        for snapshot in [noComparison, legacy] {
+            #expect(snapshot.categories.allSatisfy { $0.spendingDifference == nil && $0.formattedSpendingDifference == nil })
+            #expect(snapshot.categoryMovers(limit: moverLargeLimit).isEmpty)
+            #expect(snapshot.categoryMovers(limit: moverExtraLargePortraitLimit).isEmpty)
+        }
+    }
+
+    @Test func hiddenBalancesMaskMoversAndKeepBudgetOrder() {
+        let snapshot = moverSnapshot(moverBudgets, last: moverLastMonth, balancesHidden: true)
+        let movers = snapshot.categoryMovers(limit: moverExtraLargePortraitLimit)
+
+        // Ranking or dropping the unchanged would reveal which categories moved
+        // most, so hidden keeps budget order, unchanged ones included.
+        #expect(movers.map(\.id) == ["idle", "fun", "new", "food"])
+        #expect(snapshot.categoryMovers(limit: moverLargeLimit).map(\.id) == ["idle"])
+        for mover in movers {
+            #expect(mover.spendingDifference == 0)
+            #expect(mover.formattedSpendingDifference == "••••")
+            // No arrow or red to leak the direction.
+            #expect(snapshot.spendingTrend(of: mover) == nil)
+        }
+    }
+
+    @Test func moversSurviveStoreRoundTrip() throws {
+        let store = try makeStore()
+        let snapshot = moverSnapshot(moverBudgets, last: moverLastMonth)
+        try store.write(snapshot)
+
+        let read = try #require(store.read())
+        #expect(read.categoryMovers(limit: moverExtraLargePortraitLimit) == snapshot.categoryMovers(limit: moverExtraLargePortraitLimit))
+    }
+
+    @Test @MainActor func publishFillsCategoryMoversFromTheStore() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.widgetSpentLastMonthByCategory = moverLastMonth
+        budgetStore.widgetBudgetMonth = BudgetMonth(month: "2026-08", categoryBudgets: moverBudgets)
+
+        budgetStore.publishWidgetSnapshot()
+
+        let snapshot = try #require(store.read())
+        let top = try #require(snapshot.categoryMovers(limit: moverLargeLimit).first)
+        #expect(top.id == "food")
+        #expect(top.formattedSpendingDifference == budgetStore.displayBalance(20000))
+        #expect(snapshot.totalSpentLastMonth == -18000)
     }
 }

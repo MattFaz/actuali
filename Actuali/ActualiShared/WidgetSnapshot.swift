@@ -21,6 +21,11 @@ struct WidgetCategoryBalance: Codable, Equatable, Identifiable {
     /// Spending as a positive amount; a net inflow shows negative.
     var formattedSpent: String?
     var formattedBudgeted: String?
+    /// This month's spending minus last month's to the same day, in cents
+    /// (positive = spending more), for the Spending vs Last Month movers.
+    /// Zeroed when hidden, like spent; nil without last month's data.
+    var spendingDifference: Int?
+    var formattedSpendingDifference: String?
 
     var isOverspent: Bool {
         available < 0
@@ -120,6 +125,24 @@ struct WidgetSnapshot: Codable, Equatable {
     /// Income, transfers and off-budget accounts are excluded.
     var largestTransactions: [WidgetTransaction]?
 
+    // MARK: - Month comparison
+
+    /// Last month's net spending from its 1st through today's day number,
+    /// signed like totalSpent (negative = spending), so month to date
+    /// compares with the same point last month. nil when last month had no
+    /// spending transactions in that window.
+    var totalSpentLastMonth: Int?
+    /// totalSpentLastMonth as a positive amount, like formattedTotalSpending.
+    var formattedTotalSpendingLastMonth: String?
+    /// This month's spending minus last month's, in cents; positive means
+    /// spending more this month.
+    var spendingDifference: Int?
+    var formattedSpendingDifference: String?
+    /// spendingDifference over last month's spending (0.5 = 50% more). nil
+    /// when last month had no spending to divide by.
+    var spendingPercentChange: Double?
+    var formattedSpendingPercentChange: String?
+
     // MARK: - Daily rates
 
     /// Days of the month so far and still to come; today counts in both, so
@@ -192,6 +215,44 @@ struct WidgetSnapshot: Codable, Equatable {
     var monthProgress: Double? {
         guard let daysElapsed, let daysRemaining else { return nil }
         return Double(daysElapsed) / Double(daysElapsed + daysRemaining - 1)
+    }
+
+    enum SpendingTrend: Equatable {
+        case more, less, same
+    }
+
+    /// Which way spending moved against the same point last month. nil
+    /// without last month's data, and when hidden: the zeroed difference
+    /// would read as "same", and an arrow or red would leak the direction.
+    var spendingTrend: SpendingTrend? {
+        trend(spendingDifference)
+    }
+
+    /// One mover's direction, nil on the same terms as spendingTrend.
+    func spendingTrend(of category: WidgetCategoryBalance) -> SpendingTrend? {
+        trend(category.spendingDifference)
+    }
+
+    private func trend(_ difference: Int?) -> SpendingTrend? {
+        guard !balancesHidden, let difference else { return nil }
+        if difference > 0 {
+            return .more
+        }
+        return difference < 0 ? .less : .same
+    }
+
+    /// The Spending vs Last Month widget's category movers: the biggest
+    /// change either way first, ties in budget order, capped at `limit`.
+    /// Unchanged categories drop out, but not when hidden: the difference is
+    /// zeroed there, so every category stays in budget order and neither
+    /// the ranking nor the filtering reveals which moved. Empty without last
+    /// month's data.
+    func categoryMovers(limit: Int) -> [WidgetCategoryBalance] {
+        let movers = categories.enumerated()
+            .compactMap { index, category in category.spendingDifference.map { (change: abs($0), index: index, category: category) } }
+            .filter { balancesHidden || $0.change != 0 }
+            .sorted { (-$0.change, $0.index) < (-$1.change, $1.index) }
+        return Array(movers.prefix(limit).map(\.category))
     }
 
     /// Categories by spending this month, most spent first, capped at 12.

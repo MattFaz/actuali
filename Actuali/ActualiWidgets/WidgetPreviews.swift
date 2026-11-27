@@ -614,6 +614,101 @@ private extension DailyBurnRateEntry {
     DailyBurnRateEntry(date: .now, formattedAverageSpendPerDay: nil, formattedSafeDailyRate: nil, isOverbudget: false)
 }
 
+// MARK: - SpendingComparison
+
+private extension SpendingComparisonEntry {
+    /// Preview-only: four-digit amounts so the scale-down shows up.
+    static func previewSample(trend: WidgetSnapshot.SpendingTrend, balancesHidden: Bool = false) -> SpendingComparisonEntry {
+        let mask = "\u{2022}\u{2022}\u{2022}\u{2022}"
+        let (difference, percent): (String, String?) = switch trend {
+        case .more: ("$1,234.56", "+50%")
+        case .less: ("-$617.28", "-20%")
+        case .same: ("$0.00", "0%")
+        }
+        return SpendingComparisonEntry(
+            date: .now.addingTimeInterval(-300),
+            formattedThisMonth: balancesHidden ? mask : "$3,703.68",
+            formattedLastMonth: balancesHidden ? mask : "$2,469.12",
+            formattedDifference: balancesHidden ? mask : difference,
+            formattedPercentChange: balancesHidden ? mask : percent,
+            trend: balancesHidden ? nil : trend,
+            hasSnapshot: true,
+            movers: previewMovers.map { name, change in
+                let formatted = (Double(change) / 100).formatted(.currency(code: "USD").locale(Locale(identifier: "en_US")))
+                return (
+                    WidgetCategoryBalance(
+                        id: name, name: name, available: 0, formattedAvailable: "",
+                        spendingDifference: balancesHidden ? 0 : change,
+                        formattedSpendingDifference: balancesHidden ? mask : formatted
+                    ),
+                    balancesHidden ? nil : (change > 0 ? .more : .less)
+                )
+            }
+        )
+    }
+
+    /// A long name so truncation lands on it, and a four-digit change.
+    private static let previewMovers = [
+        ("Groceries & Household Supplies", 123_456),
+        ("Dining Out", -21550),
+        ("Transport", 6000),
+        ("Subscriptions & Streaming", -4597),
+    ]
+
+    static let noMovers = SpendingComparisonEntry(
+        date: .now, formattedThisMonth: "$400.00", formattedLastMonth: "$400.00", formattedDifference: "$0.00",
+        formattedPercentChange: "0%", trend: .same, hasSnapshot: true
+    )
+
+    static let noLastMonth = SpendingComparisonEntry(
+        date: .now, formattedThisMonth: "$12.00", formattedLastMonth: nil, formattedDifference: nil,
+        formattedPercentChange: nil, trend: nil, hasSnapshot: true
+    )
+}
+
+#Preview("Small", as: .systemSmall) {
+    SpendingComparisonWidget()
+} timeline: {
+    SpendingComparisonEntry.previewSample(trend: .more)
+    SpendingComparisonEntry.previewSample(trend: .less)
+    SpendingComparisonEntry.previewSample(trend: .more, balancesHidden: true)
+    SpendingComparisonEntry.noLastMonth
+    SpendingComparisonEntry.empty
+}
+
+#Preview("Medium", as: .systemMedium) {
+    SpendingComparisonWidget()
+} timeline: {
+    SpendingComparisonEntry.previewSample(trend: .more)
+    SpendingComparisonEntry.previewSample(trend: .less)
+    SpendingComparisonEntry.previewSample(trend: .same)
+    SpendingComparisonEntry.noLastMonth
+    SpendingComparisonEntry.previewSample(trend: .more, balancesHidden: true)
+    SpendingComparisonEntry.empty
+}
+
+#Preview("Large", as: .systemLarge) {
+    SpendingComparisonWidget()
+} timeline: {
+    SpendingComparisonEntry.previewSample(trend: .more)
+    SpendingComparisonEntry.previewSample(trend: .less)
+    SpendingComparisonEntry.noMovers
+    SpendingComparisonEntry.previewSample(trend: .more, balancesHidden: true)
+    SpendingComparisonEntry.noLastMonth
+    SpendingComparisonEntry.empty
+}
+
+@available(iOS 27.0, *)
+#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+    SpendingComparisonWidget()
+} timeline: {
+    SpendingComparisonEntry.previewSample(trend: .more)
+    SpendingComparisonEntry.noMovers
+    SpendingComparisonEntry.previewSample(trend: .more, balancesHidden: true)
+    SpendingComparisonEntry.noLastMonth
+    SpendingComparisonEntry.empty
+}
+
 // MARK: - LargestTransactions
 
 private extension LargestTransactionsEntry {
