@@ -65,12 +65,35 @@ struct BudgetStoreEnableBankingLinkTests {
         return store
     }
 
-    /// Fetches a single row synchronously so the non-Sendable `Row` never
-    /// crosses an async boundary (see AGENTS.md on GRDB `Row` isolation).
-    private func row(path: URL, sql: String, arguments: StatementArguments = StatementArguments()) throws -> Row? {
-        let queue = try DatabaseQueue(path: path.path)
-        return try queue.read { db in
-            try Row.fetchOne(db, sql: sql, arguments: arguments)
+    /// The account columns the link tests assert on, projected inside the `read`
+    /// closure so the non-Sendable `Row` never leaves it (see AGENTS.md).
+    private struct AccountRow: Sendable {
+        let accountId: String?
+        let syncSource: String?
+        let bank: String?
+        let lastSync: String?
+    }
+
+    private func accountRow(path: URL) throws -> AccountRow? {
+        try DatabaseQueue(path: path.path).read { db in
+            try Row.fetchOne(
+                db,
+                sql: "SELECT account_id, account_sync_source, bank, last_sync FROM accounts WHERE id = ?",
+                arguments: [Self.accountId]
+            ).map {
+                AccountRow(
+                    accountId: $0["account_id"], syncSource: $0["account_sync_source"],
+                    bank: $0["bank"], lastSync: $0["last_sync"]
+                )
+            }
+        }
+    }
+
+    private func bankRow(path: URL, id: String?) throws -> (bankId: String?, name: String?)? {
+        try DatabaseQueue(path: path.path).read { db in
+            try Row.fetchOne(db, sql: "SELECT bank_id, name FROM banks WHERE id = ?", arguments: [id]).map {
+                (bankId: $0["bank_id"], name: $0["name"])
+            }
         }
     }
 
@@ -99,6 +122,42 @@ struct BudgetStoreEnableBankingLinkTests {
         #expect(accounts[0].institutionId == accounts[0].id)
         #expect(accounts[0].institutionName == "ING")
         #expect(accounts[0].source == .enableBanking)
+    }
+
+    /// A reverse proxy can answer the open long-poll while the person is still
+    /// at their bank.
+    @Test func pollingKeepsWaitingAfterAGatewayTimeout() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let calls = CallCounter()
+        let success = Data(Self.pollSuccess.utf8)
+        let store = try await makeStore(database: database) { _ in
+            if calls.increment() == 1 {
+                return StubTransport.Response(status: 504)
+            }
+            return StubTransport.Response(body: success)
+        }
+
+        let accounts = try await store.awaitEnableBankingAuthorization(state: "state-1")
+
+        #expect(calls.value == 2)
+        #expect(accounts.map(\.id) == ["uid-B"])
+    }
+
+    @Test func pollingGivesUpAtOnceOnAFailureARetryCannotFix() async throws {
+        let (database, url) = try await makeDatabase()
+        defer { cleanup(url) }
+        let calls = CallCounter()
+        let store = try await makeStore(database: database) { _ in
+            calls.increment()
+            throw URLError(.secureConnectionFailed)
+        }
+
+        let error = await #expect(throws: URLError.self) {
+            _ = try await store.awaitEnableBankingAuthorization(state: "state-1")
+        }
+        #expect(error?.code == .secureConnectionFailed)
+        #expect(calls.value == 1)
     }
 
     @Test func aServerErrorIsNotRetried() async throws {
@@ -132,19 +191,14 @@ struct BudgetStoreEnableBankingLinkTests {
 
         try await store.linkBankAccount(accountId: Self.accountId, to: enableBankingRemote(id: "uid-B"))
 
-        let account = try #require(
-            try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
-        )
-        #expect(account["account_id"] == "uid-B")
-        #expect(account["account_sync_source"] == "enableBanking")
-        let bankRowId: String? = account["bank"]
-        #expect(bankRowId != nil)
+        let account = try #require(try accountRow(path: url))
+        #expect(account.accountId == "uid-B")
+        #expect(account.syncSource == "enableBanking")
+        #expect(account.bank != nil)
 
-        let bank = try #require(
-            try row(path: url, sql: "SELECT * FROM banks WHERE id = ?", arguments: [bankRowId])
-        )
-        #expect(bank["bank_id"] == "uid-B")
-        #expect(bank["name"] == "ING")
+        let bank = try #require(try bankRow(path: url, id: account.bank))
+        #expect(bank.bankId == "uid-B")
+        #expect(bank.name == "ING")
     }
 
     /// Re-authorizing issues new uids, so the existing account is re-linked
@@ -163,11 +217,9 @@ struct BudgetStoreEnableBankingLinkTests {
 
         try await store.linkBankAccount(accountId: Self.accountId, to: enableBankingRemote(id: "uid-B"))
 
-        let account = try #require(
-            try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
-        )
-        #expect(account["account_id"] == "uid-B")
-        #expect(account["account_sync_source"] == "enableBanking")
-        #expect(account["last_sync"] == "1600000000000")
+        let account = try #require(try accountRow(path: url))
+        #expect(account.accountId == "uid-B")
+        #expect(account.syncSource == "enableBanking")
+        #expect(account.lastSync == "1600000000000")
     }
 }

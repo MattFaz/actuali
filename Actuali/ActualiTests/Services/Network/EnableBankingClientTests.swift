@@ -186,6 +186,17 @@ struct EnableBankingClientTests {
         #expect(try sentBody(captured)["state"] as? String == "s-1")
     }
 
+    @Test func pollPutsTheGivenTimeoutOnTheRequest() async throws {
+        let (client, captured) = try await makeClient(
+            responseBody: #"{"status":"ok","data":{"session_id":"x","aspsp":{},"accounts":[]}}"#
+        )
+
+        _ = try await client.enableBankingPollAuthorization(state: "s-1", timeout: 42)
+
+        let (request, _) = try #require(captured.all.withLock { $0.first })
+        #expect(request.timeoutInterval == 42)
+    }
+
     @Test func pollTimeoutMapsToTimedOut() async throws {
         let (client, _) = try await makeClient(
             responseBody: #"{"status":"ok","data":{"error":"Polling timed out"}}"#

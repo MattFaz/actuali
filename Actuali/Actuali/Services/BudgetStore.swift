@@ -5731,21 +5731,46 @@ final class BudgetStore: ObservableObject {
 
     private static let enableBankingPollPause: Duration = .seconds(1)
     private static let enableBankingPollDeadline: Duration = .seconds(600)
+    /// The client's default, here so the last poll can be capped at the time left.
+    private static let enableBankingPollRequestTimeout: Duration = .seconds(280)
 
-    /// Waits for the person to finish at their bank. Retries on transport
-    /// failures because approval often happens in a banking app: iOS suspends
-    /// this app meanwhile and the open request can die. The server keeps a
-    /// finished result for 30 s, so asking again on return usually still
-    /// collects it. A request that simply times out client-side (280 s) is
-    /// retried the same way. Anything else, including cancellation, propagates.
+    /// Whether asking the server again can still get an answer. Approval often
+    /// happens in a banking app, so iOS suspends this app and the open request
+    /// dies; a reverse proxy in front of the server (nginx closes at 60 s,
+    /// Cloudflare at 100 s) can also end it with a gateway status while the
+    /// person is still at their bank. Anything else (a TLS or certificate
+    /// failure, a bad URL, any other HTTP status) won't change on a retry.
+    private static func isRecoverablePollFailure(_ error: any Error) -> Bool {
+        switch error {
+        case let error as URLError:
+            [
+                .timedOut, .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost,
+                .cannotFindHost, .dnsLookupFailed, .dataNotAllowed,
+            ].contains(error.code)
+        case ActualServerError.httpError(let statusCode, _):
+            [408, 502, 503, 504, 524].contains(statusCode)
+        default:
+            false
+        }
+    }
+
+    /// Waits for the person to finish at their bank, which can take minutes.
+    /// The server keeps a finished result for 30 s, so asking again after a
+    /// dropped request, a gateway timeout or a client-side timeout (280 s)
+    /// usually still collects it (see `isRecoverablePollFailure`). Anything
+    /// else, including cancellation, propagates. The deadline is checked before
+    /// every poll and caps that poll's timeout, so a request can't outlive it.
     func awaitEnableBankingAuthorization(state: String) async throws -> [BankSyncRemoteAccount] {
         let deadline = ContinuousClock.now.advanced(by: Self.enableBankingPollDeadline)
         while true {
+            let remaining = ContinuousClock.now.duration(to: deadline)
+            guard remaining > .zero else { throw EnableBankingAuthError.timedOut }
             do {
-                return try await serverClient.enableBankingPollAuthorization(state: state)
-                    .map(\.remoteAccount)
-            } catch let error as URLError where error.code != .cancelled {
-                guard ContinuousClock.now < deadline else { throw EnableBankingAuthError.timedOut }
+                return try await serverClient.enableBankingPollAuthorization(
+                    state: state,
+                    timeout: min(Self.enableBankingPollRequestTimeout, remaining) / .seconds(1)
+                ).map(\.remoteAccount)
+            } catch where Self.isRecoverablePollFailure(error) {
                 // Also ends the loop if the task is cancelled during the pause.
                 try await Task.sleep(for: Self.enableBankingPollPause)
             }

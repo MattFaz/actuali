@@ -1297,8 +1297,11 @@ actor ActualServerClient {
     /// treats a transport failure as an unreachable server and can swap to the
     /// fallback address, but a poll that dies while iOS has the app suspended
     /// is neither. A `URLError` therefore propagates untouched, for the caller
-    /// to retry.
-    func enableBankingPollAuthorization(state: String) async throws -> [EnableBankingRemoteAccount] {
+    /// to retry. `timeout` defaults to just under the session's 300 s resource cap.
+    func enableBankingPollAuthorization(
+        state: String,
+        timeout: TimeInterval = 280
+    ) async throws -> [EnableBankingRemoteAccount] {
         guard let serverURL else { throw ActualServerError.invalidURL }
         guard let token else { throw ActualServerError.unauthorized }
 
@@ -1307,8 +1310,7 @@ actor ActualServerClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
         request.httpBody = try JSONEncoder().encode(EnableBankingPollRequest(state: state))
-        // Just under the session's 300 s resource cap.
-        request.timeoutInterval = 280
+        request.timeoutInterval = timeout
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
