@@ -4302,7 +4302,9 @@ final class BudgetDatabase: Sendable {
             }
             return try Row.fetchAll(db, sql: """
             SELECT id, name, account_id, account_sync_source, offbudget, closed,
-                   (SELECT name FROM banks WHERE banks.id = accounts.bank) AS institution_name
+                   (SELECT name FROM banks WHERE banks.id = accounts.bank) AS institution_name,
+                   (SELECT MAX(timestamp) FROM messages_crdt
+                    WHERE dataset = 'accounts' AND "column" = 'account_id' AND "row" = accounts.id) AS linked_at
             FROM accounts
             WHERE (tombstone = 0 OR tombstone IS NULL)
               AND account_id IS NOT NULL AND account_id <> ''
@@ -4316,7 +4318,10 @@ final class BudgetDatabase: Sendable {
                     syncSource: row["account_sync_source"],
                     offBudget: row["offbudget"] == 1,
                     closed: row["closed"] == 1,
-                    institutionName: row["institution_name"]
+                    institutionName: row["institution_name"],
+                    // Timestamps are fixed width, so the string max is the newest.
+                    linkedAt: (row["linked_at"] as String?).flatMap(HLCTimestamp.parse)
+                        .map { Date(timeIntervalSince1970: Double($0.millis) / 1000) }
                 )
             }
         }

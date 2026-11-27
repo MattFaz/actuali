@@ -19139,6 +19139,54 @@
         }
       }
     },
+    "Authorize Again" : {
+      "comment" : "Enable Banking menu action on a linked account that sends the person to its bank again",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut autorisieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authorize Again"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorizar de nuevo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriser de nouveau"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorizza di nuovo"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opnieuw autoriseren"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorizar novamente"
+          }
+        }
+      }
+    },
     "Automatically Add Transaction" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -20964,6 +21012,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Saldo bancário"
+          }
+        }
+      }
+    },
+    "Bank permission ends by %@" : {
+      "comment" : "Enable Banking caption on a linked account: the latest date the bank's permission runs out; the placeholder is a date",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bankberechtigung endet spätestens am %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank permission ends by %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El permiso del banco termina como máximo el %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'autorisation de la banque se termine au plus tard le %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'autorizzazione della banca termina al più tardi il %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toestemming van de bank loopt uiterlijk af op %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A permissão do banco termina, no máximo, em %@"
           }
         }
       }
@@ -29841,6 +29937,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "Escolha um mês"
+          }
+        }
+      }
+    },
+    "Choose this account's bank under Connect a Bank, then authorize it again." : {
+      "comment" : "Enable Banking message when a linked account's bank isn't in the loaded bank list",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle die Bank dieses Kontos unter „Bank verbinden“ aus und autorisiere sie dann erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose this account's bank under Connect a Bank, then authorize it again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige el banco de esta cuenta en Conectar un banco y vuelve a autorizarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez la banque de ce compte sous Connecter une banque, puis autorisez-la de nouveau."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli la banca di questo conto in Connetti una banca, poi autorizzala di nuovo."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kies de bank van deze rekening onder Bank koppelen en autoriseer deze daarna opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha o banco desta conta em Conectar um banco e autorize-o novamente."
           }
         }
       }

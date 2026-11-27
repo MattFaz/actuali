@@ -317,4 +317,48 @@ struct BudgetStoreEnableBankingSyncTests {
 
         #expect(accounts.map(\.institutionName) == ["ING"])
     }
+
+    @Test func linkedAccountsCarryTheirNewestLinkMessageTime() async throws {
+        let (database, url) = try await makeDatabase(withSimpleFin: true)
+        defer { cleanup(url) }
+        let node = "9f66d38cba0ef956"
+        let ebAccountId = Self.ebAccountId
+        try await DatabaseQueue(path: url.path).write { db in
+            // Newest first, and with a later message for another column and
+            // another account's row, so neither insertion order nor a loose
+            // filter can produce the expected answer.
+            for (timestamp, row, column) in [
+                ("2026-11-27T08:02:29.123Z-0000-\(node)", ebAccountId, "account_id"),
+                ("2026-08-01T10:00:00.000Z-0000-\(node)", ebAccountId, "account_id"),
+                ("2026-12-01T10:00:00.000Z-0000-\(node)", ebAccountId, "name"),
+                ("2026-12-02T10:00:00.000Z-0000-\(node)", "someone-else", "account_id"),
+            ] {
+                try db.execute(sql: """
+                INSERT INTO messages_crdt (timestamp, dataset, "row", "column", value)
+                VALUES (?, 'accounts', ?, ?, 'S:x')
+                """, arguments: [timestamp, row, column])
+            }
+        }
+
+        let accounts = try await database.fetchBankSyncAccounts()
+
+        let enableBanking = try #require(accounts.first { $0.id == Self.ebAccountId })
+        let simpleFin = try #require(accounts.first { $0.id == Self.sfAccountId })
+        #expect(enableBanking.linkedAt == Date(timeIntervalSince1970: 1_795_766_549.123))
+        #expect(simpleFin.linkedAt == nil)
+    }
+
+    @Test func permissionEndsNinetyDaysAfterTheLinkForEnableBankingOnly() {
+        func account(_ source: String, linkedAt: Date?) -> BankSyncAccount {
+            BankSyncAccount(
+                id: "a", name: "A", externalAccountId: "x", syncSource: source,
+                offBudget: false, closed: false, linkedAt: linkedAt
+            )
+        }
+        let linked = Date(timeIntervalSince1970: 1_795_766_549)
+
+        #expect(account("enableBanking", linkedAt: linked).permissionEndsBy == linked.addingTimeInterval(90 * 24 * 60 * 60))
+        #expect(account("simpleFin", linkedAt: linked).permissionEndsBy == nil)
+        #expect(account("enableBanking", linkedAt: nil).permissionEndsBy == nil)
+    }
 }

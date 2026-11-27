@@ -114,6 +114,15 @@ struct EnableBankingSyncView: View {
         return false
     }
 
+    /// The bank a linked account was made through, by the name the link stored.
+    /// Only the loaded list is searched, so a bank from another country is nil.
+    nonisolated static func bank(named name: String?, in banks: [EnableBankingBank]) -> EnableBankingBank? {
+        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        return banks.first {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame
+        }
+    }
+
     /// Nil when the bank shared at least one account to link.
     nonisolated static func noAccountsMessage(for accounts: [BankSyncRemoteAccount]) -> String? {
         accounts.isEmpty
@@ -130,26 +139,47 @@ struct EnableBankingSyncView: View {
     private var linkedSection: some View {
         Section {
             ForEach(linkedAccounts) { account in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(account.name)
-                    if let bank = account.institutionName {
-                        Text(bank)
+                Menu {
+                    Button("Authorize Again") {
+                        reauthorize(account)
+                    }
+                    .disabled(authorizationTask != nil || readiness != .ready)
+                    .accessibilityIdentifier("enableBanking.reauthorize.\(account.id)")
+                    Button("Unlink", role: .destructive) {
+                        unlink(account)
+                    }
+                    .accessibilityIdentifier("enableBanking.unlink.\(account.id)")
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        // Explicit styles keep the menu from tinting the row.
+                        Text(account.name)
+                            .foregroundStyle(.primary)
+                        if let bank = account.institutionName {
+                            Text(bank)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let lastSync = account.lastSync {
+                            HStack(spacing: 4) {
+                                Text("Last Bank Sync")
+                                Text(lastSync, format: .relative(presentation: .named))
+                            }
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    }
-                    if let lastSync = account.lastSync {
-                        HStack(spacing: 4) {
-                            Text("Last Bank Sync")
-                            Text(lastSync, format: .relative(presentation: .named))
                         }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        if let endsBy = account.permissionEndsBy {
+                            Text("Bank permission ends by \(endsBy.formatted(date: .abbreviated, time: .omitted))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let message = account.attentionMessage {
+                            Text(message)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
                     }
-                    if let message = account.attentionMessage {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .swipeActions {
                     Button(role: .destructive) {
@@ -164,7 +194,15 @@ struct EnableBankingSyncView: View {
                 let ids = linkedAccounts.map(\.id)
                 Task { await sync(accountIds: ids) }
             } label: {
-                Label("Sync Now", systemImage: "arrow.clockwise")
+                Label {
+                    Text("Sync Now")
+                } icon: {
+                    if budgetStore.isBankSyncing {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
             }
             .disabled(budgetStore.isBankSyncing)
             .accessibilityIdentifier("enableBanking.syncNow")
@@ -387,11 +425,12 @@ struct EnableBankingSyncView: View {
     }
 
     private func sync(accountIds: [String]) async {
+        // A sync already running reports for itself; this call would only
+        // return an empty result that claims there was nothing to sync.
+        guard !budgetStore.isBankSyncing else { return }
         do {
-            let result = try await budgetStore.syncBankAccounts(accountIds: accountIds)
-            if !result.problems.isEmpty {
-                errorMessage = result.summary
-            }
+            // Shown even when clean, so the person sees the sync happened.
+            errorMessage = try await budgetStore.syncBankAccounts(accountIds: accountIds).summary
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -404,6 +443,15 @@ struct EnableBankingSyncView: View {
         guard let id = linkedAccountId else { return }
         linkedAccountId = nil
         Task { await sync(accountIds: [id]) }
+    }
+
+    private func reauthorize(_ account: BankSyncAccount) {
+        guard let bank = Self.bank(named: account.institutionName, in: banks) else {
+            errorMessage = String(localized: "Choose this account's bank under Connect a Bank, then authorize it again.")
+            return
+        }
+        bankId = bank.id
+        authorize()
     }
 
     private func authorize() {

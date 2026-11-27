@@ -57,6 +57,19 @@ struct EnableBankingSyncViewTests {
         #expect(EnableBankingSyncView.psuType(for: bank(nil), choice: "personal") == "personal")
     }
 
+    @Test func aLinkedAccountsBankIsFoundByTrimmedCaseInsensitiveName() {
+        func bank(_ name: String) -> EnableBankingBank {
+            EnableBankingBank(name: name, country: "NL", psuTypes: nil, beta: nil, maximumConsentValidity: nil)
+        }
+        let abn = bank("ABN AMRO")
+        let ing = bank("ING")
+        #expect(EnableBankingSyncView.bank(named: "ING", in: [abn, ing]) == ing)
+        #expect(EnableBankingSyncView.bank(named: "  abn amro\n", in: [abn, ing]) == abn)
+        #expect(EnableBankingSyncView.bank(named: "Rabobank", in: [abn, ing]) == nil)
+        #expect(EnableBankingSyncView.bank(named: nil, in: [abn, ing]) == nil)
+        #expect(EnableBankingSyncView.bank(named: "ING", in: []) == nil)
+    }
+
     // MARK: - BankAccountLinkView.linkableAccounts
 
     private func account(_ id: String, closed: Bool = false) -> Account {
