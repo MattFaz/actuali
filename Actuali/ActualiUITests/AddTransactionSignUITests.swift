@@ -1,10 +1,11 @@
 import XCTest
 
-/// The amount's sign is the transaction's direction, as in Actual: the
-/// keyboard's ± key and the sign beside the amount both flip it.
+/// The amount's sign is the transaction's direction, as in Actual: the sign
+/// beside the amount flips it, and so does the keypad's ±, which stays under
+/// the thumb.
 final class AddTransactionSignUITests: XCTestCase {
     @MainActor
-    func testFlipSignKeyAndSignButtonSwitchBetweenExpenseAndIncome() {
+    func testSignButtonSwitchesBetweenExpenseAndIncome() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
@@ -13,22 +14,23 @@ final class AddTransactionSignUITests: XCTestCase {
         XCTAssertTrue(sign.waitForExistence(timeout: 10))
         XCTAssertEqual(sign.value as? String, "Outflow", "a new transaction starts as an expense")
 
-        // The decimal pad has no minus key; the keyboard bar's ± is the way.
-        let flip = app.buttons["Flip sign"]
-        XCTAssertTrue(flip.waitForExistence(timeout: 10), "no ± key above the amount keyboard")
-        flip.tap()
-        XCTAssertEqual(sign.value as? String, "Inflow")
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10), "keyboard did not appear")
 
-        flip.tap()
-        XCTAssertEqual(sign.value as? String, "Outflow")
-
-        // Tapping the sign itself does the same.
         sign.tap()
         XCTAssertEqual(sign.value as? String, "Inflow")
+        sign.tap()
+        XCTAssertEqual(sign.value as? String, "Outflow")
+
+        let flip = app.amountKeypad.buttons["Flip sign"]
+        XCTAssertTrue(flip.exists, "no ± on the keypad")
+        flip.tap()
+        XCTAssertEqual(sign.value as? String, "Inflow")
+        flip.tap()
+        XCTAssertEqual(sign.value as? String, "Outflow")
     }
 
     @MainActor
-    func testChoosingATransferKeepsBothSignControlsEnabled() {
+    func testChoosingATransferKeepsTheSignEnabled() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
@@ -41,16 +43,12 @@ final class AddTransactionSignUITests: XCTestCase {
         )).firstMatch
         XCTAssertTrue(account.waitForExistence(timeout: 5))
         account.tap()
+        XCTAssertTrue(sign.waitForExistence(timeout: 5))
         XCTAssertTrue(sign.isEnabled)
-        let amount = app.textFields.matching(NSPredicate(format: "placeholderValue == '0.00'")).firstMatch
-        amount.tap()
-        let flip = app.buttons["Flip sign"]
-        XCTAssertTrue(flip.waitForExistence(timeout: 5))
-        XCTAssertTrue(flip.isEnabled)
     }
 
     @MainActor
-    func testConvertingAnExistingExpenseDisablesTheKeyboardSignKey() {
+    func testConvertingAnExistingExpenseDisablesTheSign() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "0", "-transactionDisplayMode", "flat"]
         app.launch()
@@ -65,11 +63,9 @@ final class AddTransactionSignUITests: XCTestCase {
         transaction.tap()
         XCTAssertTrue(app.navigationBars["Edit Transaction"].waitForExistence(timeout: 5))
 
-        let amount = app.textFields.matching(NSPredicate(format: "placeholderValue == '0.00'")).firstMatch
-        amount.tap()
-        let flip = app.buttons["Flip sign"]
-        XCTAssertTrue(flip.waitForExistence(timeout: 5))
-        XCTAssertTrue(flip.isEnabled)
+        let sign = app.buttons["addTransaction.sign"]
+        XCTAssertTrue(sign.waitForExistence(timeout: 5))
+        XCTAssertTrue(sign.isEnabled)
 
         app.buttons["addTransaction.payee"].tap()
         let transferSearch = app.textFields["Search payees"]
@@ -80,25 +76,22 @@ final class AddTransactionSignUITests: XCTestCase {
         )).firstMatch
         XCTAssertTrue(account.waitForExistence(timeout: 5))
         account.tap()
-        amount.tap()
-        XCTAssertTrue(flip.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["addTransaction.sign"].isEnabled)
-        XCTAssertFalse(flip.isEnabled)
+        XCTAssertTrue(sign.waitForExistence(timeout: 5))
+        XCTAssertFalse(sign.isEnabled)
 
         app.buttons["addTransaction.payee"].tap()
         let search = app.textFields["Search payees"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.typeText("Chipotle")
         app.navigationBars.buttons["Done"].tap()
-        amount.tap()
-        XCTAssertTrue(flip.waitForExistence(timeout: 5))
-        XCTAssertTrue(flip.isEnabled)
-        flip.tap()
-        XCTAssertEqual(app.buttons["addTransaction.sign"].value as? String, "Inflow")
+        XCTAssertTrue(sign.waitForExistence(timeout: 5))
+        XCTAssertTrue(sign.isEnabled)
+        sign.tap()
+        XCTAssertEqual(sign.value as? String, "Inflow")
     }
 
     @MainActor
-    func testKeyboardAndSignButtonReverseATransferWithoutChangingItsAmount() {
+    func testSignButtonReversesATransferWithoutChangingItsAmount() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
@@ -115,11 +108,7 @@ final class AddTransactionSignUITests: XCTestCase {
 
         let sign = app.buttons["addTransaction.sign"]
         XCTAssertEqual(sign.value as? String, "Transfer from Chase Checking to Ally Savings")
-        amount.tap()
-        let flip = app.buttons["Flip sign"]
-        XCTAssertTrue(flip.waitForExistence(timeout: 5))
-        XCTAssertTrue(flip.isEnabled)
-        flip.tap()
+        sign.tap()
         XCTAssertEqual(sign.value as? String, "Transfer from Ally Savings to Chase Checking")
         XCTAssertEqual(amount.value as? String, "0.05")
 

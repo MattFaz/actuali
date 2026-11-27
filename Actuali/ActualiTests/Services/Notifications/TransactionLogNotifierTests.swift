@@ -1,6 +1,32 @@
 import Foundation
 import Testing
+import UserNotifications
 @testable import Actuali
+
+private final class RecordingTransactionLogNotificationCenter: NotificationPosting, @unchecked Sendable {
+    private(set) var authorizationRequestCount = 0
+    private(set) var addedRequests: [UNNotificationRequest] = []
+    var authorizationGranted = true
+    var authorizationError: Error?
+
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        authorizationGranted ? .authorized : .denied
+    }
+
+    func requestAuthorization(options _: UNAuthorizationOptions) async throws -> Bool {
+        authorizationRequestCount += 1
+        if let authorizationError {
+            throw authorizationError
+        }
+        return authorizationGranted
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        addedRequests.append(request)
+    }
+
+    func removePendingNotificationRequests(withIdentifiers _: [String]) {}
+}
 
 @MainActor
 struct TransactionLogNotifierTests {
@@ -8,6 +34,125 @@ struct TransactionLogNotifierTests {
     /// default, and symbol placement differs by locale (de_DE renders
     /// "12,50 €").
     private let enUS = Locale(identifier: "en_US")
+
+    private func makeSettings(showsSuccessNotification: Bool) -> TransactionLogNotificationSettings {
+        let name = "TransactionLogNotifierTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        let settings = TransactionLogNotificationSettings(defaults: defaults)
+        settings.showsSuccessNotification = showsSuccessNotification
+        return settings
+    }
+
+    @Test func disabledShortcutSuccessNotificationSkipsAuthorizationAndDelivery() async {
+        let center = RecordingTransactionLogNotificationCenter()
+
+        await TransactionLogNotifier.notifySuccess(
+            payee: "Coffee Shop",
+            amountCents: -450,
+            currencyCode: "USD",
+            settings: makeSettings(showsSuccessNotification: false),
+            center: center
+        )
+
+        #expect(center.authorizationRequestCount == 0)
+        #expect(center.addedRequests.isEmpty)
+    }
+
+    @Test func disabledConfirmationStillPostsUnsyncedWarning() async {
+        let center = RecordingTransactionLogNotificationCenter()
+
+        await TransactionLogNotifier.notifySuccess(
+            payee: "Coffee Shop",
+            amountCents: -450,
+            currencyCode: "USD",
+            synced: false,
+            settings: makeSettings(showsSuccessNotification: false),
+            center: center
+        )
+
+        #expect(center.authorizationRequestCount == 1)
+        #expect(center.addedRequests.count == 1)
+        #expect(center.addedRequests.first?.content.title == String(localized: "Saved locally"))
+        #expect(center.addedRequests.first?.content.body.contains("sync when you open Actuali") == true)
+    }
+
+    @Test func enabledShortcutSuccessNotificationIsDelivered() async {
+        let center = RecordingTransactionLogNotificationCenter()
+
+        await TransactionLogNotifier.notifySuccess(
+            payee: "Coffee Shop",
+            amountCents: -450,
+            currencyCode: "USD",
+            settings: makeSettings(showsSuccessNotification: true),
+            center: center
+        )
+
+        #expect(center.authorizationRequestCount == 1)
+        #expect(center.addedRequests.count == 1)
+        let request = center.addedRequests.first
+        #expect(request?.identifier.hasPrefix("com.mfazz.Actuali.logTransactionSuccess.") == true)
+        #expect(request?.content.title == String(localized: "Logged transaction"))
+        #expect(request?.content.sound == nil)
+        #expect(request.map { TransactionLoggedMarker.isPresent(in: $0.content.userInfo) } == true)
+    }
+
+    @Test func deniedPermissionDoesNotSubmitSuccessNotification() async {
+        let center = RecordingTransactionLogNotificationCenter()
+        center.authorizationGranted = false
+
+        await TransactionLogNotifier.notifySuccess(
+            payee: "Coffee Shop",
+            amountCents: -450,
+            currencyCode: "USD",
+            settings: makeSettings(showsSuccessNotification: true),
+            center: center
+        )
+
+        #expect(center.authorizationRequestCount == 1)
+        #expect(center.addedRequests.isEmpty)
+    }
+
+    @Test func authorizationErrorDoesNotSubmitSuccessNotification() async {
+        let center = RecordingTransactionLogNotificationCenter()
+        center.authorizationError = CancellationError()
+
+        await TransactionLogNotifier.notifySuccess(
+            payee: "Coffee Shop",
+            amountCents: -450,
+            currencyCode: "USD",
+            settings: makeSettings(showsSuccessNotification: true),
+            center: center
+        )
+
+        #expect(center.authorizationRequestCount == 1)
+        #expect(center.addedRequests.isEmpty)
+    }
+
+    @Test func failureNotificationStillPostsWhenSuccessConfirmationsAreDisabled() async {
+        let settings = makeSettings(showsSuccessNotification: false)
+        let center = RecordingTransactionLogNotificationCenter()
+
+        await TransactionLogNotifier.notifySuccess(
+            payee: "Coffee Shop",
+            amountCents: -450,
+            currencyCode: "USD",
+            settings: settings,
+            center: center
+        )
+        await TransactionLogNotifier.notifyFailure(
+            message: "Couldn't save",
+            payee: "Coffee Shop",
+            amountCents: -450,
+            currencyCode: "USD",
+            center: center
+        )
+
+        #expect(center.authorizationRequestCount == 1)
+        #expect(center.addedRequests.count == 1)
+        #expect(center.addedRequests.first?.content.title == String(localized: "Couldn't log transaction"))
+        #expect(center.addedRequests.first?.identifier.hasPrefix("com.mfazz.Actuali.logTransactionFailure.") == true)
+    }
 
     @Test func composeFailureBodyUsesConfiguredCurrencyCode() {
         let bodyEUR = TransactionLogNotifier.composeBody(

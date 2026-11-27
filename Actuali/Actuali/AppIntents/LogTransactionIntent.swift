@@ -9,6 +9,9 @@ struct LogTransactionIntent: AppIntent {
     )
     static let openAppWhenRun = false
 
+    @Parameter(title: LocalizedStringResource("Budget"))
+    var budget: BudgetEntity?
+
     @Parameter(title: LocalizedStringResource("Account"))
     var account: AccountEntity?
 
@@ -55,7 +58,7 @@ struct LogTransactionIntent: AppIntent {
     }
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Log \(\.$amount) at \(\.$payee) in \(\.$account)") {
+        Summary("Log \(\.$amount) at \(\.$payee) for \(\.$budget) in \(\.$account)") {
             \.$cardHint
             \.$notes
             \.$category
@@ -80,55 +83,143 @@ struct LogTransactionIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        try await perform(using: .shared)
+    }
+
+    @MainActor
+    func perform(using store: BudgetStore) async throws -> some IntentResult & ProvidesDialog {
         // Validate amount. An empty string means the automation ran before
         // Wallet had the transaction details — surface that distinctly so
         // users know it isn't a configuration problem.
         guard !amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            await reportFailure(.noAmountReceived)
+            await reportFailure(.noAmountReceived, store: store)
             throw LogTransactionError.noAmountReceived
         }
         guard let parsedAmount = AmountParser.parse(amount),
               parsedAmount.isFinite, parsedAmount > 0 else {
-            await reportFailure(.invalidAmount(received: amount))
+            await reportFailure(.invalidAmount(received: amount), store: store)
             throw LogTransactionError.invalidAmount(received: amount)
         }
 
-        // Resolve account: explicit parameter, else defaultAccountId, else error.
-        let store = BudgetStore.shared
-        // Headless launch (openAppWhenRun = false) can reach the write path before
-        // init()'s background load has wired syncClient; wait for it so the write
-        // doesn't fail with "Sync not configured".
-        await store.ensureBudgetReady()
-
-        guard store.currentBudgetId != nil else {
-            await reportFailure(.noBudgetLoaded)
-            throw LogTransactionError.noBudgetLoaded
+        let targetBudgetId: String
+        if let budget {
+            do {
+                targetBudgetId = try await store.localBudgetIDForIntent(budget.id)
+            } catch {
+                let mapped = LogTransactionError.wrapping(error)
+                await reportFailure(mapped, store: store)
+                throw mapped
+            }
+        } else {
+            guard let activeBudgetId = store.currentBudgetId,
+                  !(store.isConnected && activeBudgetId == DemoDataSeeder.budgetId) else {
+                await reportFailure(.noBudgetLoaded, store: store)
+                throw LogTransactionError.noBudgetLoaded
+            }
+            targetBudgetId = activeBudgetId
         }
 
+        let writer: BudgetTransactionWriter
+        do {
+            // Active-budget writes reuse the existing store connection. Other
+            // budgets use a cached local writer without changing app selection.
+            writer = try await store.transactionWriter(for: targetBudgetId)
+        } catch {
+            let mapped = LogTransactionError.wrapping(error)
+            await reportFailure(mapped, store: store, budgetId: targetBudgetId)
+            throw mapped
+        }
+
+        do {
+            let result = try await performWrite(
+                using: store,
+                writer: writer,
+                targetBudgetId: targetBudgetId,
+                parsedAmount: parsedAmount
+            )
+            await store.releaseTransactionWriter(for: targetBudgetId)
+            return result
+        } catch {
+            await store.releaseTransactionWriter(for: targetBudgetId)
+            throw error
+        }
+    }
+
+    @MainActor
+    private func performWrite(
+        using store: BudgetStore,
+        writer: BudgetTransactionWriter,
+        targetBudgetId: String,
+        parsedAmount: Double
+    ) async throws -> some IntentResult & ProvidesDialog {
+        // A saved account/category ID must belong to the chosen budget. Legacy
+        // unscoped IDs remain valid only for shortcuts that don't choose a budget.
+        let isBudgetScoped = budget != nil
+        let availableAccounts = await writer.accountsForIntent()
+        let cardMappings = await writer.cardMappingsForIntent()
         let resolvedAccountId: String
         if let account {
-            resolvedAccountId = account.id
-        } else if !cardHint.isEmpty, let matchedId = await store.resolveAccountId(hint: cardHint) {
+            guard let id = ScopedEntityID.rowID(
+                account.id, budgetID: budget?.id ?? targetBudgetId, allowLegacyID: !isBudgetScoped
+            ) else {
+                await reportFailure(.accountUnavailable, store: store, budgetId: targetBudgetId, writer: writer)
+                throw LogTransactionError.accountUnavailable
+            }
+            resolvedAccountId = id
+        } else if !cardHint.isEmpty,
+                  let matchedId = store.resolveAccountId(
+                      hint: cardHint, accounts: availableAccounts,
+                      cardMappings: cardMappings, in: targetBudgetId
+                  ) {
             resolvedAccountId = matchedId
-        } else if let defaultId = store.defaultAccountId {
+        } else if let defaultId = store.defaultAccountId(for: targetBudgetId) {
             resolvedAccountId = defaultId
         } else {
-            await reportFailure(.noAccountSelected)
+            await reportFailure(.noAccountSelected, store: store, budgetId: targetBudgetId, writer: writer)
             throw LogTransactionError.noAccountSelected
         }
 
-        // Verify the account still exists and is open. Use accountsForIntent()
-        // so this works on a cold headless launch where the in-memory cache is
-        // not yet populated.
-        let availableAccounts = await store.accountsForIntent()
-        guard let activeAccount = availableAccounts.first(where: { $0.id == resolvedAccountId && !$0.closed }) else {
-            await reportFailure(.accountUnavailable)
+        guard let activeAccount = availableAccounts.first(where: {
+            $0.id == resolvedAccountId && !$0.closed
+        }) else {
+            await reportFailure(.accountUnavailable, store: store, budgetId: targetBudgetId, writer: writer)
             throw LogTransactionError.accountUnavailable
+        }
+
+        let categoryId: String?
+        if activeAccount.offBudget {
+            categoryId = nil
+        } else if let category {
+            let selectedID = ScopedEntityID.rowID(
+                category.id, budgetID: budget?.id ?? targetBudgetId, allowLegacyID: !isBudgetScoped
+            )
+            guard let selectedID else {
+                await reportFailure(.categoryUnavailable, store: store, budgetId: targetBudgetId, writer: writer)
+                throw LogTransactionError.categoryUnavailable
+            }
+            let availableCategories = await writer.categoriesForIntent()
+            if availableCategories.contains(where: { $0.id == selectedID }) {
+                categoryId = selectedID
+            } else if isBudgetScoped {
+                // An explicit selection must not silently become another
+                // payee-history or rules category when its category was deleted.
+                await reportFailure(.categoryUnavailable, store: store, budgetId: targetBudgetId, writer: writer)
+                throw LogTransactionError.categoryUnavailable
+            } else {
+                categoryId = nil
+            }
+        } else {
+            categoryId = nil
         }
 
         // Compute signed cents.
         guard let unsigned = Transaction.cents(fromDollars: parsedAmount) else {
-            await reportFailure(.invalidAmount(received: amount))
+            await reportFailure(
+                .invalidAmount(received: amount),
+                store: store,
+                budgetId: targetBudgetId,
+                writer: writer
+            )
             throw LogTransactionError.invalidAmount(received: amount)
         }
         let amountCents = isIncome ? unsigned : -unsigned
@@ -138,40 +229,47 @@ struct LogTransactionIntent: AppIntent {
         let resolvedDate = date ?? Date()
 
         do {
-            let written = try await TransactionLogger(store: .shared).logTransaction(
+            let written = try await writer.logTransaction(
                 accountId: activeAccount.id,
                 amountCents: amountCents,
                 rawMerchant: payee,
                 notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
                 date: resolvedDate,
                 cleared: cleared,
-                // Off-budget accounts carry no category, matching the add form.
-                categoryId: activeAccount.offBudget ? nil : category?.id
+                categoryId: categoryId
             )
 
-            // The row is safely on disk either way, but an unreachable server
-            // means it only exists here. Say so rather than reporting a plain
-            // success, and ask iOS for an early wake so the queued write has a
-            // chance to land before the app is next opened (issue #139).
-            if !written.synced {
+            // An inactive budget's local CRDT messages remain queued until
+            // that budget is loaded by Actuali; the background refresh only
+            // knows how to sync the currently active budget.
+            if !written.synced, targetBudgetId == store.currentBudgetId {
                 BackgroundRefresh.schedule(earliestIn: BackgroundRefresh.pendingWriteFlushInterval)
             }
+            if targetBudgetId == store.currentBudgetId {
+                await store.refreshAfterIntentTransaction(in: targetBudgetId)
+                if let payeeId = written.payeeId {
+                    store.recordPayeeLocationIfAppropriate(payeeId: payeeId)
+                }
+            }
 
-            let displayPayee = written.transaction.payeeName ?? payee
+            let writerCurrencyCode = await writer.currencyCode
+            let writerNumberFormat = await writer.numberFormat
+            let displayPayee = written.payeeName ?? payee
             await TransactionLogNotifier.notifySuccess(
                 payee: displayPayee,
                 amountCents: amountCents,
-                currencyCode: store.currencyCode,
+                currencyCode: writerCurrencyCode,
                 narrowSymbol: store.useNarrowCurrencySymbol,
                 synced: written.synced,
-                numberFormat: store.numberFormat
+                numberFormat: writerNumberFormat,
+                needsOpeningBudget: targetBudgetId != store.currentBudgetId
             )
 
             let amountString = CurrencyAmountFormat.string(
                 cents: abs(amountCents),
-                currencyCode: store.currencyCode,
+                currencyCode: writerCurrencyCode,
                 narrowSymbol: store.useNarrowCurrencySymbol,
-                numberFormat: store.numberFormat
+                numberFormat: writerNumberFormat
             )
             let dialogText = LogTransactionDialogFormatter.string(
                 amount: amountString,
@@ -181,38 +279,150 @@ struct LogTransactionIntent: AppIntent {
             return Self.result(dialogText: dialogText, showConfirmation: showConfirmation)
         } catch {
             let mapped = LogTransactionError.wrapping(error)
-            await reportFailure(mapped)
+            await reportFailure(mapped, store: store, budgetId: targetBudgetId, writer: writer)
             throw mapped
         }
     }
 
+    static func failurePrefillIDs(
+        targetBudgetId: String?,
+        activeBudgetId: String?,
+        entityBudgetId: String? = nil,
+        accountEntityId: String?,
+        categoryEntityId: String?,
+        availableAccountIDs: Set<String>,
+        availableCategoryIDs: Set<String>,
+        allowLegacyIDs: Bool,
+        allowInactiveBudget: Bool = false
+    ) -> (accountId: String?, categoryId: String?) {
+        guard let targetBudgetId,
+              allowInactiveBudget || targetBudgetId == activeBudgetId else {
+            return (nil, nil)
+        }
+        let scopeBudgetId = entityBudgetId ?? targetBudgetId
+        let accountId = accountEntityId
+            .flatMap {
+                ScopedEntityID.rowID($0, budgetID: scopeBudgetId, allowLegacyID: allowLegacyIDs)
+            }
+            .flatMap { availableAccountIDs.contains($0) ? $0 : nil }
+        let categoryId = categoryEntityId
+            .flatMap {
+                ScopedEntityID.rowID($0, budgetID: scopeBudgetId, allowLegacyID: allowLegacyIDs)
+            }
+            .flatMap { availableCategoryIDs.contains($0) ? $0 : nil }
+        return (accountId, categoryId)
+    }
+
     @MainActor
-    private func reportFailure(_ error: LogTransactionError) async {
-        let store = BudgetStore.shared
-        await store.ensureBudgetReady()
+    private func reportFailure(
+        _ error: LogTransactionError,
+        store: BudgetStore,
+        budgetId: String? = nil,
+        writer: BudgetTransactionWriter? = nil
+    ) async {
+        let targetBudgetId: String? = if let budgetId {
+            budgetId
+        } else if let budget {
+            await store.localBudgetIDForFailureNotification(budget.id)
+        } else {
+            store.currentBudgetId
+        }
+        if let targetBudgetId, targetBudgetId == store.currentBudgetId {
+            await store.ensureBudgetReady()
+        }
         let amountCents = AmountParser.parse(amount).flatMap { Transaction.cents(fromDollars: $0) }
-        // The form marks a prefilled category as user-picked and would save a
-        // deleted one, so check it exists first.
-        let categoryId = await store.existingCategoryId(category?.id)
+
+        // The notification now carries the destination budget and the UI
+        // blocks saves until that budget is selected. Preserve the valid
+        // account/category selections there instead of dropping them.
+        let prefillBudgetId = targetBudgetId
+        let availableAccounts: [Account]
+        let availableCategories: [Category]
+        if let writer {
+            availableAccounts = await writer.accountsForIntent().filter { !$0.closed }
+            availableCategories = await writer.categoriesForIntent()
+        } else if let prefillBudgetId {
+            availableAccounts = await store.accountsForIntent(in: prefillBudgetId)
+                .filter { !$0.closed }
+            availableCategories = await store.categoriesForIntent(in: prefillBudgetId)
+        } else {
+            availableAccounts = []
+            availableCategories = []
+        }
+        let prefillIDs = Self.failurePrefillIDs(
+            targetBudgetId: targetBudgetId,
+            activeBudgetId: store.currentBudgetId,
+            entityBudgetId: budget?.id ?? targetBudgetId,
+            accountEntityId: account?.id,
+            categoryEntityId: category?.id,
+            availableAccountIDs: Set(availableAccounts.map(\.id)),
+            availableCategoryIDs: Set(availableCategories.map(\.id)),
+            allowLegacyIDs: budget == nil,
+            allowInactiveBudget: budget != nil
+        )
+        let accountId: String?
+        if account != nil {
+            accountId = prefillIDs.accountId
+        } else if let prefillBudgetId {
+            let mapped: [String: String] = if let writer {
+                await writer.cardMappingsForIntent()
+            } else {
+                [:]
+            }
+            let resolvedHint: String? = if writer != nil {
+                store.resolveAccountId(
+                    hint: cardHint, accounts: availableAccounts,
+                    cardMappings: mapped, in: prefillBudgetId
+                )
+            } else {
+                await store.resolveAccountId(hint: cardHint, in: prefillBudgetId)
+            }
+            let suggestedID = resolvedHint ?? store.defaultAccountId(for: prefillBudgetId)
+            accountId = suggestedID.flatMap { id in
+                availableAccounts.contains(where: { $0.id == id }) ? id : nil
+            }
+        } else {
+            accountId = nil
+        }
+        let categoryId = prefillIDs.categoryId
+
+        let currencyCode: String
+        let numberFormat: ActualNumberFormat
+        if let writer {
+            currencyCode = await writer.currencyCode
+            numberFormat = await writer.numberFormat
+        } else if targetBudgetId == store.currentBudgetId {
+            currencyCode = store.currencyCode
+            numberFormat = store.numberFormat
+        } else if let targetBudgetId {
+            let preferences = await store.cachedDisplayPreferences(for: targetBudgetId)
+            currencyCode = preferences.currencyCode
+            numberFormat = preferences.numberFormat
+        } else {
+            currencyCode = store.currencyCode
+            numberFormat = store.numberFormat
+        }
+
         await TransactionLogNotifier.notifyFailure(
             message: LogTransactionError.localizedString(
                 for: error, locale: .autoupdatingCurrent, bundle: .main
             ),
             payee: payee,
             amountCents: amountCents ?? 0,
-            currencyCode: store.currencyCode,
+            currencyCode: currencyCode,
             narrowSymbol: store.useNarrowCurrencySymbol,
             prefill: TransactionPrefill(
-                accountId: account?.id ?? store.defaultAccountId,
+                accountId: accountId,
                 payee: payee,
                 amountCents: amountCents,
+                budgetId: targetBudgetId ?? budget?.id,
                 date: date ?? Date(),
                 notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
                 categoryId: categoryId,
                 isIncome: isIncome,
                 cleared: cleared
             ),
-            numberFormat: store.numberFormat
+            numberFormat: numberFormat
         )
     }
 }

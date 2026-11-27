@@ -13,9 +13,9 @@ struct ReportChartDetailView: View {
     @State private var showsTotal = true
 
     /// The interval the readout and the lists describe: the one under the
-    /// finger, otherwise the latest.
+    /// finger, otherwise the one the card leads with.
     private var shownInterval: Int {
-        selected.flatMap(detail.intervals.firstIndex(of:)) ?? detail.intervals.count - 1
+        selected.flatMap(detail.intervals.firstIndex(of:)) ?? detail.leadInterval
     }
 
     /// A list under the chart, where the numbers can't sit beside the headline.

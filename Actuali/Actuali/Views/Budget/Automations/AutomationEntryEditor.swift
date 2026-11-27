@@ -501,21 +501,56 @@ struct AutomationEntryEditor: View {
 
 // MARK: - Shared field components
 
-/// Currency amount field editing the template's whole-unit Double.
+/// Currency amount field editing the template's whole-unit Double, on the
+/// same keypad as every other amount.
 struct AutomationAmountField: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
     let title: String
     @Binding var amount: Double?
+    /// The field edits text; the template holds a number. Keeping the text
+    /// here means a cleared field stays cleared instead of snapping back to
+    /// "0.00" mid-entry.
+    @State private var text = ""
 
     var body: some View {
         LabeledContent(title) {
-            TextField(title, value: Binding(
-                get: { amount ?? 0 },
-                set: { amount = $0 }
-            ), format: .number.precision(.fractionLength(0...2)))
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
-                .frame(maxWidth: 120)
+            AmountInputField(
+                text: $text,
+                conventionalAmountEntry: budgetStore.conventionalAmountEntry,
+                alignment: .right
+            )
+            .frame(maxWidth: 120)
         }
+        .onAppear { syncText() }
+        .onChange(of: text) {
+            amount = Self.amount(for: text, current: amount, conventionalAmountEntry: budgetStore.conventionalAmountEntry)
+        }
+        .onChange(of: amount) { syncText() }
+    }
+
+    /// Picks up an amount set from outside (a picked spending limit), but
+    /// leaves the text alone when it already says the same thing.
+    private func syncText() {
+        guard (Self.amount(for: text) ?? 0) != (amount ?? 0) else { return }
+        text = Self.text(for: amount, conventionalAmountEntry: budgetStore.conventionalAmountEntry)
+    }
+
+    /// No amount and zero both show as an empty field, under the 0.00
+    /// placeholder.
+    nonisolated static func text(for amount: Double?, conventionalAmountEntry: Bool) -> String {
+        guard let amount, amount != 0 else { return "" }
+        return AmountInputField.text(for: amount, conventionalAmountEntry: conventionalAmountEntry)
+    }
+
+    nonisolated static func amount(for text: String) -> Double? {
+        text.isEmpty ? nil : Double(text)
+    }
+
+    /// Text that still reads as the current amount leaves it alone: seeding
+    /// the field shows two decimals, and writing that back would round a
+    /// stored 12.345 before the user touched it.
+    nonisolated static func amount(for text: String, current: Double?, conventionalAmountEntry: Bool) -> Double? {
+        text == Self.text(for: current, conventionalAmountEntry: conventionalAmountEntry) ? current : amount(for: text)
     }
 }
 

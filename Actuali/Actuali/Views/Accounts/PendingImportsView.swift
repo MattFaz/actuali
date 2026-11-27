@@ -27,16 +27,13 @@ struct PendingImportsView: View {
     @State private var deferredFailureCount: Int?
     @State private var isProcessing = false
     /// What this device's bank sync imported and nobody has looked at yet.
-    /// Already in the budget, so there is nothing to approve: seeing them
-    /// here is the review, and leaving clears the marks.
+    /// Already in the budget, so there is nothing to approve. The marks stay
+    /// until marked reviewed: closing the sheet is not a decision.
     @State private var newTransactions: [Transaction] = []
     @State private var editingTransaction: Transaction?
     /// The tab the person picked; until they do, whichever has something
     /// to decide comes first.
     @State private var pickedTab: Tab?
-    /// Whether the Imported list was actually on screen, so closing the
-    /// sheet from the other tab doesn't clear marks nobody saw.
-    @State private var sawImported = false
 
     /// Two tabs, because the sheet holds two kinds of thing: rows that need a
     /// decision before they enter the budget, and rows that are already in.
@@ -48,10 +45,6 @@ struct PendingImportsView: View {
     var body: some View {
         NavigationStack {
             Group {
-                let visibleImports = store.visibleImports()
-                let staged = budgetStore.stagedBankTransactions
-                let approvalCount = visibleImports.count + staged.count
-                let importedCount = budgetStore.unreviewedTransactions.count
                 if approvalCount == 0, importedCount == 0 {
                     ContentUnavailableView(
                         "No Pending Imports",
@@ -64,12 +57,14 @@ struct PendingImportsView: View {
                     // The tab titles say which list this is; without them a
                     // line under the list has to.
                     let hasTabs = approvalCount > 0 && importedCount > 0
-                    let tab: Tab = approvalCount == 0 ? .imported
-                        : importedCount == 0 ? .toApprove
-                        : pickedTab ?? .toApprove
+                    let tab = currentTab
                     Group {
                         switch tab {
-                        case .toApprove: approvalList(imports: visibleImports, staged: staged, showsNote: !hasTabs)
+                        case .toApprove: approvalList(
+                                imports: store.visibleImports(),
+                                staged: budgetStore.stagedBankTransactions,
+                                showsNote: !hasTabs
+                            )
                         case .imported: importedList(showsNote: !hasTabs)
                         }
                     }
@@ -122,6 +117,19 @@ struct PendingImportsView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
+                // A plain toolbar button, not a filled one like Approve All:
+                // clearing marks tidies up, it doesn't change the budget.
+                if importedCount > 0, currentTab == .imported {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button(String(localized: "Mark All Reviewed")) {
+                            budgetStore.markAllReviewed()
+                            if approvalCount == 0 {
+                                dismiss()
+                            }
+                        }
+                        .accessibilityIdentifier("review.markAllReviewed")
+                    }
+                }
             }
             .alert("Import Failed", isPresented: Binding(
                 get: { errorMessage != nil },
@@ -150,11 +158,6 @@ struct PendingImportsView: View {
             // An edit or delete bumps dataVersion, which is what re-reads the rows.
             .task(id: budgetStore.dataVersion) {
                 newTransactions = await budgetStore.fetchUnreviewedTransactions()
-            }
-            .onDisappear {
-                if sawImported {
-                    budgetStore.markAllReviewed()
-                }
             }
         }
     }
@@ -205,12 +208,30 @@ struct PendingImportsView: View {
         }
     }
 
-    /// What this device's bank sync already put in the budget. Nothing to
-    /// decide: seeing the list is the review.
+    /// One derivation of each count, read by both the body and the toolbar,
+    /// so the two can't disagree about which tab is showing.
+    private var approvalCount: Int {
+        store.visibleImports().count + budgetStore.stagedBankTransactions.count
+    }
+
+    private var importedCount: Int {
+        budgetStore.unreviewedTransactions.count
+    }
+
+    private var currentTab: Tab {
+        approvalCount == 0 ? .imported
+            : importedCount == 0 ? .toApprove
+            : pickedTab ?? .toApprove
+    }
+
+    /// What this device's bank sync already put in the budget, listed until
+    /// marked reviewed: one by a swipe, or all at once.
     private func importedList(showsNote: Bool) -> some View {
         List {
             Section {
-                ForEach(newTransactions) { transaction in
+                // Filtered by the live marks: the fetched list only reloads
+                // on a data change, and clearing a mark isn't one.
+                ForEach(Self.stillUnreviewed(newTransactions, marks: budgetStore.unreviewedTransactions)) { transaction in
                     VStack(alignment: .leading, spacing: 4) {
                         TransactionListRow(
                             transaction: transaction,
@@ -229,6 +250,11 @@ struct PendingImportsView: View {
                             .accessibilityIdentifier("review.matched.\(transaction.id)")
                         }
                     }
+                    // Leading, the way Mail marks read; the row's own
+                    // actions are on the trailing edge.
+                    .swipeActions(edge: .leading) {
+                        MarkReviewedButton(transactionId: transaction.id)
+                    }
                 }
             } footer: {
                 if showsNote {
@@ -236,7 +262,6 @@ struct PendingImportsView: View {
                 }
             }
         }
-        .onAppear { sawImported = true }
         .accessibilityIdentifier("pendingImports.newTransactions")
     }
 
@@ -398,6 +423,10 @@ struct PendingImportsView: View {
         deferredFailureCount = nil
         editingItem = nil
         errorMessage = Self.approvalFailureMessage(count: count, locale: locale)
+    }
+
+    nonisolated static func stillUnreviewed(_ transactions: [Transaction], marks: [String: String]) -> [Transaction] {
+        transactions.filter { marks[$0.id] != nil }
     }
 
     nonisolated static func bulkApprovalDisposition(

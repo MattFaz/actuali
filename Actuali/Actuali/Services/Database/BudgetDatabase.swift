@@ -930,6 +930,17 @@ final class BudgetDatabase: Sendable {
         month: String,
         excludingCategoryIds: Set<String> = []
     ) async throws -> AccountsMonthSummary {
+        let monthStart = Self.monthStringToInt(month) * 100
+        return try await fetchAccountsMonthSummary(
+            dates: (monthStart + 1)...(monthStart + 31),
+            excludingCategoryIds: excludingCategoryIds
+        )
+    }
+
+    func fetchAccountsMonthSummary(
+        dates: ClosedRange<Int>,
+        excludingCategoryIds: Set<String> = []
+    ) async throws -> AccountsMonthSummary {
         try await dbQueue.read { db in
             // Categories the user left out of Spent drop out of expense only,
             // so Net stays Income less the Spent shown beside it, as the
@@ -957,8 +968,8 @@ final class BudgetDatabase: Sendable {
               AND (g.hidden = 0 OR g.hidden IS NULL)
               AND a.offbudget = 0
               AND (a.tombstone = 0 OR a.tombstone IS NULL)
-              AND (t.date / 100) = ?
-            """, arguments: StatementArguments(excluded) + [Self.monthStringToInt(month)]) else {
+              AND t.date BETWEEN ? AND ?
+            """, arguments: StatementArguments(excluded) + [dates.lowerBound, dates.upperBound]) else {
                 return AccountsMonthSummary()
             }
             let income: Int = row["income"] ?? 0
@@ -1047,7 +1058,10 @@ final class BudgetDatabase: Sendable {
             sortOrder: row["sort_order"],
             importedPayee: row["imported_description"],
             schedule: row["schedule"],
-            transferAcct: row["transfer_acct"]
+            transferAcct: row["transfer_acct"],
+            // Only selected when fetchTransactions was given an anchor; a
+            // missing column reads as nil.
+            runningBalance: row["running_balance"]
         )
     }
 
@@ -1091,14 +1105,36 @@ final class BudgetDatabase: Sendable {
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
-        statusFilter: TransactionStatusFilter = .all
+        statusFilter: TransactionStatusFilter = .all,
+        runningBalanceStartingAt: Int? = nil
     ) async throws -> [Transaction] {
         try await dbQueue.read { db in
+            let includesRunningBalance = runningBalanceStartingAt != nil && accountId != nil
             // The list's display payee: own payee first (transfer payees show
             // the linked account's name), else the split children's agreed
             // payee. Referenced by both SELECT and the search filter, which
             // must match what the row visibly shows.
             let payeeNameSQL = "COALESCE(pa.name, p.name, cpa.name, cp.name)"
+            let transactionSourceSQL = if includesRunningBalance {
+                """
+                (
+                    SELECT register_tx.*,
+                           ? - COALESCE(
+                               SUM(register_tx.amount) OVER (
+                                   ORDER BY register_tx.date DESC, register_tx.sort_order DESC
+                                   ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                               ), 0
+                           ) AS running_balance
+                    FROM transactions register_tx
+                    WHERE (register_tx.tombstone = 0 OR register_tx.tombstone IS NULL)
+                      AND (register_tx.isChild = 0 OR register_tx.isChild IS NULL)
+                      AND register_tx.date IS NOT NULL
+                      AND register_tx.acct = ?
+                )
+                """
+            } else {
+                "transactions"
+            }
             var sql = """
             SELECT
                 t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
@@ -1109,7 +1145,8 @@ final class BudgetDatabase: Sendable {
                 \(payeeNameSQL) as payee_name,
                 c.name as category_name,
                 p.transfer_acct as transfer_acct
-            FROM transactions t
+                \(includesRunningBalance ? ", t.running_balance" : "")
+            FROM \(transactionSourceSQL) t
             LEFT JOIN payee_mapping pm ON pm.id = t.description
             LEFT JOIN payees p ON p.id = pm.targetId
             -- Transfer payees carry no name; their display name is the
@@ -1144,6 +1181,11 @@ final class BudgetDatabase: Sendable {
             """
 
             var arguments: [(any DatabaseValueConvertible)?] = []
+
+            if includesRunningBalance, let runningBalanceStartingAt, let accountId {
+                arguments.append(runningBalanceStartingAt)
+                arguments.append(accountId)
+            }
 
             if let accountId {
                 sql += " AND t.acct = ?"
@@ -4259,7 +4301,8 @@ final class BudgetDatabase: Sendable {
                 return []
             }
             return try Row.fetchAll(db, sql: """
-            SELECT id, name, account_id, account_sync_source, offbudget, closed
+            SELECT id, name, account_id, account_sync_source, offbudget, closed,
+                   (SELECT name FROM banks WHERE banks.id = accounts.bank) AS institution_name
             FROM accounts
             WHERE (tombstone = 0 OR tombstone IS NULL)
               AND account_id IS NOT NULL AND account_id <> ''
@@ -4272,7 +4315,8 @@ final class BudgetDatabase: Sendable {
                     externalAccountId: row["account_id"],
                     syncSource: row["account_sync_source"],
                     offBudget: row["offbudget"] == 1,
-                    closed: row["closed"] == 1
+                    closed: row["closed"] == 1,
+                    institutionName: row["institution_name"]
                 )
             }
         }

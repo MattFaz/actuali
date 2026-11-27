@@ -92,6 +92,8 @@ struct BudgetView: View {
     @State private var monthNoteMonth: String?
     @State private var editingMonthNote = false
     @State private var editingBudgetViewOptions = false
+    // Not observed here: see DockObserver.
+    @State private var dock = CompactDockTracker()
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
@@ -343,22 +345,27 @@ struct BudgetView: View {
                 }
             }
         } header: {
-            CompactBudgetGroupHeader(
-                name: group.name,
-                isCollapsed: isCollapsed,
-                isHidden: group.isHidden,
-                onSetHidden: {
-                    setCategoryGroupHidden(group.id, hidden: $0)
-                },
-                onRename: { editCategoryGroup(group.id) },
-                onDelete: { requestDeleteCategoryGroup(group.id) },
-                onApplyTemplate: groupTemplateAction(.apply, for: group),
-                onOverwriteTemplate: groupTemplateAction(.overwrite, for: group),
-                totals: budgetStore.showGroupTotals ? group.totals : nil,
-                showsSpent: budgetStore.showCompactSpentColumn,
-                showsBudgeted: budgetStore.showBudgetedAmounts,
-                onToggleCollapse: { toggleCollapsed(group.id) }
-            )
+            DockObserver(dock) { docked in
+                CompactBudgetGroupHeader(
+                    name: group.name,
+                    isCollapsed: isCollapsed,
+                    isHidden: group.isHidden,
+                    onSetHidden: {
+                        setCategoryGroupHidden(group.id, hidden: $0)
+                    },
+                    onRename: { editCategoryGroup(group.id) },
+                    onDelete: { requestDeleteCategoryGroup(group.id) },
+                    onApplyTemplate: groupTemplateAction(.apply, for: group),
+                    onOverwriteTemplate: groupTemplateAction(.overwrite, for: group),
+                    totals: budgetStore.showGroupTotals ? group.totals : nil,
+                    showsSpent: budgetStore.showCompactSpentColumn,
+                    showsBudgeted: budgetStore.showBudgetedAmounts,
+                    onToggleCollapse: { toggleCollapsed(group.id) },
+                    isConnectedToSummary: docked == group.id && budgetStore.showCompactBudgetOverview,
+                    dockID: group.id,
+                    dockTracker: dock
+                )
+            }
         }
     }
 
@@ -389,21 +396,26 @@ struct BudgetView: View {
                 }
             }
         } header: {
-            CompactIncomeGroupHeader(
-                name: header.name,
-                isCollapsed: isCollapsed,
-                isHidden: header.isHidden,
-                onSetHidden: header.onSetHidden,
-                onRename: header.onRename,
-                totalBudgeted: budget.totalBudgetedIncome,
-                totalReceived: budget.totalIncome,
-                isTrackingBudget: budget.isTrackingBudget,
-                showsSpent: budgetStore.showCompactSpentColumn,
-                showsBudgeted: budgetStore.showBudgetedAmounts,
-                onToggleCollapse: {
-                    toggleCollapsed(Self.incomeGroupCollapseID)
-                }
-            )
+            DockObserver(dock) { docked in
+                CompactIncomeGroupHeader(
+                    name: header.name,
+                    isCollapsed: isCollapsed,
+                    isHidden: header.isHidden,
+                    onSetHidden: header.onSetHidden,
+                    onRename: header.onRename,
+                    totalBudgeted: budget.totalBudgetedIncome,
+                    totalReceived: budget.totalIncome,
+                    isTrackingBudget: budget.isTrackingBudget,
+                    showsSpent: budgetStore.showCompactSpentColumn,
+                    showsBudgeted: budgetStore.showBudgetedAmounts,
+                    onToggleCollapse: {
+                        toggleCollapsed(Self.incomeGroupCollapseID)
+                    },
+                    isConnectedToSummary: docked == Self.incomeGroupCollapseID && budgetStore.showCompactBudgetOverview,
+                    dockID: Self.incomeGroupCollapseID,
+                    dockTracker: dock
+                )
+            }
         }
     }
 
@@ -745,11 +757,19 @@ struct BudgetView: View {
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("budget.topBox")
                     case .compact:
-                        CompactBudgetSummary(
-                            budget: budget,
-                            showsSpent: budgetStore.showCompactSpentColumn,
-                            showsBudgeted: budgetStore.showBudgetedAmounts
-                        )
+                        DockObserver(dock) { docked in
+                            CompactBudgetSummary(
+                                budget: budget,
+                                showsSpent: budgetStore.showCompactSpentColumn,
+                                showsBudgeted: budgetStore.showBudgetedAmounts,
+                                isHeaderDocked: docked != nil
+                            )
+                        }
+                        // Headers compare their frames to this edge to tell
+                        // when they touch the summary.
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: {
+                            dock.setSummaryBottom($0)
+                        }
                     }
                 }
                 .padding(

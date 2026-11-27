@@ -30,6 +30,12 @@ struct CustomReportData: Equatable {
     }
 
     var kind: Kind
+    /// Bars that rank rows (payees, categories) rather than chart intervals,
+    /// so they read as a list, not as a chart over time.
+    var ranksRows = false
+    /// The month start the monthly intervals follow: a "Nov '26" bar under a
+    /// day-25 start runs from November 25.
+    var monthStartRule = MonthStartRule.calendarMonth
 }
 
 /// Port of the webapp's custom-spreadsheet.ts for the option matrix the web
@@ -90,6 +96,7 @@ enum CustomReportEngine {
         reportContext: ReportContext,
         filterContext: ConditionsFilter.Context,
         today: Date,
+        monthStartRule: MonthStartRule = .calendarMonth,
         locale: Locale = .current,
         bundle: Bundle = .main
     ) -> CustomReportData {
@@ -126,6 +133,13 @@ enum CustomReportEngine {
         // Date range from actual history (also for Budgeted, as upstream's
         // card does).
         let live = transactions.filter { !$0.tombstone }
+        // Only the month presets resolve to period-aligned ranges. Any other
+        // range stays on calendar months, so a clipped first period (Jan 1 of
+        // "Year to date" under a day-25 start) isn't labeled "Dec".
+        let followsRule = config.balanceType != "Budgeted" && !config.dateStatic
+            && ReportDateRange.monthPresets.contains(config.dateRange ?? "")
+        let rule = followsRule ? monthStartRule : .calendarMonth
+        data.monthStartRule = rule
         let earliest = live.map(\.date).min().map(dateFrom)
         let latest = live.map(\.date).max().map(dateFrom)
         let (start, end) = ReportDateRange.resolve(
@@ -133,7 +147,8 @@ enum CustomReportEngine {
             startDate: config.startDate, endDate: config.endDate,
             includeCurrent: config.includeCurrent,
             earliest: earliest, latest: latest, today: today,
-            firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx
+            firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx,
+            monthStartRule: rule
         )
         let startYMD = ymdInt(from: start), endYMD = ymdInt(from: end)
         let categoriesById = Dictionary(uniqueKeysWithValues: reportContext.categories.map { ($0.id, $0) })
@@ -176,7 +191,7 @@ enum CustomReportEngine {
         let buckets = intervalBuckets(from: start, to: end,
                                       interval: config.interval,
                                       firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx,
-                                      locale: locale)
+                                      rule: rule, locale: locale)
         let bucketIndex = Dictionary(uniqueKeysWithValues:
             buckets.enumerated().map { ($0.element.key, $0.offset) })
         var labels = buckets.map(\.label)
@@ -186,7 +201,7 @@ enum CustomReportEngine {
         var cells: [String: [Int: Cell]] = [:] // rowKey -> bucketIdx -> sums
         for tx in pool {
             let key = bucketKey(forYMD: tx.date, interval: config.interval,
-                                firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx)
+                                firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx, rule: rule)
             guard let idx = bucketIndex[key] else { continue }
             // Upstream filterHiddenItems: only categorized on-budget txs land
             // on regular rows; everything else goes to the synthetic rows —
@@ -356,8 +371,19 @@ enum CustomReportEngine {
             data.kind = .donut(slices: rows.filter { $0.total > 0 }
                 .map { .init(label: $0.name, valueUnits: $0.total, group: nil) },
                 groups: [])
+        case "BarGraph" where config.mode == "time":
+            // Diverges from upstream: BarGraph.tsx charts the rows here, so a
+            // one-category "by month" report is a single bar. The web UI never
+            // saves this pair (ReportSidebar onChangeMode swaps in
+            // StackedBarGraph), so chart that graph's column totals instead.
+            // Sum the surviving rows, not `overall`: Net Payment / Net Deposit
+            // clip per row, and the bars must agree with the report's rows.
+            let totals = labels.indices.map { i in rows.reduce(0) { $0 + $1.perBucket[i] } }
+            data.kind = .bars(rows.isEmpty ? [] : zip(labels, totals).map { .init(label: $0, valueUnits: $1) },
+                              signed: signed)
         default:
             data.kind = .bars(rows.map { .init(label: $0.name, valueUnits: $0.total) }, signed: signed)
+            data.ranksRows = true
         }
         return data
     }
@@ -503,9 +529,12 @@ enum CustomReportEngine {
     private struct BucketDef { let key: Int; let label: String }
 
     /// Bucket key: Daily = YYYYMMDD, Weekly = YYYYMMDD of week start,
-    /// Monthly = YYYYMM, Yearly = YYYY.
-    private static func bucketKey(forYMD ymd: Int, interval: String, firstDayOfWeekIdx: Int) -> Int {
+    /// Monthly = YYYYMM (of the pay period's anchor month under a custom
+    /// month start), Yearly = YYYY.
+    private static func bucketKey(forYMD ymd: Int, interval: String, firstDayOfWeekIdx: Int, rule: MonthStartRule) -> Int {
         switch interval {
+        case "Monthly" where !rule.isCalendarMonth:
+            return ymdInt(from: rule.anchor(containing: dateFrom(ymd))) / 100
         case "Daily": return ymd
         case "Weekly":
             let date = dateFrom(ymd)
@@ -517,10 +546,18 @@ enum CustomReportEngine {
 
     private static func intervalBuckets(
         from start: Date, to end: Date, interval: String, firstDayOfWeekIdx: Int,
-        locale: Locale
+        rule: MonthStartRule, locale: Locale
     ) -> [BucketDef] {
         var out: [BucketDef] = []
         switch interval {
+        case "Monthly" where !rule.isCalendarMonth:
+            // One bar per pay period, named for the month it is anchored to,
+            // as the Cash Flow card names its periods.
+            let formatter = monthFormatter(locale: locale)
+            for period in rule.periods(from: start, through: end) {
+                let anchor = rule.anchor(containing: period.lowerBound)
+                out.append(.init(key: ymdInt(from: anchor) / 100, label: formatter.string(from: anchor)))
+            }
         case "Daily":
             let formatter = dayFormatter(locale: locale)
             var d = cal.startOfDay(for: start)

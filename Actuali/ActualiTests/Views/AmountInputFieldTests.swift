@@ -19,16 +19,14 @@ struct AmountInputFieldTests {
         initial: String = "",
         allowsNegative: Bool = false,
         conventionalAmountEntry: Bool = false,
-        onToggleSign: (() -> Void)? = nil,
-        signToggleEnabled: Bool = true
+        onToggleSign: (@MainActor () -> Void)? = nil
     ) -> (coordinator: AmountInputField.Coordinator, textField: UITextField, box: TextBox) {
         let box = TextBox(initial)
         let field = AmountInputField(
             text: Binding(get: { box.value }, set: { box.value = $0 }),
             conventionalAmountEntry: conventionalAmountEntry,
             allowsNegative: allowsNegative,
-            onToggleSign: onToggleSign,
-            signToggleEnabled: signToggleEnabled
+            onToggleSign: onToggleSign
         )
         let coordinator = field.makeCoordinator()
         let textField = UITextField()
@@ -63,6 +61,91 @@ struct AmountInputFieldTests {
             shouldChangeCharactersIn: NSRange(location: max(0, length - 1), length: min(1, length)),
             replacementString: ""
         )
+    }
+
+    /// Presses a keypad key the way a tap does, found by what VoiceOver reads.
+    private func press(_ label: String, on keypad: AmountKeypadView) {
+        func buttons(in view: UIView) -> [UIButton] {
+            view.subviews.flatMap { ($0 as? UIButton).map { [$0] } ?? buttons(in: $0) }
+        }
+        let key = buttons(in: keypad).first { $0.accessibilityLabel == label }
+        #expect(key != nil, "no \(label) key on the keypad")
+        key?.performPrimaryAction()
+    }
+
+    private func makeKeypad(
+        for coordinator: AmountInputField.Coordinator,
+        hasSign: Bool = false
+    ) -> AmountKeypadView {
+        AmountKeypadView(
+            decimalSeparator: ".",
+            onType: { coordinator.type($0) },
+            onOperator: { coordinator.pushOperator($0) },
+            onToggleSign: hasSign ? { coordinator.toggleSign() } : nil,
+            onDone: {}
+        )
+    }
+
+    /// The keypad's keys run the same entry logic as typing: 1 00 + 2 00 is 3.00, and delete
+    /// trims the operand being typed.
+    @Test func keypadKeysRunTheFieldsEntryLogic() {
+        let (coordinator, textField, box) = makeField()
+        let keypad = makeKeypad(for: coordinator)
+        for key in ["1", "00", "Add", "2", "00"] {
+            press(key, on: keypad)
+        }
+        #expect(box.value == "3.00")
+        press("Delete", on: keypad)
+        #expect(box.value == "1.20")
+        // The coordinator holds the field weakly; keep it alive to here.
+        #expect(textField.text == "1.00 + 0.20")
+    }
+
+    /// ± flips a signed field's own text, and on an unsigned field hands the
+    /// flip to the caller's sign. 00 stays either way.
+    @Test func keypadSignFlipsTheFieldOrTheCallersSign() {
+        func labels(in view: UIView) -> [String] {
+            view.subviews.flatMap { ($0 as? UIButton).map { [$0.accessibilityLabel ?? ""] } ?? labels(in: $0) }
+        }
+        let (coordinator, textField, box) = makeField(initial: "5.00", allowsNegative: true)
+        let keypad = makeKeypad(for: coordinator, hasSign: true)
+        #expect(labels(in: keypad).contains("00"))
+        press("Flip sign", on: keypad)
+        #expect(box.value == "-5.00")
+        #expect(textField.text == "-5.00")
+
+        var flips = 0
+        let (unsigned, unsignedField, unsignedBox) = makeField(initial: "5.00", onToggleSign: { flips += 1 })
+        press("Flip sign", on: makeKeypad(for: unsigned, hasSign: true))
+        #expect(flips == 1)
+        #expect(unsignedBox.value == "5.00")
+        #expect(unsignedField.text == "5.00")
+
+        let (plain, _, _) = makeField()
+        #expect(!labels(in: makeKeypad(for: plain)).contains("Flip sign"))
+    }
+
+    /// While the caller's sign can't flip (a transfer with no partner, say),
+    /// the keypad's ± goes dead with it, and comes back when it can.
+    @Test func keypadSignFollowsTheCallersSignState() {
+        func signKey(in view: UIView) -> UIButton? {
+            for subview in view.subviews {
+                if let button = subview as? UIButton, button.accessibilityLabel == "Flip sign" {
+                    return button
+                }
+                if let found = signKey(in: subview) {
+                    return found
+                }
+            }
+            return nil
+        }
+        let (coordinator, _, _) = makeField(onToggleSign: {})
+        let keypad = makeKeypad(for: coordinator, hasSign: true)
+        #expect(signKey(in: keypad)?.isEnabled == true)
+        keypad.isSignEnabled = false
+        #expect(signKey(in: keypad)?.isEnabled == false)
+        keypad.isSignEnabled = true
+        #expect(signKey(in: keypad)?.isEnabled == true)
     }
 
     @Test func calculatorModeShiftsDigitsIntoCents() {
@@ -267,7 +350,7 @@ struct AmountInputFieldTests {
     @Test func conventionalModeAdditionEvaluatesWhenEditingEnds() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("12", into: coordinator, textField)
-        coordinator.addTapped()
+        coordinator.pushOperator(.add)
         type("6", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(box.value == "18")
@@ -276,7 +359,7 @@ struct AmountInputFieldTests {
     @Test func conventionalModeSubtractionEvaluatesWhenEditingEnds() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("12", into: coordinator, textField)
-        coordinator.subtractTapped()
+        coordinator.pushOperator(.subtract)
         type("6", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(box.value == "6")
@@ -285,7 +368,7 @@ struct AmountInputFieldTests {
     @Test func conventionalModeMultiplicationEvaluatesWhenEditingEnds() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("12", into: coordinator, textField)
-        coordinator.multiplyTapped()
+        coordinator.pushOperator(.multiply)
         type("6", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(box.value == "72")
@@ -294,7 +377,7 @@ struct AmountInputFieldTests {
     @Test func conventionalModeDivisionEvaluatesWhenEditingEnds() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("12", into: coordinator, textField)
-        coordinator.divideTapped()
+        coordinator.pushOperator(.divide)
         type("6", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(box.value == "2")
@@ -303,9 +386,9 @@ struct AmountInputFieldTests {
     @Test func conventionalModeEvaluatesLeftToRight() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("2", into: coordinator, textField)
-        coordinator.addTapped()
+        coordinator.pushOperator(.add)
         type("3", into: coordinator, textField)
-        coordinator.multiplyTapped()
+        coordinator.pushOperator(.multiply)
         type("4", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(box.value == "20")
@@ -314,7 +397,7 @@ struct AmountInputFieldTests {
     @Test func conventionalModeBindingStaysValidDuringExpression() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("12", into: coordinator, textField)
-        coordinator.addTapped()
+        coordinator.pushOperator(.add)
         type("6", into: coordinator, textField)
         #expect(textField.text == "12 + 6")
         #expect(box.value == "18")
@@ -326,7 +409,7 @@ struct AmountInputFieldTests {
     @Test func conventionalModeKeepsCentsOnFractionalResult() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("5", into: coordinator, textField)
-        coordinator.divideTapped()
+        coordinator.pushOperator(.divide)
         type("2", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(textField.text == "2.50")
@@ -363,25 +446,6 @@ struct AmountInputFieldTests {
         #expect(box.value == "-2.50")
     }
 
-    @Test func delegatedSignTogglePreservesTheUnsignedAmountAndFollowsEligibilityChanges() {
-        var toggles = 0
-        let (coordinator, textField, box) = makeField(initial: "12.34", onToggleSign: { toggles += 1 })
-
-        coordinator.toggleSign()
-        #expect(toggles == 1)
-        #expect(box.value == "12.34")
-        #expect(textField.text == "12.34")
-
-        coordinator.parent.signToggleEnabled = false
-        coordinator.toggleSign()
-        #expect(toggles == 1)
-
-        coordinator.parent.signToggleEnabled = true
-        coordinator.toggleSign()
-        #expect(toggles == 2)
-        #expect(box.value == "12.34")
-    }
-
     /// Reconcile can show a negative balance, so the true signed result stands.
     @Test func prefilledNegativeAmountKeepsSignWhenEdited() {
         let (coordinator, textField, box) = makeField(initial: "-123.4", allowsNegative: true)
@@ -416,12 +480,12 @@ struct AmountInputFieldTests {
         #expect(box.value == "-1.20")
     }
 
-    // MARK: - Toolbar arithmetic
+    // MARK: - Keypad arithmetic
 
     @Test func additionEvaluatesWhenEditingEnds() {
         let (coordinator, textField, box) = makeField()
         type("1250", into: coordinator, textField)
-        coordinator.addTapped()
+        coordinator.pushOperator(.add)
         type("600", into: coordinator, textField)
         #expect(textField.text == "12.50 + 6.00")
         coordinator.textFieldDidEndEditing(textField)
@@ -434,7 +498,7 @@ struct AmountInputFieldTests {
     @Test func bindingHoldsEvaluatedValueMidExpression() {
         let (coordinator, textField, box) = makeField()
         type("1250", into: coordinator, textField)
-        coordinator.addTapped()
+        coordinator.pushOperator(.add)
         #expect(box.value == "12.50")
         type("600", into: coordinator, textField)
         #expect(textField.text == "12.50 + 6.00")
@@ -445,9 +509,9 @@ struct AmountInputFieldTests {
     @Test func evaluatesLeftToRightWithoutPrecedence() {
         let (coordinator, textField, box) = makeField()
         type("200", into: coordinator, textField)
-        coordinator.addTapped()
+        coordinator.pushOperator(.add)
         type("300", into: coordinator, textField)
-        coordinator.multiplyTapped()
+        coordinator.pushOperator(.multiply)
         #expect(box.value == "5.00")
         type("400", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
@@ -457,7 +521,7 @@ struct AmountInputFieldTests {
     @Test func divisionSplitsAnAmount() {
         let (coordinator, textField, box) = makeField()
         type("4500", into: coordinator, textField)
-        coordinator.divideTapped()
+        coordinator.pushOperator(.divide)
         type("300", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(box.value == "15.00")
@@ -466,7 +530,7 @@ struct AmountInputFieldTests {
     @Test func divisionByZeroLeavesRunningTotalIntact() {
         let (coordinator, textField, box) = makeField()
         type("1000", into: coordinator, textField)
-        coordinator.divideTapped()
+        coordinator.pushOperator(.divide)
         type("000", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(box.value == "10.00")
@@ -476,7 +540,7 @@ struct AmountInputFieldTests {
     @Test func danglingOperatorCollapsesToRunningTotal() {
         let (coordinator, textField, box) = makeField()
         type("1250", into: coordinator, textField)
-        coordinator.multiplyTapped()
+        coordinator.pushOperator(.multiply)
         coordinator.textFieldDidEndEditing(textField)
         #expect(box.value == "12.50")
     }
@@ -484,8 +548,8 @@ struct AmountInputFieldTests {
     @Test func secondOperatorSwapsTheArmedOne() {
         let (coordinator, textField, box) = makeField()
         type("1000", into: coordinator, textField)
-        coordinator.addTapped()
-        coordinator.subtractTapped()
+        coordinator.pushOperator(.add)
+        coordinator.pushOperator(.subtract)
         type("400", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(box.value == "6.00")
@@ -493,7 +557,7 @@ struct AmountInputFieldTests {
 
     @Test func operatorBeforeAnyInputIsIgnored() {
         let (coordinator, textField, box) = makeField()
-        coordinator.addTapped()
+        coordinator.pushOperator(.add)
         #expect(textField.text == "")
         type("500", into: coordinator, textField)
         #expect(box.value == "5.00")
@@ -502,7 +566,7 @@ struct AmountInputFieldTests {
     @Test func backspaceThroughEmptyOperandUndoesTheOperator() {
         let (coordinator, textField, box) = makeField()
         type("1250", into: coordinator, textField)
-        coordinator.addTapped()
+        coordinator.pushOperator(.add)
         #expect(textField.text == "12.50 + ")
 
         backspace(coordinator, textField)
@@ -516,7 +580,7 @@ struct AmountInputFieldTests {
     @Test func fullReplaceClearsAPendingExpression() {
         let (coordinator, textField, box) = makeField()
         type("1250", into: coordinator, textField)
-        coordinator.addTapped()
+        coordinator.pushOperator(.add)
         type("600", into: coordinator, textField)
         let length = (textField.text as NSString?)?.length ?? 0
         _ = coordinator.textField(
@@ -532,7 +596,7 @@ struct AmountInputFieldTests {
     @Test func negativeResultKeepsItsSignWhereAllowed() {
         let (coordinator, textField, box) = makeField(allowsNegative: true)
         type("500", into: coordinator, textField)
-        coordinator.subtractTapped()
+        coordinator.pushOperator(.subtract)
         type("2000", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(box.value == "-15.00")
@@ -543,7 +607,7 @@ struct AmountInputFieldTests {
     @Test func negativeResultBecomesMagnitudeWhereSignIsNotAllowed() {
         let (coordinator, textField, box) = makeField()
         type("500", into: coordinator, textField)
-        coordinator.subtractTapped()
+        coordinator.pushOperator(.subtract)
         type("2000", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(box.value == "15.00")
@@ -552,7 +616,7 @@ struct AmountInputFieldTests {
     @Test func resultStaysEditableAfterEvaluating() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("10", into: coordinator, textField)
-        coordinator.addTapped()
+        coordinator.pushOperator(.add)
         type("8.5", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         #expect(textField.text == "18.50")

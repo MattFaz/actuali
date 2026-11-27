@@ -122,6 +122,7 @@ struct DashboardView: View {
             // Keyed to dataVersion so widgets recompute when transactions
             // change anywhere in the app (edits on other tabs, sync,
             // scheduled posts) — not just on first appearance.
+            .onChange(of: budgetStore.monthStartRule) { reportDataVersion += 1 }
             .task(id: currentLoadRequest) {
                 await loadTransactions(request: currentLoadRequest)
             }
@@ -305,10 +306,11 @@ struct DashboardView: View {
         let trackingBudgetMonths = trackingBudgetMonths
         let locale = locale
         let today = reportDate
+        let monthStartRule = budgetStore.monthStartRule
         switch widget {
         case .summary(_, let meta):
             WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 80) { transactions in
-                SummaryEngine.compute(meta: meta, transactions: transactions, today: today, context: conditionsContext)
+                SummaryEngine.compute(meta: meta, transactions: transactions, today: today, monthStartRule: monthStartRule, context: conditionsContext)
             } content: { data in
                 SummaryWidgetView(displayName: widget.displayName, data: data)
             }
@@ -327,6 +329,7 @@ struct DashboardView: View {
                     transactions: transactions,
                     offBudgetAccountIds: Set(accounts.filter(\.offBudget).map(\.id)),
                     today: today,
+                    monthStartRule: monthStartRule,
                     context: conditionsContext
                 )
             } chartDetail: { data in
@@ -404,11 +407,12 @@ struct DashboardView: View {
                         budgetEntries: reportBudgets.entries
                     ),
                     filterContext: conditionsContext,
-                    today: today, locale: locale
+                    today: today,
+                    monthStartRule: monthStartRule, locale: locale
                 )
             } model: { data in
                 // A chart to scrub, or a donut or table to list in full.
-                data.chartDetail(locale: locale).map(CustomReportPage.chart) ?? data.breakdown.map(CustomReportPage.breakdown)
+                data.chartDetail(today: DayDate.today(now: today), locale: locale).map(CustomReportPage.chart) ?? data.breakdown.map(CustomReportPage.breakdown)
             } card: { data, page in
                 // The glance card when there is something to chart; the
                 // widget's own card (and its empty state) when there isn't.
@@ -482,6 +486,7 @@ struct DashboardView: View {
                         SankeyBudgetInput.Entry(month: $0.month, categoryId: $0.categoryId, amountCents: $0.amountCents)
                     }),
                     today: today,
+                    monthStartRule: monthStartRule,
                     context: conditionsContext,
                     locale: locale
                 )

@@ -11,31 +11,30 @@ final class AddTransactionNotesUITests: XCTestCase {
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 10))
         done.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5))
 
         let notes = app.descendants(matching: .any)["addTransaction.notes"].firstMatch
         XCTAssertTrue(notes.waitForExistence(timeout: 5))
-        let save = app.buttons["Add Transaction"]
-        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        let form = app.collectionViews.firstMatch
 
-        assertNoBlankRow(between: notes, and: save, "empty notes leave a blank row before Save")
+        assertNoBlankRow(after: notes, in: form, "empty notes leave a blank row after them")
 
         notes.tap()
         // One typing call: a second typeText without a fresh tap loses
         // keyboard focus on iOS 27.
         notes.typeText("Lunch #")
-        assertNoBlankRow(between: notes, and: save, "plain notes leave a blank row before Save")
+        assertNoBlankRow(after: notes, in: form, "plain notes leave a blank row after them")
         let coffee = app.buttons["tagSuggestion-coffee"]
         XCTAssertTrue(coffee.waitForExistence(timeout: 5),
                       "# should show existing tags; field reads: \(notes.value as? String ?? "")")
         coffee.tap()
         XCTAssertTrue(coffee.waitForNonExistence(timeout: 5), "completing a tag should hide suggestions")
         XCTAssertEqual(notes.value as? String, "Lunch #coffee ")
-        assertNoBlankRow(between: notes, and: save, "completed tags leave a blank row before Save")
+        assertNoBlankRow(after: notes, in: form, "completed tags leave a blank row after them")
 
         notes.tap()
         notes.typeText("#no-matching-tag")
-        assertNoBlankRow(between: notes, and: save, "unmatched tags leave a blank row before Save")
+        assertNoBlankRow(after: notes, in: form, "unmatched tags leave a blank row after them")
 
         // A second typeText without a fresh tap loses keyboard focus on
         // iOS 27; tap past the text so the caret lands at the end.
@@ -55,7 +54,7 @@ final class AddTransactionNotesUITests: XCTestCase {
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 10))
         done.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5))
 
         let notes = app.descendants(matching: .any)["addTransaction.notes"].firstMatch
         XCTAssertTrue(notes.waitForExistence(timeout: 5))
@@ -79,7 +78,7 @@ final class AddTransactionNotesUITests: XCTestCase {
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 10))
         done.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5))
 
         app.buttons["Split into multiple categories"].tap()
         let notes = app.textFields["addTransaction.splitLine.notes"].firstMatch
@@ -109,7 +108,7 @@ final class AddTransactionNotesUITests: XCTestCase {
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 10))
         done.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5))
 
         app.buttons["Split into multiple categories"].tap()
         let notes = app.textFields["addTransaction.splitLine.notes"].firstMatch
@@ -138,7 +137,7 @@ final class AddTransactionNotesUITests: XCTestCase {
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 10))
         done.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5))
 
         let notes = app.descendants(matching: .any)["addTransaction.notes"].firstMatch
         XCTAssertTrue(notes.waitForExistence(timeout: 5))
@@ -228,22 +227,28 @@ final class AddTransactionNotesUITests: XCTestCase {
                                  file: file, line: line)
     }
 
+    /// Notes is the add form's last row (the save buttons float over the
+    /// form rather than sitting in it), so the form's last cell must end
+    /// with the notes field: an empty link-preview row would add ~44 points.
     @MainActor
     private func assertNoBlankRow(
-        between notes: XCUIElement,
-        and save: XCUIElement,
+        after notes: XCUIElement,
+        in form: XCUIElement,
         _ message: String,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
         let notesFrame = notes.frame
-        let saveFrame = save.frame
         XCTAssertFalse(notesFrame.isEmpty, "notes frame is empty: \(message)", file: file, line: line)
-        XCTAssertFalse(saveFrame.isEmpty, "save frame is empty: \(message)", file: file, line: line)
-        let gap = saveFrame.minY - notesFrame.maxY
-        XCTAssertGreaterThan(gap, 0, message, file: file, line: line)
-        // A one-line note needs only the normal row padding and section gap
-        // before Save. An empty link-preview row adds another ~44 points.
-        XCTAssertLessThan(gap, 60, message, file: file, line: line)
+        // By index, not allElementsBoundByIndex: that snapshots every cell
+        // and made each check take minutes.
+        let cellCount = form.cells.count
+        guard cellCount > 0 else {
+            return XCTFail("form has no cells: \(message)", file: file, line: line)
+        }
+        let lastCell = form.cells.element(boundBy: cellCount - 1)
+        let gap = lastCell.frame.maxY - notesFrame.maxY
+        XCTAssertGreaterThanOrEqual(gap, 0, message, file: file, line: line)
+        XCTAssertLessThan(gap, 30, message, file: file, line: line)
     }
 }

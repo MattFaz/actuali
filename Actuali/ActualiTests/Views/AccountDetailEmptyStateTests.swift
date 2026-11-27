@@ -23,18 +23,16 @@ struct AccountDetailEmptyStateTests {
         ) == "No transactions")
     }
 
-    @Test func runningBalanceNeedsAnUnfilteredLoad() {
-        #expect(AccountDetailView.allowsRunningBalance(
-            isSearching: false, statusFilter: .all
-        ))
-        #expect(!AccountDetailView.allowsRunningBalance(
-            isSearching: true, statusFilter: .all
-        ))
-        for filter in TransactionStatusFilter.allCases where filter != .all {
-            #expect(!AccountDetailView.allowsRunningBalance(
-                isSearching: false, statusFilter: filter
-            ))
-        }
+    @Test func runningBalanceAnchorNeedsTheColumnOnAndNoSearch() {
+        #expect(AccountDetailView.runningBalanceAnchor(
+            showRunningBalance: true, isSearching: false, currentBalance: 1000
+        ) == 1000)
+        #expect(AccountDetailView.runningBalanceAnchor(
+            showRunningBalance: false, isSearching: false, currentBalance: 1000
+        ) == nil)
+        #expect(AccountDetailView.runningBalanceAnchor(
+            showRunningBalance: true, isSearching: true, currentBalance: 1000
+        ) == nil)
     }
 
     @Test func noteSectionHidesWhenHiddenOrSearching() {

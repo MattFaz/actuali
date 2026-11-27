@@ -56,6 +56,40 @@ struct ReportDetailTests {
         #expect(report(.stacked(.init(intervalLabels: ["Jan"], seriesNames: [], values: []))).chartDetail() == nil)
     }
 
+    @Test func rankedBarsListTheirRowsInsteadOfCharting() throws {
+        var payees = report(.bars([.init(label: "Hospital", valueUnits: 900), .init(label: "Grocer", valueUnits: 100)], signed: false))
+        payees.ranksRows = true
+        #expect(payees.chartDetail() == nil)
+        let breakdown = try #require(payees.breakdown)
+        #expect(breakdown.rows.map(\.name) == ["Hospital", "Grocer"])
+        #expect(breakdown.rows.map(\.value) == [900, 100])
+        #expect(breakdown.total == 1000)
+        // Bars over intervals stay a chart.
+        #expect(report(.bars([.init(label: "Jan", valueUnits: 5)], signed: false)).breakdown == nil)
+    }
+
+    @Test func timeChartsLeadWithTodayNotAFutureInterval() throws {
+        let today = DayDate(year: 2026, month: 11, day: 26)
+        let days = report(.bars(["26-11-25", "26-11-26", "26-11-27", "26-11-28"].map { .init(label: $0, valueUnits: 1) }, signed: false))
+        #expect(try #require(days.chartDetail(today: today, locale: Locale(identifier: "en_US"))).leadInterval == 1)
+        let months = report(.bars(["Oct '26", "Nov '26"].map { .init(label: $0, valueUnits: 1) }, signed: false))
+        #expect(try #require(months.chartDetail(today: today, locale: Locale(identifier: "en_US"))).leadInterval == 1)
+        // Labels that aren't dates keep leading with the last interval.
+        #expect(try #require(report(.stacked(stacked)).chartDetail(today: today)).leadInterval == 2)
+    }
+
+    @Test func monthlyChartsLeadWithThePeriodHoldingToday() throws {
+        // Under a day-25 start, "Nov '26" runs from November 25: on the 20th
+        // the period holding today is still "Oct '26".
+        var months = report(.bars(["Oct '26", "Nov '26"].map { .init(label: $0, valueUnits: 1) }, signed: false))
+        months.monthStartRule = MonthStartRule(day: 25)
+        func lead(on day: Int) throws -> Int {
+            try #require(months.chartDetail(today: DayDate(year: 2026, month: 11, day: day), locale: Locale(identifier: "en_US"))).leadInterval
+        }
+        #expect(try lead(on: 20) == 0)
+        #expect(try lead(on: 27) == 1)
+    }
+
     @Test func oneRingDonutListsEverySliceWithItsShare() throws {
         let slices = [CustomReportData.Slice(label: "Rent", valueUnits: 300, group: nil), .init(label: "Food", valueUnits: 100, group: nil)]
         let breakdown = try #require(report(.donut(slices: slices, groups: [])).breakdown)
@@ -248,6 +282,19 @@ struct ReportDetailTests {
         #expect(detail.leadingSeries(limit: 3) == [0, 1, 3])
         #expect(detail.leadingSeries(limit: 1) == [3])
         #expect(detail.leadingSeries(limit: 10) == [0, 1, 2, 3])
+    }
+
+    @Test func cardRanksSeriesAtTheIntervalItLeadsWith() throws {
+        // Today is the first day; the last day hasn't happened, so it ranks nothing.
+        let table = CustomReportData.Stacked(
+            intervalLabels: ["26-11-26", "26-11-27"],
+            seriesNames: ["A", "B", "C"],
+            values: [[1, 0], [50, 0], [9, 0]]
+        )
+        let detail = try #require(report(.stacked(table))
+            .chartDetail(today: DayDate(year: 2026, month: 11, day: 26), locale: Locale(identifier: "en_US")))
+        #expect(detail.leadInterval == 0)
+        #expect(detail.leadingSeries(limit: 1) == [1])
     }
 
     @Test func glanceCardStaysCompactHoweverManySeries() throws {

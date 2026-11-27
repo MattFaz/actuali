@@ -425,6 +425,20 @@ struct SankeyEngineTests {
         #expect(linkValue(data, from: "g_food", to: "c_groceries") == 12000)
     }
 
+    @Test func spentModeFollowsCustomMonthStart() {
+        // Day-10 periods: today (Jan 15) is in Jan 10...Feb 9.
+        let transactions = [
+            tx(date: 20_240_109, amount: -5000, category: "c_groceries"),
+            tx(date: 20_240_110, amount: -10000, category: "c_groceries"),
+            tx(date: 20_240_209, amount: -2000, category: "c_groceries"),
+        ]
+        let data = SankeyEngine.compute(
+            meta: meta(), transactions: transactions, categoryGroups: groups,
+            today: asOf, monthStartRule: MonthStartRule(day: 10), context: context
+        )
+        #expect(linkValue(data, from: "g_food", to: "c_groceries") == 12000)
+    }
+
     @Test func topNBucketsSmallestCategoriesIntoOther() {
         let transactions = [
             tx(date: 20_240_102, amount: -30000, category: "c_groceries"),

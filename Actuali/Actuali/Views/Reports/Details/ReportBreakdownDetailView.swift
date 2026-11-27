@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// A custom report with no intervals to chart, as a list: what each row is
-/// worth and its share of the total. Donut and table reports map to this.
+/// worth and its share of the total. Donut, table and ranked bar reports map
+/// to this.
 struct ReportBreakdown: Equatable {
     struct Row: Equatable {
         var name: String
@@ -59,6 +60,12 @@ extension CustomReportData {
                 name: name, caption: rangeLabel,
                 rows: rows.map { .init(name: $0.name, value: $0.totalUnits) },
                 total: totalUnits
+            )
+        case .bars(let bars, _) where ranksRows && !bars.isEmpty:
+            return ReportBreakdown(
+                name: name, caption: rangeLabel,
+                rows: bars.map { .init(name: $0.label, value: $0.valueUnits) },
+                total: bars.reduce(0) { $0 + $1.valueUnits }
             )
         default:
             return nil

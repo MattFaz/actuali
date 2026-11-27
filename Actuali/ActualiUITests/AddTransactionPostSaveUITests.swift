@@ -8,7 +8,7 @@ import XCTest
 /// Both must now end the same way: the form closes and the user lands on the
 /// saved transaction's account list.
 final class AddTransactionPostSaveUITests: XCTestCase {
-    /// Types an amount on the decimal pad and taps the save button.
+    /// Types an amount on the keypad and taps the save button.
     @MainActor
     private func enterAmountAndSave(in app: XCUIApplication) {
         let amountField = app.textFields.matching(
@@ -16,19 +16,19 @@ final class AddTransactionPostSaveUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(amountField.waitForExistence(timeout: 10), "amount field not found")
         amountField.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 5),
                       "keyboard did not appear")
         amountField.typeText("500")
 
         let done = app.buttons["Done"]
-        XCTAssertTrue(done.waitForExistence(timeout: 5), "no Done bar above the decimal pad")
+        XCTAssertTrue(done.waitForExistence(timeout: 5), "no Done key on the keypad")
         done.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5),
                       "keyboard did not dismiss")
 
-        // Scoped to the form: the account detail's "+" toolbar button behind
-        // the sheet carries the same "Add Transaction" label since #181.
-        let save = app.collectionViews.buttons["Add Transaction"].firstMatch
+        // By identifier: the account detail's "+" toolbar button behind the
+        // sheet carries the same "Add Transaction" label since #181.
+        let save = app.buttons["addTransaction.save"]
         XCTAssertTrue(save.waitForExistence(timeout: 5), "save button not found")
         save.tap()
     }
@@ -49,14 +49,16 @@ final class AddTransactionPostSaveUITests: XCTestCase {
         XCTAssertTrue(addButton.waitForExistence(timeout: 5), "'+' toolbar button not found")
         addButton.tap()
 
-        let addTitle = app.navigationBars["Add Transaction"]
-        XCTAssertTrue(addTitle.waitForExistence(timeout: 5), "add sheet did not present")
+        // The sheet carries no title, so its close button marks it.
+        let addSheet = app.buttons["addTransaction.close"]
+        XCTAssertTrue(addSheet.waitForExistence(timeout: 5), "add sheet did not present")
+        XCTAssertFalse(app.navigationBars["Add Transaction"].exists, "add sheet shows a title")
 
         enterAmountAndSave(in: app)
 
         // The sheet must close itself, landing back on the account's
         // transaction list — not stay open with a reset form.
-        XCTAssertTrue(addTitle.waitForNonExistence(timeout: 10),
+        XCTAssertTrue(addSheet.waitForNonExistence(timeout: 10),
                       "add sheet stayed open after saving")
         XCTAssertTrue(app.navigationBars["Chase Checking"].waitForExistence(timeout: 5),
                       "did not land back on the account's transaction list")

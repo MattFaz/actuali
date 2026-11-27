@@ -24,6 +24,7 @@ struct AddTransactionView: View {
     /// text style so it never clips at accessibility sizes. The same width is
     /// reserved on the opposite side so the amount itself stays centered.
     @ScaledMetric(relativeTo: .title2) private var amountSignWidth: CGFloat = 40
+    @ScaledMetric(relativeTo: .footnote) private var closeSize: CGFloat = 30
     /// Floor for the content-sized amount field: keeps an empty field wide
     /// enough to stay tappable and keep its placeholder visible at every
     /// text size.
@@ -52,6 +53,10 @@ struct AddTransactionView: View {
     @State private var showPayeePicker = false
     @State private var showCategoryPicker = false
     @State private var showAccountPicker = false
+    /// The floating save buttons step aside while a keyboard is up: the
+    /// keypad's Done is the action then, and the buttons would sit over the
+    /// form's last rows.
+    @State private var keyboardShown = false
     @State private var saveLocation = true
     /// Set once the user flips Save Location, so the at-home default never
     /// overrides their choice for this entry (GH #845).
@@ -134,8 +139,8 @@ struct AddTransactionView: View {
     }
 
     /// Presented flows (edit, account-detail "+", notification prefill) can
-    /// close themselves; the tab-hosted add flow can't. Cancel, post-save
-    /// behavior, and the header all branch on this.
+    /// close themselves; the tab-hosted add flow can't. Cancel and post-save
+    /// behavior branch on this.
     private var canDismiss: Bool {
         isEditing || isPresented
     }
@@ -573,8 +578,8 @@ struct AddTransactionView: View {
                             textStyle: .extraLargeTitle,
                             weight: .bold,
                             autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty),
-                            onToggleSign: { toggleDirection() },
-                            signToggleEnabled: canToggleDirection
+                            onToggleSign: toggleDirection,
+                            canToggleSign: canToggleDirection
                         )
                         .fixedSize(horizontal: true, vertical: false)
                         .frame(minWidth: amountMinWidth)
@@ -583,6 +588,30 @@ struct AddTransactionView: View {
                             .accessibilityHidden(true)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
+                    // The add flow opens with the keypad up and has no Cancel
+                    // row, so this is the one-tap way out of an accidental
+                    // open. It discards straight away, as the Cancel row it
+                    // replaced did: a confirmation popover beside the amount
+                    // read as clutter.
+                    .overlay(alignment: .topTrailing) {
+                        if !isEditing {
+                            Button(action: cancelEntry) {
+                                Image(systemName: "xmark")
+                                    .font(.footnote.weight(.bold))
+                                    .foregroundStyle(.red)
+                                    .frame(width: closeSize, height: closeSize)
+                                    .background(Color.red.opacity(0.14), in: Circle())
+                                    // A one-tap discard needs the full 44pt
+                                    // target, not just the drawn circle.
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Close")
+                            .accessibilityIdentifier("addTransaction.close")
+                            .keyboardShortcut(.cancelAction)
+                        }
+                    }
                     .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
                 }
                 .listRowBackground(Color.clear)
@@ -772,70 +801,89 @@ struct AddTransactionView: View {
                     }
                 }
 
-                Section {
-                    Button(action: { Task { await saveTransaction() } }) {
-                        HStack {
-                            Spacer()
-                            Text(saveButtonTitle)
-                                .fontWeight(.semibold)
-                            Spacer()
-                        }
-                    }
-                    .disabled(saveDisabled)
-                    // Keep the separator between the main action and Schedule
-                    // aligned to the full row width, rather than the centered label.
-                    .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
-                    .alignmentGuide(.listRowSeparatorTrailing) { $0[.trailing] }
-                    // Hardware-keyboard commit, for the iPad case where the
-                    // form is filled without ever leaving the keys. Return on
-                    // its own belongs to the focused field; ⌘Return is the
-                    // whole form. Inert while the save is disabled.
-                    .keyboardShortcut(.return, modifiers: .command)
-
-                    if canScheduleTransaction {
-                        Button(action: { Task { await scheduleTransaction() } }) {
+                // Cancel ends the form rather than sitting in the navigation
+                // bar. Adding has the close button beside the amount instead,
+                // reachable with the keypad up, so a second way out would
+                // only duplicate it.
+                if isEditing {
+                    Section {
+                        Button(role: .destructive, action: cancelEntry) {
                             HStack {
                                 Spacer()
-                                Text("Schedule")
+                                Text("Cancel")
                                     .fontWeight(.semibold)
                                 Spacer()
                             }
                         }
-                        .disabled(saveDisabled)
-                        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
-                        .alignmentGuide(.listRowSeparatorTrailing) { $0[.trailing] }
-                        .accessibilityIdentifier("addTransaction.schedule")
+                        // Esc cancels on a hardware keyboard while the row is on
+                        // screen. A Form row is lazy, so on a form long enough to
+                        // scroll the shortcut isn't registered until the row is
+                        // reached — the same reachability the tap has.
+                        .keyboardShortcut(.cancelAction)
                     }
-                }
-
-                // Cancel sits under the save button rather than in the
-                // navigation bar: the two decisions belong together at the
-                // end of the form, and its own section makes it the same
-                // full-width row as the save button.
-                Section {
-                    Button(role: .destructive, action: cancelEntry) {
-                        HStack {
-                            Spacer()
-                            Text("Cancel")
-                                .fontWeight(.semibold)
-                            Spacer()
-                        }
-                    }
-                    // Esc cancels on a hardware keyboard while the row is on
-                    // screen. A Form row is lazy, so on a form long enough to
-                    // scroll the shortcut isn't registered until the row is
-                    // reached — the same reachability the tap has.
-                    .keyboardShortcut(.cancelAction)
                 }
             }
             .readableWidth()
-            // The form's default ~35pt top inset is dead space on the
-            // header-less tab root; 8pt keeps the first section off the status
-            // bar without it. Presented flows have a title up there and keep
-            // the stock inset.
-            .contentMargins(.top, canDismiss ? nil : 8, for: .scrollContent)
-            // Presented flows keep their sheet titles; the tab root shows no
-            // header, matching the Accounts and Budget tabs.
+            // The save action floats at the foot of the screen, in reach
+            // without scrolling to the end of the form.
+            .safeAreaInset(edge: .bottom) {
+                if !keyboardShown {
+                    HStack(spacing: 12) {
+                        if canScheduleTransaction {
+                            Button {
+                                Task { await scheduleTransaction() }
+                            } label: {
+                                Text("Schedule")
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("addTransaction.schedule")
+                        }
+                        Button {
+                            Task { await saveTransaction() }
+                        } label: {
+                            Text(saveButtonTitle)
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("addTransaction.save")
+                    }
+                    .controlSize(.large)
+                    .buttonBorderShape(.capsule)
+                    .disabled(saveDisabled)
+                    .readableWidth()
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+                }
+            }
+            // Hardware-keyboard commit, for the iPad case where the form is
+            // filled without ever leaving the keys. Return on its own belongs
+            // to the focused field; ⌘Return is the whole form. It lives
+            // outside the floating buttons because they leave the view tree
+            // while a keyboard is up, which is exactly when it's needed.
+            // Inert while the save is disabled.
+            .background {
+                Button { Task { await saveTransaction() } } label: { EmptyView() }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(saveDisabled)
+                    .opacity(0)
+                    .accessibilityHidden(true)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                keyboardShown = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                keyboardShown = false
+            }
+            // The form's default ~35pt top inset is dead space without a
+            // header; 8pt keeps the first section off the status bar. Edits
+            // have a title up there and keep the stock inset.
+            .contentMargins(.top, isEditing ? nil : 8, for: .scrollContent)
+            // Only edits carry a title. Every add flow, tab or sheet, opens
+            // on the amount alone: the sheet's close button sits beside it,
+            // so a title bar would only push the form down.
             .navigationDestination(isPresented: $showCategoryPicker) {
                 CategoryPickerView(
                     selectedCategoryId: $selectedCategoryId,
@@ -851,8 +899,8 @@ struct AddTransactionView: View {
                     accounts: orderedOpenAccounts
                 )
             }
-            .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
-            .navigationBarTitleDisplayMode(canDismiss ? .automatic : .inline)
+            .navigationTitle(isEditing ? "Edit Transaction" : "")
+            .navigationBarTitleDisplayMode(isEditing ? .automatic : .inline)
             .listSectionSpacing(.compact)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
@@ -1394,8 +1442,7 @@ private struct SplitLineRow: View {
                 .accessibilityHint(String(localized: AddTransactionLocalization.flipsDirection, locale: locale))
                 AmountInputField(
                     text: $line.amount,
-                    conventionalAmountEntry: budgetStore.conventionalAmountEntry,
-                    onToggleSign: { line.isOpposite.toggle() }
+                    conventionalAmountEntry: budgetStore.conventionalAmountEntry
                 )
                 .frame(width: 110)
             }
@@ -1488,20 +1535,20 @@ private struct SplitLineRow: View {
 /// gains a fraction the user didn't type, so zero-decimal currencies never
 /// need a trailing ".00" (GH #211).
 ///
-/// With `allowsNegative`, a ± button joins the keyboard toolbar and flips the
-/// text's own sign. With `onToggleSign`, the same button appears but the sign
-/// lives outside the field (a transaction or split line's direction) and the text stays unsigned.
-/// Neither set means sign is handled elsewhere entirely (e.g. the expense/income toggle).
+/// With `allowsNegative`, a ± key on the keypad flips the text's own sign.
+/// Without it the text stays unsigned and the sign is the caller's: the add
+/// flow's sign button beside the amount, a split line's flip. A caller that
+/// passes `onToggleSign` gets the ± key too, wired to its own sign.
 ///
 /// `textStyle` picks the Dynamic Type text style the font scales from.
 ///
-/// The toolbar also carries +, −, × and ÷ for quick math: typing 12.50, then
-/// +, then 6.00 shows "12.50 + 6.00" in the field and collapses to "18.50"
-/// when editing ends. Evaluation is strictly left-to-right with no operator
-/// precedence — this is an entry aid, not a calculator. The binding always
-/// holds the plain evaluated decimal, never the expression, so a save taken
-/// mid-expression (the Save button is an ordinary row and doesn't end
-/// editing) still commits a parseable amount.
+/// The keypad (`AmountKeypadView`) also carries +, −, × and ÷ for quick
+/// math: typing 12.50, then +, then 6.00 shows "12.50 + 6.00" in the field
+/// and collapses to "18.50" when editing ends. Evaluation is strictly
+/// left-to-right with no operator precedence — this is an entry aid, not a
+/// calculator. The binding always holds the plain evaluated decimal, never
+/// the expression, so a save taken mid-expression (⌘Return on a hardware
+/// keyboard doesn't end editing) still commits a parseable amount.
 struct AmountInputField: UIViewRepresentable {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Binding var text: String
@@ -1515,11 +1562,9 @@ struct AmountInputField: UIViewRepresentable {
     /// Bring up the keyboard as soon as the field lands on screen. For
     /// sheets whose whole purpose is entering an amount.
     var autofocus = false
-    /// Shows the ± toolbar button and delegates it here instead of signing
-    /// the text — for callers whose sign is separate state.
-    var onToggleSign: (() -> Void)?
-    /// Keep the key in the toolbar while the form's direction rules change.
-    var signToggleEnabled = true
+    var onToggleSign: (@MainActor () -> Void)?
+    /// Disables the keypad's ± while the caller's sign can't flip.
+    var canToggleSign = true
 
     /// becomeFirstResponder is a no-op until the view joins a window, and
     /// during a sheet presentation that happens well after makeUIView —
@@ -1546,36 +1591,9 @@ struct AmountInputField: UIViewRepresentable {
         }
     }
 
-    /// The bar's host view. The iOS 26 prominent Done pill needs about 400pt
-    /// beside the symbol keys, so on narrower bars the keys tighten up and the
-    /// pill stays on screen (GH #746). The accessory view is sized to the
-    /// keyboard, which follows the window in iPad split view, so read the
-    /// width here rather than the screen's.
-    final class AccessoryBarView: UIView {
-        var keyButtons: [UIButton] = []
-        private var keyInset: CGFloat?
-
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            let inset: CGFloat = if #available(iOS 26, *), bounds.width < 410 {
-                6
-            } else {
-                10
-            }
-            guard inset != keyInset else { return }
-            keyInset = inset
-            for button in keyButtons {
-                button.configuration?.contentInsets = NSDirectionalEdgeInsets(
-                    top: 8, leading: inset, bottom: 8, trailing: inset
-                )
-            }
-        }
-    }
-
     func makeUIView(context: Context) -> UITextField {
         let field = AutofocusTextField()
         field.wantsAutofocus = autofocus
-        field.keyboardType = .decimalPad
         field.placeholder = budgetStore.numberFormat.format(
             number: NSNumber(value: 0), wholeUnits: conventionalAmountEntry, currencyCode: nil
         )
@@ -1592,65 +1610,20 @@ struct AmountInputField: UIViewRepresentable {
             field.font = UIFont(descriptor: descriptor, size: 0)
         }
         field.adjustsFontForContentSizeCategory = true
-        // The SwiftUI keyboard toolbar only attaches to SwiftUI text fields,
-        // and the decimal pad has neither a return key nor operators — without
-        // this accessory bar there is no way to dismiss the keyboard from this
-        // field, or to do arithmetic in it.
-        let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
-        var items: [UIBarButtonItem] = []
-        var keyButtons: [UIButton] = []
-        if allowsNegative || onToggleSign != nil {
-            // The decimal pad has no minus key, so this button is the only
-            // keyboard affordance for flipping an amount's sign.
-            let item = Self.keyItem(
-                symbol: "plus.forwardslash.minus",
-                label: String(localized: "Flip sign"),
-                target: context.coordinator, action: #selector(Coordinator.toggleSign)
-            )
-            context.coordinator.signButton = item.customView as? UIButton
-            context.coordinator.signButton?.isEnabled = signToggleEnabled
-            if let button = item.customView as? UIButton {
-                keyButtons.append(button)
-            }
-            items.append(item)
-        }
-        for op in Coordinator.Operator.allCases {
-            let item = Self.keyItem(
-                symbol: op.symbolName,
-                label: op.accessibilityLabel,
-                target: context.coordinator, action: op.selector
-            )
-            if let button = item.customView as? UIButton {
-                keyButtons.append(button)
-            }
-            items.append(item)
-        }
-        items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
-        // `.prominent` is iOS 26+; `.done` is the pre-26 equivalent emphasis.
-        let doneStyle: UIBarButtonItem.Style = if #available(iOS 26, *) {
-            .prominent
-        } else {
-            .done
-        }
-        items.append(UIBarButtonItem(
-            title: "Done", style: doneStyle,
-            target: field, action: #selector(UIResponder.resignFirstResponder)
-        ))
-        toolbar.items = items
-        toolbar.sizeToFit()
-        // inputAccessoryView sits flush on top of the keyboard, so to float the
-        // toolbar with a gap we host it in a taller, transparent container and
-        // pin the toolbar to the top — the leftover strip below is the space.
-        let gap: CGFloat = 4
-        let container = AccessoryBarView(
-            frame: CGRect(x: 0, y: 0, width: toolbar.frame.width, height: toolbar.frame.height + gap)
+        // No predictive or shortcut bar: on a custom keypad it's an empty
+        // strip above the keys.
+        field.autocorrectionType = .no
+        field.spellCheckingType = .no
+        field.inputAssistantItem.leadingBarButtonGroups = []
+        field.inputAssistantItem.trailingBarButtonGroups = []
+        let coordinator = context.coordinator
+        field.inputView = AmountKeypadView(
+            decimalSeparator: budgetStore.numberFormat.decimalSeparator,
+            onType: { [weak coordinator] in coordinator?.type($0) },
+            onOperator: { [weak coordinator] in coordinator?.pushOperator($0) },
+            onToggleSign: allowsNegative || onToggleSign != nil ? { [weak coordinator] in coordinator?.toggleSign() } : nil,
+            onDone: { [weak field] in field?.resignFirstResponder() }
         )
-        container.keyButtons = keyButtons
-        container.backgroundColor = .clear
-        toolbar.frame = CGRect(x: 0, y: 0, width: container.frame.width, height: toolbar.frame.height)
-        toolbar.autoresizingMask = [.flexibleWidth]
-        container.addSubview(toolbar)
-        field.inputAccessoryView = container
         context.coordinator.textField = field
         context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.sync(fromDisplay: text)
@@ -1658,28 +1631,15 @@ struct AmountInputField: UIViewRepresentable {
         return field
     }
 
-    /// A keyboard-bar key drawn as a symbol. A bar item's own
-    /// `accessibilityLabel` and `title` are ignored inside the keyboard's
-    /// accessory view (the key is announced by its symbol's name, "add",
-    /// "remove"), so the key is a button view that carries the label.
-    private static func keyItem(symbol: String, label: String, target: AnyObject?, action: Selector) -> UIBarButtonItem {
-        var configuration = UIButton.Configuration.plain()
-        configuration.image = UIImage(systemName: symbol)
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10)
-        let button = UIButton(configuration: configuration)
-        button.addTarget(target, action: action, for: .touchUpInside)
-        button.accessibilityLabel = label
-        return UIBarButtonItem(customView: button)
-    }
-
     func updateUIView(_ uiView: UITextField, context: Context) {
         (uiView as? AutofocusTextField)?.updateAutofocus(autofocus)
         let formatChanged = context.coordinator.numberFormat != budgetStore.numberFormat
         context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.parent = self
-        context.coordinator.signButton?.isEnabled = signToggleEnabled
+        (uiView.inputView as? AmountKeypadView)?.isSignEnabled = canToggleSign
 
         if formatChanged {
+            (uiView.inputView as? AmountKeypadView)?.decimalSeparator = budgetStore.numberFormat.decimalSeparator
             uiView.placeholder = budgetStore.numberFormat.format(
                 number: NSNumber(value: 0),
                 wholeUnits: conventionalAmountEntry,
@@ -1699,12 +1659,20 @@ struct AmountInputField: UIViewRepresentable {
         }
     }
 
+    /// A value as the binding carries it: two decimals, except in
+    /// conventional entry where a whole value stays whole. Callers seeding
+    /// the field from a number use it too, so the field reads it back as is.
+    nonisolated static func text(for value: Double, conventionalAmountEntry: Bool) -> String {
+        let whole = conventionalAmountEntry && value == value.rounded()
+        return String(format: whole ? "%.0f" : "%.2f", value)
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
 
     final class Coordinator: NSObject, UITextFieldDelegate {
-        /// The four toolbar operators. Left-to-right evaluation only.
+        /// The keypad's four operators. Left-to-right evaluation only.
         enum Operator: Character, CaseIterable {
             case add = "+", subtract = "−", multiply = "×", divide = "÷"
 
@@ -1726,15 +1694,6 @@ struct AmountInputField: UIViewRepresentable {
                 }
             }
 
-            var selector: Selector {
-                switch self {
-                case .add: #selector(Coordinator.addTapped)
-                case .subtract: #selector(Coordinator.subtractTapped)
-                case .multiply: #selector(Coordinator.multiplyTapped)
-                case .divide: #selector(Coordinator.divideTapped)
-                }
-            }
-
             func apply(_ lhs: Double, _ rhs: Double) -> Double {
                 switch self {
                 case .add: lhs + rhs
@@ -1749,7 +1708,6 @@ struct AmountInputField: UIViewRepresentable {
 
         var parent: AmountInputField
         weak var textField: UITextField?
-        weak var signButton: UIButton?
         /// The last value written to the binding, so `updateUIView` can tell
         /// an outside change from the field's own echo.
         private(set) var lastPublishedText: String?
@@ -1855,41 +1813,39 @@ struct AmountInputField: UIViewRepresentable {
             applyDisplay(to: textField)
         }
 
-        @objc func toggleSign() {
-            guard parent.signToggleEnabled else { return }
-            // Delegated sign lives outside the text (a split line's flip);
-            // the field's own text stays unsigned.
-            if let onToggleSign = parent.onToggleSign {
-                onToggleSign()
+        /// A keypad key, applied as a keystroke at the field's selection so a
+        /// selected amount is replaced the way typing over it would be. ""
+        /// deletes. `insertText` would skip the delegate, and this logic.
+        func type(_ text: String) {
+            guard let textField else { return }
+            var range = NSRange(location: (textField.text as NSString?)?.length ?? 0, length: 0)
+            if let selection = textField.selectedTextRange {
+                range = NSRange(
+                    location: textField.offset(from: textField.beginningOfDocument, to: selection.start),
+                    length: textField.offset(from: selection.start, to: selection.end)
+                )
+            }
+            if text.isEmpty, range.length == 0, range.location > 0 {
+                range = NSRange(location: range.location - 1, length: 1)
+            }
+            _ = self.textField(textField, shouldChangeCharactersIn: range, replacementString: text)
+        }
+
+        func toggleSign() {
+            guard parent.allowsNegative else {
+                parent.onToggleSign?()
                 return
             }
-            guard parent.allowsNegative else { return }
             isNegative.toggle()
             if let textField {
                 applyDisplay(to: textField)
             }
         }
 
-        @objc func addTapped() {
-            pushOperator(.add)
-        }
-
-        @objc func subtractTapped() {
-            pushOperator(.subtract)
-        }
-
-        @objc func multiplyTapped() {
-            pushOperator(.multiply)
-        }
-
-        @objc func divideTapped() {
-            pushOperator(.divide)
-        }
-
         /// Folds the operand just typed into the running total and arms the
         /// next operator. Tapping a second operator without typing anything
         /// in between just swaps which one is armed.
-        private func pushOperator(_ op: Operator) {
+        func pushOperator(_ op: Operator) {
             guard accumulatedValue != nil || hasTypedOperand else { return }
             if hasTypedOperand {
                 let operand = currentOperandValue()
@@ -1967,7 +1923,7 @@ struct AmountInputField: UIViewRepresentable {
         }
 
         private func handleCharacter(_ character: Character) {
-            // Hardware-keyboard minus; the on-screen path is the ± toolbar button.
+            // Hardware-keyboard minus; the on-screen path is the keypad's ± key.
             if character == "-", parent.allowsNegative {
                 isNegative.toggle()
                 return
@@ -2078,9 +2034,7 @@ struct AmountInputField: UIViewRepresentable {
         /// parse it at any moment — including mid-expression.
         private func computeBoundText() -> String {
             guard hasTypedOperand || pendingOperator != nil else { return "" }
-            let value = normalized(resolvedValue())
-            let whole = parent.conventionalAmountEntry && value == value.rounded()
-            return String(format: whole ? "%.0f" : "%.2f", value)
+            return AmountInputField.text(for: normalized(resolvedValue()), conventionalAmountEntry: parent.conventionalAmountEntry)
         }
 
         /// Display-only sibling of applyDisplay: makeUIView and external binding updates

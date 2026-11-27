@@ -275,6 +275,14 @@ struct CustomReportWidgetView: View {
         case .bars(let bars, let signed):
             if bars.isEmpty {
                 emptyText
+            } else if linksToDetail, let breakdown = data.breakdown {
+                // Ranked rows: the axis can't fit every name, so the card
+                // names the largest and the detail page lists them all.
+                VStack(alignment: .leading, spacing: 8) {
+                    barChart(bars, signed: signed)
+                        .chartXAxis(.hidden)
+                    leadingRows(breakdown, limit: 3)
+                }
             } else {
                 barChart(bars, signed: signed)
             }

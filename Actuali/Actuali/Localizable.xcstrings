@@ -593,6 +593,609 @@
         }
       }
     },
+    "Select the Correct Budget" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das richtige Budget auswählen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select the Correct Budget"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecciona el presupuesto correcto"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sélectionner le bon budget"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seleziona il budget corretto"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecteer het juiste budget"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecione o orçamento correto"
+          }
+        }
+      }
+    },
+    "Open Connection & Data to download or unlock the budget, then retry." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne „Verbindung & Daten“, um das Budget herunterzuladen oder zu entsperren, und versuche es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Connection & Data to download or unlock the budget, then retry."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre Conexión y datos para descargar o desbloquear el presupuesto e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrez Connexion et données pour télécharger ou déverrouiller le budget, puis réessayez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apri Connessione e dati per scaricare o sbloccare il budget, poi riprova."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Verbinding en gegevens om het budget te downloaden of ontgrendelen en probeer het opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abra Conexão e dados para baixar ou desbloquear o orçamento e tente novamente."
+          }
+        }
+      }
+    },
+    "Switch to the transaction's budget to finish adding it." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wechsle zum Budget der Transaktion, um sie fertig hinzuzufügen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to the transaction's budget to finish adding it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambia al presupuesto de la transacción para terminar de añadirla."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passez au budget de la transaction pour terminer son ajout."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passa al budget della transazione per completare l'aggiunta."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schakel over naar het budget van de transactie om deze toe te voegen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mude para o orçamento da transação para concluir o lançamento."
+          }
+        }
+      }
+    },
+    "Switch to %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu %@ wechseln"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiar a %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passer à %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passa a %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overschakelen naar %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mudar para %@"
+          }
+        }
+      }
+    },
+    "This budget already has a local copy. Open Actuali to manage it." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für dieses Budget gibt es bereits eine lokale Kopie. Öffne Actuali, um sie zu verwalten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This budget already has a local copy. Open Actuali to manage it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este presupuesto ya tiene una copia local. Abre Actuali para gestionarla."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce budget possède déjà une copie locale. Ouvrez Actuali pour la gérer."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo budget ha già una copia locale. Apri Actuali per gestirla."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit budget heeft al een lokale kopie. Open Actuali om deze te beheren."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este orçamento já tem uma cópia local. Abra o Actuali para gerenciá-la."
+          }
+        }
+      }
+    },
+    "Add Holiday" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feiertag hinzufügen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Holiday"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir festivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter un jour férié"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi festività"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feestdag toevoegen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar feriado"
+          }
+        }
+      }
+    },
+    "Holiday Date" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datum des Feiertags"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Holiday Date"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fecha del festivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Date du jour férié"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data della festività"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datum van de feestdag"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data do feriado"
+          }
+        }
+      }
+    },
+    "Holidays" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feiertage"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Holidays"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Festivos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jours fériés"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Festività"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feestdagen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feriados"
+          }
+        }
+      }
+    },
+    "Keep Selected Day" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gewählten Tag beibehalten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep Selected Day"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantener el día elegido"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Garder le jour choisi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantieni il giorno scelto"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gekozen dag behouden"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manter o dia selecionado"
+          }
+        }
+      }
+    },
+    "Month Start Day" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tag des Monatsbeginns"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Month Start Day"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Día de inicio del mes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jour de début du mois"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giorno di inizio del mese"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Begindag van de maand"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dia de início do mês"
+          }
+        }
+      }
+    },
+    "Next Working Day" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nächster Arbeitstag"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next Working Day"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siguiente día laborable"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jour ouvré suivant"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giorno lavorativo successivo"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volgende werkdag"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Próximo dia útil"
+          }
+        }
+      }
+    },
+    "Previous Working Day" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorheriger Arbeitstag"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Previous Working Day"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Día laborable anterior"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jour ouvré précédent"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giorno lavorativo precedente"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorige werkdag"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dia útil anterior"
+          }
+        }
+      }
+    },
+    "Report Month Start" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monatsbeginn für Berichte"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report Month Start"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicio de mes para informes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Début du mois des rapports"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inizio del mese per i report"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maandbegin voor rapporten"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Início do mês dos relatórios"
+          }
+        }
+      }
+    },
     "Side Margins" : {
       "comment" : "Settings slider for the side margin of lists and cards",
       "localizations" : {
@@ -636,6 +1239,144 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Margens laterais"
+          }
+        }
+      }
+    },
+    "These dates apply to monthly report ranges on this device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Daten gelten für monatliche Berichtszeiträume auf diesem Gerät."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "These dates apply to monthly report ranges on this device."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas fechas se aplican a los periodos de los informes mensuales en este dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ces dates s’appliquent aux périodes des rapports mensuels sur cet appareil."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queste date si applicano ai periodi dei report mensili su questo dispositivo."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze datums gelden voor maandelijkse rapportperioden op dit apparaat."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Essas datas se aplicam aos períodos dos relatórios mensais neste dispositivo."
+          }
+        }
+      }
+    },
+    "Weekend Days" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wochenendtage"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weekend Days"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Días de fin de semana"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jours de week-end"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giorni del fine settimana"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weekenddagen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dias de fim de semana"
+          }
+        }
+      }
+    },
+    "Working Day Adjustment" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verschiebung auf einen Arbeitstag"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Working Day Adjustment"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajuste a un día laborable"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustement au jour ouvré"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spostamento al giorno lavorativo"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verschuiving naar een werkdag"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajuste para dia útil"
           }
         }
       }
@@ -5797,6 +6538,102 @@
         }
       }
     },
+    "Shortcut Transaction Confirmation" : {
+      "comment" : "Settings toggle for success notifications after Shortcut transaction logging",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bestätigung für Shortcut-Transaktionen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shortcut Transaction Confirmation"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmación de transacciones mediante atajos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmation des transactions par raccourci"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conferma delle transazioni tramite Comandi Rapidi"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bevestiging van shortcuttransacties"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirmação de transações por Atalhos"
+          }
+        }
+      }
+    },
+    "Show a notification after an iOS Shortcut logs a transaction." : {
+      "comment" : "Footer text describing Shortcut transaction notifications",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeige eine Mitteilung an, nachdem ein iOS-Kurzbefehl eine Transaktion erfasst hat."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show a notification after an iOS Shortcut logs a transaction."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar una notificación después de que un atajo de iOS registre una transacción."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher une notification après l’enregistrement d’une transaction par un raccourci iOS."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra una notifica dopo che un comando rapido iOS registra una transazione."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toon een melding nadat een iOS-opdracht een transactie heeft geregistreerd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar uma notificação depois que um Atalho do iOS registrar uma transação."
+          }
+        }
+      }
+    },
     "Show Account Icons" : {
       "comment" : "Settings toggle for showing account type icons on the Accounts tab",
       "localizations" : {
@@ -7159,6 +7996,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "A conexão com seu banco requer atenção no SimpleFIN."
+          }
+        }
+      }
+    },
+    "Your bank's permission has expired. Authorize the bank again to keep syncing." : {
+      "comment" : "Account detail explanation when the bank's read-access consent has expired",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Berechtigung deiner Bank ist abgelaufen. Autorisiere die Bank erneut, um die Synchronisierung fortzusetzen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your bank's permission has expired. Authorize the bank again to keep syncing."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El permiso de tu banco ha caducado. Autoriza el banco de nuevo para seguir sincronizando."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'autorisation de votre banque a expiré. Autorisez de nouveau la banque pour continuer la synchronisation."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'autorizzazione della tua banca è scaduta. Autorizza di nuovo la banca per continuare a sincronizzare."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De toestemming van je bank is verlopen. Autoriseer de bank opnieuw om te blijven synchroniseren."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A permissão do seu banco expirou. Autorize o banco novamente para continuar sincronizando."
           }
         }
       }
@@ -19981,6 +20866,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sincronização bancária (SimpleFIN e Wallet)"
+          }
+        }
+      }
+    },
+    "Bank sync isn't set up on your Actual server." : {
+      "comment" : "Account bank sync error when the Actual server has no bank sync credentials configured",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Banksynchronisierung ist auf deinem Actual-Server nicht eingerichtet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank sync isn't set up on your Actual server."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sincronización bancaria no está configurada en tu servidor Actual."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La synchronisation bancaire n'est pas configurée sur votre serveur Actual."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sincronizzazione bancaria non è configurata sul tuo server Actual."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Banksynchronisatie is niet ingesteld op je Actual-server."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A sincronização bancária não está configurada no seu servidor Actual."
           }
         }
       }
@@ -52102,49 +53035,49 @@
         }
       }
     },
-    "Log \\(\\.$amount) at \\(\\.$payee) in \\(\\.$account)" : {
-      "extractionState" : "stale",
+    "Log \\(\\.$amount) at \\(\\.$payee) for \\(\\.$budget) in \\(\\.$account)" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erfasse \\(\\.$amount) bei \\(\\.$payee) in \\(\\.$account)"
+            "value" : "Erfasse \\(\\.$amount) bei \\(\\.$payee) für das Budget \\(\\.$budget) auf dem Konto \\(\\.$account)"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Log \\(\\.$amount) at \\(\\.$payee) in \\(\\.$account)"
+            "value" : "Log \\(\\.$amount) at \\(\\.$payee) for \\(\\.$budget) in \\(\\.$account)"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registrar \\(\\.$amount) en \\(\\.$payee) en \\(\\.$account)"
+            "value" : "Registrar \\(\\.$amount) en \\(\\.$payee) para el presupuesto \\(\\.$budget) en la cuenta \\(\\.$account)"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Enregistrer \\(\\.$amount) chez \\(\\.$payee) dans \\(\\.$account)"
+            "value" : "Enregistrer \\(\\.$amount) chez \\(\\.$payee) pour le budget \\(\\.$budget) sur le compte \\(\\.$account)"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registra \\(\\.$amount) a \\(\\.$payee) in \\(\\.$account)"
+            "value" : "Registra \\(\\.$amount) presso \\(\\.$payee) per il budget \\(\\.$budget) sul conto \\(\\.$account)"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Boek \\(\\.$amount) bij \\(\\.$payee) op \\(\\.$account)"
+            "value" : "Boek \\(\\.$amount) bij \\(\\.$payee) voor budget \\(\\.$budget) op rekening \\(\\.$account)"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registrar \\(\\.$amount) em \\(\\.$payee) na conta \\(\\.$account)"
+            "value" : "Registrar \\(\\.$amount) em \\(\\.$payee) para o orçamento \\(\\.$budget) na conta \\(\\.$account)"
           }
         }
       }
@@ -52855,6 +53788,102 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Marque contas como cartões de crédito e acompanhe seus ciclos de faturamento mensais, gastos do ciclo e próximas datas de vencimento."
+          }
+        }
+      }
+    },
+    "Mark All Reviewed" : {
+      "comment" : "Button in the Review sheet that clears the new marks from everything a bank sync imported",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle als geprüft markieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark All Reviewed"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marcar todo como revisado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout marquer comme vérifié"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Segna tutto come controllato"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles als gecontroleerd markeren"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marcar tudo como revisado"
+          }
+        }
+      }
+    },
+    "Reviewed" : {
+      "comment" : "Swipe action in the Review sheet that clears the new mark from one imported transaction",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geprüft"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reviewed"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vérifié"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Controllato"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gecontroleerd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisado"
           }
         }
       }
@@ -90442,6 +91471,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Suas contas permanecem vinculadas e mantêm as transações já importadas. Para sincronizar novamente a partir deste dispositivo, você precisará de um novo token de configuração."
+          }
+        }
+      }
+    },
+    "Your Actual server doesn't offer Enable Banking. Update the server, then try again." : {
+      "comment" : "Error when the Actual server is too old to support Enable Banking",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Actual-Server unterstützt Enable Banking nicht. Aktualisiere den Server und versuche es dann erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Actual server doesn't offer Enable Banking. Update the server, then try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu servidor Actual no ofrece Enable Banking. Actualiza el servidor e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre serveur Actual ne propose pas Enable Banking. Mettez le serveur à jour, puis réessayez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo server Actual non offre Enable Banking. Aggiorna il server, poi riprova."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je Actual-server biedt geen Enable Banking. Werk de server bij en probeer het dan opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu servidor Actual não oferece o Enable Banking. Atualize o servidor e tente novamente."
           }
         }
       }

@@ -27,4 +27,21 @@ struct CustomReportWidgetLayoutTests {
         #expect(cardHeight({ .stacked($0) }, series: 8) > cardHeight({ .stacked($0) }, series: 1))
         #expect(cardHeight({ .lines($0, trends: []) }, series: 8) > cardHeight({ .lines($0, trends: []) }, series: 1))
     }
+
+    /// A ranked bar card can't fit every name on its axis, so it lists the
+    /// largest rows under the bars, as the donut card does.
+    @Test func rankedBarCardNamesItsLargestRows() {
+        func height(ranked: Bool) -> CGFloat {
+            var data = CustomReportData(
+                name: "Report", rangeLabel: "",
+                kind: .bars((0..<40).map { .init(label: "Payee \($0)", valueUnits: Double(40 - $0)) }, signed: false)
+            )
+            data.ranksRows = ranked
+            let view = CustomReportWidgetView(data: data)
+                .environment(\.reportCardLinksToDetail, true)
+                .environmentObject(BudgetStore.previewInstance())
+            return UIHostingController(rootView: view).sizeThatFits(in: CGSize(width: 390, height: 2000)).height
+        }
+        #expect(height(ranked: true) > height(ranked: false))
+    }
 }

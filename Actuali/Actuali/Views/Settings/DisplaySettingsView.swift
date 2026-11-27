@@ -170,6 +170,15 @@ struct DisplaySettingsView: View {
                 }
             }
 
+            if budgetStore.currentBudgetId != nil {
+                Section {
+                    NavigationLink("Report Month Start") {
+                        MonthStartSettingsView()
+                    }
+                    .accessibilityIdentifier("displaySettings.monthStart")
+                }
+            }
+
             Section {
                 Picker("Start Page", selection: $budgetStore.startTab) {
                     ForEach(StartTab.allCases) { tab in
