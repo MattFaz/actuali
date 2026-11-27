@@ -44,23 +44,37 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                       "tab bar not reachable after dismissing the keyboard")
     }
 
+    /// The operators sit in the bar as one-tap keys, with no ± beside them:
+    /// the sign button next to the amount already flips it.
+    @MainActor
+    func testOperatorKeyInsertsOperator() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+
+        let amountField = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == '0.00'")
+        ).firstMatch
+        XCTAssertTrue(amountField.waitForExistence(timeout: 10), "amount field not found")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "keyboard did not appear")
+        amountField.typeText("12")
+
+        XCTAssertFalse(app.buttons["Flip sign"].exists, "keyboard bar repeats the sign button")
+        // "Add" would also match the Add tab, so use an unambiguous key.
+        let multiply = app.buttons["Multiply"]
+        XCTAssertTrue(multiply.waitForExistence(timeout: 5), "no operator keys on the keyboard bar")
+        multiply.tap()
+        amountField.typeText("3")
+
+        let expression = NSPredicate(format: "value CONTAINS '×'")
+        expectation(for: expression, evaluatedWith: amountField)
+        waitForExpectations(timeout: 5)
+    }
+
     /// The add flow autofocuses the amount field — the first thing anyone
     /// enters — so the keyboard must come up without a tap and keypad input
     /// must land in that field.
-    /// Swiping the operator bar down drops the keyboard without reaching Done.
-    @MainActor
-    func testSwipingOperatorBarDownDismissesKeyboard() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
-        app.launch()
-
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
-                      "keyboard did not appear")
-        app.buttons["Flip sign"].swipeDown()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
-                      "keyboard did not dismiss after swiping the operator bar down")
-    }
-
     @MainActor
     func testAddTabAutofocusesAmountField() {
         let app = XCUIApplication()
@@ -315,17 +329,12 @@ final class AddTransactionKeyboardUITests: XCTestCase {
             app.buttons["Done"].tap()
         }
 
-        let cancel = app.buttons["Cancel"]
-        XCTAssertTrue(cancel.waitForExistence(timeout: 5),
-                      "no Cancel button on the sheet-presented add flow")
-        var scrollsLeft = 5
-        while !cancel.isHittable, scrollsLeft > 0 {
-            app.swipeUp()
-            scrollsLeft -= 1
-        }
-        cancel.tap()
+        let close = app.buttons["addTransaction.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5),
+                      "no close button on the sheet-presented add flow")
+        close.tap()
 
         XCTAssertTrue(addTitle.waitForNonExistence(timeout: 5),
-                      "add sheet did not dismiss after tapping Cancel")
+                      "add sheet did not dismiss after tapping close")
     }
 }
