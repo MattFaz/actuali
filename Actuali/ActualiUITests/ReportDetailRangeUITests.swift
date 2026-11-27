@@ -25,5 +25,15 @@ final class ReportDetailRangeUITests: XCTestCase {
         // The report comes back once the range has loaded.
         XCTAssertTrue(app.descendants(matching: .any)["reportDetail.readout"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.navigationBars[title].staticTexts[title].exists)
+
+        // Scrubbing pins an interval; the readout's corner clears it.
+        let clear = app.buttons["reportDetail.clearSelection"]
+        XCTAssertFalse(clear.exists)
+        let window = app.windows.firstMatch
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.55))
+            .press(forDuration: 0.3, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.55)))
+        XCTAssertTrue(clear.waitForExistence(timeout: 3))
+        clear.tap()
+        XCTAssertFalse(clear.exists)
     }
 }

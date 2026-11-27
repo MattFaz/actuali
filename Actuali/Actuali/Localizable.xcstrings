@@ -28337,53 +28337,6 @@
         }
       }
     },
-    "Shown here only. The report keeps its saved range." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur hier angezeigt. Der Bericht behält seinen gespeicherten Zeitraum."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Shown here only. The report keeps its saved range."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Solo se muestra aquí. El informe conserva su período guardado."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Affiché ici uniquement. Le rapport conserve sa période enregistrée."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostrato solo qui. Il report mantiene il periodo salvato."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alleen hier getoond. Het rapport behoudt de opgeslagen periode."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Exibido apenas aqui. O relatório mantém o período salvo."
-          }
-        }
-      }
-    },
     "YTD" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28803,53 +28756,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Simulações"
-          }
-        }
-      }
-    },
-    "Drag across the chart to inspect a point." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ziehe über das Diagramm, um einen Punkt zu prüfen."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Drag across the chart to inspect a point."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Arrastra sobre el gráfico para inspeccionar un punto."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Faites glisser sur le graphique pour inspecter un point."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trascina sul grafico per esaminare un punto."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sleep over de grafiek om een punt te bekijken."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Arraste sobre o gráfico para inspecionar um ponto."
           }
         }
       }

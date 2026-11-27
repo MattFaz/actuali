@@ -184,6 +184,8 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
 }
 
 extension ReportRangePicker {
+    private static let optionPadding: CGFloat = 12
+
     private func options(_ range: Binding<ReportDetailRange?>) -> some View {
         let all: [ReportDetailRange?] = [nil] + ReportDetailRange.allCases
         return HStack(spacing: 0) {
@@ -199,7 +201,7 @@ extension ReportRangePicker {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(isSelected ? .primary : .secondary)
                         .lineLimit(1)
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, Self.optionPadding)
                         .padding(.vertical, 6)
                         .background(isSelected ? Color(.tertiarySystemFill) : .clear, in: Capsule())
                         .frame(minHeight: 44)
@@ -221,26 +223,21 @@ struct ReportRangePicker: View {
 
     var body: some View {
         if let range {
-            VStack(alignment: .leading, spacing: 2) {
-                // Each option as wide as its own label, not a segmented
-                // control's equal shares: "Saved" is long in some languages
-                // and the rest are two or three letters. Scrolls only where
-                // even that doesn't fit.
-                ViewThatFits(in: .horizontal) {
-                    options(range)
-                    ScrollView(.horizontal) { options(range) }
-                        .scrollIndicators(.hidden)
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel(ReportStrings.text("Time range", locale: locale))
-                .accessibilityIdentifier("reportDetail.range")
-                // Picking another range doesn't write back to the report.
-                if range.wrappedValue != nil {
-                    Text(ReportStrings.text("Shown here only. The report keeps its saved range.", locale: locale))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+            // Each option as wide as its own label, not a segmented
+            // control's equal shares: "Saved" is long in some languages
+            // and the rest are two or three letters. Scrolls only where
+            // even that doesn't fit.
+            ViewThatFits(in: .horizontal) {
+                options(range)
+                ScrollView(.horizontal) { options(range) }
+                    .scrollIndicators(.hidden)
             }
+            // The labels, not the capsule around the picked one, line up
+            // with the text below.
+            .padding(.horizontal, -Self.optionPadding)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(ReportStrings.text("Time range", locale: locale))
+            .accessibilityIdentifier("reportDetail.range")
         }
     }
 }

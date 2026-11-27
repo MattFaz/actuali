@@ -48,8 +48,9 @@ struct ReportChartDetailView: View {
                 }
                 Group {
                     readout
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(alignment: .topTrailing) { clearSelection }
                     chart
-                    selectionHint
                     switch breakdown {
                     case .series: seriesList
                     case .intervals: intervalList
@@ -75,28 +76,24 @@ struct ReportChartDetailView: View {
         .toolbar(.visible, for: .navigationBar)
     }
 
-    private var selectionHint: some View {
-        Group {
-            // A range change can leave an interval that is gone.
-            if selected.flatMap(detail.intervals.firstIndex(of:)) != nil {
-                Button {
-                    selected = nil
-                } label: {
-                    Text(ReportStrings.text("Clear selection", locale: locale))
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityIdentifier("reportDetail.clearSelection")
-            } else {
-                Text(ReportStrings.text("Drag across the chart to inspect a point.", locale: locale))
-                    .foregroundStyle(.secondary)
-                    // As tall as the button that replaces it, so picking an
-                    // interval doesn't move the lists below.
-                    .frame(minHeight: 44)
-                    .accessibilityHidden(true)
+    /// Sits at the readout's corner, beside the interval it names: the
+    /// readout is where a selection shows.
+    @ViewBuilder private var clearSelection: some View {
+        // A range change can leave an interval that is gone.
+        if selected.flatMap(detail.intervals.firstIndex(of:)) != nil {
+            Button {
+                selected = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 44, height: 44, alignment: .topTrailing)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(ReportStrings.text("Clear selection", locale: locale))
+            .accessibilityIdentifier("reportDetail.clearSelection")
         }
-        .font(.footnote)
     }
 
     // MARK: - Readout
