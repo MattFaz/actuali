@@ -141,10 +141,22 @@ struct ReportChartDetail: Equatable {
         }
     }
 
-    func readoutValue(at interval: Int, hiding hidden: Set<Int> = []) -> Double? {
+    /// Bars are amounts per interval, so they add up over the range; a line
+    /// or an area is a level at each interval and doesn't.
+    var sumsOverRange: Bool {
+        style == .stackedBars || style == .groupedBars
+    }
+
+    /// A series' figure at an interval, or over the whole range when nil.
+    func value(of series: Int, at interval: Int?) -> Double {
+        interval.map { self.series[series].values[$0] } ?? self.series[series].values.reduce(0, +)
+    }
+
+    /// The headline at an interval, or over the whole range when nil.
+    func readoutValue(at interval: Int?, hiding hidden: Set<Int> = []) -> Double? {
         switch readout {
-        case .total: series.indices.filter { !hidden.contains($0) }.reduce(0) { $0 + series[$1].values[interval] }
-        case .difference: series.count > 1 ? series[0].values[interval] - series[1].values[interval] : nil
+        case .total: series.indices.filter { !hidden.contains($0) }.reduce(0) { $0 + value(of: $1, at: interval) }
+        case .difference: series.count > 1 ? value(of: 0, at: interval) - value(of: 1, at: interval) : nil
         case .none: nil
         }
     }

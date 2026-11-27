@@ -28760,49 +28760,49 @@
         }
       }
     },
-    "Show latest" : {
+    "Clear selection" : {
       "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Neuesten anzeigen"
+            "value" : "Auswahl aufheben"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Show latest"
+            "value" : "Clear selection"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostrar el último"
+            "value" : "Borrar selección"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Afficher le dernier"
+            "value" : "Effacer la sélection"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostra l’ultimo"
+            "value" : "Cancella selezione"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toon laatste"
+            "value" : "Wis selectie"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostrar o mais recente"
+            "value" : "Limpar seleção"
           }
         }
       }

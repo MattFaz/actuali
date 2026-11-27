@@ -265,6 +265,16 @@ struct ReportDetailTests {
         var difference = total
         difference.readout = .difference
         #expect(difference.readoutValue(at: 1) == -220)
+
+        // With no interval, bars add up over the range; levels don't.
+        #expect(total.sumsOverRange)
+        #expect(total.value(of: 0, at: nil) == 200)
+        #expect(total.readoutValue(at: nil) == 266)
+        #expect(total.readoutValue(at: nil, hiding: [0]) == 66)
+        #expect(difference.readoutValue(at: nil) == 140)
+        var line = total
+        line.style = .lines
+        #expect(!line.sumsOverRange)
         // Three series that can't be switched off sit beside the headline; four go in a list.
         #expect(difference.showsInlineLegend)
         difference.series.append(difference.series[0])

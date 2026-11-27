@@ -13,9 +13,14 @@ struct ReportChartDetailView: View {
     @State private var showsTotal = true
 
     /// The interval the readout and the lists describe: the one last
-    /// scrubbed to, otherwise the one the card leads with.
-    private var shownInterval: Int {
-        selected.flatMap(detail.intervals.firstIndex(of:)) ?? detail.leadInterval
+    /// scrubbed to, otherwise the one the card leads with, or nil for the
+    /// whole range where the intervals add up.
+    private var shownInterval: Int? {
+        selected.flatMap(detail.intervals.firstIndex(of:)) ?? (detail.sumsOverRange ? nil : detail.leadInterval)
+    }
+
+    private var shownLabel: String {
+        shownInterval.map { detail.intervals[$0] } ?? ReportStrings.text("Total", locale: locale)
     }
 
     /// A list under the chart, where the numbers can't sit beside the headline.
@@ -50,8 +55,8 @@ struct ReportChartDetailView: View {
                     Spacer()
                     // A range change can leave an interval that is gone.
                     if selected.flatMap(detail.intervals.firstIndex(of:)) != nil {
-                        Button(ReportStrings.text("Show latest", locale: locale)) { selected = nil }
-                            .accessibilityIdentifier("reportDetail.showLatest")
+                        Button(ReportStrings.text("Clear selection", locale: locale)) { selected = nil }
+                            .accessibilityIdentifier("reportDetail.clearSelection")
                     }
                 }
                 .font(.footnote)
@@ -89,13 +94,14 @@ struct ReportChartDetailView: View {
         var items: [LegendItem] = []
         if detail.showsInlineLegend {
             items += detail.series.indices.map {
-                LegendItem(id: $0, name: detail.series[$0].name, value: detail.series[$0].values[shownInterval],
+                LegendItem(id: $0, name: detail.series[$0].name, value: detail.value(of: $0, at: shownInterval),
                            color: detail.series[$0].color)
             }
         }
-        if let band = detail.band {
-            items.append(LegendItem(id: -1, name: band.lowerName, value: band.lower[shownInterval], color: .secondary))
-            items.append(LegendItem(id: -2, name: band.upperName, value: band.upper[shownInterval], color: band.color))
+        // A band is a range of levels, so it reads at one interval.
+        if let band = detail.band, let interval = shownInterval ?? detail.intervals.indices.last {
+            items.append(LegendItem(id: -1, name: band.lowerName, value: band.lower[interval], color: .secondary))
+            items.append(LegendItem(id: -2, name: band.upperName, value: band.upper[interval], color: band.color))
         }
         return items
     }
@@ -109,7 +115,7 @@ struct ReportChartDetailView: View {
                     .padding(.bottom, 8)
             }
             if let value = detail.readoutValue(at: shownInterval, hiding: hidden) {
-                Text(detail.intervals[shownInterval])
+                Text(shownLabel)
                     .font(.footnote.weight(.semibold))
                     .textCase(.uppercase)
                     .foregroundStyle(.secondary)
@@ -127,7 +133,7 @@ struct ReportChartDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Text(detail.intervals[shownInterval])
+                Text(shownLabel)
                     .font(.title2.weight(.bold))
             }
             if !inlineLegend.isEmpty {
@@ -224,7 +230,7 @@ struct ReportChartDetailView: View {
             Text(series.name)
                 .lineLimit(1)
             Spacer()
-            Text(isHidden ? ReportStrings.text("Hidden", locale: locale) : amount(series.values[shownInterval]))
+            Text(isHidden ? ReportStrings.text("Hidden", locale: locale) : amount(detail.value(of: index, at: shownInterval)))
                 .monospacedDigit()
         }
         .font(.subheadline)
