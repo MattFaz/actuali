@@ -1,9 +1,9 @@
 # Builds the app and runs unit tests on every PR that touches app code. Branch
-# protection requires the "Unit Tests (iOS 26)" and "Unit Tests (iOS 18)"
-# checks plus "Unit Tests Gate", which fails on drafts because the test jobs
-# skip there and a skipped job still reads as passing. ci-noop.yml provides the
-# same check names for PRs that don't touch app code. UI tests are too slow to
-# gate a PR (~50 min) — they run nightly in ui-tests.yml.
+# protection requires the "Unit Tests (iOS 26)" check plus "Unit Tests Gate",
+# which fails on drafts because the test job skips there and a skipped job
+# still reads as passing. ci-noop.yml provides the same check names for PRs
+# that don't touch app code. UI tests are too slow to gate a PR (~50 min) —
+# they run nightly in ui-tests.yml.
 name: CI
 
 on:
@@ -70,15 +70,16 @@ jobs:
       - run: ./swiftformat --lint --strict Actuali
 
   # Skipped on draft PRs: a draft can't merge, and each push to one would
-  # otherwise spend two macOS test runs on work in progress. SwiftFormat still
+  # otherwise spend a macOS test run on work in progress. SwiftFormat still
   # runs there, since it's quick; tests-gate above is what keeps the skip from
   # reading as a pass. The negation keeps workflow_dispatch running: there is
   # no PR there, and `!null` is true.
   #
-  # One leg per pinned runtime. iOS 18 is the IPHONEOS_DEPLOYMENT_TARGET floor:
-  # the compiler rejects an unavailable API, but a missing SF Symbol or a
-  # behaviour difference only shows up when the tests actually run there.
-  # The names are the required checks, so they must stay "Unit Tests (iOS N)".
+  # One leg per pinned runtime. The iOS 18 leg (the IPHONEOS_DEPLOYMENT_TARGET
+  # floor) is dropped for now: Xcode 27.2 can't download any iOS 18 simulator
+  # runtime, so it can't run on the xcode-27 image. Re-add it to the matrix
+  # once a runner can provide one. The names are the required checks, so they
+  # must stay "Unit Tests (iOS N)".
   # fail-fast off: each leg reports on its own, as separate jobs did.
   test:
     name: Unit Tests (iOS ${{ matrix.ios }})
@@ -89,8 +90,6 @@ jobs:
         include:
           - ios: 26
             download: "26.5"
-          - ios: 18
-            download: "18.5"
     # Xcode 27 image: the widgets use the iOS 27 SDK (systemExtraLargePortrait),
     # which Xcode 26 lacks, and Xcode 27 needs macOS 26.6+, so neither macos-26
     # nor macos-15 can build them. The image ships only iOS 27 runtimes, so
