@@ -721,9 +721,18 @@ struct WidgetSnapshotTests {
         #expect(snapshot.generatedAt == generated)
         #expect(snapshot.balancesHidden == false)
         #expect(snapshot.categories == [
-            WidgetCategoryBalance(id: "rent", name: "Rent", available: 0, formattedAvailable: "<0>", budgeted: 100_000),
-            WidgetCategoryBalance(id: "dining", name: "Dining Out", available: 12345, formattedAvailable: "<12345>", budgeted: 30000),
-            WidgetCategoryBalance(id: "grocery", name: "Groceries", available: -2000, formattedAvailable: "<-2000>", budgeted: 40000),
+            WidgetCategoryBalance(
+                id: "rent", name: "Rent", available: 0, formattedAvailable: "<0>", budgeted: 100_000,
+                spent: -100_000, formattedSpent: "<100000>", formattedBudgeted: "<100000>"
+            ),
+            WidgetCategoryBalance(
+                id: "dining", name: "Dining Out", available: 12345, formattedAvailable: "<12345>", budgeted: 30000,
+                spent: -17655, formattedSpent: "<17655>", formattedBudgeted: "<30000>"
+            ),
+            WidgetCategoryBalance(
+                id: "grocery", name: "Groceries", available: -2000, formattedAvailable: "<-2000>", budgeted: 40000,
+                spent: -42000, formattedSpent: "<42000>", formattedBudgeted: "<40000>"
+            ),
         ])
     }
 
@@ -1263,6 +1272,8 @@ struct WidgetSnapshotTests {
 
         #expect(snapshot.recentTransactions == nil)
         #expect(snapshot.largestTransactions == nil)
+        #expect(snapshot.rankedCategories == [])
+        #expect(snapshot.categories.first?.spent == nil)
     }
 
     // MARK: Largest Transactions widget
@@ -1383,6 +1394,331 @@ struct WidgetSnapshotTests {
             let shown = snapshot.largestTransactions(limit: limit)
             #expect(shown.map(\.id) == (16 - limit...15).reversed().map { "t\($0)" })
             #expect(shown.allSatisfy { $0.formattedAmount == BudgetStore.hiddenBalanceText && $0.amount == 0 })
+        }
+    }
+
+    // MARK: - Group 3: Ranked categories
+
+    private func rankedBudget(_ id: String, order: Double, budgeted: Int, spent: Int, carryover: Int = 0) -> CategoryBudget {
+        CategoryBudget(
+            month: "2026-08", categoryId: id, categoryName: id.capitalized,
+            groupId: "g1", groupName: "Everyday", groupSortOrder: 0, categorySortOrder: order,
+            budgeted: budgeted, spent: spent, available: budgeted + spent + carryover, carryover: carryover
+        )
+    }
+
+    @Test func rankedCategoriesSortBySpendingDescendingWithOverspentFlag() throws {
+        let budgets = [
+            rankedBudget("rent", order: 0, budgeted: 150_000, spent: -150_000),
+            rankedBudget("dining", order: 1, budgeted: 20000, spent: -35000),
+            rankedBudget("refunds", order: 2, budgeted: 0, spent: 5000),
+            rankedBudget("fun", order: 3, budgeted: 10000, spent: 0),
+            rankedBudget("gas", order: 4, budgeted: 10000, spent: 0),
+        ]
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets.shuffled(), month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+
+        let ranked = snapshot.rankedCategories
+        // Net inflows rank last; ties keep budget order.
+        #expect(ranked.map(\.id) == ["rent", "dining", "fun", "gas", "refunds"])
+        let dining = try #require(ranked.first { $0.id == "dining" })
+        #expect(dining.name == "Dining")
+        #expect(dining.spent == -35000)
+        #expect(dining.budgeted == 20000)
+        #expect(dining.formattedSpent == "$35000")
+        #expect(dining.formattedBudgeted == "$20000")
+        #expect(dining.formattedAvailable == "$-15000")
+        #expect(dining.isOverspent)
+        #expect(ranked.filter(\.isOverspent).map(\.id) == ["dining"])
+        // Ranking reads the existing list rather than storing a second copy.
+        #expect(Set(ranked.map(\.id)) == Set(snapshot.categories.map(\.id)))
+    }
+
+    @Test func rankedCategoriesCapAtTwelve() {
+        let budgets = (0..<15).map { rankedBudget("c\($0)", order: Double($0), budgeted: 0, spent: -100 * $0) }
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets, month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+
+        #expect(snapshot.rankedCategories.map(\.id) == (3..<15).reversed().map { "c\($0)" })
+    }
+
+    @Test func hiddenBalancesMaskRankedCategoriesAndKeepBudgetOrder() {
+        let budgets = [
+            rankedBudget("small", order: 0, budgeted: 100, spent: -100),
+            rankedBudget("big", order: 1, budgeted: 100, spent: -90000),
+        ]
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets, month: "2026-08", balancesHidden: true, generatedAt: Date(), format: { _ in "••••" }
+        )
+
+        // Spent is zeroed under the mask, so the order can't rank by it either.
+        #expect(snapshot.rankedCategories.map(\.id) == ["small", "big"])
+        for category in snapshot.rankedCategories {
+            #expect(category.spent == 0)
+            #expect(category.formattedSpent == "••••")
+            #expect(category.formattedBudgeted == "••••")
+            #expect(category.formattedAvailable == "••••")
+        }
+    }
+
+    // TopSpendingProvider's per-family limits; the provider lives in the
+    // widget extension, so the tests mirror them here.
+    private let topSpendingSmallLimit = 1
+    private let topSpendingMediumLimit = 3
+
+    @Test func topSpendingShowsLargestSpendersUpToFamilyLimit() {
+        let budgets = (1...5).map { rankedBudget("c\($0)", order: Double($0), budgeted: 0, spent: -100 * $0) }
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets.shuffled(), month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+
+        #expect(snapshot.topSpendingCategories(limit: topSpendingSmallLimit).map(\.id) == ["c5"])
+        #expect(snapshot.topSpendingCategories(limit: topSpendingMediumLimit).map(\.id) == ["c5", "c4", "c3"])
+    }
+
+    @Test func topSpendingSkipsCategoriesWithoutSpending() {
+        let budgets = [
+            rankedBudget("refunds", order: 0, budgeted: 0, spent: 5000),
+            rankedBudget("idle", order: 1, budgeted: 10000, spent: 0),
+            rankedBudget("dining", order: 2, budgeted: 20000, spent: -35000),
+        ]
+        let quiet = [rankedBudget("idle", order: 0, budgeted: 10000, spent: 0)]
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets, month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+        let quietSnapshot = WidgetSnapshot.make(
+            from: quiet, month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+
+        for limit in [topSpendingSmallLimit, topSpendingMediumLimit] {
+            // Fewer spenders than the limit shows only what exists.
+            #expect(snapshot.topSpendingCategories(limit: limit).map(\.id) == ["dining"])
+            // Nothing spent yet leaves the widget to its empty state.
+            #expect(quietSnapshot.topSpendingCategories(limit: limit).isEmpty)
+            // Snapshots written before spent existed decode with nil.
+            #expect(sampleSnapshot().topSpendingCategories(limit: limit).isEmpty)
+        }
+    }
+
+    @Test func hiddenBalancesKeepTopSpendingInBudgetOrderMasked() {
+        let budgets = [
+            rankedBudget("small", order: 0, budgeted: 100, spent: -100),
+            rankedBudget("idle", order: 1, budgeted: 100, spent: 0),
+            rankedBudget("big", order: 2, budgeted: 100, spent: -90000),
+            rankedBudget("refunds", order: 3, budgeted: 0, spent: 5000),
+        ]
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets, month: "2026-08", balancesHidden: true, generatedAt: Date(), format: { _ in "••••" }
+        )
+
+        // Spent is zeroed under the mask, so dropping non-spenders would
+        // blank the widget; budget order keeps which ones spent unknown.
+        #expect(snapshot.topSpendingCategories(limit: topSpendingSmallLimit).map(\.id) == ["small"])
+        #expect(snapshot.topSpendingCategories(limit: topSpendingMediumLimit).map(\.id) == ["small", "idle", "big"])
+        for category in snapshot.topSpendingCategories(limit: topSpendingMediumLimit) {
+            #expect(category.formattedSpent == "••••")
+            #expect(category.formattedBudgeted == "••••")
+            #expect(category.formattedAvailable == "••••")
+        }
+    }
+
+    // TopSpendingProvider's Large / Extra Large Portrait limits (#862).
+    private let topSpendingLargeLimit = 5
+    private let topSpendingExtraLargePortraitLimit = 8
+
+    @Test func topSpendingLargeAndExtraLargeShowLargestSpendersUpToFamilyLimit() {
+        let budgets = (1...10).map { rankedBudget("c\($0)", order: Double($0), budgeted: 0, spent: -100 * $0) }
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets.shuffled(), month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+
+        #expect(snapshot.topSpendingCategories(limit: topSpendingLargeLimit).map(\.id) == (6...10).reversed().map { "c\($0)" })
+        #expect(snapshot.topSpendingCategories(limit: topSpendingExtraLargePortraitLimit).map(\.id) == (3...10).reversed().map { "c\($0)" })
+    }
+
+    @Test func topSpendingLargeAndExtraLargeFewerSpendersThanLimitShowsOnlyWhatExists() {
+        let budgets = [
+            rankedBudget("refunds", order: 0, budgeted: 0, spent: 5000),
+            rankedBudget("idle", order: 1, budgeted: 10000, spent: 0),
+            rankedBudget("gas", order: 2, budgeted: 10000, spent: -4000),
+            rankedBudget("dining", order: 3, budgeted: 20000, spent: -35000),
+        ]
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets, month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+
+        for limit in [topSpendingLargeLimit, topSpendingExtraLargePortraitLimit] {
+            #expect(snapshot.topSpendingCategories(limit: limit).map(\.id) == ["dining", "gas"])
+            #expect(sampleSnapshot().topSpendingCategories(limit: limit).isEmpty)
+        }
+    }
+
+    @Test func topSpendingLargeHeaderCarriesTotalSpent() {
+        let snapshot = WidgetSnapshot.make(
+            from: [], month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" },
+            budgetMonth: spendingMonth("2026-08", spent: -42000)
+        )
+
+        #expect(snapshot.formattedTotalSpent == "$-42000")
+        // The header reads positive, like the Spent column beneath it.
+        #expect(snapshot.formattedTotalSpending == "$42000")
+    }
+
+    @Test @MainActor func hiddenBalancesKeepLargeAndExtraLargeTopSpendingInBudgetOrderMaskedWithTotal() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        // Spending grows against budget order, so only budget order yields c1 first.
+        let budgets = (1...10).map { rankedBudget("c\($0)", order: Double($0), budgeted: 100, spent: -100 * $0) }
+        budgetStore.widgetBudgetMonth = BudgetMonth(month: "2026-08", categoryBudgets: budgets)
+        budgetStore.hideBalances = true
+        defer { budgetStore.hideBalances = false }
+
+        let snapshot = try #require(store.read())
+
+        #expect(snapshot.balancesHidden)
+        #expect(snapshot.formattedTotalSpent == BudgetStore.hiddenBalanceText)
+        for limit in [topSpendingLargeLimit, topSpendingExtraLargePortraitLimit] {
+            let shown = snapshot.topSpendingCategories(limit: limit)
+            #expect(shown.map(\.id) == (1...limit).map { "c\($0)" })
+            for category in shown {
+                #expect(category.spent == 0)
+                #expect(category.formattedSpent == BudgetStore.hiddenBalanceText)
+                #expect(category.formattedBudgeted == BudgetStore.hiddenBalanceText)
+                #expect(category.formattedAvailable == BudgetStore.hiddenBalanceText)
+            }
+        }
+    }
+
+    /// OverspentAlertsWidget's Medium row cap; the widget lives in the
+    /// extension, so the test mirrors it here.
+    private let overspentMediumLimit = 4
+
+    @Test func overspentAlertsKeepOnlyOverspentCategoriesMostSpentFirst() {
+        let budgets = [
+            rankedBudget("rent", order: 0, budgeted: 150_000, spent: -150_000),
+            rankedBudget("dining", order: 1, budgeted: 20000, spent: -35000),
+            rankedBudget("refunds", order: 2, budgeted: 0, spent: 5000),
+            rankedBudget("gas", order: 3, budgeted: 10000, spent: -12000),
+            rankedBudget("fun", order: 4, budgeted: 0, spent: 0, carryover: -500),
+            rankedBudget("gifts", order: 5, budgeted: 1000, spent: -2000),
+            rankedBudget("pets", order: 6, budgeted: 1000, spent: -3000),
+            rankedBudget("books", order: 7, budgeted: 1000, spent: -900),
+        ]
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets.shuffled(), month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+
+        // Exactly-spent, underspent and inflow categories drop out; negative
+        // carryover counts as overspent even with no spending this month.
+        let overspent = snapshot.overspentCategories
+        #expect(overspent.map(\.id) == ["dining", "gas", "pets", "gifts", "fun"])
+        #expect(overspent.allSatisfy { $0.isOverspent })
+        // Small shows the full count; Medium the first four.
+        #expect(overspent.count == 5)
+        #expect(overspent.prefix(overspentMediumLimit).map(\.id) == ["dining", "gas", "pets", "gifts"])
+    }
+
+    @Test func overspentAlertsEmptyWhenNothingOverspent() {
+        let budgets = [
+            rankedBudget("rent", order: 0, budgeted: 150_000, spent: -150_000),
+            rankedBudget("refunds", order: 1, budgeted: 0, spent: 5000),
+        ]
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets, month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+
+        #expect(snapshot.overspentCategories.isEmpty)
+        // Snapshots written before spent existed rank nothing.
+        #expect(sampleSnapshot().overspentCategories.isEmpty)
+    }
+
+    @Test func hiddenBalancesKeepOverspentAlertsInBudgetOrderMasked() {
+        let budgets = [
+            rankedBudget("small", order: 0, budgeted: 100, spent: -100),
+            rankedBudget("over", order: 1, budgeted: 100, spent: -90000),
+            rankedBudget("refunds", order: 2, budgeted: 0, spent: 5000),
+        ]
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets, month: "2026-08", balancesHidden: true, generatedAt: Date(), format: { _ in "••••" }
+        )
+
+        // available still carries raw cents under the mask, so filtering on
+        // it would reveal which categories are overspent. Every category
+        // shows instead, in budget order, as Top Spending does.
+        #expect(snapshot.overspentCategories.map(\.id) == ["small", "over", "refunds"])
+        for category in snapshot.overspentCategories {
+            #expect(category.formattedAvailable == "••••")
+            #expect(category.formattedSpent == "••••")
+            #expect(category.formattedBudgeted == "••••")
+        }
+    }
+
+    // OverspentAlertsWidget's Large / Extra Large Portrait row caps (#862).
+    private let overspentLargeLimit = 8
+    private let overspentExtraLargePortraitLimit = 12
+
+    @Test func overspentAlertsLargeAndExtraLargeShowWorstUpToFamilyLimitWithBudgeted() {
+        // c14 spends most, so the worst-first order runs c14 down.
+        let budgets = (0..<15).map { rankedBudget("c\($0)", order: Double($0), budgeted: 500, spent: -1000 * ($0 + 1)) }
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets.shuffled(), month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+
+        let overspent = snapshot.overspentCategories
+        #expect(overspent.prefix(overspentLargeLimit).map(\.id) == (7...14).reversed().map { "c\($0)" })
+        // rankedCategories' cap of 12 is exactly what Extra Large Portrait shows.
+        #expect(overspent.prefix(overspentExtraLargePortraitLimit).map(\.id) == (3...14).reversed().map { "c\($0)" })
+        // The budgeted amount beside each row arrives pre-formatted.
+        #expect(overspent.prefix(overspentExtraLargePortraitLimit).allSatisfy { $0.formattedBudgeted == "$500" })
+        #expect(overspent.first?.formattedAvailable == "$-14500")
+    }
+
+    @Test func overspentAlertsLargeAndExtraLargeFewerThanLimitShowsOnlyWhatExists() {
+        let budgets = [
+            rankedBudget("rent", order: 0, budgeted: 150_000, spent: -150_000),
+            rankedBudget("dining", order: 1, budgeted: 20000, spent: -35000),
+            rankedBudget("gas", order: 2, budgeted: 10000, spent: -12000),
+        ]
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets, month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+
+        for limit in [overspentLargeLimit, overspentExtraLargePortraitLimit] {
+            #expect(snapshot.overspentCategories.prefix(limit).map(\.id) == ["dining", "gas"])
+        }
+    }
+
+    @Test func hiddenBalancesKeepLargeAndExtraLargeOverspentAlertsInBudgetOrderMasked() {
+        // Only c13 is overspent; under the mask every category shows in
+        // budget order so the rows can't single it out.
+        let budgets = (0..<14).map { rankedBudget("c\($0)", order: Double($0), budgeted: 1000, spent: $0 == 13 ? -90000 : -100) }
+
+        let snapshot = WidgetSnapshot.make(
+            from: budgets.shuffled(), month: "2026-08", balancesHidden: true, generatedAt: Date(), format: { _ in "••••" }
+        )
+
+        let overspent = snapshot.overspentCategories
+        #expect(overspent.prefix(overspentLargeLimit).map(\.id) == (0..<8).map { "c\($0)" })
+        #expect(overspent.prefix(overspentExtraLargePortraitLimit).map(\.id) == (0..<12).map { "c\($0)" })
+        for category in overspent.prefix(overspentExtraLargePortraitLimit) {
+            #expect(category.formattedBudgeted == "••••")
+            #expect(category.formattedAvailable == "••••")
         }
     }
 }

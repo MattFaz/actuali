@@ -481,6 +481,81 @@ private extension RecentTransactionsEntry {
     RecentTransactionsEntry.previewSample(count: 12, balancesHidden: true)
 }
 
+// MARK: - TopSpending
+
+private extension TopSpendingEntry {
+    /// Preview-only: a long category name, a four-digit amount, and one
+    /// overspent category, so truncation lands on the name. 8 rows so Large
+    /// (5) and Extra Large Portrait (8) fill to their provider limits.
+    static func previewSample(count: Int, balancesHidden: Bool = false) -> TopSpendingEntry {
+        let rows: [(String, Int, Int)] = [
+            ("Groceries & Household Supplies", 60000, -123_456),
+            ("Dining Out", 20000, -21550),
+            ("Transport", 10000, -6000),
+            ("Utilities", 15000, -11260),
+            ("Subscriptions & Streaming", 5000, -4597),
+            ("Health & Fitness", 8000, -3840),
+            ("Home Maintenance", 10000, -2915),
+            ("Fun Money", 5000, -2400),
+        ]
+        let format = FloatingPointFormatStyle<Double>.Currency(code: "USD").locale(Locale(identifier: "en_US"))
+        let mask = "\u{2022}\u{2022}\u{2022}\u{2022}"
+        let text: (Int) -> String = { balancesHidden ? mask : (Double($0) / 100).formatted(format) }
+        return TopSpendingEntry(
+            date: .now.addingTimeInterval(-300),
+            balancesHidden: balancesHidden,
+            categories: rows.prefix(count).enumerated().map { index, row in
+                WidgetCategoryBalance(
+                    id: "preview-\(index)",
+                    name: row.0,
+                    available: row.1 + row.2,
+                    formattedAvailable: text(row.1 + row.2),
+                    budgeted: row.1,
+                    spent: balancesHidden ? 0 : row.2,
+                    formattedSpent: text(-row.2),
+                    formattedBudgeted: text(row.1)
+                )
+            },
+            formattedTotalSpending: balancesHidden ? mask : "$1,842.00",
+            hasSnapshot: true
+        )
+    }
+}
+
+#Preview("Small", as: .systemSmall) {
+    TopSpendingWidget()
+} timeline: {
+    TopSpendingEntry.previewSample(count: 1)
+    TopSpendingEntry(date: .now, balancesHidden: false, categories: [TopSpendingEntry.sample.categories[1]], formattedTotalSpending: nil, hasSnapshot: true)
+    TopSpendingEntry.previewSample(count: 1, balancesHidden: true)
+    TopSpendingEntry(date: .now, balancesHidden: false, categories: [], formattedTotalSpending: nil, hasSnapshot: true)
+}
+
+#Preview("Medium", as: .systemMedium) {
+    TopSpendingWidget()
+} timeline: {
+    TopSpendingEntry.previewSample(count: 3)
+    TopSpendingEntry.previewSample(count: 3, balancesHidden: true)
+    TopSpendingEntry(date: .now, balancesHidden: false, categories: [], formattedTotalSpending: nil, hasSnapshot: false)
+}
+
+#Preview("Large", as: .systemLarge) {
+    TopSpendingWidget()
+} timeline: {
+    TopSpendingEntry.previewSample(count: 5)
+    TopSpendingEntry.previewSample(count: 5, balancesHidden: true)
+    TopSpendingEntry.previewSample(count: 2)
+    TopSpendingEntry(date: .now, balancesHidden: false, categories: [], formattedTotalSpending: nil, hasSnapshot: true)
+}
+
+@available(iOS 27.0, *)
+#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+    TopSpendingWidget()
+} timeline: {
+    TopSpendingEntry.previewSample(count: 8)
+    TopSpendingEntry.previewSample(count: 8, balancesHidden: true)
+}
+
 // MARK: - LargestTransactions
 
 private extension LargestTransactionsEntry {
@@ -557,4 +632,102 @@ private extension LargestTransactionsEntry {
     LargestTransactionsEntry.previewSample(count: 3)
     LargestTransactionsEntry.previewSample(count: 8, balancesHidden: true)
     LargestTransactionsEntry(date: .now, balancesHidden: false, transactions: [], hasSnapshot: true)
+}
+
+// MARK: - OverspentAlerts
+
+private extension OverspentAlertsEntry {
+    /// Preview-only: a long category name and a four-digit overspend, so
+    /// truncation lands on the name. Hidden rows arrive in budget order,
+    /// overspent or not, as the snapshot sends them.
+    static func previewSample(count: Int, balancesHidden: Bool = false) -> OverspentAlertsEntry {
+        let worstFirst: [(String, Int, Int)] = [
+            ("Groceries & Household Supplies", 60000, -183_456),
+            ("Dining Out", 20000, -21550),
+            ("Transport", 10000, -10820),
+            ("Gifts", 5000, -5100),
+            ("Pets", 3000, -3050),
+            ("Clothing", 10000, -12400),
+            ("Subscriptions", 2500, -2999),
+            ("Coffee", 4000, -4650),
+            ("Haircuts", 3500, -4000),
+            ("Books", 2000, -2350),
+            ("Hobbies", 5000, -5200),
+            ("Parking", 1500, -1600),
+        ]
+        let budgetOrder: [(String, Int, Int)] = [
+            ("Rent", 150_000, -150_000),
+            ("Groceries & Household Supplies", 60000, -183_456),
+            ("Utilities", 20000, -9611),
+            ("Dining Out", 20000, -21550),
+            ("Transport", 10000, -10820),
+            ("Gifts", 5000, -5100),
+            ("Pets", 3000, -3050),
+            ("Clothing", 10000, -12400),
+            ("Subscriptions", 2500, -2999),
+            ("Coffee", 4000, -4650),
+            ("Haircuts", 3500, -4000),
+            ("Books", 2000, -2350),
+        ]
+        let format = FloatingPointFormatStyle<Double>.Currency(code: "USD").locale(Locale(identifier: "en_US"))
+        let mask = "\u{2022}\u{2022}\u{2022}\u{2022}"
+        let text: (Int) -> String = { balancesHidden ? mask : (Double($0) / 100).formatted(format) }
+        return OverspentAlertsEntry(
+            date: .now.addingTimeInterval(-300),
+            balancesHidden: balancesHidden,
+            categories: (balancesHidden ? budgetOrder : worstFirst).prefix(count).enumerated().map { index, row in
+                WidgetCategoryBalance(
+                    id: "preview-\(index)",
+                    name: row.0,
+                    available: row.1 + row.2,
+                    formattedAvailable: text(row.1 + row.2),
+                    budgeted: row.1,
+                    spent: balancesHidden ? 0 : row.2,
+                    formattedSpent: text(-row.2),
+                    formattedBudgeted: text(row.1)
+                )
+            },
+            hasSnapshot: true
+        )
+    }
+}
+
+#Preview("Small", as: .systemSmall) {
+    OverspentAlertsWidget()
+} timeline: {
+    OverspentAlertsEntry.previewSample(count: 5)
+    OverspentAlertsEntry.previewSample(count: 1)
+    OverspentAlertsEntry.previewSample(count: 4, balancesHidden: true)
+    OverspentAlertsEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: true)
+    OverspentAlertsEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: false)
+}
+
+#Preview("Medium", as: .systemMedium) {
+    OverspentAlertsWidget()
+} timeline: {
+    OverspentAlertsEntry.previewSample(count: 5)
+    OverspentAlertsEntry.previewSample(count: 2)
+    OverspentAlertsEntry.previewSample(count: 4, balancesHidden: true)
+    OverspentAlertsEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: true)
+    OverspentAlertsEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: false)
+}
+
+#Preview("Large", as: .systemLarge) {
+    OverspentAlertsWidget()
+} timeline: {
+    OverspentAlertsEntry.previewSample(count: 12)
+    OverspentAlertsEntry.previewSample(count: 3)
+    OverspentAlertsEntry.previewSample(count: 12, balancesHidden: true)
+    OverspentAlertsEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: true)
+    OverspentAlertsEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: false)
+}
+
+@available(iOS 27.0, *)
+#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+    OverspentAlertsWidget()
+} timeline: {
+    OverspentAlertsEntry.previewSample(count: 12)
+    OverspentAlertsEntry.previewSample(count: 3)
+    OverspentAlertsEntry.previewSample(count: 12, balancesHidden: true)
+    OverspentAlertsEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: true)
 }

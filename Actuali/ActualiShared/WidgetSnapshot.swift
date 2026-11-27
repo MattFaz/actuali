@@ -14,6 +14,13 @@ struct WidgetCategoryBalance: Codable, Equatable, Identifiable {
     /// To Be Budgeted widget. nil only in snapshots written before this field
     /// existed, and counts as unknown rather than unbudgeted.
     var budgeted: Int?
+    /// Net activity this month in cents (negative = spending), zeroed when
+    /// balances are hidden so rankedCategories can't order by it. nil in
+    /// snapshots written before it existed.
+    var spent: Int?
+    /// Spending as a positive amount; a net inflow shows negative.
+    var formattedSpent: String?
+    var formattedBudgeted: String?
 
     var isOverspent: Bool {
         available < 0
@@ -158,6 +165,37 @@ struct WidgetSnapshot: Codable, Equatable {
     var isOverbudget: Bool {
         guard !balancesHidden, let totalSpent, let totalBudgeted, totalBudgeted > 0 else { return false }
         return abs(totalSpent) > totalBudgeted
+    }
+
+    /// Categories by spending this month, most spent first, capped at 12.
+    /// Ties (and every row when hidden, where spent is 0) keep budget order.
+    /// Empty for snapshots written before spent existed.
+    var rankedCategories: [WidgetCategoryBalance] {
+        let ranked = categories.enumerated()
+            .compactMap { index, category in category.spent.map { (spent: $0, index: index, category: category) } }
+            .sorted { ($0.spent, $0.index) < ($1.spent, $1.index) }
+        return Array(ranked.prefix(12).map(\.category))
+    }
+
+    /// The Top Spending widget's rows, capped at `limit`. Categories with no
+    /// spending or a net inflow drop out, so a quiet month shows the empty
+    /// state rather than a $0 "top" category. Not when hidden: spent is
+    /// zeroed there, and filtering would blank the widget.
+    func topSpendingCategories(limit: Int) -> [WidgetCategoryBalance] {
+        let spenders = balancesHidden ? rankedCategories : rankedCategories.filter { ($0.spent ?? 0) < 0 }
+        return Array(spenders.prefix(limit))
+    }
+
+    /// The Overspent Alerts widget's rows, most spent first. When hidden,
+    /// every ranked category in budget order instead: available keeps its
+    /// raw cents under the mask, so filtering on it would reveal which
+    /// categories are overspent.
+    /// ponytail: draws on rankedCategories' top 12 by spending, so an
+    /// overspent category outside them (say, one overspent by carryover
+    /// alone in a 13+ category budget) is missed and the count runs low.
+    /// Rank `categories` here instead if that shows up.
+    var overspentCategories: [WidgetCategoryBalance] {
+        balancesHidden ? rankedCategories : rankedCategories.filter(\.isOverspent)
     }
 
     /// The next bills by due date, capped at `limit`; empty for snapshots

@@ -75,7 +75,10 @@ extension WidgetSnapshot {
                     name: $0.categoryName,
                     available: $0.available,
                     formattedAvailable: format($0.available),
-                    budgeted: $0.budgeted
+                    budgeted: $0.budgeted,
+                    spent: balancesHidden ? 0 : $0.spent,
+                    formattedSpent: format(-$0.spent),
+                    formattedBudgeted: format($0.budgeted)
                 )
             }
 

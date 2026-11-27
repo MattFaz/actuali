@@ -36,8 +36,8 @@ struct ToBeBudgetedEntry: TimelineEntry {
     let toBudget: Int?
     let formattedToBudget: String?
     let formattedTotalBudgeted: String?
-    /// Positive: Monthly Spending's black figure rather than a black
-    /// minus sign.
+    /// Positive, like Top Spending's header: Monthly Spending's black
+    /// figure rather than a black minus sign.
     let formattedTotalSpending: String?
     /// Categories with nothing budgeted this month, capped per family.
     let unbudgeted: [WidgetCategoryBalance]
