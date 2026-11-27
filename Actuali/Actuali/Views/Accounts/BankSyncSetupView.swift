@@ -494,48 +494,242 @@ struct SimpleFINSyncView: View {
 
 // MARK: - Shared
 
-/// One provider-side account in a provider screen's list, with the budget
-/// account it's linked to, if any.
+/// One provider-side account in a provider screen's list: what it is, and
+/// whether it imports into a budget account yet. The open ones carry the
+/// action and the tint and the settled ones stay quiet, so the eye lands on
+/// what is left to do.
 struct BankRemoteAccountRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
     let remote: BankSyncRemoteAccount
+    /// Off where the screen already names the one bank every row belongs to.
+    var showsInstitution = true
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(remote.name)
-                Text(remote.institutionName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let linked = linkedAccountName {
-                    Label(linked, systemImage: "link")
-                        .font(.caption)
-                        .foregroundStyle(.green)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(remote.name)
+                    if showsInstitution {
+                        Text(remote.institutionName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if let cents = remote.balanceCents {
+                    Text(budgetStore.displayBalance(cents))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
                 }
             }
-            Spacer()
-            if let cents = remote.balanceCents {
-                Text(budgetStore.displayBalance(cents))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+            HStack {
+                if let linked = remote.link(in: budgetStore.bankSyncAccounts) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.green)
+                            .accessibilityHidden(true)
+                        Text("Imports into \(linked.name)")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.subheadline)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Text("Not imported")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    // Drawn as a button though the whole row takes the tap: a
+                    // bare state word reads as nothing to do.
+                    Text("Set Up")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.tint)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(.tint.opacity(0.15), in: Capsule())
+                }
             }
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
         }
-    }
-
-    private var linkedAccountName: String? {
-        guard let link = budgetStore.bankSyncAccounts.first(where: {
-            $0.externalAccountId == remote.id && $0.syncSource == remote.source.rawValue
-        }) else { return nil }
-        return link.name
+        // The row sits in a plain button, which only takes taps on what is
+        // drawn; without this the gaps between its parts are dead.
+        .contentShape(Rectangle())
     }
 }
 
-/// Pick what a provider-side account feeds: an account the budget already
-/// has, or a new one created for it.
+/// The two ways to give a bank account a budget account, as one question with
+/// a screen behind each answer, so nobody reads a form and a list at once to
+/// find theirs. A section for any list inside a navigation stack.
+struct BankAccountLinkChoices: View {
+    let remote: BankSyncRemoteAccount
+    var footer: String?
+    /// Called with the budget account's id once a link succeeded and the
+    /// screen that made it has closed.
+    let onLinked: (String) -> Void
+
+    var body: some View {
+        Section {
+            NavigationLink {
+                BankAccountLinkStep(step: .existing, remote: remote, onLinked: onLinked)
+            } label: {
+                Label("An account already in my budget", systemImage: "link")
+            }
+            .accessibilityIdentifier("bankLink.existing")
+            NavigationLink {
+                BankAccountLinkStep(step: .new, remote: remote, onLinked: onLinked)
+            } label: {
+                Label("A new account", systemImage: "plus.circle")
+            }
+            .accessibilityIdentifier("bankLink.new")
+        } header: {
+            Text("Where should transactions from \(remote.name) go?")
+        } footer: {
+            if let footer {
+                Text(footer)
+            }
+        }
+    }
+}
+
+/// One answer's screen: the budget accounts to pick from, or the form for a
+/// new one.
+private struct BankAccountLinkStep: View {
+    enum Step {
+        case existing, new
+    }
+
+    @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+
+    let step: Step
+    let remote: BankSyncRemoteAccount
+    let onLinked: (String) -> Void
+
+    @State private var newAccountOffBudget = false
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        List {
+            switch step {
+            case .existing: existingAccounts
+            case .new: newAccount
+            }
+        }
+        .disabled(isWorking)
+        .navigationTitle(step == .existing ? Text("Existing account") : Text("New account"))
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("Bank Sync", isPresented: errorAlertBinding) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private var newAccount: some View {
+        Section {
+            Toggle("Off budget", isOn: $newAccountOffBudget)
+            Button {
+                link {
+                    try await budgetStore.createAccount(
+                        name: remote.name,
+                        offBudget: newAccountOffBudget,
+                        // No opening balance here: the first sync works it out from
+                        // the bridge's current balance and the history it downloads.
+                        startingBalanceCents: 0
+                    ).id
+                }
+            } label: {
+                Label(String(format: String(localized: "Create “%@”"), remote.name), systemImage: "plus.circle")
+            }
+        } footer: {
+            Text(String(format: String(localized: "Creates a budget account for %@ at %@ and links it. Its opening balance is worked out on the first sync."), remote.name, remote.institutionName))
+        }
+    }
+
+    private var existingAccounts: some View {
+        Section {
+            if linkableAccounts.isEmpty {
+                Text("Every open account is already linked.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(linkableAccounts) { account in
+                    Button {
+                        link { account.id }
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(account.name)
+                                if replaceableIds.contains(account.id) {
+                                    Text("Already linked. Linking here replaces that link.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Text(budgetStore.displayBalance(account.balance))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        // A plain button only takes taps on what is drawn.
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        } footer: {
+            // Only where it applies: on a first connection nothing here was
+            // linked before.
+            if linkableAccounts.contains(where: { replaceableIds.contains($0.id) }) {
+                Text("After re-authorizing your bank, choose the account that was linked before to replace its old link.")
+            }
+        }
+    }
+
+    private var replaceableIds: Set<String> {
+        BankAccountLinkView.enableBankingLinkedIds(budgetStore.bankSyncAccounts)
+    }
+
+    private var linkableAccounts: [Account] {
+        BankAccountLinkView.linkableAccounts(
+            accounts: budgetStore.accounts,
+            linked: budgetStore.bankSyncAccounts,
+            remoteSource: remote.source
+        )
+    }
+
+    private var errorAlertBinding: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: {
+            if !$0 {
+                errorMessage = nil
+            }
+        })
+    }
+
+    /// Links the budget account `account` yields, then closes this screen
+    /// before reporting: whoever listens may take the row that led here off
+    /// its list.
+    private func link(_ account: @escaping @MainActor () async throws -> String) {
+        isWorking = true
+        Task {
+            defer { isWorking = false }
+            do {
+                let accountId = try await account()
+                try await budgetStore.linkBankAccount(accountId: accountId, to: remote)
+                dismiss()
+                onLinked(accountId)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+/// The sheet a provider screen opens for one of its accounts: where its
+/// transactions go and, once it is linked, a way to stop them.
 struct BankAccountLinkView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
@@ -545,76 +739,26 @@ struct BankAccountLinkView: View {
     /// the sheet closes. Unlinking doesn't call it.
     var onLinked: ((String) -> Void)?
 
-    @State private var newAccountOffBudget = false
     @State private var isWorking = false
     @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
             List {
-                if let linked = currentLink {
+                BankAccountLinkChoices(remote: remote) { accountId in
+                    onLinked?(accountId)
+                    dismiss()
+                }
+
+                if let linked = remote.link(in: budgetStore.bankSyncAccounts) {
                     Section {
                         Button(role: .destructive) {
-                            perform { try await budgetStore.unlinkBankAccount(accountId: linked.id) }
+                            unlink(linked)
                         } label: {
                             Label(String(format: String(localized: "Unlink from %@"), linked.name), systemImage: "link.badge.plus")
                         }
                     } footer: {
                         Text("Transactions already imported stay in the account.")
-                    }
-                }
-
-                Section {
-                    Toggle("Off budget", isOn: $newAccountOffBudget)
-                    Button {
-                        createAndLink()
-                    } label: {
-                        Label(String(format: String(localized: "Create “%@”"), remote.name), systemImage: "plus.circle")
-                    }
-                } header: {
-                    Text("New account")
-                } footer: {
-                    Text(String(format: String(localized: "Creates a budget account for %@ at %@ and links it. Its opening balance is worked out on the first sync."), remote.name, remote.institutionName))
-                }
-
-                Section {
-                    if linkableAccounts.isEmpty {
-                        Text("Every open account is already linked.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        let replaceableIds = Self.enableBankingLinkedIds(budgetStore.bankSyncAccounts)
-                        ForEach(linkableAccounts) { account in
-                            Button {
-                                perform {
-                                    try await budgetStore.linkBankAccount(
-                                        accountId: account.id, to: remote
-                                    )
-                                    onLinked?(account.id)
-                                }
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(account.name)
-                                        if replaceableIds.contains(account.id) {
-                                            Text("Already linked. Linking here replaces that link.")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                    }
-                                    Spacer()
-                                    Text(budgetStore.displayBalance(account.balance))
-                                        .foregroundStyle(.secondary)
-                                        .monospacedDigit()
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                } header: {
-                    Text("Link to an existing account")
-                } footer: {
-                    if remote.source == .enableBanking {
-                        Text("After re-authorizing your bank, choose the account that was linked before to replace its old link.")
                     }
                 }
             }
@@ -632,20 +776,6 @@ struct BankAccountLinkView: View {
                 Text(errorMessage ?? "")
             }
         }
-    }
-
-    private var currentLink: BankSyncAccount? {
-        budgetStore.bankSyncAccounts.first {
-            $0.externalAccountId == remote.id && $0.syncSource == remote.source.rawValue
-        }
-    }
-
-    private var linkableAccounts: [Account] {
-        Self.linkableAccounts(
-            accounts: budgetStore.accounts,
-            linked: budgetStore.bankSyncAccounts,
-            remoteSource: remote.source
-        )
     }
 
     /// The budget accounts fed through Enable Banking.
@@ -683,26 +813,12 @@ struct BankAccountLinkView: View {
         })
     }
 
-    private func createAndLink() {
-        perform {
-            let account = try await budgetStore.createAccount(
-                name: remote.name,
-                offBudget: newAccountOffBudget,
-                // No opening balance here: the first sync works it out from
-                // the bridge's current balance and the history it downloads.
-                startingBalanceCents: 0
-            )
-            try await budgetStore.linkBankAccount(accountId: account.id, to: remote)
-            onLinked?(account.id)
-        }
-    }
-
-    private func perform(_ work: @escaping @MainActor () async throws -> Void) {
+    private func unlink(_ linked: BankSyncAccount) {
         isWorking = true
         Task {
             defer { isWorking = false }
             do {
-                try await work()
+                try await budgetStore.unlinkBankAccount(accountId: linked.id)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

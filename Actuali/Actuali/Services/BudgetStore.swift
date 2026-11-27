@@ -5777,6 +5777,57 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Which budget account each returned bank account already feeds, judged
+    /// by the transactions themselves. A new authorization gives every
+    /// account a new id, so nothing about a link says which returned account
+    /// it was made to. The bank keeps its transaction ids, though, so the
+    /// account a budget account imported from is the one that returns its
+    /// transactions again. Budget account id to returned account, and only
+    /// where one account clearly wins.
+    func enableBankingMatches(
+        for links: [BankSyncAccount],
+        among remotes: [BankSyncRemoteAccount]
+    ) async -> [String: BankSyncRemoteAccount] {
+        guard let database, !remotes.isEmpty else { return [:] }
+        var imported: [String: Set<String>] = [:]
+        for link in links {
+            let ids = (try? database.existingFinancialIds(accountId: link.id)) ?? []
+            if !ids.isEmpty {
+                imported[link.id] = ids
+            }
+        }
+        // Nothing imported is nothing to recognise, so the bank isn't asked.
+        guard !imported.isEmpty else { return [:] }
+        // As far back as an ordinary sync reaches, which is where the
+        // transactions a link imported can be found again.
+        let startDay = DayDate.today().adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
+        let downloads = await EnableBankingProvider(client: serverClient).download(remotes.map {
+            BankSyncTarget(externalId: $0.id, startDay: startDay, institutionName: $0.institutionName)
+        })
+        let returned = downloads.byAccount.mapValues { Set($0.candidates.map(\.importedId)) }
+        return Self.accountMatches(imported: imported, returned: returned)
+            .compactMapValues { remoteId in remotes.first { $0.id == remoteId } }
+    }
+
+    /// Pairs each budget account with the returned account that shares the
+    /// most transaction ids with it. A transfer between two of a bank's
+    /// accounts carries one id on both sides, so sharing an id is not enough:
+    /// an account has to share more than any other does, and no two budget
+    /// accounts may end up with the same one.
+    nonisolated static func accountMatches(
+        imported: [String: Set<String>],
+        returned: [String: Set<String>]
+    ) -> [String: String] {
+        var winners: [String: String] = [:]
+        for (accountId, ids) in imported {
+            let shared = returned.mapValues { $0.intersection(ids).count }.filter { $0.value > 0 }
+            guard let most = shared.values.max(), shared.values.count(where: { $0 == most }) == 1 else { continue }
+            winners[accountId] = shared.first { $0.value == most }?.key
+        }
+        let claims = Dictionary(grouping: winners, by: \.value)
+        return winners.filter { claims[$0.value]?.count == 1 }
+    }
+
     func loadBankSyncAccounts() async {
         if let fetched = await fetchBankSyncAccounts() {
             assignIfChanged(\.bankSyncAccounts, fetched)

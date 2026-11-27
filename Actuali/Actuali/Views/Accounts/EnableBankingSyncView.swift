@@ -14,10 +14,10 @@ struct EnableBankingSyncView: View {
         case failed(String)
     }
 
-    /// What "Reauthorize" pushes: the connect screen with the account's
-    /// bank already chosen.
+    /// What "Reauthorize" pushes: the connect screen, set to renew this
+    /// account's link.
     private struct Reauthorization: Hashable {
-        let bankName: String?
+        let accountId: String
     }
 
     @State private var readiness = Readiness.checking
@@ -42,7 +42,7 @@ struct EnableBankingSyncView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadReadiness() }
         .navigationDestination(item: $reauthorization) { target in
-            EnableBankingConnectView(preferredBankName: target.bankName)
+            EnableBankingConnectView(reauthorizingAccountId: target.accountId)
         }
         .confirmationDialog(
             "Unlink \(unlinkTarget?.name ?? "")?",
@@ -130,7 +130,7 @@ struct EnableBankingSyncView: View {
                     // it and hides the account while the menu is up.
                     Menu {
                         Button("Reauthorize") {
-                            reauthorization = Reauthorization(bankName: account.institutionName)
+                            reauthorization = Reauthorization(accountId: account.id)
                         }
                         .disabled(readiness != .ready)
                         .accessibilityIdentifier("enableBanking.reauthorize.\(account.id)")

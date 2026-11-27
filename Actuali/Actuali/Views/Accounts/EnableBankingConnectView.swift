@@ -1,13 +1,18 @@
 import SwiftUI
+import UserNotifications
 
 /// One bank authorization: pick the bank, send the person to it to approve
 /// access, then link the accounts it returns. The Actual server holds the
 /// Enable Banking credentials, so this only carries the request through.
 struct EnableBankingConnectView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dismiss) private var dismiss
 
-    /// Authorizing a linked account's bank again starts with that bank chosen.
-    let preferredBankName: String?
+    /// Set when a linked account's bank is authorized again: that bank starts
+    /// out chosen, and the bank's answer renews the link instead of asking
+    /// where it goes.
+    let reauthorizingAccountId: String?
 
     /// Upstream's list of supported countries.
     nonisolated static let countries = [
@@ -33,23 +38,44 @@ struct EnableBankingConnectView: View {
     @State private var linkTarget: BankSyncRemoteAccount?
     /// The budget account the link sheet linked, until the sheet has closed.
     @State private var linkedAccountId: String?
+    /// The only account the bank returned, while nothing imports from it yet.
+    /// With one account there is no list to pick from, so the screen asks
+    /// where it goes straight away.
+    @State private var directTarget: BankSyncRemoteAccount?
+    /// Whether the country, bank and usage type are asked for. Connecting a
+    /// bank starts there; reauthorizing knows its bank and only falls back to
+    /// the form when it can't go straight to it.
+    @State private var showsForm: Bool
+    /// While the account picked for a reauthorized link is being linked.
+    @State private var isChoosing = false
 
-    init(preferredBankName: String? = nil) {
-        self.preferredBankName = preferredBankName
+    init(reauthorizingAccountId: String? = nil) {
+        self.reauthorizingAccountId = reauthorizingAccountId
+        _showsForm = State(initialValue: reauthorizingAccountId == nil)
     }
 
     var body: some View {
         List {
-            if remoteAccounts.isEmpty {
+            if !remoteAccounts.isEmpty {
+                resultSections
+            } else if showsForm {
                 bankSection
                 authorizeSection
             } else {
-                remoteAccountsSection
+                openingSection
             }
         }
-        .navigationTitle("Connect Bank")
+        .task { await startReauthorization() }
+        .navigationTitle(reauthorizingAccountId == nil ? Text("Connect Bank") : Text("Reauthorize"))
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { authorizationTask?.cancel() }
+        .onChange(of: scenePhase) { _, phase in
+            // Back in the app, the banner that called the person here is spent.
+            if phase == .active {
+                UNUserNotificationCenter.current()
+                    .removeDeliveredNotifications(withIdentifiers: [BankAuthorizationNotifier.requestIdentifier])
+            }
+        }
         .sheet(item: $linkTarget, onDismiss: syncAfterLink, content: { remote in
             BankAccountLinkView(remote: remote, onLinked: { linkedAccountId = $0 })
                 .environmentObject(budgetStore)
@@ -116,10 +142,140 @@ struct EnableBankingConnectView: View {
     /// The bank a linked account was made through, by the name the link stored.
     /// Only the loaded list is searched, so a bank from another country is nil.
     nonisolated static func bank(named name: String?, in banks: [EnableBankingBank]) -> EnableBankingBank? {
-        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
-        return banks.first {
-            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame
+        banks.first { sameName($0.name, name) }
+    }
+
+    private nonisolated static func sameName(_ lhs: String?, _ rhs: String?) -> Bool {
+        guard let lhs, let rhs else { return false }
+        return lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare(rhs.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+    }
+
+    /// What a new authorization of `bankName` leaves to settle: this bank's
+    /// links whose account didn't come back under the id they know, and the
+    /// returned accounts nothing imports from. The bank issues new account ids
+    /// every time, so an account that is already linked comes back looking
+    /// like one that is not.
+    nonisolated static func unsettled(
+        of remotes: [BankSyncRemoteAccount],
+        bankName: String,
+        linked: [BankSyncAccount]
+    ) -> (links: [BankSyncAccount], remotes: [BankSyncRemoteAccount]) {
+        let links = linked.filter {
+            $0.source == .enableBanking && !$0.closed && sameName($0.institutionName, bankName)
+                // An id the bank kept is a link that needs nothing done.
+                && !remotes.map(\.id).contains($0.externalAccountId)
         }
+        return (links, remotes.filter { $0.link(in: linked) == nil })
+    }
+
+    /// The links reauthorizing `accountId` renews, as the returned account for
+    /// each budget account id. `proven` holds the pairs the transactions
+    /// already settled; this adds what can be said about the rest without
+    /// them, and only when the account being reauthorized is one of this
+    /// bank's: picking another bank on the way is a new connection.
+    ///
+    /// ponytail: beyond its transactions a link stores nothing that survives
+    /// a new authorization, so what they leave open is paired on what is
+    /// unambiguous: a name both sides have exactly once, then (upstream's
+    /// `computeInitialLinkState`) the one account still left over for the
+    /// account being reauthorized. The rest is asked. Upgrade path: Enable
+    /// Banking's `identification_hash`, once the server passes it through.
+    nonisolated static func renewals(
+        of remotes: [BankSyncRemoteAccount],
+        reauthorizing accountId: String,
+        bankName: String,
+        linked: [BankSyncAccount],
+        proven: [String: BankSyncRemoteAccount] = [:]
+    ) -> [String: BankSyncRemoteAccount] {
+        let open = unsettled(of: remotes, bankName: bankName, linked: linked)
+        guard open.links.contains(where: { $0.id == accountId }) else { return proven }
+        var renewals = proven
+        let stale = open.links.filter { renewals[$0.id] == nil }
+        var unpaired = open.remotes.filter { remote in !renewals.values.contains { $0.id == remote.id } }
+
+        for link in stale where stale.filter({ sameName($0.name, link.name) }).count == 1 {
+            let named = unpaired.filter { sameName($0.name, link.name) }
+            if named.count == 1 {
+                renewals[link.id] = named[0]
+            }
+        }
+        unpaired.removeAll { remote in renewals.values.contains { $0.id == remote.id } }
+        if renewals[accountId] == nil, unpaired.count == 1 {
+            renewals[accountId] = unpaired[0]
+        }
+        return renewals
+    }
+
+    /// How much of what the bank returned feeds a budget account, which is
+    /// what tells someone back from their bank whether anything is left to do.
+    enum LinkProgress: Equatable {
+        case none, some, all
+    }
+
+    nonisolated static func linkProgress(
+        of remotes: [BankSyncRemoteAccount],
+        linked: [BankSyncAccount]
+    ) -> LinkProgress {
+        let count = remotes.count { $0.link(in: linked) != nil }
+        return count == 0 ? .none : count == remotes.count ? .all : .some
+    }
+
+    /// The account to ask about straight away: the only one the bank
+    /// returned, if nothing imports from it yet.
+    nonisolated static func directTarget(
+        of remotes: [BankSyncRemoteAccount],
+        linked: [BankSyncAccount]
+    ) -> BankSyncRemoteAccount? {
+        guard remotes.count == 1, let only = remotes.first, only.link(in: linked) == nil else { return nil }
+        return only
+    }
+
+    /// The top line of the result: what just happened, naming the bank so the
+    /// accounts below are plainly that bank's.
+    nonisolated static func headline(bank: String, renewed: Bool) -> String {
+        String(
+            format: renewed ? String(localized: "%@ is authorized again") : String(localized: "%@ is connected"),
+            bank
+        )
+    }
+
+    /// What is on the screen after connecting a bank and what to do with it.
+    nonisolated static func nextStep(bank: String, progress: LinkProgress, asksDirectly: Bool) -> String {
+        if progress == .all {
+            return String(localized: "Every account is set up. New transactions import when you sync.")
+        }
+        return String(
+            format: asksDirectly
+                ? String(localized: "This is your account at %@. Choose where its transactions go.")
+                : String(localized: "These are your accounts at %@. Pick the ones you want in your budget."),
+            bank
+        )
+    }
+
+    /// Where reauthorizing an account stands once the bank has answered. It
+    /// is about that one account only: whatever else the bank returned belongs
+    /// under Connect Bank, not here.
+    enum ReauthorizationStep: Equatable {
+        /// The account imports from one of the returned accounts again.
+        case done
+        /// Nothing could be paired for certain, so the person picks which of
+        /// these the account imported from.
+        case ask([BankSyncRemoteAccount])
+        /// The bank returned nothing the account could import from.
+        case missing
+    }
+
+    nonisolated static func reauthorizationStep(
+        of remotes: [BankSyncRemoteAccount],
+        reauthorizing accountId: String,
+        linked: [BankSyncAccount]
+    ) -> ReauthorizationStep {
+        if remotes.contains(where: { $0.link(in: linked)?.id == accountId }) {
+            return .done
+        }
+        let candidates = remotes.filter { $0.link(in: linked) == nil }
+        return candidates.isEmpty ? .missing : .ask(candidates)
     }
 
     /// Nil when the bank shared at least one account to link.
@@ -218,30 +374,226 @@ struct EnableBankingConnectView: View {
                 .accessibilityIdentifier("enableBanking.cancel")
             }
         } footer: {
-            if isWaiting {
-                Text("Approve the request with your bank. If your banking app opens, come back to Actuali when it's done.")
+            // Always shown: once the bank's page is up it covers this screen,
+            // so this has to be read before leaving.
+            Text("After you approve, come back to Actuali. Your banking app or browser may not return you here by itself, and the result shows on this screen.")
+        }
+    }
+
+    /// The bank whose accounts are on screen.
+    private var bankName: String {
+        selectedBank?.name ?? remoteAccounts.first?.institutionName ?? ""
+    }
+
+    private var skipNote: String {
+        String(localized: "Accounts you skip are not imported. To add one later, connect this bank again.")
+    }
+
+    /// Shown instead of the form while a reauthorization goes straight to
+    /// the account's bank.
+    private var openingSection: some View {
+        Section {
+            HStack {
+                ProgressView()
+                Text("Waiting for your bank…")
+                    .foregroundStyle(.secondary)
+            }
+            Button("Cancel", role: .cancel) {
+                showsForm = true
+                authorizationTask?.cancel()
+            }
+            .accessibilityIdentifier("enableBanking.cancel")
+        } footer: {
+            Text("After you approve, come back to Actuali. Your banking app or browser may not return you here by itself, and the result shows on this screen.")
+        }
+    }
+
+    private func resultHeader(_ title: String, _ subtitle: String, isProblem: Bool = false) -> some View {
+        Section {
+            VStack(spacing: 8) {
+                Image(systemName: isProblem ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .font(.system(size: 44))
+                    .foregroundStyle(isProblem ? Color.orange : Color.green)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.title3.weight(.semibold))
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("enableBanking.result")
+        }
+        .listRowBackground(Color.clear)
+    }
+
+    private var doneSection: some View {
+        Section {
+            Button {
+                dismiss()
+            } label: {
+                Text("Done")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .accessibilityIdentifier("enableBanking.done")
+        }
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+    }
+
+    @ViewBuilder
+    private var resultSections: some View {
+        if let reauthorizingAccountId {
+            reauthorizationSections(for: reauthorizingAccountId)
+        } else {
+            connectionSections
+        }
+    }
+
+    /// After reauthorizing: whether the account is back, and nothing about
+    /// the bank's other accounts, which nobody asked to set up here.
+    @ViewBuilder
+    private func reauthorizationSections(for accountId: String) -> some View {
+        let linked = budgetStore.bankSyncAccounts
+        let accountName = budgetStore.accounts.first { $0.id == accountId }?.name ?? ""
+        switch Self.reauthorizationStep(of: remoteAccounts, reauthorizing: accountId, linked: linked) {
+        case .done:
+            resultHeader(
+                Self.headline(bank: bankName, renewed: true),
+                String(localized: "Your linked accounts keep importing.")
+            )
+            Section {
+                ForEach(remoteAccounts) { remote in
+                    if let link = remote.link(in: linked) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(link.name)
+                                Text("Imports from \(remote.name)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "checkmark")
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.green)
+                                .accessibilityHidden(true)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("enableBanking.renewed.\(link.id)")
+                    }
+                }
+            } header: {
+                Text("Linked Accounts")
+            } footer: {
+                if let syncSummary {
+                    Text(syncSummary)
+                }
+            }
+            doneSection
+        case .ask(let candidates):
+            resultHeader(
+                Self.headline(bank: bankName, renewed: true),
+                String(
+                    format: String(localized: "Actuali can't tell which of these accounts %@ imported from. Pick the same one as before."),
+                    accountName
+                )
+            )
+            Section {
+                ForEach(candidates) { remote in
+                    Button {
+                        choose(remote, for: accountId)
+                    } label: {
+                        HStack {
+                            Text(remote.name)
+                            Spacer()
+                            if let cents = remote.balanceCents {
+                                Text(budgetStore.displayBalance(cents))
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                        }
+                        // A plain button only takes taps on what is drawn.
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("enableBanking.candidate.\(remote.id)")
+                }
+            } header: {
+                Text("Which account does \(accountName) import from?")
+            }
+            .disabled(isChoosing)
+        case .missing:
+            resultHeader(
+                String(localized: "Account not found"),
+                String(
+                    format: String(localized: "%@ didn't share the account that %@ imports from. Authorize again and select it at your bank."),
+                    bankName, accountName
+                ),
+                isProblem: true
+            )
+            Section {
+                Button("Try Again") {
+                    remoteAccounts = []
+                }
+                .accessibilityIdentifier("enableBanking.reauthorizeAgain")
             }
         }
     }
 
-    private var remoteAccountsSection: some View {
-        Section {
-            ForEach(remoteAccounts) { remote in
-                Button {
-                    linkTarget = remote
-                } label: {
-                    BankRemoteAccountRow(remote: remote)
+    /// After connecting a bank: what happened and what to do, then the bank's
+    /// accounts, each saying whether it imports yet.
+    @ViewBuilder
+    private var connectionSections: some View {
+        let progress = Self.linkProgress(of: remoteAccounts, linked: budgetStore.bankSyncAccounts)
+        resultHeader(
+            Self.headline(bank: bankName, renewed: false),
+            Self.nextStep(bank: bankName, progress: progress, asksDirectly: directTarget != nil)
+        )
+
+        if let directTarget {
+            Section {
+                LabeledContent(directTarget.name) {
+                    if let cents = directTarget.balanceCents {
+                        Text(budgetStore.displayBalance(cents))
+                            .monospacedDigit()
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("enableBanking.remoteAccount.\(remote.id)")
+            } header: {
+                Text("Your Accounts at \(bankName)")
             }
-        } header: {
-            Text("Accounts from Your Bank")
-        } footer: {
-            if let syncSummary {
-                Text(syncSummary)
-            } else {
-                Text("Tap an account to link it to a budget account. Linked accounts import new transactions every time you sync.")
+            BankAccountLinkChoices(remote: directTarget, footer: skipNote) { accountId in
+                self.directTarget = nil
+                Task { await sync(accountIds: [accountId]) }
+            }
+        } else {
+            Section {
+                ForEach(remoteAccounts) { remote in
+                    Button {
+                        linkTarget = remote
+                    } label: {
+                        BankRemoteAccountRow(remote: remote, showsInstitution: false)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("enableBanking.remoteAccount.\(remote.id)")
+                }
+            } header: {
+                Text("Your Accounts at \(bankName)")
+            } footer: {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let syncSummary {
+                        Text(syncSummary)
+                    }
+                    if progress != .all {
+                        Text(skipNote)
+                    }
+                }
+            }
+            if progress != .none {
+                doneSection
             }
         }
     }
@@ -275,7 +627,8 @@ struct EnableBankingConnectView: View {
             loadedCountry = requested
             // Nothing is picked yet, so this either selects the account's bank
             // or, when it isn't in this country's list, leaves the choice open.
-            bankId = Self.bank(named: preferredBankName, in: loaded)?.id
+            let reauthorizing = budgetStore.bankSyncAccounts.first { $0.id == reauthorizingAccountId }
+            bankId = Self.bank(named: reauthorizing?.institutionName, in: loaded)?.id
         } catch {
             guard !Task.isCancelled, requested == country else { return }
             // Shown in place of the list, with a way to try again: an alert
@@ -303,6 +656,82 @@ struct EnableBankingConnectView: View {
         Task { await sync(accountIds: [id]) }
     }
 
+    /// Moves each renewed link to the account id the bank just issued and
+    /// returns the budget accounts it moved. A link that fails is reported and
+    /// its account stays in the list to link by hand.
+    private func renew(_ renewals: [String: BankSyncRemoteAccount]) async -> [String] {
+        var renewed: [String] = []
+        for (accountId, remote) in renewals {
+            do {
+                try await budgetStore.linkBankAccount(accountId: accountId, to: remote)
+                renewed.append(accountId)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+        return renewed
+    }
+
+    /// The links the bank's answer renews. An account that was linked before
+    /// comes back under a new id, so it has to be recognised: by the
+    /// transactions it already imported, and, when reauthorizing, by what is
+    /// unambiguous about the rest. Connecting a bank goes by the transactions
+    /// alone: someone else's sign-in at the same bank must never be taken for
+    /// an account that is already linked.
+    private func renewalPlan(
+        for accounts: [BankSyncRemoteAccount],
+        bank: EnableBankingBank
+    ) async -> [String: BankSyncRemoteAccount] {
+        let linked = budgetStore.bankSyncAccounts
+        let open = Self.unsettled(of: accounts, bankName: bank.name, linked: linked)
+        var proven: [String: BankSyncRemoteAccount] = [:]
+        // One account on each side of a reauthorization leaves nothing to
+        // compare, and skipping it keeps the usual case quick.
+        let isPlain = reauthorizingAccountId != nil && open.links.count == 1 && open.remotes.count == 1
+        if !open.links.isEmpty, !isPlain {
+            proven = await budgetStore.enableBankingMatches(for: open.links, among: open.remotes)
+        }
+        guard let reauthorizingAccountId else { return proven }
+        return Self.renewals(
+            of: accounts, reauthorizing: reauthorizingAccountId,
+            bankName: bank.name, linked: linked, proven: proven
+        )
+    }
+
+    /// The account picked for a reauthorized link: move the link there and
+    /// sync it, as a renewal found by itself would.
+    private func choose(_ remote: BankSyncRemoteAccount, for accountId: String) {
+        isChoosing = true
+        Task {
+            defer { isChoosing = false }
+            let renewed = await renew([accountId: remote])
+            if !renewed.isEmpty {
+                await sync(accountIds: renewed)
+            }
+        }
+    }
+
+    /// Reauthorizing goes straight to the account's bank; the form is only
+    /// for when that can't be done.
+    ///
+    /// ponytail: a link stores its bank's name and nothing else, so the
+    /// country is taken to be this device's region and the usage type to be
+    /// personal. A bank from elsewhere lands on the form, and a wrong usage
+    /// type means cancelling at the bank to get to it. Upgrade path: remember
+    /// the country and usage type an account was authorized with.
+    private func startReauthorization() async {
+        guard !showsForm, remoteAccounts.isEmpty, authorizationTask == nil else { return }
+        await loadBanks()
+        // Cancel was tapped while the list loaded.
+        guard !showsForm else { return }
+        // `loadBanks` picked the account's bank if this country's list has it.
+        guard selectedBank != nil else {
+            showsForm = true
+            return
+        }
+        authorize()
+    }
+
     private func authorize() {
         guard let bank = selectedBank else { return }
         let psuType = Self.psuType(for: bank, choice: psuChoice)
@@ -319,6 +748,11 @@ struct EnableBankingConnectView: View {
         defer {
             isWaiting = false
             authorizationTask = nil
+            // An attempt that ended without accounts leaves the form to retry
+            // from, also where a reauthorization had skipped it.
+            if remoteAccounts.isEmpty {
+                showsForm = true
+            }
         }
         // Set before the first request, so the tap shows progress at once.
         isWaiting = true
@@ -351,12 +785,31 @@ struct EnableBankingConnectView: View {
                     authorizationTask?.cancel()
                 }
             }
-            // Dismiss the sheet once the server reports the outcome.
-            defer { authenticator.cancel() }
-
-            remoteAccounts = try await budgetStore.awaitEnableBankingAuthorization(state: start.state)
-            if let message = Self.noAccountsMessage(for: remoteAccounts) {
+            let accounts: [BankSyncRemoteAccount]
+            do {
+                // Dismiss the sheet once the server reports the outcome.
+                defer { authenticator.cancel() }
+                accounts = try await budgetStore.awaitEnableBankingAuthorization(state: start.state)
+            }
+            // The bank's last page belongs to the bank or the Actual server and
+            // can't reopen this app, so someone still over there gets a banner.
+            if UIApplication.shared.applicationState != .active {
+                await BankAuthorizationNotifier.notifyApproved()
+            }
+            let renewals = await renewalPlan(for: accounts, bank: bank)
+            // Its own task: leaving the screen cancels this one, which must
+            // not stop a renewal between two links.
+            let renewed = await Task { await renew(renewals) }.value
+            // Shown only now, so a renewed link never appears as not imported first.
+            if reauthorizingAccountId == nil {
+                directTarget = Self.directTarget(of: accounts, linked: budgetStore.bankSyncAccounts)
+            }
+            remoteAccounts = accounts
+            if let message = Self.noAccountsMessage(for: accounts) {
                 errorMessage = message
+            }
+            if !renewed.isEmpty {
+                Task { await sync(accountIds: renewed) }
             }
         } catch is CancellationError {
             // Cancel button or leaving the screen.

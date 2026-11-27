@@ -222,4 +222,95 @@ struct BudgetStoreEnableBankingLinkTests {
         #expect(account.syncSource == "enableBanking")
         #expect(account.lastSync == "1600000000000")
     }
+
+    // MARK: - Recognising a linked account after a new authorization
+
+    @Test func anAccountIsRecognisedByTheTransactionsItSharesMostOf() {
+        let matches = BudgetStore.accountMatches(
+            imported: ["a": ["t1", "t2", "transfer"], "b": ["t9", "transfer"]],
+            // A transfer between the two shows up on both sides under one id.
+            returned: ["uid-1": ["t1", "t2", "transfer"], "uid-2": ["t9", "transfer", "t10"]]
+        )
+        #expect(matches == ["a": "uid-1", "b": "uid-2"])
+    }
+
+    @Test func nothingIsRecognisedWithoutAClearWinner() {
+        // Shares nothing.
+        #expect(BudgetStore.accountMatches(imported: ["a": ["t1"]], returned: ["uid-1": ["t9"]]).isEmpty)
+        // Two returned accounts share equally much.
+        #expect(BudgetStore.accountMatches(
+            imported: ["a": ["transfer"]], returned: ["uid-1": ["transfer"], "uid-2": ["transfer"]]
+        ).isEmpty)
+        // Two budget accounts point at the same returned account.
+        #expect(BudgetStore.accountMatches(
+            imported: ["a": ["t1"], "b": ["t1"]], returned: ["uid-1": ["t1"]]
+        ).isEmpty)
+    }
+
+    private nonisolated static func download(_ transactionIds: [String]) -> Data {
+        let day = DayDate.today().adding(days: -5).iso
+        let transactions = transactionIds.map {
+            """
+            {"transactionId":"\($0)","date":"\(day)","payeeName":"Shop","booked":true,
+             "transactionAmount":{"amount":"-1.00"}}
+            """
+        }.joined(separator: ",")
+        return Data("""
+        {"status":"ok","data":{"transactions":{"all":[\(transactions)]},"balances":[],"startingBalance":0}}
+        """.utf8)
+    }
+
+    /// The linked account already holds two imported transactions; the bank
+    /// returns the same account under a new uid next to another one.
+    @Test func aLinkedAccountIsFoundAmongNewUidsByItsImportedTransactions() async throws {
+        let (database, url) = try await makeDatabase(linked: true)
+        defer { cleanup(url) }
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            for id in ["tx-1", "tx-2"] {
+                try db.execute(
+                    sql: """
+                    INSERT INTO transactions (id, acct, date, amount, cleared, tombstone, sort_order, financial_id)
+                    VALUES (?, ?, 20260101, -100, 1, 0, 0, ?)
+                    """,
+                    arguments: [id, accountId, "bank-\(id)"]
+                )
+            }
+        }
+        let asked = CallCounter()
+        let store = try await makeStore(database: database) { request in
+            guard request.url?.path == "/enablebanking/transactions" else {
+                return StubTransport.Response(status: 404)
+            }
+            asked.increment()
+            let body = try JSONSerialization.jsonObject(with: request.bodyData) as? [String: Any]
+            let mine = body?["accountId"] as? String == "uid-new"
+            return StubTransport.Response(body: Self.download(mine ? ["bank-tx-1", "bank-tx-2", "bank-tx-3"] : ["other-1"]))
+        }
+        let link = try #require(store.bankSyncAccounts.first { $0.id == accountId })
+        let remotes = [enableBankingRemote(id: "uid-other"), enableBankingRemote(id: "uid-new")]
+
+        let matches = await store.enableBankingMatches(for: [link], among: remotes)
+
+        #expect(matches.mapValues(\.id) == [accountId: "uid-new"])
+        #expect(asked.value == 2)
+    }
+
+    /// With nothing imported there is nothing to recognise an account by, so
+    /// the bank isn't asked at all.
+    @Test func anAccountWithoutImportedTransactionsAsksTheBankNothing() async throws {
+        let (database, url) = try await makeDatabase(linked: true)
+        defer { cleanup(url) }
+        let asked = CallCounter()
+        let store = try await makeStore(database: database) { _ in
+            asked.increment()
+            return StubTransport.Response(body: Self.download(["bank-tx-1"]))
+        }
+        let link = try #require(store.bankSyncAccounts.first { $0.id == Self.accountId })
+
+        let matches = await store.enableBankingMatches(for: [link], among: [enableBankingRemote(id: "uid-new")])
+
+        #expect(matches.isEmpty)
+        #expect(asked.value == 0)
+    }
 }

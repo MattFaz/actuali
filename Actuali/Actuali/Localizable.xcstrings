@@ -52767,53 +52767,6 @@
         }
       }
     },
-    "Link to an existing account" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mit einem bestehenden Konto verknüpfen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Link to an existing account"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vincular a una cuenta existente"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lier à un compte existant"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Collega a un conto esistente"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Koppelen aan een bestaande rekening"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vincular a uma conta existente"
-          }
-        }
-      }
-    },
     "Link Schedule" : {
       "localizations" : {
         "de" : {
@@ -95467,54 +95420,6 @@
         }
       }
     },
-    "Accounts from Your Bank" : {
-      "comment" : "Enable Banking screen section header for the bank's accounts",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Konten deiner Bank"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Accounts from Your Bank"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cuentas de tu banco"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Comptes de votre banque"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conti della tua banca"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rekeningen van je bank"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Contas do seu banco"
-          }
-        }
-      }
-    },
     "Rename" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -96220,50 +96125,1106 @@
         }
       }
     },
-    "Approve the request with your bank. If your banking app opens, come back to Actuali when it's done." : {
-      "comment" : "Enable Banking footer while the bank consent is pending",
+    "After you approve, come back to Actuali. Your banking app or browser may not return you here by itself, and the result shows on this screen." : {
+      "comment" : "Enable Banking footer under the Authorize button, read before leaving for the bank",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Genehmige die Anfrage bei deiner Bank. Wenn sich deine Banking-App öffnet, kehre zu Actuali zurück, sobald du fertig bist."
+            "value" : "Kehre nach der Genehmigung zu Actuali zurück. Deine Banking-App oder dein Browser bringt dich möglicherweise nicht von selbst zurück, und das Ergebnis erscheint auf diesem Bildschirm."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Approve the request with your bank. If your banking app opens, come back to Actuali when it's done."
+            "value" : "After you approve, come back to Actuali. Your banking app or browser may not return you here by itself, and the result shows on this screen."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aprueba la solicitud en tu banco. Si se abre tu app bancaria, vuelve a Actuali cuando termines."
+            "value" : "Después de aprobar, vuelve a Actuali. Puede que tu app bancaria o el navegador no te traigan de vuelta por sí solos, y el resultado aparece en esta pantalla."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Approuvez la demande auprès de votre banque. Si votre app bancaire s'ouvre, revenez dans Actuali une fois terminé."
+            "value" : "Après avoir approuvé, revenez dans Actuali. Votre app bancaire ou votre navigateur ne vous y ramènera pas forcément, et le résultat s'affiche sur cet écran."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Approva la richiesta con la tua banca. Se si apre la tua app bancaria, torna su Actuali quando hai finito."
+            "value" : "Dopo aver approvato, torna su Actuali. La tua app bancaria o il browser potrebbero non riportarti qui da soli, e il risultato compare in questa schermata."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keur het verzoek goed bij je bank. Als je bank-app opent, ga dan terug naar Actuali als je klaar bent."
+            "value" : "Ga na het goedkeuren terug naar Actuali. Je bank-app of browser brengt je mogelijk niet vanzelf terug, en het resultaat staat op dit scherm."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aprove a solicitação no seu banco. Se o app do seu banco abrir, volte ao Actuali quando terminar."
+            "value" : "Depois de aprovar, volte ao Actuali. O app do seu banco ou o navegador pode não trazer você de volta sozinho, e o resultado aparece nesta tela."
+          }
+        }
+      }
+    },
+    "Your bank approved access" : {
+      "comment" : "Notification title when an Enable Banking authorization finished while Actuali was in the background",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Bank hat den Zugriff genehmigt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your bank approved access"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu banco aprobó el acceso"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre banque a approuvé l'accès"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tua banca ha approvato l'accesso"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je bank heeft toegang goedgekeurd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu banco aprovou o acesso"
+          }
+        }
+      }
+    },
+    "Come back to Actuali to continue." : {
+      "comment" : "Notification body when an Enable Banking authorization finished while Actuali was in the background",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kehre zu Actuali zurück, um fortzufahren."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Come back to Actuali to continue."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vuelve a Actuali para continuar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revenez dans Actuali pour continuer."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Torna su Actuali per continuare."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ga terug naar Actuali om verder te gaan."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volte ao Actuali para continuar."
+          }
+        }
+      }
+    },
+    "Existing account" : {
+      "comment" : "Bank sync link sheet: title of the screen listing budget accounts to link to",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bestehendes Konto"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Existing account"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuenta existente"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compte existant"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conto esistente"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bestaande rekening"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conta existente"
+          }
+        }
+      }
+    },
+    "%@ is connected" : {
+      "comment" : "Enable Banking result headline after a bank was authorized; placeholder is the bank's name",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist verbunden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is connected"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ está conectado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connexion à %@ établie"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collegamento a %@ riuscito"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is verbonden"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ está conectado"
+          }
+        }
+      }
+    },
+    "%@ is authorized again" : {
+      "comment" : "Enable Banking result headline after reauthorizing a bank renewed the existing links; placeholder is the bank's name",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist wieder autorisiert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is authorized again"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ vuelve a estar autorizado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorisation de %@ renouvelée"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorizzazione di %@ rinnovata"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is opnieuw geautoriseerd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ está autorizado novamente"
+          }
+        }
+      }
+    },
+    "Your linked accounts keep importing." : {
+      "comment" : "Enable Banking result: nothing left to do after a reauthorization",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine verknüpften Konten importieren weiter."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your linked accounts keep importing."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus cuentas vinculadas siguen importando."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos comptes liés continuent d'importer."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I tuoi conti collegati continuano a importare."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je gekoppelde rekeningen blijven importeren."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suas contas vinculadas continuam importando."
+          }
+        }
+      }
+    },
+    "Every account is set up. New transactions import when you sync." : {
+      "comment" : "Enable Banking result: every account the bank returned imports into a budget account",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Konten sind eingerichtet. Neue Transaktionen werden beim Synchronisieren importiert."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every account is set up. New transactions import when you sync."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todas las cuentas están configuradas. Las transacciones nuevas se importan al sincronizar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tous les comptes sont configurés. Les nouvelles transactions sont importées à chaque synchronisation."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tutti i conti sono configurati. Le nuove transazioni vengono importate quando sincronizzi."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle rekeningen zijn ingesteld. Nieuwe transacties worden geïmporteerd wanneer je synchroniseert."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todas as contas estão configuradas. As novas transações são importadas quando você sincroniza."
+          }
+        }
+      }
+    },
+    "These are your accounts at %@. Pick the ones you want in your budget." : {
+      "comment" : "Enable Banking result: what the listed accounts are and what to do; placeholder is the bank's name",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das sind deine Konten bei %@. Wähle die aus, die du in deinem Budget haben möchtest."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "These are your accounts at %@. Pick the ones you want in your budget."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas son tus cuentas en %@. Elige las que quieres en tu presupuesto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voici vos comptes chez %@. Choisissez ceux que vous voulez dans votre budget."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questi sono i tuoi conti presso %@. Scegli quelli che vuoi nel tuo budget."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit zijn je rekeningen bij %@. Kies welke je in je budget wilt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas são suas contas no %@. Escolha as que você quer no seu orçamento."
+          }
+        }
+      }
+    },
+    "This is your account at %@. Choose where its transactions go." : {
+      "comment" : "Enable Banking result when the bank returned a single account; placeholder is the bank's name",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist dein Konto bei %@. Wähle, wohin seine Transaktionen gehen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This is your account at %@. Choose where its transactions go."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta es tu cuenta en %@. Elige adónde van sus transacciones."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voici votre compte chez %@. Choisissez où vont ses transactions."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo è il tuo conto presso %@. Scegli dove vanno le sue transazioni."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit is je rekening bij %@. Kies waar de transacties naartoe gaan."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta é sua conta no %@. Escolha para onde vão as transações."
+          }
+        }
+      }
+    },
+    "Your Accounts at %@" : {
+      "comment" : "Enable Banking result: header of the list of accounts the bank returned; placeholder is the bank's name",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Konten bei %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Accounts at %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus cuentas en %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos comptes chez %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I tuoi conti presso %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je rekeningen bij %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suas contas no %@"
+          }
+        }
+      }
+    },
+    "Imports into %@" : {
+      "comment" : "Bank sync: state of a bank account whose transactions go to a budget account; placeholder is the budget account's name",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importiert in %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imports into %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se importa en %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importé dans %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importa in %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importeert naar %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importa para %@"
+          }
+        }
+      }
+    },
+    "Not imported" : {
+      "comment" : "Bank sync: state of a bank account whose transactions go nowhere yet",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht importiert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not imported"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se importa"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non importé"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non importato"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niet geïmporteerd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não importada"
+          }
+        }
+      }
+    },
+    "Set Up" : {
+      "comment" : "Bank sync: button-like label on a bank account that imports nowhere yet",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set Up"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurer"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configura"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instellen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurar"
+          }
+        }
+      }
+    },
+    "Accounts you skip are not imported. To add one later, connect this bank again." : {
+      "comment" : "Enable Banking result: footer saying what skipping an account means",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konten, die du überspringst, werden nicht importiert. Um später eines hinzuzufügen, verbinde diese Bank erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accounts you skip are not imported. To add one later, connect this bank again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las cuentas que omitas no se importan. Para añadir una más adelante, vuelve a conectar este banco."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les comptes ignorés ne sont pas importés. Pour en ajouter un plus tard, connectez de nouveau cette banque."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I conti che salti non vengono importati. Per aggiungerne uno in seguito, collega di nuovo questa banca."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rekeningen die je overslaat, worden niet geïmporteerd. Koppel deze bank opnieuw om er later een toe te voegen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As contas que você pular não são importadas. Para adicionar uma depois, conecte este banco novamente."
+          }
+        }
+      }
+    },
+    "Where should transactions from %@ go?" : {
+      "comment" : "Bank sync link screen: the question above the two choices; placeholder is the bank account's name",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wohin sollen die Transaktionen von %@ gehen?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Where should transactions from %@ go?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Adónde deben ir las transacciones de %@?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Où doivent aller les transactions de %@ ?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dove devono andare le transazioni di %@?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waar moeten de transacties van %@ naartoe?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para onde devem ir as transações de %@?"
+          }
+        }
+      }
+    },
+    "An account already in my budget" : {
+      "comment" : "Bank sync link screen: choice that leads to the list of budget accounts",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Konto, das schon in meinem Budget ist"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An account already in my budget"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una cuenta que ya está en mi presupuesto"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un compte déjà dans mon budget"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un conto già nel mio budget"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Een rekening die al in mijn budget staat"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma conta que já está no meu orçamento"
+          }
+        }
+      }
+    },
+    "A new account" : {
+      "comment" : "Bank sync link screen: choice that leads to creating a budget account",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein neues Konto"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A new account"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una cuenta nueva"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un nouveau compte"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un nuovo conto"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Een nieuwe rekening"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma conta nova"
+          }
+        }
+      }
+    },
+    "Which account does %@ import from?" : {
+      "comment" : "Enable Banking reauthorization: question above the bank accounts to pick from; placeholder is the budget account's name",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus welchem Konto importiert %@?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Which account does %@ import from?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿De qué cuenta importa %@?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quel compte alimente %@ ?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Da quale conto importa %@?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uit welke rekening importeert %@?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De qual conta %@ importa?"
+          }
+        }
+      }
+    },
+    "Actuali can't tell which of these accounts %@ imported from. Pick the same one as before." : {
+      "comment" : "Enable Banking reauthorization: why the person is asked to pick an account; placeholder is the budget account's name",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali kann nicht erkennen, aus welchem dieser Konten %@ importiert hat. Wähle dasselbe wie zuvor."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali can't tell which of these accounts %@ imported from. Pick the same one as before."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali no puede saber de cuál de estas cuentas importaba %@. Elige la misma que antes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali ne peut pas déterminer lequel de ces comptes alimentait %@. Choisissez le même qu'avant."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali non riesce a capire da quale di questi conti importava %@. Scegli lo stesso di prima."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuali kan niet zien uit welke van deze rekeningen %@ importeerde. Kies dezelfde als eerst."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Actuali não consegue saber de qual destas contas %@ importava. Escolha a mesma de antes."
+          }
+        }
+      }
+    },
+    "%@ didn't share the account that %@ imports from. Authorize again and select it at your bank." : {
+      "comment" : "Enable Banking reauthorization: the bank returned no account for the reauthorized link; placeholders are the bank's name, then the budget account's name",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hat das Konto, aus dem %@ importiert, nicht freigegeben. Autorisiere erneut und wähle es bei deiner Bank aus."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ didn't share the account that %@ imports from. Authorize again and select it at your bank."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ no compartió la cuenta de la que importa %@. Autoriza de nuevo y selecciónala en tu banco."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ n'a pas partagé le compte qui alimente %@. Autorisez de nouveau et sélectionnez-le auprès de votre banque."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ non ha condiviso il conto da cui importa %@. Autorizza di nuovo e selezionalo presso la tua banca."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ heeft de rekening waaruit %@ importeert niet gedeeld. Autoriseer opnieuw en selecteer die bij je bank."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ não compartilhou a conta da qual %@ importa. Autorize novamente e selecione-a no seu banco."
+          }
+        }
+      }
+    },
+    "Imports from %@" : {
+      "comment" : "Enable Banking reauthorization: which bank account a renewed budget account imports from; placeholder is the bank account's name",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importiert aus %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imports from %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importa de %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importe depuis %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importa da %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importeert uit %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importa de %@"
+          }
+        }
+      }
+    },
+    "Account not found" : {
+      "comment" : "Enable Banking reauthorization: headline when the bank returned no account for the reauthorized link",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konto nicht gefunden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account not found"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuenta no encontrada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compte introuvable"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conto non trovato"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rekening niet gevonden"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conta não encontrada"
           }
         }
       }
