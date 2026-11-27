@@ -65,13 +65,13 @@ struct MainTabView: View {
                 notificationRouter.pendingTabNavigation = nil
             }
         }
-        // One sheet for every way in: the floating add button, the Home Screen
+        // One sheet for every way in: the Quick Add button, the Home Screen
         // quick action and the widget link. It lives here rather than on a
         // page so it opens from any tab, and with the button switched off.
         .sheet(isPresented: $notificationRouter.pendingAddTransaction) {
             AddTransactionSheet()
         }
-        // Here rather than on the floating button, which isn't on More and
+        // Here rather than on the Quick Add button, which isn't on More and
         // can be switched off. Invisible, like the form's Command-Return.
         .background {
             Button { notificationRouter.pendingAddTransaction = true } label: { EmptyView() }
@@ -162,7 +162,7 @@ struct AddTransactionSheet: View {
                 Text(String(localized: "Your default account is no longer available. Please configure a new default in More → Transactions & Automation."))
             }
         } else {
-            // Reached from the quick action or the widget link; the floating
+            // Reached from the quick action or the widget link; the Quick Add
             // button is hidden without an open account.
             ContentUnavailableView {
                 Label("No Accounts", systemImage: "building.columns")

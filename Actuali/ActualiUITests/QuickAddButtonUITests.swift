@@ -3,13 +3,13 @@ import XCTest
 /// The round + that replaced the Add tab (#350): it floats over Budget,
 /// Accounts and Reports, opens the entry form as a sheet, and More → Display
 /// can hide it.
-final class FloatingAddButtonUITests: XCTestCase {
-    /// `-showsAddButton YES` forces the setting on through the arguments
+final class QuickAddButtonUITests: XCTestCase {
+    /// `-showsQuickAddButton YES` forces the setting on through the arguments
     /// domain, so a value left behind by an earlier run stays out of the test.
     @MainActor
     private func launch(initialTab: Int) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", String(initialTab), "-showsAddButton", "YES"]
+        app.launchArguments = ["-loadDemoData", "-initialTab", String(initialTab), "-showsQuickAddButton", "YES"]
         app.launch()
         return app
     }
@@ -17,15 +17,15 @@ final class FloatingAddButtonUITests: XCTestCase {
     @MainActor
     func testButtonShowsOnBudgetAccountsAndReportsButNotMore() {
         let app = launch(initialTab: 0)
-        let addButton = app.buttons["floatingAdd.button"]
+        let addButton = app.buttons["quickAdd.button"]
 
         for tab in ["Accounts", "Budget", "Reports"] {
             app.tabBars.buttons[tab].tap()
-            XCTAssertTrue(addButton.waitForExistence(timeout: 10), "no floating add button on \(tab)")
+            XCTAssertTrue(addButton.waitForExistence(timeout: 10), "no Quick Add button on \(tab)")
         }
 
         app.tabBars.buttons["More"].tap()
-        XCTAssertTrue(addButton.waitForNonExistence(timeout: 10), "floating add button showing on More")
+        XCTAssertTrue(addButton.waitForNonExistence(timeout: 10), "Quick Add button showing on More")
     }
 
     @MainActor
@@ -52,15 +52,15 @@ final class FloatingAddButtonUITests: XCTestCase {
     @MainActor
     func testSwitchedOffTheButtonIsHiddenUntilSwitchedBackOn() {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "0", "-showsAddButton", "NO"]
+        app.launchArguments = ["-loadDemoData", "-initialTab", "0", "-showsQuickAddButton", "NO"]
         app.launch()
 
         XCTAssertTrue(app.buttons["accounts.topBox"].waitForExistence(timeout: 20), "Accounts did not open")
-        XCTAssertFalse(app.buttons["floatingAdd.button"].exists, "the button shows on Accounts while switched off")
+        XCTAssertFalse(app.buttons["quickAdd.button"].exists, "the button shows on Accounts while switched off")
 
         app.tabBars.buttons["More"].tap()
         app.buttons["Display"].tap()
-        let toggle = app.switches["displaySettings.addButton"]
+        let toggle = app.switches["displaySettings.quickAddButton"]
         for _ in 0..<8 where !toggle.exists {
             app.swipeUp()
         }
@@ -69,7 +69,7 @@ final class FloatingAddButtonUITests: XCTestCase {
 
         tapControl(toggle) { toggle.value as? String == "1" }
         app.tabBars.buttons["Accounts"].tap()
-        XCTAssertTrue(app.buttons["floatingAdd.button"].waitForExistence(timeout: 10),
+        XCTAssertTrue(app.buttons["quickAdd.button"].waitForExistence(timeout: 10),
                       "the button did not appear on Accounts after switching it on")
     }
 }

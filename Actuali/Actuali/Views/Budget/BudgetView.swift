@@ -180,7 +180,7 @@ struct BudgetView: View {
                     }
                 }
             }
-            .floatingAddButton()
+            .quickAddButton()
             // Keep the toolbar a fixed height above the pinned summary.
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { budgetToolbar }

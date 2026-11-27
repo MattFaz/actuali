@@ -831,7 +831,7 @@ struct AccountsListView: View {
                 TopBoxLayout.verticalContentMargin,
                 for: .scrollContent
             )
-            .floatingAddButton()
+            .quickAddButton()
             .overlay {
                 if hasNoSearchResults {
                     ContentUnavailableView.search(text: accountSearchText)

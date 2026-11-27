@@ -17,13 +17,13 @@ extension XCTestCase {
         XCTFail("Control did not update after tapping \(control.label)")
     }
 
-    /// Tap the floating add button on the current page and wait for the entry
+    /// Tap the Quick Add button on the current page and wait for the entry
     /// sheet. By identifier: the account detail's "+" has the same label. The
     /// sheet carries no title, so its close button marks it.
     @MainActor
     func openAddTransactionSheet(in app: XCUIApplication) {
-        let addButton = app.buttons["floatingAdd.button"]
-        XCTAssertTrue(addButton.waitForExistence(timeout: 10), "floating add button not found")
+        let addButton = app.buttons["quickAdd.button"]
+        XCTAssertTrue(addButton.waitForExistence(timeout: 10), "Quick Add button not found")
         addButton.tap()
         XCTAssertTrue(app.buttons["addTransaction.close"].waitForExistence(timeout: 10),
                       "add sheet did not present")

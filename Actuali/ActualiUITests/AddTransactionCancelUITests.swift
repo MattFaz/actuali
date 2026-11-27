@@ -1,7 +1,7 @@
 import XCTest
 
 /// The add flow must offer a way out that discards everything entered
-/// (issue #281). The form is a sheet over the page the floating button was
+/// (issue #281). The form is a sheet over the page the Quick Add button was
 /// tapped on, so closing it dismisses back to that page rather than jumping to
 /// the Start Page.
 final class AddTransactionCancelUITests: XCTestCase {

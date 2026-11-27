@@ -42,7 +42,7 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
     /// channel; consumed by `MainTabView`.
     @Published var pendingTabNavigation: Int?
 
-    /// Set to open the add-transaction sheet: by the floating add button, the
+    /// Set to open the add-transaction sheet: by the Quick Add button, the
     /// Home Screen quick action and the `actuali://add-transaction` link.
     /// `MainTabView` presents the sheet, and dismissing it clears the flag.
     @Published var pendingAddTransaction = false

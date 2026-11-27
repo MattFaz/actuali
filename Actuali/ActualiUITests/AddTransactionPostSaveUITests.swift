@@ -5,7 +5,7 @@ import XCTest
 /// The add-transaction form had two different endings: the tab-hosted flow
 /// reset itself and switched to the Accounts overview, while the
 /// sheet-presented flow (account detail "+") stayed open with a blank form.
-/// Every entry point is a sheet now (the floating button on Budget, Accounts
+/// Every entry point is a sheet now (the Quick Add button on Budget, Accounts
 /// and Reports, and the account detail's "+"), so all of them end the same
 /// way: the form closes and the user lands back on the page it was opened from.
 final class AddTransactionPostSaveUITests: XCTestCase {
@@ -66,7 +66,7 @@ final class AddTransactionPostSaveUITests: XCTestCase {
     }
 
     @MainActor
-    func testFloatingButtonAddFlowDismissesToBudgetAfterSave() {
+    func testQuickAddFlowDismissesToBudgetAfterSave() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
         app.launch()
@@ -87,7 +87,7 @@ final class AddTransactionPostSaveUITests: XCTestCase {
     }
 
     @MainActor
-    func testFloatingButtonAddFlowDismissesToAccountsAfterSave() {
+    func testQuickAddFlowDismissesToAccountsAfterSave() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "0"]
         app.launch()

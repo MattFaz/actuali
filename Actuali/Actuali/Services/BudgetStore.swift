@@ -722,9 +722,9 @@ final class BudgetStore: ObservableObject {
     /// Whether Budget, Accounts and Reports float an add-transaction button.
     /// The Home Screen quick action and the widget link open the form whatever
     /// this says. Persisted to UserDefaults, defaults to on.
-    @Published var showsAddButton: Bool = true {
+    @Published var showsQuickAddButton: Bool = true {
         didSet {
-            UserDefaults.standard.set(showsAddButton, forKey: "showsAddButton")
+            UserDefaults.standard.set(showsQuickAddButton, forKey: "showsQuickAddButton")
         }
     }
 
@@ -2819,7 +2819,7 @@ final class BudgetStore: ObservableObject {
             _appearanceMode = Published(initialValue: mode)
         }
         _startTab = Published(initialValue: StartTab.persisted)
-        _showsAddButton = Published(initialValue: persistedBool("showsAddButton", default: true))
+        _showsQuickAddButton = Published(initialValue: persistedBool("showsQuickAddButton", default: true))
         _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle.resolved(
             from: defaults.string(forKey: "budgetDisplayStyle")
         ))
@@ -2972,8 +2972,8 @@ final class BudgetStore: ObservableObject {
     private init(forPreview mode: PreviewMode) {
         switch mode {
         case .loadPersistedPreferences:
-            _showsAddButton = Published(
-                initialValue: Self.persistedBool("showsAddButton", default: true, in: UserDefaults.standard)
+            _showsQuickAddButton = Published(
+                initialValue: Self.persistedBool("showsQuickAddButton", default: true, in: UserDefaults.standard)
             )
             _categoryStatusDotColors = Published(
                 initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard)

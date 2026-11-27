@@ -6,8 +6,8 @@ import Testing
 /// under the key `init()` reads back, and come back after a relaunch.
 @MainActor
 @Suite(.serialized)
-struct BudgetStoreAddButtonPreferenceTests {
-    private let key = "showsAddButton"
+struct BudgetStoreQuickAddButtonPreferenceTests {
+    private let key = "showsQuickAddButton"
 
     /// Restores whatever the test host had, so the suite leaves no residue.
     private func withCleanDefaults(_ body: () -> Void) {
@@ -25,21 +25,21 @@ struct BudgetStoreAddButtonPreferenceTests {
 
     @Test func defaultsOn() {
         withCleanDefaults {
-            #expect(BudgetStore.previewInstance().showsAddButton)
-            #expect(BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting().showsAddButton)
+            #expect(BudgetStore.previewInstance().showsQuickAddButton)
+            #expect(BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting().showsQuickAddButton)
         }
     }
 
     @Test func persistsBothStatesAndRestoresThem() {
         withCleanDefaults {
             let store = BudgetStore.previewInstance()
-            store.showsAddButton = false
+            store.showsQuickAddButton = false
             #expect(UserDefaults.standard.object(forKey: key) as? Bool == false)
-            #expect(!BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting().showsAddButton)
+            #expect(!BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting().showsQuickAddButton)
 
-            store.showsAddButton = true
+            store.showsQuickAddButton = true
             #expect(UserDefaults.standard.object(forKey: key) as? Bool == true)
-            #expect(BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting().showsAddButton)
+            #expect(BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting().showsQuickAddButton)
         }
     }
 }

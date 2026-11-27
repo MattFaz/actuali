@@ -4,18 +4,18 @@ extension View {
     /// Floats the round "+" over the bottom-right corner (just above the tab
     /// bar inside a tab) and leaves scroll content room to clear it. Apply it
     /// to a navigation stack's root content, so pushed screens don't show it.
-    func floatingAddButton() -> some View {
-        modifier(FloatingAddButtonModifier())
+    func quickAddButton() -> some View {
+        modifier(QuickAddButtonModifier())
     }
 }
 
-private struct FloatingAddButtonModifier: ViewModifier {
+private struct QuickAddButtonModifier: ViewModifier {
     @EnvironmentObject private var budgetStore: BudgetStore
 
     /// Off by choice, or nothing to add to: without an open account the form
     /// has no account to open on.
     private var isShown: Bool {
-        budgetStore.showsAddButton && budgetStore.accounts.contains { !$0.closed }
+        budgetStore.showsQuickAddButton && budgetStore.accounts.contains { !$0.closed }
     }
 
     func body(content: Content) -> some View {
@@ -24,11 +24,11 @@ private struct FloatingAddButtonModifier: ViewModifier {
         // is safe area padding, not `contentMargins`: a scroll view that sets
         // its own bottom margin (Budget's cards do) would replace an outer one.
         content
-            .safeAreaPadding(.bottom, isShown ? FloatingAddButton.clearance : 0)
+            .safeAreaPadding(.bottom, isShown ? QuickAddButton.clearance : 0)
             .overlay(alignment: .bottomTrailing) {
                 if isShown {
-                    FloatingAddButton()
-                        .padding(FloatingAddButton.margin)
+                    QuickAddButton()
+                        .padding(QuickAddButton.margin)
                         // A search keyboard covers the button rather than
                         // pushing it up over the results.
                         .ignoresSafeArea(.keyboard)
@@ -37,7 +37,7 @@ private struct FloatingAddButtonModifier: ViewModifier {
     }
 }
 
-private struct FloatingAddButton: View {
+private struct QuickAddButton: View {
     static let diameter: CGFloat = 56
     static let margin: CGFloat = 16
     /// What the button takes from the bottom of a page: itself and the margin
@@ -54,14 +54,14 @@ private struct FloatingAddButton: View {
                 .frame(width: Self.diameter, height: Self.diameter)
                 .contentShape(Circle())
         }
-        .modifier(FloatingAddBackground())
+        .modifier(QuickAddBackground())
         .accessibilityLabel("Add Transaction")
-        .accessibilityIdentifier("floatingAdd.button")
+        .accessibilityIdentifier("quickAdd.button")
     }
 }
 
 /// Liquid Glass on iOS 26 and a material with a shadow before that.
-private struct FloatingAddBackground: ViewModifier {
+private struct QuickAddBackground: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content.glassEffect(.regular.interactive(), in: Circle())

@@ -60,7 +60,7 @@ struct ReportsTabView: View {
                         }
                 }
             }
-            .floatingAddButton()
+            .quickAddButton()
             .toolbar(.hidden, for: .navigationBar)
             // Keyed to the open database so the initial load re-runs when
             // the budget finishes opening (launching straight onto this tab

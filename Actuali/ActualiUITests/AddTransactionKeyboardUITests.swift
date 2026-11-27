@@ -96,7 +96,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
     /// enters — so the keyboard must come up without a tap and keypad input
     /// must land in that field.
     @MainActor
-    func testSheetOpenedFromTheFloatingButtonFocusesTheAmount() {
+    func testSheetOpenedFromQuickAddFocusesTheAmount() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "0"]
         app.launch()
