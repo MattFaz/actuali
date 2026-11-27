@@ -831,6 +831,12 @@ struct AccountsListView: View {
                 TopBoxLayout.verticalContentMargin,
                 for: .scrollContent
             )
+            // Before the sheets below, not after them: a sheet takes on the
+            // refresh action of the view it is attached to, and then a swipe
+            // down refreshes instead of closing the sheet.
+            .refreshable {
+                await budgetStore.sync()
+            }
             // The split layout's detail column carries its own.
             .quickAddButton(isVisible: !usesSplitLayout)
             .overlay {
@@ -1072,9 +1078,6 @@ struct AccountsListView: View {
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task { await loadMonthSummary() }
-            }
-            .refreshable {
-                await budgetStore.sync()
             }
             .overlay {
                 if budgetStore.isLoading {

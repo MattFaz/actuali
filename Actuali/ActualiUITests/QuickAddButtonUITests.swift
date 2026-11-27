@@ -66,6 +66,56 @@ final class QuickAddButtonUITests: XCTestCase {
                       "the form should open on the account Quick Add was tapped in, not \(account.label)")
     }
 
+    /// A swipe down must close the form. Before the pull-to-refresh action
+    /// moved above the sheets, the form inherited it and the swipe synced the
+    /// account instead.
+    @MainActor
+    func testSwipingTheFormDownClosesItOnAnAccountScreen() {
+        let app = launch(initialTab: 0)
+
+        let accountRow = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'Chase Checking'")
+        ).firstMatch
+        XCTAssertTrue(accountRow.waitForExistence(timeout: 10), "Chase Checking row not found")
+        accountRow.tap()
+
+        openAddTransactionSheet(in: app)
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5), "the keypad stayed up")
+
+        dragSheetContentDown(from: app.buttons["addTransaction.category"], in: app)
+        XCTAssertTrue(app.buttons["addTransaction.close"].waitForNonExistence(timeout: 10),
+                      "the swipe refreshed the account instead of closing the form")
+    }
+
+    /// The Accounts list is pull-to-refresh too, and its sheets had the same
+    /// problem.
+    @MainActor
+    func testSwipingASheetDownClosesItOnTheAccountsList() {
+        let app = launch(initialTab: 0)
+
+        let addAccount = app.navigationBars.buttons["Add Account"]
+        XCTAssertTrue(addAccount.waitForExistence(timeout: 20), "Add Account button not found")
+        addAccount.tap()
+        let sheet = app.navigationBars["Add Account"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "Add Account sheet did not open")
+
+        let firstRow = app.cells.firstMatch
+        XCTAssertTrue(firstRow.waitForExistence(timeout: 10), "the Add Account sheet has no rows")
+        dragSheetContentDown(from: firstRow, in: app)
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 10),
+                      "the swipe refreshed the list instead of closing the sheet")
+    }
+
+    /// A drag that starts on the sheet's scrolling content, not on its bar: a
+    /// drag on the bar closes a sheet whether or not its content refreshes.
+    @MainActor
+    private func dragSheetContentDown(from element: XCUIElement, in app: XCUIApplication) {
+        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
+        start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .default, thenHoldForDuration: 0.1)
+    }
+
     @MainActor
     func testButtonShowsOnAllAccountsUntilTransactionsAreBeingSelected() {
         let app = launch(initialTab: 0)
