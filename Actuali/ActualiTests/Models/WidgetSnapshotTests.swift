@@ -1889,7 +1889,10 @@ struct WidgetSnapshotTests {
         // carryover counts as overspent even with no spending this month.
         let overspent = snapshot.overspentCategories
         #expect(overspent.map(\.id) == ["dining", "gas", "pets", "gifts", "fun"])
-        #expect(overspent.allSatisfy { $0.isOverspent })
+        // Outside #expect: the macro splits `allSatisfy(\.isOverspent)` into a
+        // forwarded call that loses `rethrows` and fails to compile.
+        let allOverspent = overspent.allSatisfy(\.isOverspent)
+        #expect(allOverspent)
         // Small shows the full count; Medium the first four.
         #expect(overspent.count == 5)
         #expect(overspent.prefix(overspentMediumLimit).map(\.id) == ["dining", "gas", "pets", "gifts"])
