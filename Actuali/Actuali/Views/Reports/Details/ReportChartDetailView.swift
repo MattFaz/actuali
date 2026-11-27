@@ -12,10 +12,19 @@ struct ReportChartDetailView: View {
     @State private var hidden: Set<Int> = []
     @State private var showsTotal = true
 
-    /// The interval the readout and the lists describe: the one under the
-    /// finger, otherwise the one the card leads with.
-    private var shownInterval: Int {
-        selected.flatMap(detail.intervals.firstIndex(of:)) ?? detail.leadInterval
+    /// The interval the readout and the lists describe: the one last
+    /// scrubbed to, otherwise the one the card leads with, or nil for the
+    /// whole range where the intervals add up.
+    private var shownInterval: Int? {
+        selected.flatMap(detail.intervals.firstIndex(of:)) ?? (detail.sumsOverRange ? nil : detail.leadInterval)
+    }
+
+    private var shownLabel: String {
+        shownInterval.map { detail.intervals[$0] } ?? detail.spanLabel ?? ReportStrings.text("Total", locale: locale)
+    }
+
+    private var shownStats: [ReportChartDetail.Stat] {
+        detail.stats(at: shownInterval)
     }
 
     /// A list under the chart, where the numbers can't sit beside the headline.
@@ -25,8 +34,10 @@ struct ReportChartDetailView: View {
         if detail.series.count > 1 {
             return detail.showsInlineLegend ? .none : .series
         }
-        // One series with figures for the range or a band needs no table.
-        return detail.stats.isEmpty && detail.band == nil ? .intervals : .none
+        // One series with a band, or with figures the headline doesn't
+        // already carry, needs no table. Judged with nothing selected, so
+        // the list holds still while the chart is scrubbed.
+        return detail.stats(at: nil).isEmpty && detail.band == nil ? .intervals : .none
     }
 
     var body: some View {
@@ -41,29 +52,55 @@ struct ReportChartDetailView: View {
                     .pickerStyle(.segmented)
                     .accessibilityIdentifier("reportDetail.chartView")
                 }
-                readout
-                chart
-                Text(ReportStrings.text("Drag across the chart to inspect a point.", locale: locale))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-                switch breakdown {
-                case .series: seriesList
-                case .intervals: intervalList
-                case .none: EmptyView()
+                Group {
+                    readout
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(alignment: .topTrailing) { clearSelection }
+                    chart
+                    switch breakdown {
+                    case .series: seriesList
+                    case .intervals: intervalList
+                    case .none: EmptyView()
+                    }
+                    if !shownStats.isEmpty {
+                        statsList
+                    }
+                    if !detail.events.isEmpty {
+                        eventsList
+                    }
                 }
-                if !detail.stats.isEmpty {
-                    statsList
-                }
-                if !detail.events.isEmpty {
-                    eventsList
-                }
+                .loadingPlaceholder()
             }
             .padding()
+        }
+        .onReportRangeChange {
+            selected = nil
+            hidden = []
+            showsTotal = true
         }
         .navigationTitle(detail.name)
         .navigationBarTitleDisplayMode(.large)
         .toolbar(.visible, for: .navigationBar)
+    }
+
+    /// Sits at the readout's corner, beside the interval it names: the
+    /// readout is where a selection shows.
+    @ViewBuilder private var clearSelection: some View {
+        // A range change can leave an interval that is gone.
+        if selected.flatMap(detail.intervals.firstIndex(of:)) != nil {
+            Button {
+                selected = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 44, height: 44, alignment: .topTrailing)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(ReportStrings.text("Clear selection", locale: locale))
+            .accessibilityIdentifier("reportDetail.clearSelection")
+        }
     }
 
     // MARK: - Readout
@@ -81,13 +118,15 @@ struct ReportChartDetailView: View {
         var items: [LegendItem] = []
         if detail.showsInlineLegend {
             items += detail.series.indices.map {
-                LegendItem(id: $0, name: detail.series[$0].name, value: detail.series[$0].values[shownInterval],
+                LegendItem(id: $0, name: detail.series[$0].name, value: detail.value(of: $0, at: shownInterval),
                            color: detail.series[$0].color)
             }
         }
-        if let band = detail.band {
-            items.append(LegendItem(id: -1, name: band.lowerName, value: band.lower[shownInterval], color: .secondary))
-            items.append(LegendItem(id: -2, name: band.upperName, value: band.upper[shownInterval], color: band.color))
+        // A band is a range of levels, so it reads at one interval, not
+        // beside a total for the range.
+        if let band = detail.band, let interval = shownInterval {
+            items.append(LegendItem(id: -1, name: band.lowerName, value: band.lower[interval], color: .secondary))
+            items.append(LegendItem(id: -2, name: band.upperName, value: band.upper[interval], color: band.color))
         }
         return items
     }
@@ -101,7 +140,7 @@ struct ReportChartDetailView: View {
                     .padding(.bottom, 8)
             }
             if let value = detail.readoutValue(at: shownInterval, hiding: hidden) {
-                Text(detail.intervals[shownInterval])
+                Text(shownLabel)
                     .font(.footnote.weight(.semibold))
                     .textCase(.uppercase)
                     .foregroundStyle(.secondary)
@@ -119,16 +158,15 @@ struct ReportChartDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Text(detail.intervals[shownInterval])
+                Text(shownLabel)
                     .font(.title2.weight(.bold))
             }
             if !inlineLegend.isEmpty {
-                // Side by side when they fit, stacked when they don't.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 16) { legendItems }
-                    VStack(alignment: .leading, spacing: 4) { legendItems }
-                }
-                .padding(.top, 6)
+                // Always stacked. Whether they fit side by side depends on
+                // the amounts, so the chart below would jump as a range
+                // loads or the selection moves.
+                VStack(alignment: .leading, spacing: 4) { legendItems }
+                    .padding(.top, 6)
             }
         }
         .accessibilityElement(children: .combine)
@@ -158,32 +196,38 @@ struct ReportChartDetailView: View {
         let total = showsTotal && detail.canShowTotal
         let shown = total ? detail.totalled(hiding: hidden) : detail
         let figures = shown.figures(hiding: total ? [] : hidden)
-        return ReportDetailChart(detail: shown, hidden: total ? [] : hidden, selection: $selected)
-            // The interval list below already reads every figure. The other
-            // lists carry one interval, and VoiceOver can't drag to move it,
-            // so there the chart stands in for the whole table.
-            .accessibilityHidden(breakdown == .intervals || budgetStore.hideBalances)
-            .accessibilityRepresentation {
-                // The representation is always built, so apply the hidden rule
-                // here too: where the interval list already reads every
-                // figure, the chart must not read them again.
-                if breakdown != .intervals, !budgetStore.hideBalances {
-                    VStack(alignment: .leading) {
-                        ForEach(figures.indices, id: \.self) { index in
-                            Text(verbatim: [figures[index].series, figures[index].interval, amount(figures[index].value)]
-                                .joined(separator: ", "))
-                        }
+        return ReportDetailChart(detail: shown, hidden: total ? [] : hidden, selection: Binding(
+            get: { selected },
+            set: { selected = ReportDetailChart.pinned(selected, scrubbedTo: $0) }
+        ))
+        .sensoryFeedback(.selection, trigger: selected)
+        .loadingSkeleton(detail.style == .lines || detail.style == .area ? .line : .bars)
+        // The interval list below already reads every figure. The other
+        // lists carry one interval, and VoiceOver can't drag to move it,
+        // so there the chart stands in for the whole table.
+        .accessibilityHidden(breakdown == .intervals || budgetStore.hideBalances)
+        .accessibilityRepresentation {
+            // The representation is always built, so apply the hidden rule
+            // here too: where the interval list already reads every
+            // figure, the chart must not read them again.
+            if breakdown != .intervals, !budgetStore.hideBalances {
+                VStack(alignment: .leading) {
+                    ForEach(figures.indices, id: \.self) { index in
+                        Text(verbatim: [figures[index].series, figures[index].interval, amount(figures[index].value)]
+                            .joined(separator: ", "))
                     }
                 }
             }
+        }
     }
 
     // MARK: - Lists
 
     private var seriesList: some View {
         VStack(spacing: 0) {
-            ForEach(detail.series.indices, id: \.self) { index in
-                if index > 0 {
+            let ranked = detail.rankedSeries
+            ForEach(ranked, id: \.self) { index in
+                if index != ranked.first {
                     Divider()
                 }
                 if detail.canHideSeries {
@@ -213,8 +257,14 @@ struct ReportChartDetailView: View {
             Text(series.name)
                 .lineLimit(1)
             Spacer()
-            Text(isHidden ? ReportStrings.text("Hidden", locale: locale) : amount(series.values[shownInterval]))
+            Text(isHidden ? ReportStrings.text("Hidden", locale: locale) : amount(detail.value(of: index, at: shownInterval)))
                 .monospacedDigit()
+            // Shares give the proportions away, so they hide with the amounts.
+            if !budgetStore.hideBalances, let share = detail.share(of: index, at: shownInterval, hiding: hidden) {
+                Text(share.formatted(.percent.precision(.fractionLength(0)).locale(locale)))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
         }
         .font(.subheadline)
         .foregroundStyle(isHidden ? .secondary : .primary)
@@ -239,7 +289,7 @@ struct ReportChartDetailView: View {
 
     private var statsList: some View {
         VStack(spacing: 0) {
-            ForEach(Array(detail.stats.enumerated()), id: \.offset) { index, stat in
+            ForEach(Array(shownStats.enumerated()), id: \.offset) { index, stat in
                 if index > 0 {
                     Divider()
                 }

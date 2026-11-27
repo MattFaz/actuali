@@ -26,6 +26,9 @@ struct ReportChartDetail: Equatable {
 
         var label: String
         var value: Value
+        /// The sum over the range, which the headline already shows until
+        /// an interval is picked.
+        var isRangeTotal = false
     }
 
     struct Event: Equatable {
@@ -102,9 +105,20 @@ struct ReportChartDetail: Equatable {
     /// What the page says above the headline: the report's own caption, or
     /// the dates the chart spans where the axis only names months.
     var rangeCaption: String {
-        guard caption.isEmpty, axisLabels != nil, let first = intervals.first, let last = intervals.last else { return caption }
-        // One interval has no span; "Oct '26 – Oct '26" reads as a bug.
-        return first == last ? first : first + " – " + last
+        caption.isEmpty ? span ?? "" : caption
+    }
+
+    /// What labels a headline that sums the whole range: the dates, where
+    /// the caption above names the range only in words ("Last 6 months").
+    /// nil where the caption already is the dates, or the axis isn't dates.
+    var spanLabel: String? {
+        caption.isEmpty ? nil : span
+    }
+
+    private var span: String? {
+        guard axisLabels != nil, let first = intervals.first, let last = intervals.last else { return nil }
+        // One interval has no span; "Oct '26 - Oct '26" reads as a bug.
+        return first == last ? first : first + " - " + last
     }
 
     /// Two or three series that can't be switched off read better beside the
@@ -141,10 +155,45 @@ struct ReportChartDetail: Equatable {
         }
     }
 
-    func readoutValue(at interval: Int, hiding hidden: Set<Int> = []) -> Double? {
+    /// Bars are amounts per interval, so they add up over the range; a line
+    /// or an area is a level at each interval and doesn't.
+    var sumsOverRange: Bool {
+        style == .stackedBars || style == .groupedBars
+    }
+
+    /// The figures listed under the chart, without the one the headline is
+    /// already showing.
+    func stats(at interval: Int?) -> [Stat] {
+        stats.filter { !($0.isRangeTotal && sumsOverRange && interval == nil) }
+    }
+
+    /// A series' figure at an interval, or over the whole range when nil.
+    func value(of series: Int, at interval: Int?) -> Double {
+        interval.map { self.series[series].values[$0] } ?? self.series[series].values.reduce(0, +)
+    }
+
+    /// The order of the list under the chart: largest first, over the range
+    /// for bars and at the latest interval for levels. Not by the selected
+    /// interval, so the rows hold still while the chart is scrubbed.
+    var rankedSeries: [Int] {
+        let size = series.indices.map { abs(value(of: $0, at: sumsOverRange ? nil : intervals.indices.last)) }
+        return series.indices.sorted { size[$0] != size[$1] ? size[$0] > size[$1] : $0 < $1 }
+    }
+
+    /// A series' part of the headline sum; nil where there is no sum, or
+    /// mixed signs leave no whole to be a part of.
+    func share(of series: Int, at interval: Int?, hiding hidden: Set<Int> = []) -> Double? {
+        guard readout == .total, !hidden.contains(series),
+              let total = readoutValue(at: interval, hiding: hidden), total != 0 else { return nil }
+        let share = value(of: series, at: interval) / total
+        return (0...1).contains(share) ? share : nil
+    }
+
+    /// The headline at an interval, or over the whole range when nil.
+    func readoutValue(at interval: Int?, hiding hidden: Set<Int> = []) -> Double? {
         switch readout {
-        case .total: series.indices.filter { !hidden.contains($0) }.reduce(0) { $0 + series[$1].values[interval] }
-        case .difference: series.count > 1 ? series[0].values[interval] - series[1].values[interval] : nil
+        case .total: series.indices.filter { !hidden.contains($0) }.reduce(0) { $0 + value(of: $1, at: interval) }
+        case .difference: series.count > 1 ? value(of: 0, at: interval) - value(of: 1, at: interval) : nil
         case .none: nil
         }
     }
@@ -248,7 +297,8 @@ extension CustomReportData {
                 // Bars are amounts per interval, so they add up; a line or an
                 // area is a level at each interval and doesn't.
                 stats: single && style == .stackedBars
-                    ? [.init(label: ReportStrings.text("Total", locale: locale), value: .amount(table.values[0].reduce(0, +)))] : []
+                    ? [.init(label: ReportStrings.text("Total", locale: locale), value: .amount(table.values[0].reduce(0, +)),
+                             isRangeTotal: true)] : []
             )
             // Lead with today, not a day or month still to come. The dates are
             // UTC midnights, so compare the local day, not the instant.

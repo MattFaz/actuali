@@ -28337,6 +28337,53 @@
         }
       }
     },
+    "YTD" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YTD"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YTD"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YTD"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YTD"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YTD"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YTD"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YTD"
+          }
+        }
+      }
+    },
     "Time range" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28713,49 +28760,49 @@
         }
       }
     },
-    "Drag across the chart to inspect a point." : {
+    "Clear selection" : {
       "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ziehe über das Diagramm, um einen Punkt zu prüfen."
+            "value" : "Auswahl aufheben"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drag across the chart to inspect a point."
+            "value" : "Clear selection"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Arrastra sobre el gráfico para inspeccionar un punto."
+            "value" : "Borrar selección"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Faites glisser sur le graphique pour inspecter un point."
+            "value" : "Effacer la sélection"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trascina sul grafico per esaminare un punto."
+            "value" : "Cancella selezione"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sleep over de grafiek om een punt te bekijken."
+            "value" : "Wis selectie"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Arraste sobre o gráfico para inspecionar um ponto."
+            "value" : "Limpar seleção"
           }
         }
       }

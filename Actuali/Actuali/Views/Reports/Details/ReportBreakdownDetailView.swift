@@ -91,17 +91,20 @@ struct ReportBreakdownDetailView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 ReportRangePicker()
-                readout
+                readout.loadingPlaceholder()
                 if let donut = breakdown.donut {
                     ReportDonutChart(slices: donut.slices, groups: donut.groups, highlighted: selected)
                         .frame(height: 220)
+                        .loadingSkeleton(.donut)
+                        .loadingPlaceholder()
                         // The list below carries the same numbers as text.
                         .accessibilityHidden(true)
                 }
-                list
+                list.loadingPlaceholder()
             }
             .padding()
         }
+        .onReportRangeChange { selected = nil }
         .navigationTitle(breakdown.name)
         .navigationBarTitleDisplayMode(.large)
         .toolbar(.visible, for: .navigationBar)
@@ -124,6 +127,8 @@ struct ReportBreakdownDetailView: View {
                 ?? ReportStrings.text("Total", locale: locale))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                // A long row name must not wrap and push the donut down.
+                .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("reportDetail.readout")

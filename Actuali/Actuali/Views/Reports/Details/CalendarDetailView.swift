@@ -49,7 +49,7 @@ struct CalendarDetailView: View {
             LazyVStack(alignment: .leading, spacing: 16) {
                 ReportRangePicker()
                 if let shown {
-                    readout(shown)
+                    readout(shown).loadingPlaceholder()
                 }
                 ForEach(data.months.indices.reversed(), id: \.self) { month in
                     CalendarMonthGridView(
@@ -63,10 +63,12 @@ struct CalendarDetailView: View {
                     .padding()
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .loadingPlaceholder()
                 }
             }
             .padding()
         }
+        .onReportRangeChange { selected = nil }
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.large)
         .toolbar(.visible, for: .navigationBar)
@@ -79,6 +81,8 @@ struct CalendarDetailView: View {
             Text(CalendarWidgetFormatting.dayTitle(monthStart: month.monthStart, day: cell.dayOfMonth ?? 1, locale: locale))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+            // Equal columns: where Expenses starts doesn't depend on how
+            // wide the income is.
             HStack(spacing: 24) {
                 amount("Income", cents: cell.incomeCents, color: .green)
                 amount("Expenses", cents: cell.expenseCents, color: .red)
@@ -96,7 +100,10 @@ struct CalendarDetailView: View {
             Text(budgetStore.displayBalance(cents, locale: locale))
                 .font(.title2.weight(.bold))
                 .monospacedDigit()
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
                 .foregroundStyle(cents == 0 ? Color.primary : color)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

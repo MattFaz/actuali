@@ -33,7 +33,10 @@ struct ReportDetailTests {
         // One series: nothing to switch off.
         #expect(!signed.canHideSeries)
         // Bars are amounts per interval, so the range has a total.
-        #expect(signed.stats == [.init(label: "Total", value: .amount(-2))])
+        #expect(signed.stats == [.init(label: "Total", value: .amount(-2), isRangeTotal: true)])
+        // The headline is that total until an interval is picked.
+        #expect(signed.stats(at: nil).isEmpty)
+        #expect(signed.stats(at: 0) == signed.stats)
         #expect(stackedDetail.stats.isEmpty)
         #expect(report(.area(bars)).chartDetail()?.style == .area)
     }
@@ -191,6 +194,15 @@ struct ReportDetailTests {
         #expect(Page.shown(initial: 1, ranged: (.sixMonths, 6), range: .sixMonths) == 6)
         // The new range is still computing: not the old range's value.
         #expect(Page.shown(initial: 1, ranged: (.sixMonths, 6), range: .year) == 1)
+        // ...and the page says so until the new one arrives.
+        #expect(Page.isPending(ranged: (.sixMonths, 6), range: .year))
+        #expect(Page.isPending(ranged: nil, range: .year))
+        #expect(!Page.isPending(ranged: (.sixMonths, 6), range: .sixMonths))
+        #expect(!Page.isPending(ranged: (.sixMonths, 6), range: nil))
+        // A new range waits out one sweep of the shimmer; Reduce Motion has none.
+        #expect(Page.holdsPlaceholders(ranged: nil, range: .year, reduceMotion: false))
+        #expect(!Page.holdsPlaceholders(ranged: nil, range: .year, reduceMotion: true))
+        #expect(!Page.holdsPlaceholders(ranged: (.year, 12), range: .year, reduceMotion: false))
     }
 
     @Test func calendarDayIdentifiersNameTheirMonth() {
@@ -238,6 +250,14 @@ struct ReportDetailTests {
         #expect(ReportDetailChart.interval(at: 0, in: []) == nil)
     }
 
+    @Test func liftingTheFingerKeepsTheScrubbedInterval() {
+        #expect(ReportDetailChart.pinned(nil, scrubbedTo: "Feb") == "Feb")
+        #expect(ReportDetailChart.pinned("Feb", scrubbedTo: "Mar") == "Mar")
+        // Charts reports nil when the gesture ends.
+        #expect(ReportDetailChart.pinned("Mar", scrubbedTo: nil) == "Mar")
+        #expect(ReportDetailChart.pinned(nil, scrubbedTo: nil) == nil)
+    }
+
     @Test func repeatedLabelsAreNotChartable() {
         // A string axis merges equal labels into one position.
         let bars = [CustomReportData.Bar(label: "Rent", valueUnits: 5), .init(label: "Rent", valueUnits: 7)]
@@ -257,6 +277,49 @@ struct ReportDetailTests {
         var difference = total
         difference.readout = .difference
         #expect(difference.readoutValue(at: 1) == -220)
+
+        // With no interval, bars add up over the range; levels don't.
+        #expect(total.sumsOverRange)
+        #expect(total.value(of: 0, at: nil) == 200)
+        #expect(total.readoutValue(at: nil) == 266)
+        #expect(total.readoutValue(at: nil, hiding: [0]) == 66)
+        #expect(difference.readoutValue(at: nil) == 140)
+        var line = total
+        line.style = .lines
+        #expect(!line.sumsOverRange)
+
+        // The summed headline is labelled with the dates the range spans,
+        // where the caption names it in words and the axis is dates.
+        var dated = total
+        #expect(dated.spanLabel == nil)
+        dated.axisLabels = ["Jan", "", ""]
+        dated.caption = "Last 3 months"
+        #expect(dated.rangeCaption == "Last 3 months")
+        #expect(dated.spanLabel == "Jan - Mar")
+        dated.caption = ""
+        #expect(dated.rangeCaption == "Jan - Mar")
+        #expect(dated.spanLabel == nil)
+
+        // The list runs largest first: over the range for bars, at the
+        // latest interval for levels. Equal sizes keep the legend's order.
+        #expect(total.rankedSeries == [0, 1, 2])
+        var reordered = total
+        reordered.series[2].values = [0, 0, 900]
+        reordered.series[1].values = [50, 50, 100]
+        #expect(reordered.rankedSeries == [2, 0, 1])
+        reordered.style = .lines
+        #expect(reordered.rankedSeries == [2, 0, 1])
+        reordered.series[0].values = [0, 0, 100]
+        #expect(reordered.rankedSeries == [2, 0, 1])
+
+        // A share is a part of the headline sum, so only sums have one.
+        #expect(total.share(of: 1, at: 2) == 30.0 / 333)
+        #expect(total.share(of: 1, at: 2, hiding: [0]) == 30.0 / 33)
+        #expect(total.share(of: 1, at: 2, hiding: [1]) == nil)
+        #expect(total.share(of: 1, at: nil) == 60.0 / 266)
+        // Mixed signs leave no whole to be a part of.
+        #expect(total.share(of: 0, at: 1) == nil)
+        #expect(difference.share(of: 0, at: 2) == nil)
         // Three series that can't be switched off sit beside the headline; four go in a list.
         #expect(difference.showsInlineLegend)
         difference.series.append(difference.series[0])
@@ -411,7 +474,7 @@ struct ReportDetailTests {
         #expect(detail.intervals == ["Oct '26", "Nov '26"])
         // The axis names the months; the dates they span lead the page.
         #expect(detail.axisLabels == ["Oct", "Nov"])
-        #expect(detail.rangeCaption == "Oct '26 – Nov '26")
+        #expect(detail.rangeCaption == "Oct '26 - Nov '26")
         #expect(detail.series.map(\.values) == [[1000, 1250.5]])
         #expect(detail.readoutValue(at: 1) == 1250.5)
         // A balance is a level, so the range is summed up as change, high and low.
@@ -561,6 +624,76 @@ struct ReportDetailTests {
         }
     }
 
+    @Test func yearToDateAndAllRunToTheCurrentMonth() {
+        let today = utc(2026, 11, 13)
+        let (yearStart, yearEnd) = TimeFrame.resolve(ReportDetailRange.yearToDate.timeFrame(asOf: today), asOf: today)
+        #expect(yearStart == utc(2026, 1))
+        #expect(yearEnd == today)
+
+        // All starts at the first transaction's month, skipping unset dates.
+        let earliest = ReportDetailRange.earliestMonth(dates: [20_240_315, 0, 20_230_702, 20_261_101])
+        #expect(earliest == "2023-07")
+        #expect(ReportDetailRange.earliestMonth(dates: [0]) == nil)
+        let (allStart, _) = TimeFrame.resolve(ReportDetailRange.all.timeFrame(asOf: today, earliestMonth: earliest), asOf: today)
+        #expect(allStart == utc(2023, 7))
+        // No transactions: this month, not `TimeFrame`'s 1900.
+        let (emptyStart, _) = TimeFrame.resolve(ReportDetailRange.all.timeFrame(asOf: today), asOf: today)
+        #expect(emptyStart == utc(2026, 11))
+    }
+
+    /// One month is one point on a monthly chart, which the Net Worth and
+    /// Age of Money pages can't draw. The other widgets keep the real span.
+    @Test func lineAndAreaWidgetsNeverGetASingleMonth() {
+        // Year to date, in January.
+        let january = utc(2027, 1, 15)
+        func start(_ range: ReportDetailRange, twoMonths: Bool) -> Date {
+            TimeFrame.resolve(range.timeFrame(asOf: january, earliestMonth: "2027-01", twoMonths: twoMonths), asOf: january).0
+        }
+        #expect(start(.yearToDate, twoMonths: true) == utc(2026, 12))
+        #expect(start(.yearToDate, twoMonths: false) == utc(2027, 1))
+        // A history that began this month.
+        #expect(start(.all, twoMonths: true) == utc(2026, 12))
+        #expect(start(.all, twoMonths: false) == utc(2027, 1))
+
+        #expect(NetWorthMeta.chartNeedsTwoMonths)
+        #expect(AgeOfMoneyMeta.chartNeedsTwoMonths)
+        #expect(!CashFlowMeta.chartNeedsTwoMonths)
+        let meta = NetWorthMeta(name: nil, timeFrame: nil, conditions: nil, conditionsOp: nil, interval: .monthly, mode: nil)
+        for range in ReportDetailRange.allCases {
+            let data = NetWorthEngine.compute(meta: meta.ranged(range, asOf: january, earliestMonth: "2027-01"),
+                                              transactions: [], today: january)
+            #expect(data.chartDetail(name: "Net Worth", locale: locale) != nil)
+        }
+    }
+
+    /// A whole history in days is thousands of points to compute and draw.
+    @Test func allCoarsensDaysAndWeeksToMonths() {
+        let today = utc(2026, 11, 13)
+        func ranged(_ interval: NetWorthMeta.Interval, _ range: ReportDetailRange) -> NetWorthMeta.Interval? {
+            NetWorthMeta(name: nil, timeFrame: nil, conditions: nil, conditionsOp: nil, interval: interval, mode: nil)
+                .ranged(range, asOf: today).interval
+        }
+        #expect(ranged(.daily, .all) == .monthly)
+        #expect(ranged(.weekly, .all) == .monthly)
+        #expect(ranged(.yearly, .all) == .yearly)
+        // A bounded range keeps the interval it was saved with.
+        #expect(ranged(.daily, .year) == .daily)
+
+        func ranged(_ interval: String, _ range: ReportDetailRange) -> String {
+            CustomReportConfig(
+                id: "r", name: "R", mode: "time", groupBy: "Category", balanceType: "Payment",
+                interval: interval, graphType: "StackedBarGraph", dateRange: "This month", dateStatic: true,
+                startDate: nil, endDate: nil, includeCurrent: true, showEmpty: false, showOffBudget: false,
+                showHidden: false, showUncategorized: false, sortBy: "desc", showTrendLines: false,
+                trimIntervals: false, conditions: nil, conditionsOp: "and"
+            ).ranged(range).interval
+        }
+        #expect(ranged("Daily", .all) == "Monthly")
+        #expect(ranged("Weekly", .all) == "Monthly")
+        #expect(ranged("Yearly", .all) == "Yearly")
+        #expect(ranged("Daily", .year) == "Daily")
+    }
+
     @Test func rangingAMetaReplacesOnlyItsTimeFrame() {
         let meta = NetWorthMeta(name: "Net Worth", timeFrame: WidgetTimeFrame(start: "2020-01", end: "2020-02", mode: .static),
                                 conditions: nil, conditionsOp: "and", interval: .monthly, mode: .stacked)
@@ -581,7 +714,9 @@ struct ReportDetailTests {
             dateRange: range.customReportDateRange, dateStatic: false, startDate: nil, endDate: nil,
             includeCurrent: true, earliest: earliest, latest: today, today: today, firstDayOfWeekIdx: 0
         )
-        #expect(start > earliest)
+        // All is the one range meant to reach back to the first transaction.
+        #expect(range == .all ? start == earliest : start > earliest)
+        #expect(range != .all || range.customReportDateRange == "All time")
     }
 
     // MARK: - Sankey
