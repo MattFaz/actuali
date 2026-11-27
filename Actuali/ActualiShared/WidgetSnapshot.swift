@@ -120,6 +120,26 @@ struct WidgetSnapshot: Codable, Equatable {
     /// Income, transfers and off-budget accounts are excluded.
     var largestTransactions: [WidgetTransaction]?
 
+    // MARK: - Daily rates
+
+    /// Days of the month so far and still to come; today counts in both, so
+    /// daysRemaining is 1 on the last day, never 0.
+    var daysElapsed: Int?
+    var daysRemaining: Int?
+    var averageSpendPerDay: Int?
+    var formattedAverageSpendPerDay: String?
+    /// Remaining budget (floored at 0) over daysRemaining. nil with nothing
+    /// budgeted.
+    var safeDailyRate: Int?
+    var formattedSafeDailyRate: String?
+    /// The Daily Burn Rate widget's Large and Extra Large Portrait extras:
+    /// the month's spending at the current pace, and both rates over a week.
+    /// Formatted only, as the widget shows them and colours nothing by them.
+    var formattedProjectedSpending: String?
+    var formattedAverageSpendPerWeek: String?
+    /// nil with nothing budgeted, like formattedSafeDailyRate.
+    var formattedSafeWeeklyRate: String?
+
     /// Same format as BudgetStore's yearMonthFormatter — the two must agree
     /// or the widget would flag every snapshot as stale.
     private static let yearMonthFormatter: DateFormatter = {
@@ -165,6 +185,13 @@ struct WidgetSnapshot: Codable, Equatable {
     var isOverbudget: Bool {
         guard !balancesHidden, let totalSpent, let totalBudgeted, totalBudgeted > 0 else { return false }
         return abs(totalSpent) > totalBudgeted
+    }
+
+    /// Share of the month gone, today included (1 on the last day). Days
+    /// carry no amount, so it stays when hidden. nil without the day counts.
+    var monthProgress: Double? {
+        guard let daysElapsed, let daysRemaining else { return nil }
+        return Double(daysElapsed) / Double(daysElapsed + daysRemaining - 1)
     }
 
     /// Categories by spending this month, most spent first, capped at 12.

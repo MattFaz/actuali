@@ -132,6 +132,9 @@ extension WidgetSnapshot {
             hiddenCategoryIds: Set(budgetMonth.map { $0.hiddenCategoryBudgets.map(\.categoryId) + $0.hiddenIncomeCategories.map(\.categoryId) } ?? []),
             format: format
         )
+        if let budgetMonth {
+            snapshot.addDailyRates(budgetMonth, now: generatedAt, format: format)
+        }
         return snapshot
     }
 
@@ -179,6 +182,36 @@ extension WidgetSnapshot {
             .sorted(by: hidden ? newestFirst : { ($0.amount, -$0.date) < ($1.amount, -$1.date) })
             .prefix(12)
             .map(row)
+    }
+
+    /// Only for the calendar month `now` falls in; a stale month has no
+    /// meaningful "today". Integer division rounds both rates down.
+    private mutating func addDailyRates(_ budgetMonth: BudgetMonth, now: Date, format: (Int) -> String) {
+        guard isForMonth(containing: now),
+              let daysInMonth = Calendar.current.range(of: .day, in: .month, for: now)?.count
+        else { return }
+        let elapsed = Calendar.current.component(.day, from: now)
+        let remaining = daysInMonth - elapsed + 1
+        daysElapsed = elapsed
+        daysRemaining = remaining
+        let average = max(-budgetMonth.totalSpent, 0) / elapsed
+        let safe = budgetMonth.totalBudgeted > 0
+            ? max(budgetMonth.totalBudgeted + budgetMonth.totalSpent, 0) / remaining
+            : nil
+        if balancesHidden {
+            averageSpendPerDay = 0
+            safeDailyRate = 0
+        } else {
+            averageSpendPerDay = average
+            safeDailyRate = safe
+        }
+        formattedAverageSpendPerDay = format(average)
+        formattedSafeDailyRate = balancesHidden ? format(0) : safe.map(format)
+        // From the unrounded spend, so the projection doesn't multiply the
+        // average's rounding by the month's length.
+        formattedProjectedSpending = format(max(-budgetMonth.totalSpent, 0) * daysInMonth / elapsed)
+        formattedAverageSpendPerWeek = format(average * 7)
+        formattedSafeWeeklyRate = balancesHidden ? format(0) : safe.map { format($0 * 7) }
     }
 
     /// Extracts the next upcoming bills from schedules. Keeps it simple:

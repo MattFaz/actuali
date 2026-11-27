@@ -12,6 +12,7 @@ struct ActualiWidgetsBundle: WidgetBundle {
         SpendingSummaryWidget()
         RecentTransactionsWidget()
         TopSpendingWidget()
+        DailyBurnRateWidget()
         LargestTransactionsWidget()
         OverspentAlertsWidget()
         QuickAddTransactionWidget()

@@ -556,6 +556,64 @@ private extension TopSpendingEntry {
     TopSpendingEntry.previewSample(count: 8, balancesHidden: true)
 }
 
+// MARK: - DailyBurnRate
+
+private extension DailyBurnRateEntry {
+    /// Preview-only: four-digit amounts so the scale-down shows up.
+    static func previewSample(overbudget: Bool = false, balancesHidden: Bool = false) -> DailyBurnRateEntry {
+        let mask = "\u{2022}\u{2022}\u{2022}\u{2022}"
+        return DailyBurnRateEntry(
+            date: .now.addingTimeInterval(-300),
+            formattedAverageSpendPerDay: balancesHidden ? mask : "$1,234.56",
+            formattedSafeDailyRate: balancesHidden ? mask : (overbudget ? "$0.00" : "$987.65"),
+            isOverbudget: overbudget && !balancesHidden,
+            formattedProjectedSpending: balancesHidden ? mask : "$37,036.80",
+            formattedAverageSpendPerWeek: balancesHidden ? mask : "$8,641.92",
+            formattedSafeWeeklyRate: balancesHidden ? mask : (overbudget ? "$0.00" : "$6,913.55"),
+            daysElapsed: 10,
+            daysRemaining: 21,
+            monthProgress: 10.0 / 30
+        )
+    }
+}
+
+#Preview("Small", as: .systemSmall) {
+    DailyBurnRateWidget()
+} timeline: {
+    DailyBurnRateEntry.previewSample()
+    DailyBurnRateEntry.previewSample(balancesHidden: true)
+    DailyBurnRateEntry(date: .now, formattedAverageSpendPerDay: nil, formattedSafeDailyRate: nil, isOverbudget: false)
+}
+
+#Preview("Medium", as: .systemMedium) {
+    DailyBurnRateWidget()
+} timeline: {
+    DailyBurnRateEntry.previewSample()
+    DailyBurnRateEntry.previewSample(overbudget: true)
+    DailyBurnRateEntry.previewSample(balancesHidden: true)
+    DailyBurnRateEntry(date: .now, formattedAverageSpendPerDay: "$12.00", formattedSafeDailyRate: nil, isOverbudget: false)
+    DailyBurnRateEntry(date: .now, formattedAverageSpendPerDay: nil, formattedSafeDailyRate: nil, isOverbudget: false)
+}
+
+#Preview("Large", as: .systemLarge) {
+    DailyBurnRateWidget()
+} timeline: {
+    DailyBurnRateEntry.previewSample()
+    DailyBurnRateEntry.previewSample(overbudget: true)
+    DailyBurnRateEntry.previewSample(balancesHidden: true)
+    DailyBurnRateEntry(date: .now, formattedAverageSpendPerDay: nil, formattedSafeDailyRate: nil, isOverbudget: false)
+}
+
+@available(iOS 27.0, *)
+#Preview("Extra Large Portrait", as: .systemExtraLargePortrait) {
+    DailyBurnRateWidget()
+} timeline: {
+    DailyBurnRateEntry.previewSample()
+    DailyBurnRateEntry.previewSample(overbudget: true)
+    DailyBurnRateEntry.previewSample(balancesHidden: true)
+    DailyBurnRateEntry(date: .now, formattedAverageSpendPerDay: nil, formattedSafeDailyRate: nil, isOverbudget: false)
+}
+
 // MARK: - LargestTransactions
 
 private extension LargestTransactionsEntry {

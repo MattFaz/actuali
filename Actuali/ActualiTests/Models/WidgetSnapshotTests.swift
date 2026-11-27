@@ -1274,6 +1274,10 @@ struct WidgetSnapshotTests {
         #expect(snapshot.largestTransactions == nil)
         #expect(snapshot.rankedCategories == [])
         #expect(snapshot.categories.first?.spent == nil)
+        #expect(snapshot.averageSpendPerDay == nil)
+        #expect(snapshot.safeDailyRate == nil)
+        #expect(snapshot.daysElapsed == nil)
+        #expect(snapshot.daysRemaining == nil)
     }
 
     // MARK: Largest Transactions widget
@@ -1720,5 +1724,293 @@ struct WidgetSnapshotTests {
             #expect(category.formattedBudgeted == "••••")
             #expect(category.formattedAvailable == "••••")
         }
+    }
+
+    // MARK: - Group 4: Derived rates
+
+    /// Noon on the given day of the current calendar month, so the snapshot
+    /// month and generatedAt agree in any time zone.
+    private func dayOfMonth(_ day: Int, year: Int = 2026, month: Int = 11) -> Date {
+        Calendar.current.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+    }
+
+    private func rateSnapshot(
+        day: Int, budgeted: Int, spent: Int, balancesHidden: Bool = false, month: String = "2026-11"
+    ) -> WidgetSnapshot {
+        let budgetMonth = BudgetMonth(month: month, categoryBudgets: [
+            CategoryBudget(
+                month: month, categoryId: "c1", categoryName: "Groceries",
+                groupId: "g1", groupName: "Everyday", groupSortOrder: 0, categorySortOrder: 0,
+                budgeted: budgeted, spent: spent, available: budgeted + spent, carryover: 0
+            ),
+        ])
+        return WidgetSnapshot.make(
+            from: budgetMonth.categoryBudgets, month: month, balancesHidden: balancesHidden,
+            generatedAt: dayOfMonth(day), format: { balancesHidden ? "••••" : "$\($0)" },
+            budgetMonth: budgetMonth
+        )
+    }
+
+    @Test func ratesMidMonth() {
+        // November has 30 days; on the 10th, 10 days have elapsed and 21
+        // remain, today included in both.
+        let snapshot = rateSnapshot(day: 10, budgeted: 63000, spent: -21000)
+
+        #expect(snapshot.daysElapsed == 10)
+        #expect(snapshot.daysRemaining == 21)
+        #expect(snapshot.averageSpendPerDay == 2100)
+        #expect(snapshot.formattedAverageSpendPerDay == "$2100")
+        #expect(snapshot.safeDailyRate == 2000)
+        #expect(snapshot.formattedSafeDailyRate == "$2000")
+    }
+
+    @Test func ratesOnFirstDayOfMonth() {
+        let snapshot = rateSnapshot(day: 1, budgeted: 30000, spent: -500)
+
+        #expect(snapshot.daysElapsed == 1)
+        #expect(snapshot.daysRemaining == 30)
+        #expect(snapshot.averageSpendPerDay == 500)
+        #expect(snapshot.safeDailyRate == 29500 / 30)
+    }
+
+    @Test func lastDayOfMonthLeavesWholeRemainderForToday() {
+        let snapshot = rateSnapshot(day: 30, budgeted: 30000, spent: -27000)
+
+        #expect(snapshot.daysElapsed == 30)
+        #expect(snapshot.daysRemaining == 1)
+        #expect(snapshot.averageSpendPerDay == 900)
+        #expect(snapshot.safeDailyRate == 3000)
+    }
+
+    @Test func overspentMonthHasZeroSafeRate() {
+        let snapshot = rateSnapshot(day: 15, budgeted: 10000, spent: -20000)
+
+        #expect(snapshot.safeDailyRate == 0)
+        #expect(snapshot.formattedSafeDailyRate == "$0")
+    }
+
+    @Test func netInflowHasZeroAverageSpend() {
+        let snapshot = rateSnapshot(day: 15, budgeted: 10000, spent: 5000)
+
+        #expect(snapshot.averageSpendPerDay == 0)
+    }
+
+    @Test func noBudgetHasNoSafeRateButKeepsAverage() {
+        let snapshot = rateSnapshot(day: 10, budgeted: 0, spent: -5000)
+
+        #expect(snapshot.safeDailyRate == nil)
+        #expect(snapshot.formattedSafeDailyRate == nil)
+        #expect(snapshot.averageSpendPerDay == 500)
+    }
+
+    @Test func noBudgetMonthOrStaleMonthHasNoRates() {
+        let noMonth = WidgetSnapshot.make(
+            from: [], month: "2026-11", balancesHidden: false, generatedAt: dayOfMonth(10), format: { "$\($0)" }
+        )
+        let stale = rateSnapshot(day: 10, budgeted: 10000, spent: -100, month: "2026-10")
+
+        for snapshot in [noMonth, stale] {
+            #expect(snapshot.daysElapsed == nil)
+            #expect(snapshot.daysRemaining == nil)
+            #expect(snapshot.averageSpendPerDay == nil)
+            #expect(snapshot.safeDailyRate == nil)
+        }
+    }
+
+    @Test(arguments: [10000, 0])
+    func hiddenBalancesNeutralizeRates(budgeted: Int) {
+        let snapshot = rateSnapshot(day: 10, budgeted: budgeted, spent: -5000, balancesHidden: true)
+
+        #expect(snapshot.averageSpendPerDay == 0)
+        #expect(snapshot.safeDailyRate == 0)
+        #expect(snapshot.formattedAverageSpendPerDay == "••••")
+        #expect(snapshot.formattedSafeDailyRate == "••••")
+        // Calendar facts carry no amount, so they stay.
+        #expect(snapshot.daysElapsed == 10)
+        #expect(snapshot.daysRemaining == 21)
+    }
+
+    // MARK: Daily Burn Rate widget
+
+    @Test func dailyRatesSurviveStoreRoundTrip() throws {
+        let store = try makeStore()
+        let snapshot = rateSnapshot(day: 10, budgeted: 63000, spent: -21000)
+
+        try store.write(snapshot)
+
+        let read = try #require(store.read())
+        #expect(read.formattedAverageSpendPerDay == "$2100")
+        #expect(read.formattedSafeDailyRate == "$2000")
+        #expect(read.daysElapsed == 10)
+        #expect(read.daysRemaining == 21)
+    }
+
+    /// The widget tints the safe rate red off isOverbudget, not a zero safe
+    /// rate: a budget spent to the cent floors to 0 too without being over.
+    @Test func burnRateRedOnlyWhenOverspent() {
+        let over = rateSnapshot(day: 15, budgeted: 10000, spent: -20000)
+        let exact = rateSnapshot(day: 15, budgeted: 10000, spent: -10000)
+        let under = rateSnapshot(day: 15, budgeted: 10000, spent: -5000)
+
+        #expect(over.safeDailyRate == 0 && over.isOverbudget)
+        #expect(exact.safeDailyRate == 0 && !exact.isOverbudget)
+        #expect(!under.isOverbudget)
+    }
+
+    @Test func hiddenBalancesMuteOverspentBurnRate() {
+        let snapshot = rateSnapshot(day: 15, budgeted: 10000, spent: -20000, balancesHidden: true)
+
+        #expect(!snapshot.isOverbudget)
+        #expect(snapshot.formattedSafeDailyRate == "••••")
+    }
+
+    /// The widget's empty state keys off a missing average: a snapshot from
+    /// before the rates existed, or one without a budget month.
+    @Test func burnRateEmptyWithoutAverage() {
+        #expect(sampleSnapshot().formattedAverageSpendPerDay == nil)
+        let noMonth = WidgetSnapshot.make(
+            from: [], month: "2026-11", balancesHidden: false, generatedAt: dayOfMonth(10), format: { "$\($0)" }
+        )
+        #expect(noMonth.formattedAverageSpendPerDay == nil)
+    }
+
+    // MARK: Daily Burn Rate Large / Extra Large Portrait (#862)
+
+    @Test func burnRateLargeProjectsTheMonthAtTheCurrentPace() {
+        // 21000 over 10 of November's 30 days paces to 63000.
+        let snapshot = rateSnapshot(day: 10, budgeted: 63000, spent: -21000)
+
+        #expect(snapshot.formattedProjectedSpending == "$63000")
+    }
+
+    /// The projection works from the unrounded spend: 1000 over 3 days is
+    /// 333.33 a day, which paces to 10000 over 30 days, not 333 × 30 = 9990.
+    @Test func burnRateProjectionDoesNotCompoundTheRoundedAverage() {
+        let snapshot = rateSnapshot(day: 3, budgeted: 30000, spent: -1000)
+
+        #expect(snapshot.averageSpendPerDay == 333)
+        #expect(snapshot.formattedProjectedSpending == "$10000")
+    }
+
+    @Test func burnRateProjectionOnLastDayIsWhatWasSpent() {
+        let snapshot = rateSnapshot(day: 30, budgeted: 30000, spent: -27000)
+
+        #expect(snapshot.formattedProjectedSpending == "$27000")
+    }
+
+    @Test func burnRateProjectionWithNetInflowIsZero() {
+        let snapshot = rateSnapshot(day: 15, budgeted: 10000, spent: 5000)
+
+        #expect(snapshot.formattedProjectedSpending == "$0")
+    }
+
+    @Test func burnRateExtraLargeShowsBothRatesPerWeek() {
+        let snapshot = rateSnapshot(day: 10, budgeted: 63000, spent: -21000)
+
+        #expect(snapshot.formattedAverageSpendPerWeek == "$14700")
+        #expect(snapshot.formattedSafeWeeklyRate == "$14000")
+    }
+
+    @Test func burnRateWeeklySafeRateIsNilWithNothingBudgeted() {
+        let snapshot = rateSnapshot(day: 10, budgeted: 0, spent: -5000)
+
+        #expect(snapshot.formattedSafeWeeklyRate == nil)
+        #expect(snapshot.formattedAverageSpendPerWeek == "$3500")
+        #expect(snapshot.formattedProjectedSpending == "$15000")
+    }
+
+    @Test func burnRateWeeklySafeRateIsZeroWhenOverspent() {
+        let snapshot = rateSnapshot(day: 15, budgeted: 10000, spent: -20000)
+
+        #expect(snapshot.formattedSafeWeeklyRate == "$0")
+    }
+
+    @Test(arguments: [(1, 1.0 / 30), (10, 10.0 / 30), (30, 1.0)])
+    func burnRateMonthProgressIsDaysElapsedOverDaysInMonth(day: Int, expected: Double) throws {
+        let snapshot = rateSnapshot(day: day, budgeted: 10000, spent: -100)
+
+        let progress = try #require(snapshot.monthProgress)
+        #expect(abs(progress - expected) < 1e-9)
+    }
+
+    /// February 2028 has 29 days, so the denominator follows the month.
+    @Test func burnRateMonthProgressFollowsTheMonthLength() throws {
+        let budgetMonth = spendingMonth("2028-02", spent: -100)
+        let snapshot = WidgetSnapshot.make(
+            from: [], month: "2028-02", balancesHidden: false,
+            generatedAt: dayOfMonth(29, year: 2028, month: 2), format: { "$\($0)" },
+            budgetMonth: budgetMonth
+        )
+
+        #expect(snapshot.daysRemaining == 1)
+        #expect(try #require(snapshot.monthProgress) == 1.0)
+    }
+
+    @Test func burnRateLargeAndExtraLargeHaveNothingWithoutRates() throws {
+        let noMonth = WidgetSnapshot.make(
+            from: [], month: "2026-11", balancesHidden: false, generatedAt: dayOfMonth(10), format: { "$\($0)" }
+        )
+        let stale = rateSnapshot(day: 10, budgeted: 10000, spent: -100, month: "2026-10")
+        let legacy = try JSONDecoder().decode(WidgetSnapshot.self, from: Data("""
+        {"month":"2026-11","generatedAt":0,"balancesHidden":false,"categories":[],
+         "daysElapsed":10,"daysRemaining":21,"formattedAverageSpendPerDay":"$1.00"}
+        """.utf8))
+
+        for snapshot in [noMonth, stale] {
+            #expect(snapshot.formattedProjectedSpending == nil)
+            #expect(snapshot.formattedAverageSpendPerWeek == nil)
+            #expect(snapshot.formattedSafeWeeklyRate == nil)
+            #expect(snapshot.monthProgress == nil)
+        }
+        // Written before the Large fields existed: the amounts are absent, but
+        // month progress only needs the day counts that were already there.
+        #expect(legacy.formattedProjectedSpending == nil)
+        #expect(legacy.formattedAverageSpendPerWeek == nil)
+        #expect(legacy.formattedSafeWeeklyRate == nil)
+        #expect(legacy.monthProgress == 10.0 / 30)
+    }
+
+    @Test func burnRateLargeAndExtraLargeSurviveStoreRoundTrip() throws {
+        let store = try makeStore()
+        try store.write(rateSnapshot(day: 10, budgeted: 63000, spent: -21000))
+
+        let read = try #require(store.read())
+        #expect(read.formattedProjectedSpending == "$63000")
+        #expect(read.formattedAverageSpendPerWeek == "$14700")
+        #expect(read.formattedSafeWeeklyRate == "$14000")
+        #expect(read.monthProgress == 10.0 / 30)
+    }
+
+    @Test(arguments: [10000, 0])
+    func hiddenBalancesMaskLargeAndExtraLargeBurnRateAmounts(budgeted: Int) {
+        let snapshot = rateSnapshot(day: 10, budgeted: budgeted, spent: -5000, balancesHidden: true)
+
+        #expect(snapshot.formattedProjectedSpending == "••••")
+        #expect(snapshot.formattedAverageSpendPerWeek == "••••")
+        // Masked even with nothing budgeted, so a missing rate can't reveal that.
+        #expect(snapshot.formattedSafeWeeklyRate == "••••")
+        // Calendar facts carry no amount, so progress stays.
+        #expect(snapshot.monthProgress == 10.0 / 30)
+    }
+
+    @Test @MainActor func publishMasksLargeAndExtraLargeBurnRateAmountsWhenHidden() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.hideBalances = true
+        defer { budgetStore.hideBalances = false }
+        let month = Calendar.current.dateComponents([.year, .month], from: Date())
+        budgetStore.widgetBudgetMonth = spendingMonth(
+            String(format: "%04d-%02d", month.year ?? 0, month.month ?? 0), spent: -60000
+        )
+
+        budgetStore.publishWidgetSnapshot()
+
+        let snapshot = try #require(store.read())
+        let mask = BudgetStore.hiddenBalanceText
+        #expect(snapshot.formattedProjectedSpending == mask)
+        #expect(snapshot.formattedAverageSpendPerWeek == mask)
+        #expect(snapshot.formattedSafeWeeklyRate == mask)
+        #expect(snapshot.monthProgress != nil)
     }
 }
