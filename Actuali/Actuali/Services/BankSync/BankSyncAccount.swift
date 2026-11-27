@@ -1,9 +1,12 @@
 import Foundation
 
 /// The provider an account's transactions are downloaded from. Synced links
-/// use `accounts.account_sync_source`; FinanceKit links stay device-local.
+/// (SimpleFIN, Enable Banking) use `accounts.account_sync_source`; FinanceKit
+/// links stay device-local.
 enum BankSyncSource: String, Sendable, Equatable {
     case simpleFin
+    /// Upstream's `account_sync_source` string for Enable Banking.
+    case enableBanking
     /// Apple Card / Apple Cash / Savings via FinanceKit. Ours alone because
     /// the identifiers and data only exist in this device's Wallet.
     case financeKit
@@ -34,6 +37,9 @@ struct BankSyncAccount: Sendable, Equatable, Identifiable {
     /// How the latest attempt ended (`accounts.bank_sync_status`): `ok`, or
     /// one of upstream's failure words.
     var status: String?
+    /// The linked bank's name (`banks.name`); Enable Banking sends it to the
+    /// server as `aspspName`.
+    var institutionName: String?
 
     var source: BankSyncSource? {
         BankSyncSource(rawValue: syncSource)
@@ -47,8 +53,20 @@ struct BankSyncAccount: Sendable, Equatable, Identifiable {
     /// What went wrong on the latest attempt and what to do about it, in
     /// upstream's `bank_sync_status` vocabulary. Nil after a clean download.
     var attentionMessage: String? {
-        switch status {
+        Self.attentionMessage(status: status, source: source)
+    }
+
+    /// The source matters because two statuses are worded for SimpleFIN's
+    /// sign-in flow, which is wrong advice for Enable Banking.
+    static func attentionMessage(status: String?, source: BankSyncSource?) -> String? {
+        let enableBanking = source == .enableBanking
+        return switch status {
         case nil, "ok": nil
+        case "not-configured": String(localized: "Bank sync isn't set up on your Actual server.")
+        case "reauth-required" where enableBanking:
+            String(localized: "Your bank's permission has expired. Authorize the bank again to keep syncing.")
+        case "attention-required" where enableBanking:
+            String(localized: "The last bank sync failed. Try again later.")
         case "reauth-required": String(localized: "Your bank needs you to sign in again at SimpleFIN.")
         case "attention-required": String(localized: "Your bank connection needs attention at SimpleFIN.")
         case "rate-limit-exceeded": String(localized: "Too many sync requests today. Try again tomorrow.")

@@ -4290,7 +4290,8 @@ final class BudgetDatabase: Sendable {
                 return []
             }
             return try Row.fetchAll(db, sql: """
-            SELECT id, name, account_id, account_sync_source, offbudget, closed
+            SELECT id, name, account_id, account_sync_source, offbudget, closed,
+                   (SELECT name FROM banks WHERE banks.id = accounts.bank) AS institution_name
             FROM accounts
             WHERE (tombstone = 0 OR tombstone IS NULL)
               AND account_id IS NOT NULL AND account_id <> ''
@@ -4303,7 +4304,8 @@ final class BudgetDatabase: Sendable {
                     externalAccountId: row["account_id"],
                     syncSource: row["account_sync_source"],
                     offBudget: row["offbudget"] == 1,
-                    closed: row["closed"] == 1
+                    closed: row["closed"] == 1,
+                    institutionName: row["institution_name"]
                 )
             }
         }

@@ -66,6 +66,7 @@ struct ServerBankSyncDecodingTests {
         ("ACCOUNT_NEEDS_ATTENTION", "attention-required"),
         ("RATE_LIMIT_EXCEEDED", "rate-limit-exceeded"),
         ("TIMED_OUT", "timed-out"),
+        ("NOT_CONFIGURED", "not-configured"),
         ("SOMETHING_ELSE", "failed"),
     ])
     func mapsErrorCodesOntoActualsStatusVocabulary(_ code: String, _ expected: String) throws {
@@ -124,5 +125,60 @@ struct ServerBankSyncNormalizationTests {
     ])
     func skipsTransactionsMissingWhatAnImportNeeds(_ json: String) throws {
         #expect(try BankSyncCandidate(serverBankSync: transaction(json)) == nil)
+    }
+}
+
+struct EnableBankingDownloadTests {
+    private func decode(_ json: String) throws -> EnableBankingDownload {
+        try JSONDecoder().decode(EnableBankingDownload.self, from: Data(json.utf8))
+    }
+
+    private func transaction(_ json: String) throws -> ServerBankSyncTransaction {
+        try JSONDecoder().decode(ServerBankSyncTransaction.self, from: Data(json.utf8))
+    }
+
+    /// Raw bank fields are spread into each transaction next to the
+    /// normalized ones; they must not trip decoding.
+    @Test func decodesASuccessBodyWithRawBankFieldsAndNoBalance() throws {
+        let decoded = try decode("""
+        {"startingBalance": null,
+         "transactions": {"all": [
+           {"transactionId": "t1", "date": "2024-03-01", "payeeName": "Blue Bottle",
+            "booked": true, "transactionAmount": {"amount": "25.99", "currency": "EUR"},
+            "entry_reference": "ref-1", "transaction_amount": {"amount": "25.99", "currency": "EUR"},
+            "creditor": {"name": "Blue Bottle"}, "credit_debit_indicator": "DBIT", "status": "BOOK"}
+         ]}}
+        """)
+
+        guard case .account(let download) = decoded else {
+            Issue.record("expected .account, got \(decoded)")
+            return
+        }
+        #expect(download.startingBalance == nil)
+        #expect(download.transactions?.all?.count == 1)
+        #expect(download.transactions?.all?.first?.transactionId == "t1")
+    }
+
+    @Test func decodesAnErrorBodyAsAFailure() throws {
+        let decoded = try decode(#"{"error_type":"ITEM_ERROR","error_code":"ITEM_LOGIN_REQUIRED"}"#)
+
+        guard case .failure(let error) = decoded else {
+            Issue.record("expected .failure, got \(decoded)")
+            return
+        }
+        #expect(error.bankSyncStatus == "reauth-required")
+    }
+
+    @Test func readsADebitFromAnEnableBankingShapedTransaction() throws {
+        let candidate = try #require(BankSyncCandidate(serverBankSync: transaction("""
+        {"transactionId": "t1", "date": "2024-03-01", "payeeName": "",
+         "notes": "Coffee beans", "booked": false,
+         "transactionAmount": {"amount": "-25.99", "currency": "EUR"}}
+        """)))
+
+        #expect(candidate.amount == -2599)
+        #expect(!candidate.cleared)
+        // An empty payee name is skipped in favour of the notes.
+        #expect(candidate.payeeName == "Coffee beans")
     }
 }

@@ -46,7 +46,7 @@ struct BudgetStoreBankSyncTests {
     /// The message choice for linked accounts this app can't refresh: only
     /// kick in when nothing supported is linked, name GoCardless when it's
     /// the sole source, and stay generic for anything else upstream writes
-    /// (pluggyai, akahu, enableBanking, or a source from the future).
+    /// (pluggyai, akahu, or a source from the future).
     @Test func unsupportedSourceMessageExplainsOnlyUnrefreshableProviders() {
         func account(source: String) -> BankSyncAccount {
             BankSyncAccount(
@@ -176,10 +176,6 @@ struct BudgetStoreBankSyncTests {
         accountId: String = Self.accountId
     ) async throws -> (BudgetDatabase, URL) {
         try await makeTestDatabase(TestSchema.core + [TestSchema.preferences, TestSchema.rules, """
-        CREATE TABLE banks (
-            id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
-        )
-        """, """
         INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order,
                               account_id, account_sync_source)
         VALUES ('\(accountId)', 'Checking', 'checking', 0, 0, 0, 1, '\(Self.externalAccountId)', 'simpleFin')

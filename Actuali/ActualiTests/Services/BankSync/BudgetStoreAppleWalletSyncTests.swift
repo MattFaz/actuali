@@ -79,10 +79,6 @@ struct BudgetStoreAppleWalletSyncTests {
 
     private func makeDatabase() async throws -> (BudgetDatabase, URL) {
         try await makeTestDatabase(TestSchema.core + [TestSchema.preferences, """
-        CREATE TABLE banks (
-            id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
-        )
-        """, """
         INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
         VALUES ('\(Self.accountId)', 'Apple Card', 'credit', 0, 0, 0, 1)
         """])
