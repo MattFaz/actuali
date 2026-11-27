@@ -100,37 +100,60 @@ jobs:
       - uses: actions/checkout@v7
 
       # The image defaults to an older Xcode 27; pin the release used locally
-      # so CI and local builds compile with the same SDK.
-      - run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      # so CI and local builds compile with the same SDK. Switching leaves the
+      # default Xcode's CoreSimulatorService running, and xcodebuild swaps it
+      # for 27.2's mid-run — the likely cause of the service hub dying and the
+      # test host crashing before it connected. Stop it so the first simctl
+      # call below starts 27.2's.
+      - run: |
+          sudo xcode-select -s /Applications/Xcode_27.2.app
+          xcrun simctl shutdown all || true
+          sudo killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
 
-      - name: Select iOS ${{ matrix.ios }} simulator
+      # Always a fresh device, created only once the runtime is available and
+      # booted before xcodebuild sees it. The download registers default
+      # devices while the runtime is still mounting; picking one of those gave
+      # a device whose runtime xcodebuild read as (null), so no test ran.
+      - name: Boot iOS ${{ matrix.ios }} simulator
         id: sim
+        timeout-minutes: 30
         env:
           IOS: ${{ matrix.ios }}
           DOWNLOAD: ${{ matrix.download }}
         run: |
           runtime() {
             xcrun simctl list runtimes --json \
-              | jq -r --arg ios "iOS-$IOS-" '[.runtimes[] | select(.isAvailable) | select(.identifier | contains($ios))][0].identifier'
+              | jq -r --arg ios "iOS-$IOS-" '[.runtimes[] | select(.isAvailable) | select(.identifier | contains($ios))][0].identifier // empty'
           }
           RT=$(runtime)
-          if [ -z "$RT" ] || [ "$RT" = "null" ]; then
+          if [ -z "$RT" ]; then
             xcodebuild -downloadPlatform iOS -buildVersion "$DOWNLOAD"
-            RT=$(runtime)
+            # The runtime mounts asynchronously after the download returns.
+            for _ in $(seq 60); do
+              RT=$(runtime)
+              [ -n "$RT" ] && break
+              sleep 5
+            done
           fi
-          if [ -z "$RT" ] || [ "$RT" = "null" ]; then
+          if [ -z "$RT" ]; then
             echo "No iOS $IOS runtime available and the download did not provide one" >&2
+            xcrun simctl runtime list >&2
             exit 1
           fi
-          SIM_ID=$(xcrun simctl list devices available --json \
-            | jq -r --arg rt "$RT" '[.devices[$rt][]? | select(.name | startswith("iPhone"))][0].udid')
-          if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
-            # From the runtime's own supported list: the image's newest iPhone
-            # device types don't run on older runtimes.
-            DEVICE_TYPE=$(xcrun simctl list runtimes --json \
-              | jq -r --arg rt "$RT" '[.runtimes[] | select(.identifier == $rt) | .supportedDeviceTypes[] | select(.productFamily == "iPhone")][0].identifier')
-            SIM_ID=$(xcrun simctl create "ci-ios$IOS" "$DEVICE_TYPE" "$RT")
+          # From the runtime's own supported list: the image's newest iPhone
+          # device types don't run on older runtimes.
+          DEVICE_TYPE=$(xcrun simctl list runtimes --json \
+            | jq -r --arg rt "$RT" '[.runtimes[] | select(.identifier == $rt) | .supportedDeviceTypes[] | select(.productFamily == "iPhone")][0].identifier')
+          SIM_ID=$(xcrun simctl create "ci-ios$IOS" "$DEVICE_TYPE" "$RT")
+          xcrun simctl bootstatus "$SIM_ID" -b
+          STATE=$(xcrun simctl list devices --json \
+            | jq -r --arg rt "$RT" --arg id "$SIM_ID" '.devices[$rt][]? | select(.udid == $id) | .state')
+          if [ "$STATE" != "Booted" ]; then
+            echo "Simulator $SIM_ID on $RT is '${STATE:-missing}', not Booted" >&2
+            xcrun simctl list devices >&2
+            exit 1
           fi
+          echo "Booted $SIM_ID ($DEVICE_TYPE, $RT)"
           echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
 
       # UI tests run nightly in ui-tests.yml so the PR signal stays fast.
