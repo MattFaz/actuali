@@ -57,9 +57,14 @@ enum EnableBankingAuthError: LocalizedError, Equatable {
     case timedOut
     case failed(String)
     case insecureServer
+    /// The server reached Enable Banking but got no bank list back; carries
+    /// Enable Banking's own reason.
+    case bankListFailed(String)
 
     var errorDescription: String? {
         switch self {
+        case .bankListFailed(let reason):
+            String(format: String(localized: "The bank list couldn't be loaded: %@"), reason)
         case .timedOut:
             String(localized: "Your bank didn't confirm in time. Try again.")
         case .failed(let reason):

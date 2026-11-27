@@ -20,6 +20,8 @@ struct EnableBankingConnectView: View {
     /// The country `banks` was loaded for; nil while loading or after a failure.
     @State private var loadedCountry: String?
     @State private var isLoadingBanks = false
+    /// Why the bank list failed to load, shown in its place until a retry.
+    @State private var bankLoadError: String?
     @State private var bankId: String?
     @State private var psuChoice = "personal"
     @State private var isWaiting = false
@@ -161,6 +163,13 @@ struct EnableBankingConnectView: View {
                     Text("Loading banks…")
                         .foregroundStyle(.secondary)
                 }
+            } else if let bankLoadError {
+                Text(bankLoadError)
+                    .foregroundStyle(.secondary)
+                Button("Try Again") {
+                    Task { await loadBanks() }
+                }
+                .accessibilityIdentifier("enableBanking.retryBanks")
             } else if banks.isEmpty {
                 Text("No banks found for this country.")
                     .foregroundStyle(.secondary)
@@ -254,37 +263,34 @@ struct EnableBankingConnectView: View {
         loadedCountry = nil
         banks = []
         bankId = nil
+        bankLoadError = nil
         isLoadingBanks = true
+        let requested = country
         do {
-            let loaded = try await budgetStore.enableBankingBanks(country: country)
-            guard !Task.isCancelled else { return }
+            let loaded = try await budgetStore.enableBankingBanks(country: requested)
+            // A newer country pick supersedes this load, whether it was
+            // cancelled or, started by Try Again, simply finished late.
+            guard !Task.isCancelled, requested == country else { return }
             banks = loaded
-            loadedCountry = country
+            loadedCountry = requested
             // Nothing is picked yet, so this either selects the account's bank
             // or, when it isn't in this country's list, leaves the choice open.
             bankId = Self.bank(named: preferredBankName, in: loaded)?.id
         } catch {
-            // A newer country pick cancels this load; that isn't a failure.
-            guard !Task.isCancelled else { return }
-            errorMessage = error.localizedDescription
+            guard !Task.isCancelled, requested == country else { return }
+            // Shown in place of the list, with a way to try again: an alert
+            // would leave "no banks for this country" behind it.
+            bankLoadError = error.localizedDescription
         }
         isLoadingBanks = false
     }
 
     private func sync(accountIds: [String]) async {
-        // A sync already running reports for itself; this call would only
-        // return an empty result that claims there was nothing to sync.
-        guard !budgetStore.isBankSyncing else { return }
         syncSummary = nil
-        do {
-            let result = try await budgetStore.syncBankAccounts(accountIds: accountIds)
-            if let line = EnableBankingSyncView.cleanSummary(of: result) {
-                syncSummary = line
-            } else {
-                errorMessage = result.summary
-            }
-        } catch {
-            errorMessage = error.localizedDescription
+        let outcome = await EnableBankingSyncView.runSync(of: accountIds, in: budgetStore)
+        syncSummary = outcome.summary
+        if let alert = outcome.alert {
+            errorMessage = alert
         }
     }
 

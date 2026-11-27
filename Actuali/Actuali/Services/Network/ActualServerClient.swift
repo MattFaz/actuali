@@ -1237,10 +1237,13 @@ actor ActualServerClient {
     /// Whether the server has Enable Banking credentials, or nil when it has
     /// no `/enablebanking` routes (an Actual release that predates them).
     func enableBankingStatus() async throws -> Bool? {
-        let response: SimpleFINStatusResponse? = try await postBankSync(
+        guard let response: SimpleFINStatusResponse = try await postBankSync(
             path: "/enablebanking/status", body: EmptyBody(), fileId: nil
-        )
-        return response?.data?.configured
+        ) else { return nil }
+        // An answer without the flag isn't a missing route: calling it one
+        // would tell the person to update a server that may be current.
+        guard let configured = response.data?.configured else { throw ActualServerError.invalidResponse }
+        return configured
     }
 
     /// The banks Enable Banking offers in a country (upper-case ISO code).
@@ -1249,7 +1252,7 @@ actor ActualServerClient {
             path: "/enablebanking/aspsps", body: EnableBankingBanksRequest(country: country), fileId: nil
         ) else { throw ActualServerError.invalidResponse }
         if let message = response.data?.error {
-            throw ActualServerError.httpError(statusCode: 200, message: message)
+            throw EnableBankingAuthError.bankListFailed(message)
         }
         return response.data?.banks ?? []
     }

@@ -58,6 +58,15 @@ struct EnableBankingClientTests {
         #expect(try await client.enableBankingStatus() == nil)
     }
 
+    @Test func statusWithoutTheFlagIsAnInvalidResponseNotAMissingRoute() async throws {
+        let (client, _) = try await makeClient(responseBody: #"{"status":"ok"}"#)
+
+        do {
+            _ = try await client.enableBankingStatus()
+            Issue.record("Expected enableBankingStatus to throw")
+        } catch ActualServerError.invalidResponse {}
+    }
+
     // MARK: banks
 
     @Test func banksAcceptsABareArray() async throws {
@@ -87,12 +96,8 @@ struct EnableBankingClientTests {
             responseBody: #"{"status":"ok","data":{"error":"Country not supported"}}"#
         )
 
-        do {
+        await #expect(throws: EnableBankingAuthError.bankListFailed("Country not supported")) {
             _ = try await client.enableBankingBanks(country: "XX")
-            Issue.record("Expected enableBankingBanks to throw")
-        } catch ActualServerError.httpError(let statusCode, let message) {
-            #expect(statusCode == 200)
-            #expect(message == "Country not supported")
         }
     }
 

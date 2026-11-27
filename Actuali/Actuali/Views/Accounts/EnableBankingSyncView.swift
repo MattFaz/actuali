@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Enable Banking runs through the user's Actual server, which holds the
@@ -299,19 +300,36 @@ struct EnableBankingSyncView: View {
     }
 
     private func sync(accountIds: [String]) async {
-        // A sync already running reports for itself; this call would only
-        // return an empty result that claims there was nothing to sync.
-        guard !budgetStore.isBankSyncing else { return }
         syncSummary = nil
+        let outcome = await Self.runSync(of: accountIds, in: budgetStore)
+        syncSummary = outcome.summary
+        if let alert = outcome.alert {
+            errorMessage = alert
+        }
+    }
+
+    /// Runs a bank sync for either Enable Banking screen and says how to report
+    /// it: a clean outcome as a footer line, anything else as an alert.
+    ///
+    /// A sync that is already running is waited for, not skipped. Starting on
+    /// top of it would return an empty result, and dropping the request would
+    /// leave an account linked meanwhile without its history until someone
+    /// finds Sync Now.
+    static func runSync(
+        of accountIds: [String],
+        in store: BudgetStore
+    ) async -> (summary: String?, alert: String?) {
+        for await syncing in store.$bankSyncingAccountIds.values where syncing.isEmpty {
+            break
+        }
         do {
-            let result = try await budgetStore.syncBankAccounts(accountIds: accountIds)
-            if let line = Self.cleanSummary(of: result) {
-                syncSummary = line
-            } else {
-                errorMessage = result.summary
+            let result = try await store.syncBankAccounts(accountIds: accountIds)
+            if let line = cleanSummary(of: result) {
+                return (line, nil)
             }
+            return (nil, result.summary)
         } catch {
-            errorMessage = error.localizedDescription
+            return (nil, error.localizedDescription)
         }
     }
 }

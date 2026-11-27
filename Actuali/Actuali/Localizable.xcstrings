@@ -7245,6 +7245,54 @@
         }
       }
     },
+    "The bank list couldn't be loaded: %@" : {
+      "comment" : "Enable Banking: the server could not get the bank list; the placeholder is Enable Banking's own reason",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bankliste konnte nicht geladen werden: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The bank list couldn't be loaded: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo cargar la lista de bancos: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de charger la liste des banques : %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile caricare l'elenco delle banche: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De lijst met banken kon niet worden geladen: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível carregar a lista de bancos: %@"
+          }
+        }
+      }
+    },
     "The last bank sync failed. Try again later." : {
       "comment" : "Account detail explanation of why the last bank sync needs attention",
       "extractionState" : "stale",
