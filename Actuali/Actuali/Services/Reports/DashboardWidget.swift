@@ -155,7 +155,7 @@ struct NetWorthMeta: Codable, Equatable {
     var timeFrame: WidgetTimeFrame?
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
-    let interval: Interval?
+    var interval: Interval?
     let mode: Mode?
 
     enum Interval: String, Codable {

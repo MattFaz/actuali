@@ -629,9 +629,56 @@ struct ReportDetailTests {
         #expect(ReportDetailRange.earliestMonth(dates: [0]) == nil)
         let (allStart, _) = TimeFrame.resolve(ReportDetailRange.all.timeFrame(asOf: today, earliestMonth: earliest), asOf: today)
         #expect(allStart == utc(2023, 7))
-        // No transactions: this month, not `TimeFrame`'s 1900.
+        // No transactions: two months, not `TimeFrame`'s 1900.
         let (emptyStart, _) = TimeFrame.resolve(ReportDetailRange.all.timeFrame(asOf: today), asOf: today)
-        #expect(emptyStart == utc(2026, 11))
+        #expect(emptyStart == utc(2026, 10))
+    }
+
+    /// One month is one point on a monthly chart, which the Net Worth and
+    /// Age of Money pages can't draw.
+    @Test func noRangeIsASingleMonth() {
+        // Year to date, in January.
+        let january = utc(2027, 1, 15)
+        let (yearStart, _) = TimeFrame.resolve(ReportDetailRange.yearToDate.timeFrame(asOf: january), asOf: january)
+        #expect(yearStart == utc(2026, 12))
+        // A history that began this month.
+        let (allStart, _) = TimeFrame.resolve(ReportDetailRange.all.timeFrame(asOf: january, earliestMonth: "2027-01"), asOf: january)
+        #expect(allStart == utc(2026, 12))
+
+        let meta = NetWorthMeta(name: nil, timeFrame: nil, conditions: nil, conditionsOp: nil, interval: .monthly, mode: nil)
+        for range in ReportDetailRange.allCases {
+            let data = NetWorthEngine.compute(meta: meta.ranged(range, asOf: january, earliestMonth: "2027-01"),
+                                              transactions: [], today: january)
+            #expect(data.chartDetail(name: "Net Worth", locale: locale) != nil)
+        }
+    }
+
+    /// A whole history in days is thousands of points to compute and draw.
+    @Test func allCoarsensDaysAndWeeksToMonths() {
+        let today = utc(2026, 11, 13)
+        func ranged(_ interval: NetWorthMeta.Interval, _ range: ReportDetailRange) -> NetWorthMeta.Interval? {
+            NetWorthMeta(name: nil, timeFrame: nil, conditions: nil, conditionsOp: nil, interval: interval, mode: nil)
+                .ranged(range, asOf: today).interval
+        }
+        #expect(ranged(.daily, .all) == .monthly)
+        #expect(ranged(.weekly, .all) == .monthly)
+        #expect(ranged(.yearly, .all) == .yearly)
+        // A bounded range keeps the interval it was saved with.
+        #expect(ranged(.daily, .year) == .daily)
+
+        func ranged(_ interval: String, _ range: ReportDetailRange) -> String {
+            CustomReportConfig(
+                id: "r", name: "R", mode: "time", groupBy: "Category", balanceType: "Payment",
+                interval: interval, graphType: "StackedBarGraph", dateRange: "This month", dateStatic: true,
+                startDate: nil, endDate: nil, includeCurrent: true, showEmpty: false, showOffBudget: false,
+                showHidden: false, showUncategorized: false, sortBy: "desc", showTrendLines: false,
+                trimIntervals: false, conditions: nil, conditionsOp: "and"
+            ).ranged(range).interval
+        }
+        #expect(ranged("Daily", .all) == "Monthly")
+        #expect(ranged("Weekly", .all) == "Monthly")
+        #expect(ranged("Yearly", .all) == "Yearly")
+        #expect(ranged("Daily", .year) == "Daily")
     }
 
     @Test func rangingAMetaReplacesOnlyItsTimeFrame() {

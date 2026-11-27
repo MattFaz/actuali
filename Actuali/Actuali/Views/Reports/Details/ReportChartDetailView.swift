@@ -44,7 +44,6 @@ struct ReportChartDetailView: View {
                         Text(ReportStrings.text("Breakdown", locale: locale)).tag(false)
                     }
                     .pickerStyle(.segmented)
-                    .unredacted()
                     .accessibilityIdentifier("reportDetail.chartView")
                 }
                 Group {
@@ -63,9 +62,13 @@ struct ReportChartDetailView: View {
                         eventsList
                     }
                 }
-                .loadingShimmer()
+                .loadingPlaceholder()
             }
             .padding()
+        }
+        .onReportRangeChange {
+            selected = nil
+            hidden = []
         }
         .navigationTitle(detail.name)
         .navigationBarTitleDisplayMode(.large)
@@ -76,11 +79,20 @@ struct ReportChartDetailView: View {
         Group {
             // A range change can leave an interval that is gone.
             if selected.flatMap(detail.intervals.firstIndex(of:)) != nil {
-                Button(ReportStrings.text("Clear selection", locale: locale)) { selected = nil }
-                    .accessibilityIdentifier("reportDetail.clearSelection")
+                Button {
+                    selected = nil
+                } label: {
+                    Text(ReportStrings.text("Clear selection", locale: locale))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityIdentifier("reportDetail.clearSelection")
             } else {
                 Text(ReportStrings.text("Drag across the chart to inspect a point.", locale: locale))
                     .foregroundStyle(.secondary)
+                    // As tall as the button that replaces it, so picking an
+                    // interval doesn't move the lists below.
+                    .frame(minHeight: 44)
                     .accessibilityHidden(true)
             }
         }
@@ -106,8 +118,9 @@ struct ReportChartDetailView: View {
                            color: detail.series[$0].color)
             }
         }
-        // A band is a range of levels, so it reads at one interval.
-        if let band = detail.band, let interval = shownInterval ?? detail.intervals.indices.last {
+        // A band is a range of levels, so it reads at one interval, not
+        // beside a total for the range.
+        if let band = detail.band, let interval = shownInterval {
             items.append(LegendItem(id: -1, name: band.lowerName, value: band.lower[interval], color: .secondary))
             items.append(LegendItem(id: -2, name: band.upperName, value: band.upper[interval], color: band.color))
         }
@@ -145,12 +158,11 @@ struct ReportChartDetailView: View {
                     .font(.title2.weight(.bold))
             }
             if !inlineLegend.isEmpty {
-                // Side by side when they fit, stacked when they don't.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 16) { legendItems }
-                    VStack(alignment: .leading, spacing: 4) { legendItems }
-                }
-                .padding(.top, 6)
+                // Always stacked. Whether they fit side by side depends on
+                // the amounts, so the chart below would jump as a range
+                // loads or the selection moves.
+                VStack(alignment: .leading, spacing: 4) { legendItems }
+                    .padding(.top, 6)
             }
         }
         .accessibilityElement(children: .combine)
@@ -184,25 +196,25 @@ struct ReportChartDetailView: View {
             get: { selected },
             set: { selected = ReportDetailChart.pinned(selected, scrubbedTo: $0) }
         ))
-            .sensoryFeedback(.selection, trigger: selected)
-            .loadingSkeleton(detail.style == .lines || detail.style == .area ? .line : .bars)
-            // The interval list below already reads every figure. The other
-            // lists carry one interval, and VoiceOver can't drag to move it,
-            // so there the chart stands in for the whole table.
-            .accessibilityHidden(breakdown == .intervals || budgetStore.hideBalances)
-            .accessibilityRepresentation {
-                // The representation is always built, so apply the hidden rule
-                // here too: where the interval list already reads every
-                // figure, the chart must not read them again.
-                if breakdown != .intervals, !budgetStore.hideBalances {
-                    VStack(alignment: .leading) {
-                        ForEach(figures.indices, id: \.self) { index in
-                            Text(verbatim: [figures[index].series, figures[index].interval, amount(figures[index].value)]
-                                .joined(separator: ", "))
-                        }
+        .sensoryFeedback(.selection, trigger: selected)
+        .loadingSkeleton(detail.style == .lines || detail.style == .area ? .line : .bars)
+        // The interval list below already reads every figure. The other
+        // lists carry one interval, and VoiceOver can't drag to move it,
+        // so there the chart stands in for the whole table.
+        .accessibilityHidden(breakdown == .intervals || budgetStore.hideBalances)
+        .accessibilityRepresentation {
+            // The representation is always built, so apply the hidden rule
+            // here too: where the interval list already reads every
+            // figure, the chart must not read them again.
+            if breakdown != .intervals, !budgetStore.hideBalances {
+                VStack(alignment: .leading) {
+                    ForEach(figures.indices, id: \.self) { index in
+                        Text(verbatim: [figures[index].series, figures[index].interval, amount(figures[index].value)]
+                            .joined(separator: ", "))
                     }
                 }
             }
+        }
     }
 
     // MARK: - Lists

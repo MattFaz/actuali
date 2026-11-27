@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// The spans a detail page can switch a report to, all ending with the
-/// current month. The card keeps the range configured on the web.
+/// The spans a detail page can switch a report to. Each ends where upstream
+/// ends the same span: a count of months and `all` with the current month,
+/// year to date with today, and a custom report's "All time" with its last
+/// transaction. The card keeps the range configured on the web.
 enum ReportDetailRange: CaseIterable, Sendable {
     case threeMonths, sixMonths, yearToDate, year, all
 
@@ -34,7 +36,11 @@ enum ReportDetailRange: CaseIterable, Sendable {
 
     /// A span in months is a sliding window already ending on today's month,
     /// which is how `TimeFrame.resolve` keeps a window's length while moving
-    /// it. `all` runs from the first transaction; with none, this month.
+    /// it. `all` runs from the first transaction.
+    ///
+    /// No span is a single month: that is one point on a monthly chart, and
+    /// the line and area pages need two. January's year to date, and a
+    /// history that began this month, reach back one month more.
     func timeFrame(asOf today: Date, earliestMonth: String? = nil) -> WidgetTimeFrame {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
@@ -43,12 +49,14 @@ enum ReportDetailRange: CaseIterable, Sendable {
             let parts = calendar.dateComponents([.year, .month], from: date)
             return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)
         }
-        if let months {
-            return WidgetTimeFrame(start: month(1 - months), end: month(0), mode: .slidingWindow)
+        switch self {
+        case .yearToDate where calendar.component(.month, from: today) > 1:
+            return WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate)
+        case .all:
+            return WidgetTimeFrame(start: min(earliestMonth ?? month(-1), month(-1)), end: month(0), mode: .full)
+        default:
+            return WidgetTimeFrame(start: month(1 - (months ?? 2)), end: month(0), mode: .slidingWindow)
         }
-        return self == .yearToDate
-            ? WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate)
-            : WidgetTimeFrame(start: earliestMonth ?? month(0), end: month(0), mode: .full)
     }
 
     /// Upstream's name for the same span as a custom report date range.
@@ -60,9 +68,24 @@ enum ReportDetailRange: CaseIterable, Sendable {
 /// Widget metas whose time frame a detail page can replace.
 protocol TimeFramedMeta {
     var timeFrame: WidgetTimeFrame? { get set }
+    /// Called for `all`. A whole history in days or weeks is thousands of
+    /// points to compute and draw, so a meta with an interval that fine
+    /// moves to months.
+    mutating func coarsenForAllTime()
 }
 
-extension NetWorthMeta: TimeFramedMeta {}
+extension TimeFramedMeta {
+    mutating func coarsenForAllTime() {}
+}
+
+extension NetWorthMeta: TimeFramedMeta {
+    mutating func coarsenForAllTime() {
+        if interval == .daily || interval == .weekly {
+            interval = .monthly
+        }
+    }
+}
+
 extension CashFlowMeta: TimeFramedMeta {}
 extension AgeOfMoneyMeta: TimeFramedMeta {}
 extension BudgetAnalysisMeta: TimeFramedMeta {}
@@ -73,6 +96,9 @@ extension TimeFramedMeta {
     func ranged(_ range: ReportDetailRange, asOf today: Date, earliestMonth: String? = nil) -> Self {
         var copy = self
         copy.timeFrame = range.timeFrame(asOf: today, earliestMonth: earliestMonth)
+        if range == .all {
+            copy.coarsenForAllTime()
+        }
         return copy
     }
 }
@@ -82,6 +108,10 @@ extension CustomReportConfig {
         var copy = self
         copy.dateStatic = false
         copy.dateRange = range.customReportDateRange
+        // As `TimeFramedMeta.coarsenForAllTime`.
+        if range == .all, ["Daily", "Weekly"].contains(interval) {
+            copy.interval = "Monthly"
+        }
         return copy
     }
 }
@@ -124,13 +154,10 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
         let pending = Self.isPending(ranged: ranged, range: range)
         content(Self.shown(initial: initial, ranged: ranged, range: range))
             // Placeholders until the picked range's numbers replace the
-            // card's, so they aren't read as the new range. The controls
-            // opt out with `unredacted`; the pages add `loadingSkeleton`
-            // and `loadingShimmer` to the rest.
-            .redacted(reason: pending ? .placeholder : [])
-            // A new range is a new report: selection and hidden series from
-            // the old one don't carry over.
-            .id(range)
+            // card's, so they aren't read as the new range. The pages mark
+            // what to cover with `loadingPlaceholder`, which leaves the
+            // picker and the other controls alone.
+            .environment(\.reportRangePending, pending)
             // The page places the picker in its own content, under the
             // large title, with `ReportRangePicker`.
             .environment(\.reportDetailRange, recompute == nil ? nil : $range)
@@ -179,7 +206,6 @@ extension ReportRangePicker {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .id(option)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
                 .accessibilityIdentifier("reportDetail.range.\(option?.titleKey ?? "Saved")")
             }
@@ -202,13 +228,8 @@ struct ReportRangePicker: View {
                 // even that doesn't fit.
                 ViewThatFits(in: .horizontal) {
                     options(range)
-                    ScrollViewReader { proxy in
-                        ScrollView(.horizontal) { options(range) }
-                            .scrollIndicators(.hidden)
-                            // Picking a range rebuilds the page, and the row
-                            // with it: bring the pick back into view.
-                            .onAppear { proxy.scrollTo(range.wrappedValue, anchor: .center) }
-                    }
+                    ScrollView(.horizontal) { options(range) }
+                        .scrollIndicators(.hidden)
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel(ReportStrings.text("Time range", locale: locale))
@@ -220,7 +241,6 @@ struct ReportRangePicker: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .unredacted()
         }
     }
 }
@@ -230,8 +250,28 @@ struct ReportRangePicker: View {
 extension EnvironmentValues {
     /// Set on a card that opens a detail page, so its title shows a chevron.
     @Entry var reportCardLinksToDetail = false
+    /// A picked range is still loading: see `loadingPlaceholder`.
+    @Entry var reportRangePending = false
     /// The detail page's range selection, when its widget has one.
     @Entry var reportDetailRange: Binding<ReportDetailRange?>?
+}
+
+extension View {
+    /// A new range is a new report: a selection made in the old one doesn't
+    /// carry over. The page resets it rather than being rebuilt, which would
+    /// blank its navigation title until the range loads.
+    func onReportRangeChange(_ reset: @escaping () -> Void) -> some View {
+        modifier(ReportRangeChange(reset: reset))
+    }
+}
+
+private struct ReportRangeChange: ViewModifier {
+    @Environment(\.reportDetailRange) private var range
+    let reset: () -> Void
+
+    func body(content: Content) -> some View {
+        content.onChange(of: range?.wrappedValue) { reset() }
+    }
 }
 
 /// A report card's title, with a chevron when the card opens a detail page.

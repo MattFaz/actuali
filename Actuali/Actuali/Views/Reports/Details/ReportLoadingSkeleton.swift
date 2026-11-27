@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// What stands in for a drawn chart while a picked range loads. Text has the
-/// system's redaction; marks drawn by Charts or a Canvas have no placeholder
-/// form of their own.
+/// What stands in for a drawn chart while a picked range loads, inside
+/// `loadingPlaceholder`. Text has the system's redaction; marks drawn by
+/// Charts or a Canvas have no placeholder form of their own.
 enum ReportSkeleton {
     case bars, line, donut, block
 }
@@ -13,9 +13,11 @@ extension View {
         modifier(ReportSkeletonModifier(skeleton: skeleton))
     }
 
-    /// Sweeps a highlight across redacted content, left to right.
-    func loadingShimmer() -> some View {
-        modifier(ReportShimmer())
+    /// Marks what a picked range replaces. While that range loads, the
+    /// content is redacted under a highlight sweeping left to right, takes
+    /// no touches and isn't read out: it still holds the card's numbers.
+    func loadingPlaceholder() -> some View {
+        modifier(ReportLoadingPlaceholder())
     }
 }
 
@@ -75,17 +77,24 @@ private struct ReportSkeletonShape: View {
     }
 }
 
-private struct ReportShimmer: ViewModifier {
-    @Environment(\.redactionReasons) private var reasons
+private struct ReportLoadingPlaceholder: ViewModifier {
+    @Environment(\.reportRangePending) private var pending
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
-        content.overlay {
-            // Reduce Motion keeps the still placeholders.
-            if reasons.contains(.placeholder), !reduceMotion {
-                ReportShimmerSweep().mask(content)
+        content
+            .redacted(reason: pending ? .placeholder : [])
+            .overlay {
+                // Reduce Motion keeps the still placeholders.
+                if pending, !reduceMotion {
+                    // Drawn only where the content drew. Masking the sweep
+                    // with the content would build the content twice.
+                    ReportShimmerSweep().blendMode(.sourceAtop)
+                }
             }
-        }
+            .compositingGroup()
+            .allowsHitTesting(!pending)
+            .accessibilityHidden(pending)
     }
 }
 

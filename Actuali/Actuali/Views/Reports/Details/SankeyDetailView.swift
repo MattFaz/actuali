@@ -62,9 +62,9 @@ struct SankeyDetailView: View {
                 ReportRangePicker()
                 SankeyWidgetView(displayName: displayName, data: data, showsTitle: false)
                     .loadingSkeleton(.block)
-                    .loadingShimmer()
+                    .loadingPlaceholder()
                 ForEach(data.detailSections, id: \.layer) { section in
-                    self.section(section).loadingShimmer()
+                    self.section(section).loadingPlaceholder()
                 }
             }
             .padding()
