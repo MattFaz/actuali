@@ -121,6 +121,19 @@ struct WidgetSnapshotTests {
         ) == "il y a 2 jours")
     }
 
+    /// The gallery's `.sample` entries are dated `.now`, which numeric style
+    /// renders as "in 0 seconds"; a future date reads the same as now.
+    @Test(arguments: [0.0, 0.3, 300])
+    func relativeDateNeverReadsAsFuture(offset: TimeInterval) {
+        let reference = Date(timeIntervalSince1970: 1_750_000_000)
+
+        #expect(WidgetDateFormatting.relative(
+            reference.addingTimeInterval(offset),
+            relativeTo: reference,
+            locale: Locale(identifier: "en_US")
+        ) == "now")
+    }
+
     // MARK: - BudgetStore publishing
 
     private func makeBudget(id: String, name: String, month: String) -> CategoryBudget {
