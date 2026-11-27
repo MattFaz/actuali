@@ -68,6 +68,62 @@ struct BudgetFileManagerCreateTests {
         ).isEmpty)
     }
 
+    @Test func headlessDownloadCannotReplaceExistingBudgetFiles() async throws {
+        let (manager, root) = makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let sourceDB = root.appendingPathComponent("source.sqlite")
+        let sourceMetadata = root.appendingPathComponent("source.json")
+        let archive = root.appendingPathComponent("remote.zip")
+        try Data("remote snapshot".utf8).write(to: sourceDB)
+        try Data(#"{"id":"shared-local-id","budgetName":"Remote"}"#.utf8)
+            .write(to: sourceMetadata)
+        try manager.makeBudgetArchive(
+            dbURL: sourceDB, metadataURL: sourceMetadata, to: archive
+        )
+
+        let localDirectory = manager.budgetDirectory(for: "shared-local-id")
+        try FileManager.default.createDirectory(at: localDirectory, withIntermediateDirectories: true)
+        let originalDatabase = Data("local unsynced changes".utf8)
+        let originalMetadata = Data(#"{"id":"shared-local-id","budgetName":"Local"}"#.utf8)
+        try originalDatabase.write(to: manager.databasePath(for: "shared-local-id"))
+        try originalMetadata.write(to: manager.metadataPath(for: "shared-local-id"))
+
+        let archiveData = try Data(contentsOf: archive)
+        await #expect(throws: BudgetFileError.self) {
+            try await manager.importBudget(
+                from: archiveData, fileId: "remote-cloud-file",
+                groupId: "remote-group", replaceExisting: false
+            )
+        }
+        // Even explicit UI downloads must not overwrite a different cloud file
+        // or a local-only budget just because the archive IDs collide.
+        await #expect(throws: BudgetFileError.self) {
+            try await manager.importBudget(
+                from: archiveData, fileId: "remote-cloud-file",
+                groupId: "remote-group", replaceExisting: true
+            )
+        }
+        #expect(try Data(contentsOf: manager.databasePath(for: "shared-local-id")) == originalDatabase)
+        #expect(try Data(contentsOf: manager.metadataPath(for: "shared-local-id")) == originalMetadata)
+
+        // A genuinely absent local budget remains downloadable.
+        try FileManager.default.removeItem(at: localDirectory)
+        let imported = try await manager.importBudget(
+            from: archiveData, fileId: "remote-cloud-file",
+            groupId: "remote-group", encryptionKeyId: "persisted-key-id",
+            replaceExisting: false
+        )
+        #expect(imported.cloudFileId == "remote-cloud-file")
+        #expect(imported.encryptKeyId == "persisted-key-id")
+        let reloaded = try JSONDecoder().decode(
+            BudgetMetadata.self, from: Data(contentsOf: manager.metadataPath(for: imported.id))
+        )
+        #expect(reloaded.encryptKeyId == "persisted-key-id")
+        #expect(try Data(contentsOf: manager.databasePath(for: "shared-local-id"))
+            == Data("remote snapshot".utf8))
+    }
+
     @Test func uploadArchiveStampsResetClockAndPreservesUnknownKeys() throws {
         let (manager, root) = makeManager()
         defer { try? FileManager.default.removeItem(at: root) }

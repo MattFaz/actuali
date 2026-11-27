@@ -21,27 +21,70 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         XCTAssertTrue(amountField.waitForExistence(timeout: 10), "amount field not found")
 
         amountField.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 5),
                       "keyboard did not appear")
 
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5),
-                      "no Done button above the decimal pad for the amount field")
-        // GH #746: the bar's keys must leave the iOS 26 Done pill on screen
-        // even on a 375pt phone (iPhone 13 mini, SE).
+                      "no Done key on the amount keypad")
+        // GH #746: Done must stay on screen even on a 375pt phone (iPhone
+        // 13 mini, SE).
         XCTAssertLessThanOrEqual(
             done.frame.maxX, app.windows.firstMatch.frame.maxX,
             "Done runs past the screen edge: done=\(done.frame)"
         )
         done.tap()
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5),
                       "keyboard did not dismiss after tapping Done")
 
         // With the keyboard gone the tab bar is reachable again — the
         // reporter's actual goal was backing out to another tab.
         XCTAssertTrue(app.tabBars.buttons["Accounts"].isHittable,
                       "tab bar not reachable after dismissing the keyboard")
+    }
+
+    /// The operators sit on the keypad as one-tap keys.
+    @MainActor
+    func testOperatorKeyInsertsOperator() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+
+        let amountField = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == '0.00'")
+        ).firstMatch
+        XCTAssertTrue(amountField.waitForExistence(timeout: 10), "amount field not found")
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
+                      "keyboard did not appear")
+        amountField.typeText("12")
+
+        // "Add" would also match the Add tab, so use an unambiguous key.
+        let multiply = app.buttons["Multiply"]
+        XCTAssertTrue(multiply.waitForExistence(timeout: 5), "no operator keys on the keypad")
+        multiply.tap()
+        amountField.typeText("3")
+
+        let expression = NSPredicate(format: "value CONTAINS '×'")
+        expectation(for: expression, evaluatedWith: amountField)
+        waitForExpectations(timeout: 5)
+    }
+
+    /// The floating save button steps aside while the keypad is up, where
+    /// it would cover the form's last rows, and returns after Done.
+    @MainActor
+    func testSaveButtonHidesWhileTheKeypadIsUp() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10), "keypad did not come up")
+        XCTAssertFalse(app.buttons["addTransaction.save"].exists, "save button showing over the keypad")
+
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5), "keypad did not dismiss")
+        XCTAssertTrue(app.buttons["addTransaction.save"].waitForExistence(timeout: 5),
+                      "save button did not return after Done")
     }
 
     /// The add flow autofocuses the amount field — the first thing anyone
@@ -53,7 +96,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
                       "keyboard did not come up on its own for the amount field")
 
         let amountField = app.textFields.matching(
@@ -79,17 +122,17 @@ final class AddTransactionKeyboardUITests: XCTestCase {
             NSPredicate(format: "placeholderValue == '0.00'")
         ).firstMatch
         XCTAssertTrue(amountField.waitForExistence(timeout: 10), "amount field not found")
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
                       "keyboard did not come up on the initial Add tab")
         app.keys["5"].tap()
         XCTAssertEqual(amountField.value as? String, "0.05")
 
         app.buttons["Done"].tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5))
         app.tabBars.buttons["Accounts"].tap()
 
         app.tabBars.buttons["Add"].tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
                       "keyboard did not return when Add was selected again")
         XCTAssertEqual(amountField.value as? String, "0.05",
                        "returning to Add should preserve the partial amount")
@@ -104,7 +147,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 10), "amount keyboard did not appear")
         done.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5),
                       "amount keyboard did not dismiss")
 
         let categoryRow = app.buttons["addTransaction.category"]
@@ -129,7 +172,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 10), "amount keyboard did not appear")
         done.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5),
                       "amount keyboard did not dismiss")
 
         let categoryRow = app.buttons["addTransaction.category"]
@@ -147,7 +190,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         back.tap()
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5),
                       "category picker did not dismiss")
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5),
                       "amount keyboard reopened after leaving category picker")
     }
 
@@ -160,7 +203,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
                       "amount keyboard did not appear")
         app.keys["5"].tap()
 
@@ -175,7 +218,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         blueBottle.tap()
         XCTAssertTrue(blueBottle.waitForNonExistence(timeout: 5), "picker sheet did not close")
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5),
                       "amount keyboard reopened after picking a payee")
     }
 
@@ -185,7 +228,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
                       "amount keyboard did not appear")
         app.keys["5"].tap()
 
@@ -202,7 +245,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5),
                       "category picker did not dismiss")
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5),
                       "amount keyboard reopened after leaving category picker")
     }
 
@@ -214,7 +257,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
                       "amount keyboard did not appear")
         app.keys["5"].tap()
 
@@ -224,7 +267,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
 
         let lineCategory = app.buttons["addTransaction.splitLine.category"].firstMatch
         XCTAssertTrue(lineCategory.waitForExistence(timeout: 5), "split line category not found")
-        XCTAssertTrue(app.keyboards.firstMatch.exists,
+        XCTAssertTrue(app.amountKeypad.exists,
                       "amount should still be focused when the split line picker opens")
         lineCategory.tap()
 
@@ -236,7 +279,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         XCTAssertTrue(app.textFields["categoryPicker.search"].waitForNonExistence(timeout: 5),
                       "split line category picker did not dismiss")
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5),
                       "amount keyboard reopened after picking a split line category")
     }
 
@@ -246,7 +289,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+        XCTAssertTrue(app.amountKeypad.waitForExistence(timeout: 10),
                       "amount keyboard did not appear")
         app.keys["5"].tap()
 
@@ -256,7 +299,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
 
         let linePayee = app.buttons["addTransaction.splitLine.payee"].firstMatch
         XCTAssertTrue(linePayee.waitForExistence(timeout: 5), "split line payee not found")
-        XCTAssertTrue(app.keyboards.firstMatch.exists,
+        XCTAssertTrue(app.amountKeypad.exists,
                       "amount should still be focused when the split line picker opens")
         linePayee.tap()
 
@@ -272,7 +315,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(search.waitForNonExistence(timeout: 5), "picker sheet did not close")
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+        XCTAssertTrue(app.amountKeypad.waitForNonExistence(timeout: 5),
                       "amount keyboard reopened after picking a split line payee")
     }
 
@@ -292,26 +335,23 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         XCTAssertTrue(addButton.waitForExistence(timeout: 5), "'+' toolbar button not found")
         addButton.tap()
 
-        let addTitle = app.navigationBars["Add Transaction"]
-        XCTAssertTrue(addTitle.waitForExistence(timeout: 5), "add sheet did not present")
+        // The sheet carries no title, so its close button marks it.
+        let addSheet = app.buttons["addTransaction.close"]
+        XCTAssertTrue(addSheet.waitForExistence(timeout: 5), "add sheet did not present")
+        XCTAssertFalse(app.navigationBars["Add Transaction"].exists, "add sheet shows a title")
 
         // The sheet autofocuses the amount field, and Cancel is a row at the
         // foot of the form now — drop the keyboard first, then reach it.
-        if app.keyboards.firstMatch.waitForExistence(timeout: 5) {
+        if app.amountKeypad.waitForExistence(timeout: 5) {
             app.buttons["Done"].tap()
         }
 
-        let cancel = app.buttons["Cancel"]
-        XCTAssertTrue(cancel.waitForExistence(timeout: 5),
-                      "no Cancel button on the sheet-presented add flow")
-        var scrollsLeft = 5
-        while !cancel.isHittable, scrollsLeft > 0 {
-            app.swipeUp()
-            scrollsLeft -= 1
-        }
-        cancel.tap()
+        let close = app.buttons["addTransaction.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5),
+                      "no close button on the sheet-presented add flow")
+        close.tap()
 
-        XCTAssertTrue(addTitle.waitForNonExistence(timeout: 5),
-                      "add sheet did not dismiss after tapping Cancel")
+        XCTAssertTrue(addSheet.waitForNonExistence(timeout: 5),
+                      "add sheet did not dismiss after tapping close")
     }
 }

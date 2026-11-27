@@ -8,6 +8,7 @@ enum BudgetFileError: LocalizedError {
     case extractionFailed(any Error)
     case metadataParsingFailed
     case unsafeArchive(String)
+    case budgetAlreadyExists
 
     var errorDescription: String? {
         switch self {
@@ -23,11 +24,13 @@ enum BudgetFileError: LocalizedError {
             String(localized: "Failed to parse budget metadata")
         case .unsafeArchive(let error):
             String(localized: "The archive failed a safety check: \(error)")
+        case .budgetAlreadyExists:
+            String(localized: "This budget already has a local copy. Open Actuali to manage it.")
         }
     }
 }
 
-struct BudgetMetadata: Codable {
+struct BudgetMetadata: Codable, Sendable {
     let id: String
     let budgetName: String?
     let cloudFileId: String?
@@ -35,6 +38,11 @@ struct BudgetMetadata: Codable {
     let resetClock: Bool?
     let lastUploaded: String?
     let encryptKeyId: String?
+
+    /// Restored cloud copies have no valid sync group until re-downloaded.
+    var canWriteToLocally: Bool {
+        cloudFileId == nil || groupId?.isEmpty == false
+    }
 }
 
 /// Immutable singleton: both stored properties are `let`, and FileManager.default
@@ -43,7 +51,6 @@ final class BudgetFileManager: @unchecked Sendable {
     static let shared = BudgetFileManager()
 
     private let fileManager = FileManager.default
-
     /// Non-nil only in tests: roots budgetsDirectory somewhere disposable.
     private let rootDirectoryOverride: URL?
 
@@ -345,7 +352,10 @@ final class BudgetFileManager: @unchecked Sendable {
 
     // MARK: - Import
 
-    func importBudget(from zipData: Data, fileId: String, groupId: String?) async throws -> BudgetMetadata {
+    func importBudget(
+        from zipData: Data, fileId: String, groupId: String?,
+        encryptionKeyId: String? = nil, replaceExisting: Bool = true
+    ) async throws -> BudgetMetadata {
         // Create a temporary file for the ZIP
         let tempURL = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
         try zipData.write(to: tempURL)
@@ -359,6 +369,11 @@ final class BudgetFileManager: @unchecked Sendable {
             try? fileManager.removeItem(at: extracted.databaseURL)
         }
 
+        // The archive's ID is untrusted. Both production callers are MainActor
+        // isolated, and there is no suspension between ownership check and install.
+        // ponytail: keep this block await-free; a future cross-actor caller needs
+        // its own serialization before importing.
+
         // Update metadata with cloud info
         let updatedMetadata = BudgetMetadata(
             id: extracted.metadata.id,
@@ -367,13 +382,21 @@ final class BudgetFileManager: @unchecked Sendable {
             groupId: groupId,
             resetClock: extracted.metadata.resetClock,
             lastUploaded: extracted.metadata.lastUploaded,
-            encryptKeyId: extracted.metadata.encryptKeyId
+            encryptKeyId: encryptionKeyId ?? extracted.metadata.encryptKeyId
         )
 
         // Replace only the live files — deleting the whole directory here used to be harmless,
         // but it would now silently destroy backups/ on every re-download. A fresh download does,
         // however, supersede any revert baseline.
         let budgetDir = budgetDirectory(for: extracted.metadata.id)
+        if fileManager.fileExists(atPath: budgetDir.path) {
+            guard replaceExisting,
+                  let existingData = try? Data(contentsOf: metadataPath(for: extracted.metadata.id)),
+                  let existing = try? JSONDecoder().decode(BudgetMetadata.self, from: existingData),
+                  existing.cloudFileId == fileId else {
+                throw BudgetFileError.budgetAlreadyExists
+            }
+        }
         try fileManager.createDirectory(at: budgetDir, withIntermediateDirectories: true)
         try? fileManager.removeItem(at: latestDatabasePath(for: extracted.metadata.id))
         try? fileManager.removeItem(at: latestMetadataPath(for: extracted.metadata.id))
