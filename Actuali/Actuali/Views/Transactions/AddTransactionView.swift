@@ -1649,6 +1649,14 @@ struct AmountInputField: UIViewRepresentable {
         }
     }
 
+    /// A value as the binding carries it: two decimals, except in
+    /// conventional entry where a whole value stays whole. Callers seeding
+    /// the field from a number use it too, so the field reads it back as is.
+    nonisolated static func text(for value: Double, conventionalAmountEntry: Bool) -> String {
+        let whole = conventionalAmountEntry && value == value.rounded()
+        return String(format: whole ? "%.0f" : "%.2f", value)
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
@@ -2013,9 +2021,7 @@ struct AmountInputField: UIViewRepresentable {
         /// parse it at any moment — including mid-expression.
         private func computeBoundText() -> String {
             guard hasTypedOperand || pendingOperator != nil else { return "" }
-            let value = normalized(resolvedValue())
-            let whole = parent.conventionalAmountEntry && value == value.rounded()
-            return String(format: whole ? "%.0f" : "%.2f", value)
+            return AmountInputField.text(for: normalized(resolvedValue()), conventionalAmountEntry: parent.conventionalAmountEntry)
         }
 
         /// Display-only sibling of applyDisplay: makeUIView and external binding updates
