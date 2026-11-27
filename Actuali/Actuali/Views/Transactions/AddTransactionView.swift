@@ -955,7 +955,7 @@ struct AddTransactionView: View {
             dismiss()
         } else {
             resetForm()
-            NotificationRouter.shared.pendingTabNavigation = StartTab.persisted.tabTag
+            NotificationRouter.shared.pendingTabNavigation = StartTab.persistedEffective.tabTag
         }
     }
 

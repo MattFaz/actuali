@@ -111,6 +111,20 @@ struct DisplaySettingsView: View {
         )
     }
 
+    /// On means the page is in the tab bar.
+    private func tabBarSelection(for tab: StartTab) -> Binding<Bool> {
+        Binding(
+            get: { !budgetStore.hiddenTabs.contains(tab) },
+            set: { isShown in
+                if isShown {
+                    budgetStore.hiddenTabs.remove(tab)
+                } else {
+                    budgetStore.hiddenTabs.insert(tab)
+                }
+            }
+        )
+    }
+
     private var currentLoadRequest: DisplaySettingsLoadRequest {
         DisplaySettingsLoadRequest(
             budgetID: budgetStore.currentBudgetId,
@@ -181,7 +195,7 @@ struct DisplaySettingsView: View {
 
             Section {
                 Picker("Start Page", selection: $budgetStore.startTab) {
-                    ForEach(StartTab.allCases) { tab in
+                    ForEach(StartTab.startPageOptions(hidden: budgetStore.hiddenTabs)) { tab in
                         Text(tab.label(locale: locale)).tag(tab)
                     }
                 }
@@ -201,6 +215,23 @@ struct DisplaySettingsView: View {
                 Text("App Navigation")
             } footer: {
                 Text("Start Page takes effect the next time the app opens.")
+            }
+
+            Section {
+                Toggle(
+                    StartTab.addTransaction.label(locale: locale),
+                    isOn: tabBarSelection(for: .addTransaction)
+                )
+                .accessibilityIdentifier("displaySettings.tabBar.add")
+                Toggle(
+                    StartTab.reports.label(locale: locale),
+                    isOn: tabBarSelection(for: .reports)
+                )
+                .accessibilityIdentifier("displaySettings.tabBar.reports")
+            } header: {
+                Text("Tab Bar")
+            } footer: {
+                Text("Hidden pages leave the tab bar. Reports stays available under More.")
             }
         }
         .readableWidth()

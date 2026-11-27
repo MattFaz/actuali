@@ -719,6 +719,18 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Pages dropped from the tab bar. Persisted to UserDefaults, defaults to
+    /// none. Only the hideable ones (StartTab.isHideable) are ever in here.
+    @Published var hiddenTabs: Set<StartTab> = [] {
+        didSet {
+            UserDefaults.standard.set(hiddenTabs.map(\.rawValue), forKey: StartTab.hiddenDefaultsKey)
+            // A page that left the tab bar can't be the one the app opens on.
+            if hiddenTabs.contains(startTab) {
+                startTab = .accounts
+            }
+        }
+    }
+
     /// How the Budget tab lays out its summary and category rows
     /// (actios-96wa). Persisted to UserDefaults; defaults to the clean
     /// card look from the App Store screenshots.
@@ -2806,6 +2818,7 @@ final class BudgetStore: ObservableObject {
             _appearanceMode = Published(initialValue: mode)
         }
         _startTab = Published(initialValue: StartTab.persisted)
+        _hiddenTabs = Published(initialValue: StartTab.persistedHidden)
         _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle.resolved(
             from: defaults.string(forKey: "budgetDisplayStyle")
         ))

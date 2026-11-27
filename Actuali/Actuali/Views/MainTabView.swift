@@ -15,7 +15,7 @@ struct MainTabView: View {
             return tab
         }
         #endif
-        return StartTab.persisted.tabTag
+        return StartTab.persistedEffective.tabTag
     }
 
     private var overspentCount: Int {
@@ -29,6 +29,15 @@ struct MainTabView: View {
     ) -> String {
         guard count > 0 else { return "" }
         return ReportStrings.localized("\(count) overspent categories", locale: locale, bundle: bundle)
+    }
+
+    /// Whether `tab` has a slot in the tab bar. A hidden page keeps its slot
+    /// while it is the selected one: a Home Screen quick action, a deep link or
+    /// the Reports row under More can still land on it, and a selected page
+    /// needs a tab to stay on screen. It leaves the bar as soon as another tab
+    /// is picked.
+    nonisolated static func isInTabBar(_ tab: StartTab, hidden: Set<StartTab>, selectedTag: Int) -> Bool {
+        !hidden.contains(tab) || tab.tabTag == selectedTag
     }
 
     var body: some View {
@@ -95,16 +104,20 @@ struct MainTabView: View {
                 Label("Accounts", systemImage: "building.columns")
             }
 
-            Tab(value: 2) {
-                AddTransactionTabView(isSelected: selectedTab == 2)
-            } label: {
-                Label("Add", systemImage: "plus")
+            if Self.isInTabBar(.addTransaction, hidden: budgetStore.hiddenTabs, selectedTag: selectedTab) {
+                Tab(value: 2) {
+                    AddTransactionTabView(isSelected: selectedTab == 2)
+                } label: {
+                    Label("Add", systemImage: "plus")
+                }
             }
 
-            Tab(value: 3) {
-                ReportsTabView()
-            } label: {
-                Label("Reports", systemImage: "chart.bar.xaxis")
+            if Self.isInTabBar(.reports, hidden: budgetStore.hiddenTabs, selectedTag: selectedTab) {
+                Tab(value: 3) {
+                    ReportsTabView()
+                } label: {
+                    Label("Reports", systemImage: "chart.bar.xaxis")
+                }
             }
 
             Tab(value: 4) {

@@ -16,7 +16,7 @@ struct SettingsLinkItem {
     let url: URL
 }
 
-/// Label for external `Link` rows: icon keeps the accent tint, text stays
+/// Label for `Link` and `Button` rows: icon keeps the accent tint, text stays
 /// primary so it matches the `NavigationLink` rows.
 private struct LinkRowLabel: View {
     let title: String
@@ -121,6 +121,16 @@ struct SettingsView: View {
                     }
                 }
                 Section(String(localized: "Manage")) {
+                    // A tab switch rather than a push: ReportsTabView owns its
+                    // own NavigationStack.
+                    if budgetStore.hiddenTabs.contains(.reports) {
+                        Button {
+                            NotificationRouter.shared.pendingTabNavigation = StartTab.reports.tabTag
+                        } label: {
+                            LinkRowLabel(title: String(localized: "Reports"), systemImage: "chart.bar.xaxis")
+                        }
+                        .accessibilityIdentifier("settings.reports")
+                    }
                     ForEach(Self.manageItems(includeRules: budgetStore.currentBudgetId != nil), id: \.title) { item in
                         NavigationLink {
                             item.destination()
