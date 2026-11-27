@@ -140,6 +140,7 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
     let recompute: (@Sendable (ReportDetailRange, [Transaction]) -> Value)?
     @ViewBuilder let content: (Value) -> Content
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var range: ReportDetailRange?
     @State private var ranged: (range: ReportDetailRange, value: Value)?
 
@@ -162,6 +163,15 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
         range != nil && ranged?.range != range
     }
 
+    /// Most ranges compute in a frame or two. A newly picked one is held
+    /// for a full sweep of the shimmer, so the placeholders read as loading
+    /// rather than a flicker. Reduce Motion has no sweep to wait for.
+    nonisolated static func holdsPlaceholders(
+        ranged: (range: ReportDetailRange, value: Value)?, range: ReportDetailRange?, reduceMotion: Bool
+    ) -> Bool {
+        !reduceMotion && isPending(ranged: ranged, range: range)
+    }
+
     var body: some View {
         let pending = Self.isPending(ranged: ranged, range: range)
         content(Self.shown(initial: initial, ranged: ranged, range: range))
@@ -181,10 +191,7 @@ struct ReportRangedDetail<Value: Sendable, Content: View>: View {
                 let transactions = transactions
                 let started = ContinuousClock.now
                 if let value = try? await ReportComputation.compute(transactions: transactions, using: { recompute(range, $0) }) {
-                    // Most ranges compute in a frame or two. Hold a newly
-                    // picked one for a full sweep of the shimmer, so the
-                    // placeholders read as loading rather than a flicker.
-                    if Self.isPending(ranged: ranged, range: range) {
+                    if Self.holdsPlaceholders(ranged: ranged, range: range, reduceMotion: reduceMotion) {
                         try? await Task.sleep(until: started + .milliseconds(800), clock: .continuous)
                     }
                     if !Task.isCancelled {

@@ -34,8 +34,10 @@ struct ReportChartDetailView: View {
         if detail.series.count > 1 {
             return detail.showsInlineLegend ? .none : .series
         }
-        // One series with figures for the range or a band needs no table.
-        return detail.stats.isEmpty && detail.band == nil ? .intervals : .none
+        // One series with a band, or with figures the headline doesn't
+        // already carry, needs no table. Judged with nothing selected, so
+        // the list holds still while the chart is scrubbed.
+        return detail.stats(at: nil).isEmpty && detail.band == nil ? .intervals : .none
     }
 
     var body: some View {

@@ -199,6 +199,10 @@ struct ReportDetailTests {
         #expect(Page.isPending(ranged: nil, range: .year))
         #expect(!Page.isPending(ranged: (.sixMonths, 6), range: .sixMonths))
         #expect(!Page.isPending(ranged: (.sixMonths, 6), range: nil))
+        // A new range waits out one sweep of the shimmer; Reduce Motion has none.
+        #expect(Page.holdsPlaceholders(ranged: nil, range: .year, reduceMotion: false))
+        #expect(!Page.holdsPlaceholders(ranged: nil, range: .year, reduceMotion: true))
+        #expect(!Page.holdsPlaceholders(ranged: (.year, 12), range: .year, reduceMotion: false))
     }
 
     @Test func calendarDayIdentifiersNameTheirMonth() {
