@@ -347,18 +347,4 @@ struct BudgetStoreEnableBankingSyncTests {
         #expect(enableBanking.linkedAt == Date(timeIntervalSince1970: 1_795_766_549.123))
         #expect(simpleFin.linkedAt == nil)
     }
-
-    @Test func permissionEndsNinetyDaysAfterTheLinkForEnableBankingOnly() {
-        func account(_ source: String, linkedAt: Date?) -> BankSyncAccount {
-            BankSyncAccount(
-                id: "a", name: "A", externalAccountId: "x", syncSource: source,
-                offBudget: false, closed: false, linkedAt: linkedAt
-            )
-        }
-        let linked = Date(timeIntervalSince1970: 1_795_766_549)
-
-        #expect(account("enableBanking", linkedAt: linked).permissionEndsBy == linked.addingTimeInterval(90 * 24 * 60 * 60))
-        #expect(account("simpleFin", linkedAt: linked).permissionEndsBy == nil)
-        #expect(account("enableBanking", linkedAt: nil).permissionEndsBy == nil)
-    }
 }

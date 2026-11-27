@@ -21016,54 +21016,6 @@
         }
       }
     },
-    "Bank permission ends by %@" : {
-      "comment" : "Enable Banking caption on a linked account: the latest date the bank's permission runs out; the placeholder is a date",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bankberechtigung endet spätestens am %@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bank permission ends by %@"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El permiso del banco termina como máximo el %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "L'autorisation de la banque se termine au plus tard le %@"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "L'autorizzazione della banca termina al più tardi il %@"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Toestemming van de bank loopt uiterlijk af op %@"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A permissão do banco termina, no máximo, em %@"
-          }
-        }
-      }
-    },
     "Bank permissions last up to 90 days. Authorize a bank again before then to keep syncing." : {
       "comment" : "Enable Banking footer under the linked accounts about how long a bank permission lasts",
       "extractionState" : "stale",
@@ -96407,6 +96359,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Autorizar com seu banco"
+          }
+        }
+      }
+    },
+    "Authorized on %@" : {
+      "comment" : "Enable Banking caption on a linked account: the day its bank was last authorized; the placeholder is a date",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorisiert am %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authorized on %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorizado el %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorisé le %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorizzato il %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geautoriseerd op %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorizado em %@"
           }
         }
       }

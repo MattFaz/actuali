@@ -41,23 +41,13 @@ struct BankSyncAccount: Sendable, Equatable, Identifiable {
     /// server as `aspspName`.
     var institutionName: String?
     /// When the newest link message for this account was written, on any
-    /// device; nil if the budget has none. The server never says when an
-    /// Enable Banking permission ends, so this is what it is counted from.
+    /// device; nil if the budget has none. Linking follows a bank
+    /// authorization within minutes, and the server never says when an Enable
+    /// Banking permission ends, so this date is what a person can count from.
     var linkedAt: Date?
-
-    /// Upstream caps an Enable Banking permission at 90 days (`DEFAULT_CONSENT_DAYS`
-    /// in sync-server's `enablebanking-service.ts`); a bank may allow less.
-    static let enableBankingConsentDays = 90
 
     var source: BankSyncSource? {
         BankSyncSource(rawValue: syncSource)
-    }
-
-    /// The latest the bank's permission can run out. Nil for other providers
-    /// and when the link date is unknown.
-    var permissionEndsBy: Date? {
-        guard source == .enableBanking else { return nil }
-        return linkedAt?.addingTimeInterval(TimeInterval(Self.enableBankingConsentDays) * 24 * 60 * 60)
     }
 
     /// Whether the latest attempt ended in anything but a clean download.

@@ -111,8 +111,8 @@ struct EnableBankingSyncView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         }
-                        if let endsBy = account.permissionEndsBy {
-                            Text("Bank permission ends by \(endsBy.formatted(date: .abbreviated, time: .omitted))")
+                        if let linkedAt = account.linkedAt {
+                            Text("Authorized on \(linkedAt.formatted(date: .abbreviated, time: .omitted))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
