@@ -9,7 +9,8 @@ final class ReportDetailRangeUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "3", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
 
-        let card = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'reportCard.'")).firstMatch
+        let card = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'reportCard.' AND label CONTAINS 'Net Worth'"))
+            .firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 10))
         card.tap()
 
@@ -29,9 +30,10 @@ final class ReportDetailRangeUITests: XCTestCase {
         // Scrubbing pins an interval; the readout's corner clears it.
         let clear = app.buttons["reportDetail.clearSelection"]
         XCTAssertFalse(clear.exists)
-        let window = app.windows.firstMatch
-        window.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.55))
-            .press(forDuration: 0.3, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.55)))
+        // The chart sits right under the readout, whatever the screen size.
+        let readout = app.descendants(matching: .any)["reportDetail.readout"]
+        let chartLeft = readout.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 1)).withOffset(CGVector(dx: 60, dy: 120))
+        chartLeft.press(forDuration: 0.3, thenDragTo: chartLeft.withOffset(CGVector(dx: 120, dy: 0)))
         XCTAssertTrue(clear.waitForExistence(timeout: 3))
         clear.tap()
         XCTAssertFalse(clear.exists)

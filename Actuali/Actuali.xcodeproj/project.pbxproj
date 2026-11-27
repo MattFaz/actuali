@@ -319,8 +319,8 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				AC00000000000000000003DF /* ActualiShared */,
 				AD00000000000000000002DF /* ActualiWalletDelivery */,
+				AC00000000000000000003DF /* ActualiShared */,
 			);
 			name = ActualiWalletDelivery;
 			packageProductDependencies = (

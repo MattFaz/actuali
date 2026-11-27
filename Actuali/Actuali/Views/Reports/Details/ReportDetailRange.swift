@@ -38,10 +38,10 @@ enum ReportDetailRange: CaseIterable, Sendable {
     /// which is how `TimeFrame.resolve` keeps a window's length while moving
     /// it. `all` runs from the first transaction.
     ///
-    /// No span is a single month: that is one point on a monthly chart, and
-    /// the line and area pages need two. January's year to date, and a
-    /// history that began this month, reach back one month more.
-    func timeFrame(asOf today: Date, earliestMonth: String? = nil) -> WidgetTimeFrame {
+    /// `twoMonths` is for the widgets charted as a line or an area: one month
+    /// is a single point there, which is no chart. For them January's year
+    /// to date, and a history that began this month, reach back one more.
+    func timeFrame(asOf today: Date, earliestMonth: String? = nil, twoMonths: Bool = false) -> WidgetTimeFrame {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         func month(_ offset: Int) -> String {
@@ -50,10 +50,11 @@ enum ReportDetailRange: CaseIterable, Sendable {
             return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)
         }
         switch self {
-        case .yearToDate where calendar.component(.month, from: today) > 1:
+        case .yearToDate where !twoMonths || calendar.component(.month, from: today) > 1:
             return WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate)
         case .all:
-            return WidgetTimeFrame(start: min(earliestMonth ?? month(-1), month(-1)), end: month(0), mode: .full)
+            let latest = month(twoMonths ? -1 : 0)
+            return WidgetTimeFrame(start: min(earliestMonth ?? latest, latest), end: month(0), mode: .full)
         default:
             return WidgetTimeFrame(start: month(1 - (months ?? 2)), end: month(0), mode: .slidingWindow)
         }
@@ -72,13 +73,21 @@ protocol TimeFramedMeta {
     /// points to compute and draw, so a meta with an interval that fine
     /// moves to months.
     mutating func coarsenForAllTime()
+    /// True where the widget is charted as a line or an area, which takes
+    /// two points: see `ReportDetailRange.timeFrame`.
+    static var chartNeedsTwoMonths: Bool { get }
 }
 
 extension TimeFramedMeta {
     mutating func coarsenForAllTime() {}
+    static var chartNeedsTwoMonths: Bool {
+        false
+    }
 }
 
 extension NetWorthMeta: TimeFramedMeta {
+    static let chartNeedsTwoMonths = true
+
     mutating func coarsenForAllTime() {
         if interval == .daily || interval == .weekly {
             interval = .monthly
@@ -87,7 +96,10 @@ extension NetWorthMeta: TimeFramedMeta {
 }
 
 extension CashFlowMeta: TimeFramedMeta {}
-extension AgeOfMoneyMeta: TimeFramedMeta {}
+extension AgeOfMoneyMeta: TimeFramedMeta {
+    static let chartNeedsTwoMonths = true
+}
+
 extension BudgetAnalysisMeta: TimeFramedMeta {}
 extension CalendarMeta: TimeFramedMeta {}
 extension SankeyMeta: TimeFramedMeta {}
@@ -95,7 +107,7 @@ extension SankeyMeta: TimeFramedMeta {}
 extension TimeFramedMeta {
     func ranged(_ range: ReportDetailRange, asOf today: Date, earliestMonth: String? = nil) -> Self {
         var copy = self
-        copy.timeFrame = range.timeFrame(asOf: today, earliestMonth: earliestMonth)
+        copy.timeFrame = range.timeFrame(asOf: today, earliestMonth: earliestMonth, twoMonths: Self.chartNeedsTwoMonths)
         if range == .all {
             copy.coarsenForAllTime()
         }
@@ -208,6 +220,9 @@ extension ReportRangePicker {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // Spelled out: "YTD" is read letter by letter.
+                .accessibilityLabel(ReportStrings.text(option == .yearToDate ? "Year to date" : option?.titleKey ?? "Saved",
+                                                       locale: locale))
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
                 .accessibilityIdentifier("reportDetail.range.\(option?.titleKey ?? "Saved")")
             }

@@ -26,6 +26,9 @@ struct ReportChartDetail: Equatable {
 
         var label: String
         var value: Value
+        /// The sum over the range, which the headline already shows until
+        /// an interval is picked.
+        var isRangeTotal = false
     }
 
     struct Event: Equatable {
@@ -158,6 +161,12 @@ struct ReportChartDetail: Equatable {
         style == .stackedBars || style == .groupedBars
     }
 
+    /// The figures listed under the chart, without the one the headline is
+    /// already showing.
+    func stats(at interval: Int?) -> [Stat] {
+        stats.filter { !($0.isRangeTotal && sumsOverRange && interval == nil) }
+    }
+
     /// A series' figure at an interval, or over the whole range when nil.
     func value(of series: Int, at interval: Int?) -> Double {
         interval.map { self.series[series].values[$0] } ?? self.series[series].values.reduce(0, +)
@@ -288,7 +297,8 @@ extension CustomReportData {
                 // Bars are amounts per interval, so they add up; a line or an
                 // area is a level at each interval and doesn't.
                 stats: single && style == .stackedBars
-                    ? [.init(label: ReportStrings.text("Total", locale: locale), value: .amount(table.values[0].reduce(0, +)))] : []
+                    ? [.init(label: ReportStrings.text("Total", locale: locale), value: .amount(table.values[0].reduce(0, +)),
+                             isRangeTotal: true)] : []
             )
             // Lead with today, not a day or month still to come. The dates are
             // UTC midnights, so compare the local day, not the instant.

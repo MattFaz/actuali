@@ -28343,7 +28343,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seit Jahresbeginn"
+            "value" : "YTD"
           }
         },
         "en" : {
@@ -28355,31 +28355,31 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Acumulado del año"
+            "value" : "YTD"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Depuis le début de l'année"
+            "value" : "YTD"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Da inizio anno"
+            "value" : "YTD"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sinds begin van het jaar"
+            "value" : "YTD"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Acumulado no ano"
+            "value" : "YTD"
           }
         }
       }

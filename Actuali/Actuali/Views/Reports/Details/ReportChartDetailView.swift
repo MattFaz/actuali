@@ -23,6 +23,10 @@ struct ReportChartDetailView: View {
         shownInterval.map { detail.intervals[$0] } ?? detail.spanLabel ?? ReportStrings.text("Total", locale: locale)
     }
 
+    private var shownStats: [ReportChartDetail.Stat] {
+        detail.stats(at: shownInterval)
+    }
+
     /// A list under the chart, where the numbers can't sit beside the headline.
     private enum Breakdown { case series, intervals, none }
 
@@ -56,7 +60,7 @@ struct ReportChartDetailView: View {
                     case .intervals: intervalList
                     case .none: EmptyView()
                     }
-                    if !detail.stats.isEmpty {
+                    if !shownStats.isEmpty {
                         statsList
                     }
                     if !detail.events.isEmpty {
@@ -70,6 +74,7 @@ struct ReportChartDetailView: View {
         .onReportRangeChange {
             selected = nil
             hidden = []
+            showsTotal = true
         }
         .navigationTitle(detail.name)
         .navigationBarTitleDisplayMode(.large)
@@ -282,7 +287,7 @@ struct ReportChartDetailView: View {
 
     private var statsList: some View {
         VStack(spacing: 0) {
-            ForEach(Array(detail.stats.enumerated()), id: \.offset) { index, stat in
+            ForEach(Array(shownStats.enumerated()), id: \.offset) { index, stat in
                 if index > 0 {
                     Divider()
                 }

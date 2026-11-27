@@ -601,7 +601,6 @@ struct DashboardView: View {
                                         systemImage: "chart.bar.xaxis"
                                     )
                                     .frame(maxWidth: .infinity)
-                                    .loadingPlaceholder()
                                 }
                                 .padding()
                             }

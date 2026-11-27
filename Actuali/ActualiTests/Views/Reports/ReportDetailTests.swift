@@ -33,7 +33,10 @@ struct ReportDetailTests {
         // One series: nothing to switch off.
         #expect(!signed.canHideSeries)
         // Bars are amounts per interval, so the range has a total.
-        #expect(signed.stats == [.init(label: "Total", value: .amount(-2))])
+        #expect(signed.stats == [.init(label: "Total", value: .amount(-2), isRangeTotal: true)])
+        // The headline is that total until an interval is picked.
+        #expect(signed.stats(at: nil).isEmpty)
+        #expect(signed.stats(at: 0) == signed.stats)
         #expect(stackedDetail.stats.isEmpty)
         #expect(report(.area(bars)).chartDetail()?.style == .area)
     }
@@ -629,22 +632,28 @@ struct ReportDetailTests {
         #expect(ReportDetailRange.earliestMonth(dates: [0]) == nil)
         let (allStart, _) = TimeFrame.resolve(ReportDetailRange.all.timeFrame(asOf: today, earliestMonth: earliest), asOf: today)
         #expect(allStart == utc(2023, 7))
-        // No transactions: two months, not `TimeFrame`'s 1900.
+        // No transactions: this month, not `TimeFrame`'s 1900.
         let (emptyStart, _) = TimeFrame.resolve(ReportDetailRange.all.timeFrame(asOf: today), asOf: today)
-        #expect(emptyStart == utc(2026, 10))
+        #expect(emptyStart == utc(2026, 11))
     }
 
     /// One month is one point on a monthly chart, which the Net Worth and
-    /// Age of Money pages can't draw.
-    @Test func noRangeIsASingleMonth() {
+    /// Age of Money pages can't draw. The other widgets keep the real span.
+    @Test func lineAndAreaWidgetsNeverGetASingleMonth() {
         // Year to date, in January.
         let january = utc(2027, 1, 15)
-        let (yearStart, _) = TimeFrame.resolve(ReportDetailRange.yearToDate.timeFrame(asOf: january), asOf: january)
-        #expect(yearStart == utc(2026, 12))
+        func start(_ range: ReportDetailRange, twoMonths: Bool) -> Date {
+            TimeFrame.resolve(range.timeFrame(asOf: january, earliestMonth: "2027-01", twoMonths: twoMonths), asOf: january).0
+        }
+        #expect(start(.yearToDate, twoMonths: true) == utc(2026, 12))
+        #expect(start(.yearToDate, twoMonths: false) == utc(2027, 1))
         // A history that began this month.
-        let (allStart, _) = TimeFrame.resolve(ReportDetailRange.all.timeFrame(asOf: january, earliestMonth: "2027-01"), asOf: january)
-        #expect(allStart == utc(2026, 12))
+        #expect(start(.all, twoMonths: true) == utc(2026, 12))
+        #expect(start(.all, twoMonths: false) == utc(2027, 1))
 
+        #expect(NetWorthMeta.chartNeedsTwoMonths)
+        #expect(AgeOfMoneyMeta.chartNeedsTwoMonths)
+        #expect(!CashFlowMeta.chartNeedsTwoMonths)
         let meta = NetWorthMeta(name: nil, timeFrame: nil, conditions: nil, conditionsOp: nil, interval: .monthly, mode: nil)
         for range in ReportDetailRange.allCases {
             let data = NetWorthEngine.compute(meta: meta.ranged(range, asOf: january, earliestMonth: "2027-01"),
