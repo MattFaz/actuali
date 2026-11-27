@@ -2,7 +2,23 @@ import Foundation
 import GRDB
 import Synchronization
 import Testing
+import UserNotifications
 @testable import Actuali
+
+/// `perform` posts its result notification. The real center would prompt for
+/// permission on a fresh CI simulator and hang the run.
+private struct DeniedNotificationCenter: NotificationPosting {
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        .denied
+    }
+
+    func requestAuthorization(options _: UNAuthorizationOptions) async throws -> Bool {
+        false
+    }
+
+    func add(_: UNNotificationRequest) async throws {}
+    func removePendingNotificationRequests(withIdentifiers _: [String]) {}
+}
 
 /// Answers /sync/sync the way a real server does: it folds the messages it
 /// receives into its own tree before answering, so answering with a merkle
@@ -699,7 +715,9 @@ struct TransactionLoggerSyncOutcomeTests {
         intent.date = Date(timeIntervalSince1970: 1_750_000_000)
 
         let performTask = Task {
-            try await intent.perform(using: store)
+            try await TransactionLogNotifier.$center.withValue(DeniedNotificationCenter()) {
+                try await intent.perform(using: store)
+            }
         }
         await writerReachedSessionBarrier.wait()
         try await Task.sleep(for: .milliseconds(50))
@@ -848,7 +866,9 @@ struct TransactionLoggerSyncOutcomeTests {
         intent.payee = "Coffee"
 
         do {
-            _ = try await intent.perform(using: store)
+            _ = try await TransactionLogNotifier.$center.withValue(DeniedNotificationCenter()) {
+                try await intent.perform(using: store)
+            }
             Issue.record("A category belonging to another budget must reject the shortcut")
         } catch LogTransactionError.categoryUnavailable {
             // The explicit category must never be silently replaced by payee history.
@@ -882,7 +902,9 @@ struct TransactionLoggerSyncOutcomeTests {
         intent.payee = "Coffee"
 
         do {
-            _ = try await intent.perform(using: store)
+            _ = try await TransactionLogNotifier.$center.withValue(DeniedNotificationCenter()) {
+                try await intent.perform(using: store)
+            }
             Issue.record("A deleted explicitly selected category must reject the shortcut")
         } catch LogTransactionError.categoryUnavailable {
             // Keep the old unscoped fallback, but reject stale scoped choices.

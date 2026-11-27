@@ -20,6 +20,10 @@ enum TransactionLoggedMarker {
 
 @MainActor
 enum TransactionLogNotifier {
+    /// Tests that drive `LogTransactionIntent.perform` bind a stub here: the real
+    /// center shows a permission prompt on a fresh simulator that nothing answers.
+    @TaskLocal static var center: any NotificationPosting = UNUserNotificationCenter.current()
+
     /// - Parameter synced: false when the row is written locally but hasn't
     ///   reached the server yet, which the banner says outright — otherwise the
     ///   transaction looks logged while the budget on the server is unchanged.
@@ -28,7 +32,7 @@ enum TransactionLogNotifier {
                               numberFormat: ActualNumberFormat = .commaDot,
                               needsOpeningBudget: Bool = false,
                               settings: TransactionLogNotificationSettings = .init(),
-                              center: any NotificationPosting = UNUserNotificationCenter.current()) async {
+                              center: any NotificationPosting = TransactionLogNotifier.center) async {
         // A locally saved row still needs its warning when ordinary
         // Shortcut success confirmations are disabled.
         guard !synced || settings.showsSuccessNotification else { return }
@@ -72,7 +76,7 @@ enum TransactionLogNotifier {
                               currencyCode: String, narrowSymbol: Bool = false,
                               prefill: TransactionPrefill? = nil,
                               numberFormat: ActualNumberFormat = .commaDot,
-                              center: any NotificationPosting = UNUserNotificationCenter.current()) async {
+                              center: any NotificationPosting = TransactionLogNotifier.center) async {
         // Request permission lazily on first call. Quietly ignore denial — without
         // permission we can't notify, but we still want the AppIntent to throw a
         // banner-visible error so the user isn't left in the dark.
