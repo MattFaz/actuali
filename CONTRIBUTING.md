@@ -4,7 +4,7 @@ Thanks for your interest in Actuali.
 
 ## Building
 
-- Xcode with the iOS 26.1+ SDK
+- Xcode 27 with the iOS 27 SDK
 - Open `Actuali/Actuali.xcodeproj`; Swift Package Manager resolves dependencies on first build
 
 ```bash
