@@ -88,6 +88,11 @@ struct BankSyncRemoteAccount: Identifiable, Sendable, Equatable {
     let institutionName: String
     let balanceCents: Int?
     let source: BankSyncSource
+
+    /// The budget account this provider-side account feeds, if any.
+    func link(in linked: [BankSyncAccount]) -> BankSyncAccount? {
+        linked.first { $0.externalAccountId == id && $0.syncSource == source.rawValue }
+    }
 }
 
 extension SimpleFINAccount {

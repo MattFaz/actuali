@@ -4322,6 +4322,31 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// When each account's newest link message was written, on any device,
+    /// keyed by account id. Linking follows a bank authorization within
+    /// minutes, and the server never says when an Enable Banking permission
+    /// ends, so this date is what a person can count from.
+    ///
+    /// Kept out of `fetchBankSyncAccounts`: every reload runs that for every
+    /// provider, one screen shows these dates, and a budget without a message
+    /// log must not lose its linked accounts over them. Reads the accounts
+    /// messages only, through upstream's `messages_crdt_search` index.
+    func fetchBankLinkDates() async throws -> [String: Date] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("messages_crdt") else { return [:] }
+            // Timestamps are fixed width, so the string max is the newest.
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT "row" AS account, MAX(timestamp) AS newest FROM messages_crdt
+            WHERE dataset = 'accounts' AND "column" = 'account_id'
+            GROUP BY "row"
+            """)
+            return rows.reduce(into: [String: Date]()) { dates, row in
+                guard let stamp = (row["newest"] as String?).flatMap(HLCTimestamp.parse) else { return }
+                dates[row["account"] as String] = Date(timeIntervalSince1970: Double(stamp.millis) / 1000)
+            }
+        }
+    }
+
     /// What bank sync last stamped on each account: when a download last
     /// completed and how the latest attempt ended. Keyed by account id, and
     /// read apart from `fetchBankSyncAccounts` because Wallet links aren't in

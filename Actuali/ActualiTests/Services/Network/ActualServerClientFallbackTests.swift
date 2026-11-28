@@ -74,6 +74,24 @@ struct ActualServerClientFallbackTests {
         ])
     }
 
+    /// A bank authorization poll is held open for minutes and dies whenever
+    /// iOS suspends the app, which says nothing about the address.
+    @Test func aBankAuthorizationPollIsNotRetriedAtFallback() async throws {
+        let (client, servers) = try await makeClient()
+        await client.setToken("session-token")
+
+        await #expect(throws: ActualServerError.self) {
+            _ = try await client.enableBankingPollAuthorization(state: "state-1", timeout: 280)
+        }
+        #expect(servers.requestedURLs.map(\.host) == ["primary.example.com"])
+
+        // Nor did the client move over: the next request starts at the primary.
+        _ = try await client.login(password: "password")
+        #expect(servers.requestedURLs.map(\.host) == [
+            "primary.example.com", "primary.example.com", "fallback.example.com",
+        ])
+    }
+
     @Test func doesNotRetryWithoutAFallbackAddress() async throws {
         let (client, servers) = try await makeClient(fallbackServerURL: "")
 

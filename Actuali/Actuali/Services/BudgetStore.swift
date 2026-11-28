@@ -5549,6 +5549,11 @@ final class BudgetStore: ObservableObject {
             summary(locale: .autoupdatingCurrent, bundle: .main)
         }
 
+        /// `summary` on one line, for a toast or a footer.
+        var oneLineSummary: String {
+            summary.replacingOccurrences(of: "\n\n", with: " ")
+        }
+
         func summary(locale: Locale, bundle: Bundle) -> String {
             var lines: [String] = []
             if added > 0 {
@@ -5675,7 +5680,7 @@ final class BudgetStore: ObservableObject {
             if result.problems.isEmpty {
                 showBankSyncNotice(BankSyncNotice(
                     // One line: the toast is a capsule.
-                    text: result.summary.replacingOccurrences(of: "\n\n", with: " "),
+                    text: result.oneLineSummary,
                     offersReview: result.staged > 0
                         || result.importedTransactions.contains { unreviewedTransactions[$0.id] != nil }
                         || result.matchedTransactions.keys.contains { unreviewedTransactions[$0] != nil }
@@ -5708,6 +5713,160 @@ final class BudgetStore: ObservableObject {
     /// Every account the active connection covers, for the linking screen.
     func fetchBankAccounts() async throws -> [SimpleFINAccount] {
         try await makeBankSyncProvider().accounts()
+    }
+
+    func enableBankingStatus() async throws -> Bool? {
+        try await serverClient.enableBankingStatus()
+    }
+
+    /// When each linked account was last linked, keyed by budget account id.
+    func bankLinkDates() async -> [String: Date] {
+        await (try? database?.fetchBankLinkDates()) ?? [:]
+    }
+
+    func enableBankingRedirectURL() async -> URL? {
+        await serverClient.enableBankingRedirectURL()
+    }
+
+    func enableBankingBanks(country: String) async throws -> [EnableBankingBank] {
+        try await serverClient.enableBankingBanks(country: country)
+    }
+
+    func startEnableBankingAuthorization(
+        bank: EnableBankingBank,
+        psuType: String
+    ) async throws -> EnableBankingAuthorization {
+        try await serverClient.enableBankingStartAuthorization(bank: bank, psuType: psuType)
+    }
+
+    private static let enableBankingPollPause: Duration = .seconds(1)
+    private static let enableBankingPollDeadline: Duration = .seconds(600)
+    /// Just under the session's 300 s resource cap; the last poll is capped
+    /// at the time left instead.
+    private static let enableBankingPollRequestTimeout: Duration = .seconds(280)
+
+    /// Whether asking the server again can still get an answer. Approval often
+    /// happens in a banking app, so iOS suspends this app and the open request
+    /// dies; a reverse proxy in front of the server (nginx closes at 60 s,
+    /// Cloudflare at 100 s) can also end it with a gateway status while the
+    /// person is still at their bank. Anything else (a TLS or certificate
+    /// failure, a bad URL, any other HTTP status) won't change on a retry.
+    private static func isRecoverablePollFailure(_ error: any Error) -> Bool {
+        switch error {
+        case ActualServerError.networkError(let error as URLError):
+            [
+                .timedOut, .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost,
+                .cannotFindHost, .dnsLookupFailed, .dataNotAllowed,
+            ].contains(error.code)
+        case ActualServerError.httpError(let statusCode, _):
+            [408, 502, 503, 504, 524].contains(statusCode)
+        default:
+            false
+        }
+    }
+
+    /// Waits for the person to finish at their bank, which can take minutes.
+    /// The server keeps a finished result for 30 s, so asking again after a
+    /// dropped request, a gateway timeout or a client-side timeout (280 s)
+    /// usually still collects it (see `isRecoverablePollFailure`). Anything
+    /// else, including cancellation, propagates. The deadline is checked before
+    /// every poll and caps that poll's timeout, so a request can't outlive it.
+    func awaitEnableBankingAuthorization(state: String) async throws -> [BankSyncRemoteAccount] {
+        let deadline = ContinuousClock.now.advanced(by: Self.enableBankingPollDeadline)
+        while true {
+            let remaining = ContinuousClock.now.duration(to: deadline)
+            guard remaining > .zero else { throw EnableBankingAuthError.timedOut }
+            do {
+                return try await serverClient.enableBankingPollAuthorization(
+                    state: state,
+                    timeout: min(Self.enableBankingPollRequestTimeout, remaining) / .seconds(1)
+                ).map(\.remoteAccount)
+            } catch where Self.isRecoverablePollFailure(error) {
+                // Also ends the loop if the task is cancelled during the pause.
+                try await Task.sleep(for: Self.enableBankingPollPause)
+            }
+        }
+    }
+
+    /// The links a new authorization of `bankName` renews, as the returned
+    /// account for each budget account id. An account that was linked before
+    /// comes back under a new id, so it has to be recognised: by the
+    /// transactions it already imported, and, when `accountId` is being
+    /// reauthorized, by what is unambiguous about the rest. Connecting a bank
+    /// goes by the transactions alone: someone else's sign-in at the same bank
+    /// must never be taken for an account that is already linked.
+    func enableBankingRenewals(
+        of remotes: [BankSyncRemoteAccount],
+        bankName: String,
+        reauthorizing accountId: String?
+    ) async -> [String: BankSyncRemoteAccount] {
+        let linked = bankSyncAccounts
+        let open = EnableBankingLinks.unsettled(of: remotes, bankName: bankName, linked: linked)
+        var proven: [String: BankSyncRemoteAccount] = [:]
+        // One account on each side of a reauthorization leaves nothing to
+        // compare, and skipping it keeps the usual case quick.
+        let isPlain = accountId != nil && open.links.count == 1 && open.remotes.count == 1
+        if !open.links.isEmpty, !isPlain {
+            proven = await enableBankingMatches(for: open.links, among: open.remotes)
+        }
+        guard let accountId else { return proven }
+        return EnableBankingLinks.renewals(
+            of: remotes, reauthorizing: accountId, bankName: bankName, linked: linked, proven: proven
+        )
+    }
+
+    /// Which budget account each returned bank account already feeds, judged
+    /// by the transactions themselves. A new authorization gives every
+    /// account a new id, so nothing about a link says which returned account
+    /// it was made to. The bank keeps its transaction ids, though, so the
+    /// account a budget account imported from is the one that returns its
+    /// transactions again. Budget account id to returned account, and only
+    /// where one account clearly wins.
+    func enableBankingMatches(
+        for links: [BankSyncAccount],
+        among remotes: [BankSyncRemoteAccount]
+    ) async -> [String: BankSyncRemoteAccount] {
+        guard let database, !remotes.isEmpty else { return [:] }
+        var imported: [String: Set<String>] = [:]
+        for link in links {
+            let ids = (try? database.existingFinancialIds(accountId: link.id)) ?? []
+            if !ids.isEmpty {
+                imported[link.id] = ids
+            }
+        }
+        // Nothing imported is nothing to recognise, so the bank isn't asked.
+        guard !imported.isEmpty else { return [:] }
+        // As far back as an ordinary sync reaches, which is where the
+        // transactions a link imported can be found again.
+        let startDay = DayDate.today().adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
+        let downloads = await EnableBankingProvider(client: serverClient).download(remotes.map {
+            BankSyncTarget(externalId: $0.id, startDay: startDay, institutionName: $0.institutionName)
+        })
+        // An account whose download failed could be the one a link belongs to,
+        // and "shares the most" among the rest would hand it to another.
+        guard downloads.byAccount.values.allSatisfy(\.accountDataReceived) else { return [:] }
+        let returned = downloads.byAccount.mapValues { Set($0.candidates.map(\.importedId)) }
+        return Self.accountMatches(imported: imported, returned: returned)
+            .compactMapValues { remoteId in remotes.first { $0.id == remoteId } }
+    }
+
+    /// Pairs each budget account with the returned account that shares the
+    /// most transaction ids with it. A transfer between two of a bank's
+    /// accounts carries one id on both sides, so sharing an id is not enough:
+    /// an account has to share more than any other does, and no two budget
+    /// accounts may end up with the same one.
+    nonisolated static func accountMatches(
+        imported: [String: Set<String>],
+        returned: [String: Set<String>]
+    ) -> [String: String] {
+        var winners: [String: String] = [:]
+        for (accountId, ids) in imported {
+            let shared = returned.mapValues { $0.intersection(ids).count }.filter { $0.value > 0 }
+            guard let most = shared.values.max(), shared.values.count(where: { $0 == most }) == 1 else { continue }
+            winners[accountId] = shared.first { $0.value == most }?.key
+        }
+        let claims = Dictionary(grouping: winners, by: \.value)
+        return winners.filter { claims[$0.value]?.count == 1 }
     }
 
     func loadBankSyncAccounts() async {
@@ -6009,6 +6168,22 @@ final class BudgetStore: ObservableObject {
             throw error
         }
         await refreshDataOnly()
+    }
+
+    /// `syncBankAccounts`, once no other sync is running. Starting on top of
+    /// one returns an empty result, and dropping the request would leave an
+    /// account linked meanwhile without its history until someone finds Sync
+    /// Now.
+    func syncBankAccountsWhenIdle(accountIds: [String]) async throws -> BankSyncResult {
+        // Checked again after every wait: several callers can be waiting on
+        // one sync, and only the first to resume finds the store idle.
+        while isBankSyncing {
+            try Task.checkCancellation()
+            for await syncing in $bankSyncingAccountIds.values where syncing.isEmpty {
+                break
+            }
+        }
+        return try await syncBankAccounts(accountIds: accountIds)
     }
 
     /// Download and import transactions for the linked accounts.
