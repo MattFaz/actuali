@@ -33,6 +33,14 @@ final class AmountKeypadView: UIInputView, UIInputViewAudioFeedback {
         true
     }
 
+    /// The asset Done fills with: the app's global accent as the build names it
+    /// (`ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME` lands in Info.plist as
+    /// `NSAccentColorName`), so a build that picks another accent asset gets it
+    /// here too. Falls back to the asset this target ships.
+    nonisolated static func accentColorName(in bundle: Bundle = .main) -> String {
+        bundle.object(forInfoDictionaryKey: "NSAccentColorName") as? String ?? "AccentColor"
+    }
+
     /// `onType` gets one character, or "" for delete.
     init(
         decimalSeparator: String,
@@ -163,7 +171,7 @@ final class AmountKeypadView: UIInputView, UIInputViewAudioFeedback {
                 configuration.baseBackgroundColor = UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.24, alpha: 1) : UIColor(white: 0.78, alpha: 1) }
                 configuration.baseForegroundColor = .label
             case .done:
-                configuration.baseBackgroundColor = UIColor(named: "AccentColor")
+                configuration.baseBackgroundColor = UIColor(named: AmountKeypadView.accentColorName())
                 configuration.baseForegroundColor = .white
             }
             button = UIButton(configuration: configuration, primaryAction: UIAction { _ in
