@@ -8,6 +8,8 @@
 -->
 <plist version="1.0">
 <dict>
+	<key>ActualiAppGroupID</key>
+	<string>$(ACTUALI_APP_GROUP_ID)</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>

@@ -3,6 +3,17 @@ import Testing
 @testable import Actuali
 
 struct WidgetSnapshotTests {
+    /// The app writes the snapshot and the two extensions read it, so all three
+    /// bundles must carry the same group from ACTUALI_APP_GROUP_ID. A per-target
+    /// override leaves them apart and the widgets go blank with no error.
+    @Test func everyBundleCarriesTheSameAppGroup() throws {
+        let group = try #require(WidgetSnapshotStore.appGroupID)
+        for path in ["PlugIns/ActualiWidgets.appex", "Extensions/ActualiWalletDelivery.appex"] {
+            let bundle = try #require(Bundle(url: Bundle.main.bundleURL.appendingPathComponent(path)), "\(path)")
+            #expect(bundle.object(forInfoDictionaryKey: "ActualiAppGroupID") as? String == group, "\(path)")
+        }
+    }
+
     private func makeStore() throws -> WidgetSnapshotStore {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("WidgetSnapshotTests-\(UUID().uuidString)", isDirectory: true)

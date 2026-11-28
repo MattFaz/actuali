@@ -14,6 +14,8 @@
 -->
 <plist version="1.0">
 <dict>
+	<key>ActualiAppGroupID</key>
+	<string>$(ACTUALI_APP_GROUP_ID)</string>
 	<!--
 	  Background refresh keys must match Info-Release.plist and
 	  BackgroundRefresh.taskIdentifier (guarded by BackgroundRefreshTests).

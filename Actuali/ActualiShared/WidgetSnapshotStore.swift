@@ -3,9 +3,13 @@ import Foundation
 /// Reads and writes the category-balance snapshot in the app group container.
 /// The app writes after every data refresh; the widget extension only reads.
 struct WidgetSnapshotStore {
-    /// Must match the app group in Actuali.entitlements and
-    /// ActualiWidgets.entitlements.
-    static let appGroupID = "group.com.mfazz.ActualiOS"
+    /// The `ACTUALI_APP_GROUP_ID` build setting, which also fills the app
+    /// group in all three targets' entitlements, so a build signed by another
+    /// team only changes that setting. Reaches each target (app, widget, wallet
+    /// delivery) through its Info.plist. nil when the value is missing or was not
+    /// expanded, which gives the same nil container as a missing capability.
+    static let appGroupID = (Bundle.main.object(forInfoDictionaryKey: "ActualiAppGroupID") as? String)
+        .flatMap { $0.hasPrefix("group.") ? $0 : nil }
 
     let fileURL: URL
 
@@ -16,8 +20,8 @@ struct WidgetSnapshotStore {
     /// nil when the app group container is unavailable — e.g. a provisioning
     /// profile without the app group capability.
     static func standard() -> WidgetSnapshotStore? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
+        appGroupID
+            .flatMap { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) }
             .map(WidgetSnapshotStore.init(containerURL:))
     }
 
