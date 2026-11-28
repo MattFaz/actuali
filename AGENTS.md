@@ -31,9 +31,9 @@ xcodebuild test \
 protoc --swift_out=Actuali/Actuali/Generated/ Actuali/Actuali/Resources/sync.proto
 ```
 
-Requirements: Xcode with the iOS 26.1+ SDK. Swift Package Manager resolves dependencies (GRDB, SwiftProtobuf, ZIPFoundation) on first build.
+Requirements: Xcode 27 with the iOS 27 SDK (CI pins Xcode 27.2) — the widgets' Extra Large Portrait family, `systemExtraLargePortrait`, doesn't exist in Xcode 26. Swift Package Manager resolves dependencies (GRDB, SwiftProtobuf, ZIPFoundation) on first build.
 
-`IPHONEOS_DEPLOYMENT_TARGET` is 18.0, so the app ships to iOS 18 while still building against the iOS 26 SDK — the two are independent and both are needed. Code may use an iOS 26 API behind `@available` / `#available` (`.prominent` in `AddTransactionView`, `FoundationModels` in `TransactionTextParser`), which is why the newer SDK stays a hard requirement. Adding an iOS 26 API without a gate is a compile error, so the build itself guards the floor.
+`IPHONEOS_DEPLOYMENT_TARGET` is 18.0, so the app ships to iOS 18 while still building against the iOS 27 SDK — the two are independent and both are needed. Code may use an API newer than iOS 18 behind `@available` / `#available` (iOS 26's `.prominent` in `AddTransactionView` and `FoundationModels` in `TransactionTextParser`, iOS 27's `systemExtraLargePortrait` in `ActualiWidgets/WidgetSupport.swift`), which is why the newer SDK stays a hard requirement. Using any API newer than the deployment target without a gate is a compile error, so the build itself guards the floor for API availability.
 
 What the compiler can't guard is anything the OS resolves at runtime, so the unit suite should run on both the newest runtime and iOS 18. CI currently runs only the iOS 27 leg — Xcode 27.2 can't download an iOS 18 simulator runtime — so check the floor locally with `dev/scripts/sim-test.sh ios18` where one is installed. Two known traps live in that gap — SF Symbols added after SF Symbols 6 render blank rather than failing, and SQLite in iOS 18 predates 3.46.0, so a numeric separator inside a SQL string (`500_000`) throws `unrecognized token` at runtime. Plain Swift numeric literals are fine; only digits inside a SQL string matter.
 

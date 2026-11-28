@@ -98,7 +98,7 @@ This is an unofficial community project. It is not affiliated with or endorsed b
 
 ## Building from source
 
-You'll need Xcode with the iOS 26 SDK. Dependencies (GRDB.swift, SwiftProtobuf, ZIPFoundation) are managed by Xcode's Swift Package Manager and resolve on first build.
+You'll need Xcode 27 with the iOS 27 SDK. Dependencies (GRDB.swift, SwiftProtobuf, ZIPFoundation) are managed by Xcode's Swift Package Manager and resolve on first build.
 
 ```bash
 # Open in Xcode
