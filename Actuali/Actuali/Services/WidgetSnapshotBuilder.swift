@@ -22,7 +22,7 @@ extension BudgetStore {
             scheduleStatuses: scheduleStatuses,
             payees: payees,
             transactions: transactions,
-            spentLastMonthByCategory: widgetSpentLastMonthByCategory
+            monthToDateSpending: widgetMonthToDateSpending
         )
         // Keep the footer's refresh time current without reloading unchanged balances.
         var comparable = snapshot
@@ -49,6 +49,15 @@ extension BudgetStore {
     }
 }
 
+/// Net spending per category (negative = spending) for this month and last,
+/// each from its 1st through today's day number, so Spending vs Last Month
+/// compares like for like. A category with no transactions in its window has
+/// no key; an empty lastMonth means nothing to compare.
+struct MonthToDateSpending: Equatable {
+    var thisMonth: [String: Int]
+    var lastMonth: [String: Int]
+}
+
 extension WidgetSnapshot {
     /// Bridges the app's budget model to the widget snapshot. Formatting is
     /// injected so the mapping stays a pure function of its inputs. Sorted
@@ -67,15 +76,16 @@ extension WidgetSnapshot {
         scheduleStatuses: [String: ScheduleStatus] = [:],
         payees: [Payee] = [],
         transactions: [Transaction] = [],
-        spentLastMonthByCategory: [String: Int] = [:]
+        monthToDateSpending: MonthToDateSpending? = nil
     ) -> WidgetSnapshot {
+        let comparison = monthToDateSpending.flatMap { $0.lastMonth.isEmpty ? nil : $0 }
         let sortedCategories = budgets
             .sorted { ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder) }
             .map {
                 // Spending vs Last Month's movers, signed like spendingDifference;
-                // a category quiet last month compares against nothing spent.
-                let difference = spentLastMonthByCategory.isEmpty
-                    ? nil : spentLastMonthByCategory[$0.categoryId, default: 0] - $0.spent
+                // a category quiet in either window compares against nothing spent.
+                let id = $0.categoryId
+                let difference = comparison.map { $0.lastMonth[id, default: 0] - $0.thisMonth[id, default: 0] }
                 return WidgetCategoryBalance(
                     id: $0.categoryId,
                     name: $0.categoryName,
@@ -140,8 +150,10 @@ extension WidgetSnapshot {
             hiddenCategoryIds: Set(budgetMonth.map { $0.hiddenCategoryBudgets.map(\.categoryId) + $0.hiddenIncomeCategories.map(\.categoryId) } ?? []),
             format: format
         )
+        if let comparison {
+            snapshot.addMonthComparison(comparison, format: format)
+        }
         if let budgetMonth {
-            snapshot.addMonthComparison(budgetMonth, spentLastMonthByCategory: spentLastMonthByCategory, format: format)
             snapshot.addDailyRates(budgetMonth, now: generatedAt, format: format)
         }
         return snapshot
@@ -149,7 +161,7 @@ extension WidgetSnapshot {
 
     /// `format` already masks when balances are hidden; the raw cents are
     /// zeroed as well so nothing leaks through the unformatted fields. Hidden
-    /// categories' names are blanked under the mask too, matching the
+    /// categories' names are blanked whatever the mask, matching the
     /// category rows, which leave hidden categories out entirely.
     private mutating func addTransactions(
         _ transactions: [Transaction],
@@ -162,7 +174,7 @@ extension WidgetSnapshot {
             WidgetTransaction(
                 id: transaction.id,
                 payeeName: transaction.payeeName,
-                categoryName: hidden && transaction.categoryId.map(hiddenCategoryIds.contains) == true
+                categoryName: transaction.categoryId.map(hiddenCategoryIds.contains) == true
                     ? nil : transaction.categoryName,
                 amount: hidden ? 0 : transaction.amount,
                 formattedAmount: format(transaction.amount),
@@ -193,16 +205,15 @@ extension WidgetSnapshot {
             .map(row)
     }
 
-    /// Spending is compared as a positive amount (-totalSpent). This month to
-    /// date against last month through the same day (BudgetStore.spentLastMonthToDate),
-    /// summed across categories.
-    private mutating func addMonthComparison(
-        _ budgetMonth: BudgetMonth, spentLastMonthByCategory: [String: Int], format: (Int) -> String
-    ) {
-        guard !spentLastMonthByCategory.isEmpty else { return }
-        let spentLastMonthToDate = spentLastMonthByCategory.values.reduce(0, +)
+    /// Spending is compared as a positive amount (-spent). This month to date
+    /// against last month through the same day (BudgetStore.monthToDateSpending),
+    /// summed across categories. Not totalSpent: that counts the whole month,
+    /// so a transaction dated later this month would have no match last month.
+    private mutating func addMonthComparison(_ spending: MonthToDateSpending, format: (Int) -> String) {
+        let spentLastMonthToDate = spending.lastMonth.values.reduce(0, +)
         let lastSpending = -spentLastMonthToDate
-        let difference = -budgetMonth.totalSpent - lastSpending
+        let thisSpending = -spending.thisMonth.values.reduce(0, +)
+        let difference = thisSpending - lastSpending
         if balancesHidden {
             // format masks every amount when hidden, so format(0) is the mask
             // text without reaching for BudgetStore's main-actor constant.
@@ -218,6 +229,7 @@ extension WidgetSnapshot {
                 .percent.precision(.fractionLength(0)).sign(strategy: .always(includingZero: false))
             )
         }
+        formattedTotalSpendingToDate = format(thisSpending)
         formattedTotalSpendingLastMonth = format(lastSpending)
         formattedSpendingDifference = format(difference)
     }

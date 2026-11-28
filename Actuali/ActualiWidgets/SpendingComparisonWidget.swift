@@ -11,15 +11,7 @@ struct SpendingComparisonWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Spending vs Last Month"))
         .description(String(localized: "How this month's spending compares with the same point last month."))
-        .supportedFamilies(Self.families)
-    }
-
-    private static var families: [WidgetFamily] {
-        let base: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge]
-        if #available(iOS 27.0, *) {
-            return base + [.systemExtraLargePortrait]
-        }
-        return base
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -88,7 +80,7 @@ struct SpendingComparisonProvider: TimelineProvider {
         }
         return SpendingComparisonEntry(
             date: snapshot.generatedAt,
-            formattedThisMonth: snapshot.formattedTotalSpending,
+            formattedThisMonth: snapshot.formattedTotalSpendingToDate,
             formattedLastMonth: snapshot.formattedTotalSpendingLastMonth,
             formattedDifference: snapshot.formattedSpendingDifference,
             formattedPercentChange: snapshot.formattedSpendingPercentChange,
@@ -102,7 +94,6 @@ struct SpendingComparisonProvider: TimelineProvider {
 
 struct SpendingComparisonWidgetView: View {
     @Environment(\.widgetFamily) private var family
-    @Environment(\.locale) private var locale
 
     let entry: SpendingComparisonEntry
 
@@ -111,7 +102,7 @@ struct SpendingComparisonWidgetView: View {
             if let difference = entry.formattedDifference {
                 if family == .systemSmall {
                     smallLayout(difference)
-                } else if isLargeFamily {
+                } else if family.isLarge {
                     largeLayout(difference)
                 } else {
                     mediumLayout(difference)
@@ -156,7 +147,8 @@ struct SpendingComparisonWidgetView: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .accessibilityIdentifier("spendingComparisonWidget.difference")
@@ -168,7 +160,8 @@ struct SpendingComparisonWidgetView: View {
             Spacer(minLength: 0)
             comparisonColumns(difference)
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -181,7 +174,7 @@ struct SpendingComparisonWidgetView: View {
             header
             comparisonColumns(difference)
             VStack(alignment: .leading, spacing: 6) {
-                Text(isExtraLargePortrait ? String(localized: "Biggest changes") : String(localized: "Top mover"))
+                Text(family.isExtraLargePortrait ? String(localized: "Biggest changes") : String(localized: "Top mover"))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -191,28 +184,16 @@ struct SpendingComparisonWidgetView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 } else {
-                    ForEach(entry.movers.prefix(isExtraLargePortrait ? 4 : 1), id: \.category.id) { mover in
+                    ForEach(entry.movers.prefix(family.isExtraLargePortrait ? 4 : 1), id: \.category.id) { mover in
                         moverRow(mover.category, trend: mover.trend)
                     }
                 }
             }
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private var isLargeFamily: Bool {
-        family == .systemLarge || isExtraLargePortrait
-    }
-
-    /// `systemExtraLargePortrait` is iOS 27-only, so it's matched behind
-    /// `#available` rather than a `switch` case.
-    private var isExtraLargePortrait: Bool {
-        if #available(iOS 27.0, *) {
-            return family == .systemExtraLargePortrait
-        }
-        return false
     }
 
     private func comparisonColumns(_ difference: String) -> some View {
@@ -342,15 +323,5 @@ struct SpendingComparisonWidgetView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(identifier)
-    }
-
-    private var updatedFooter: some View {
-        Text(String(
-            format: String(localized: "Updated %@", locale: locale),
-            WidgetDateFormatting.relative(entry.date, locale: locale)
-        ))
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
-        .lineLimit(1)
     }
 }

@@ -11,15 +11,7 @@ struct DailyBurnRateWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Daily Burn Rate"))
         .description(String(localized: "What you spend per day this month, and what you can still spend."))
-        .supportedFamilies(Self.families)
-    }
-
-    private static var families: [WidgetFamily] {
-        let base: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge]
-        if #available(iOS 27.0, *) {
-            return base + [.systemExtraLargePortrait]
-        }
-        return base
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -101,7 +93,7 @@ struct DailyBurnRateWidgetView: View {
             if let average = entry.formattedAverageSpendPerDay {
                 if family == .systemSmall {
                     smallLayout(average)
-                } else if isLargeFamily {
+                } else if family.isLarge {
                     largeLayout(average)
                 } else {
                     mediumLayout(average)
@@ -141,7 +133,8 @@ struct DailyBurnRateWidgetView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
@@ -152,7 +145,8 @@ struct DailyBurnRateWidgetView: View {
             Spacer(minLength: 0)
             dailyRates(average)
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -164,7 +158,7 @@ struct DailyBurnRateWidgetView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             dailyRates(average)
-            if isExtraLargePortrait {
+            if family.isExtraLargePortrait {
                 ratePair(
                     entry.formattedAverageSpendPerWeek ?? "—",
                     spentLabel: String(localized: "Spent per week so far"),
@@ -178,12 +172,12 @@ struct DailyBurnRateWidgetView: View {
                     statRow(String(localized: "Days left"), value: Text(daysRemaining, format: .number))
                         .accessibilityIdentifier("dailyBurnRateWidget.daysLeft")
                 }
-                if !isExtraLargePortrait, let projected = entry.formattedProjectedSpending {
+                if !family.isExtraLargePortrait, let projected = entry.formattedProjectedSpending {
                     statRow(String(localized: "Projected this month"), value: Text(projected))
                         .accessibilityIdentifier("dailyBurnRateWidget.projected")
                 }
             }
-            if isExtraLargePortrait, let progress = entry.monthProgress,
+            if family.isExtraLargePortrait, let progress = entry.monthProgress,
                let elapsed = entry.daysElapsed, let remaining = entry.daysRemaining {
                 // Monthly Spending's bar rather than ProgressView, so every
                 // bar in the suite has the same height, track and ends.
@@ -209,22 +203,10 @@ struct DailyBurnRateWidgetView: View {
                 .accessibilityIdentifier("dailyBurnRateWidget.monthProgress")
             }
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private var isLargeFamily: Bool {
-        family == .systemLarge || isExtraLargePortrait
-    }
-
-    /// `systemExtraLargePortrait` is iOS 27-only, so it's matched behind
-    /// `#available` rather than a `switch` case.
-    private var isExtraLargePortrait: Bool {
-        if #available(iOS 27.0, *) {
-            return family == .systemExtraLargePortrait
-        }
-        return false
     }
 
     private func dailyRates(_ average: String) -> some View {
@@ -311,15 +293,5 @@ struct DailyBurnRateWidgetView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(identifier)
-    }
-
-    private var updatedFooter: some View {
-        Text(String(
-            format: String(localized: "Updated %@", locale: locale),
-            WidgetDateFormatting.relative(entry.date, locale: locale)
-        ))
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
-        .lineLimit(1)
     }
 }

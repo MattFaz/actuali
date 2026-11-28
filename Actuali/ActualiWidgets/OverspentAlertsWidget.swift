@@ -11,15 +11,7 @@ struct OverspentAlertsWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Overspent Alerts"))
         .description(String(localized: "Categories you've overspent this month."))
-        .supportedFamilies(Self.families)
-    }
-
-    private static var families: [WidgetFamily] {
-        let base: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge]
-        if #available(iOS 27.0, *) {
-            return base + [.systemExtraLargePortrait]
-        }
-        return base
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -82,7 +74,6 @@ struct OverspentAlertsProvider: TimelineProvider {
 
 struct OverspentAlertsWidgetView: View {
     @Environment(\.widgetFamily) private var family
-    @Environment(\.locale) private var locale
 
     let entry: OverspentAlertsEntry
 
@@ -156,7 +147,8 @@ struct OverspentAlertsWidgetView: View {
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("overspentAlertsWidget.categoryRow")
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
@@ -180,7 +172,8 @@ struct OverspentAlertsWidgetView: View {
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("overspentAlertsWidget.categoryRow")
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
@@ -199,7 +192,8 @@ struct OverspentAlertsWidgetView: View {
             // it between them and drops a row that fits.
             .layoutPriority(1)
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -256,7 +250,8 @@ struct OverspentAlertsWidgetView: View {
             }
             .layoutPriority(1)
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -305,14 +300,12 @@ struct OverspentAlertsWidgetView: View {
         }
     }
 
-    /// Large and Extra Large Portrait's row cap, nil for the smaller
-    /// families; `systemExtraLargePortrait` is iOS 27-only, so it's matched
-    /// behind `#available` rather than a `switch` case.
+    /// Large and Extra Large Portrait's row cap, nil for the smaller families.
     private var largeFamilyLimit: Int? {
         if family == .systemLarge {
             return Self.largeLimit
         }
-        if #available(iOS 27.0, *), family == .systemExtraLargePortrait {
+        if family.isExtraLargePortrait {
             return Self.extraLargePortraitLimit
         }
         return nil
@@ -346,15 +339,5 @@ struct OverspentAlertsWidgetView: View {
                 .monospacedDigit()
         }
         .foregroundStyle(overspent ? Color.red : .primary)
-    }
-
-    private var updatedFooter: some View {
-        Text(String(
-            format: String(localized: "Updated %@", locale: locale),
-            WidgetDateFormatting.relative(entry.date, locale: locale)
-        ))
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
-        .lineLimit(1)
     }
 }

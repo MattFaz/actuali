@@ -11,15 +11,7 @@ struct LargestTransactionsWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Largest Transactions"))
         .description(String(localized: "Your biggest purchases this month."))
-        .supportedFamilies(Self.families)
-    }
-
-    private static var families: [WidgetFamily] {
-        let base: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge]
-        if #available(iOS 27.0, *) {
-            return base + [.systemExtraLargePortrait]
-        }
-        return base
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -97,7 +89,7 @@ struct LargestTransactionsWidgetView: View {
             if let largest = entry.transactions.first {
                 if family == .systemSmall {
                     smallLayout(largest)
-                } else if isLargeFamily {
+                } else if family.isLarge {
                     largeLayout
                 } else {
                     mediumLayout
@@ -146,7 +138,8 @@ struct LargestTransactionsWidgetView: View {
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("largestTransactionsWidget.transactionRow")
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
@@ -165,7 +158,8 @@ struct LargestTransactionsWidgetView: View {
             // it between them and drops a row that fits.
             .layoutPriority(1)
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -184,7 +178,7 @@ struct LargestTransactionsWidgetView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: 4)
-                    Text(dateString(transaction.date))
+                    Text(WidgetDateFormatting.shortDate(transaction.date, locale: locale) ?? "")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -222,21 +216,10 @@ struct LargestTransactionsWidgetView: View {
             }
             .layoutPriority(1)
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    /// Large and Extra Large Portrait; `systemExtraLargePortrait` is iOS
-    /// 27-only, so it's matched behind `#available` rather than a `switch` case.
-    private var isLargeFamily: Bool {
-        if family == .systemLarge {
-            return true
-        }
-        if #available(iOS 27.0, *), family == .systemExtraLargePortrait {
-            return true
-        }
-        return false
     }
 
     /// A row like To Be Budgeted's summary, since the widget's own header
@@ -321,32 +304,12 @@ struct LargestTransactionsWidgetView: View {
         return family == .systemSmall ? String(localized: "Largest") : String(localized: "Largest Transactions")
     }
 
-    /// Category and date on one line; a hidden category arrives nil under
-    /// the mask, leaving just the date.
+    /// Category and date on one line; a hidden category arrives nil,
+    /// leaving just the date.
     private func detail(_ transaction: WidgetTransaction) -> String {
-        [transaction.categoryName, dateString(transaction.date)]
+        [transaction.categoryName, WidgetDateFormatting.shortDate(transaction.date, locale: locale)]
             .compactMap(\.self)
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
-    }
-
-    /// Dates arrive as YYYYMMDD integers, the budget file's format.
-    private func dateString(_ date: Int) -> String {
-        let comps = DateComponents(year: date / 10000, month: date / 100 % 100, day: date % 100)
-        guard let day = Calendar.current.date(from: comps) else { return "" }
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.setLocalizedDateFormatFromTemplate("MMM d")
-        return formatter.string(from: day)
-    }
-
-    private var updatedFooter: some View {
-        Text(String(
-            format: String(localized: "Updated %@", locale: locale),
-            WidgetDateFormatting.relative(entry.date, locale: locale)
-        ))
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
-        .lineLimit(1)
     }
 }

@@ -11,15 +11,7 @@ struct TopSpendingWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Top Spending"))
         .description(String(localized: "The categories you've spent the most in this month."))
-        .supportedFamilies(Self.families)
-    }
-
-    private static var families: [WidgetFamily] {
-        let base: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge]
-        if #available(iOS 27.0, *) {
-            return base + [.systemExtraLargePortrait]
-        }
-        return base
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -155,7 +147,8 @@ struct TopSpendingWidgetView: View {
             }
             .font(.caption2)
             .lineLimit(1)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .accessibilityIdentifier("topSpendingWidget.categoryRow")
@@ -163,7 +156,7 @@ struct TopSpendingWidgetView: View {
 
     private var mediumLayout: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if isLargeFamily, let total = entry.formattedTotalSpending {
+            if family.isLarge, let total = entry.formattedTotalSpending {
                 totalSpentHeader(total)
             }
             // Drop trailing rows rather than clip them when Dynamic Type
@@ -178,21 +171,10 @@ struct TopSpendingWidgetView: View {
             // it between them and drops a row that fits.
             .layoutPriority(1)
             Spacer(minLength: 0)
-            updatedFooter
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    /// Large and Extra Large Portrait; `systemExtraLargePortrait` is iOS
-    /// 27-only, so it's matched behind `#available` rather than a `switch` case.
-    private var isLargeFamily: Bool {
-        if family == .systemLarge {
-            return true
-        }
-        if #available(iOS 27.0, *), family == .systemExtraLargePortrait {
-            return true
-        }
-        return false
     }
 
     /// Same header as Recent Transactions. Black and unsigned, like the
@@ -225,7 +207,7 @@ struct TopSpendingWidgetView: View {
         Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
             GridRow {
                 // Large's header line is Monthly Spending; one icon header per widget.
-                if isLargeFamily {
+                if family.isLarge {
                     Text(String(localized: "Top Spending"))
                 } else {
                     header
@@ -286,16 +268,6 @@ struct TopSpendingWidgetView: View {
                 .font(.caption)
         }
         .foregroundStyle(.secondary)
-        .lineLimit(1)
-    }
-
-    private var updatedFooter: some View {
-        Text(String(
-            format: String(localized: "Updated %@", locale: locale),
-            WidgetDateFormatting.relative(entry.date, locale: locale)
-        ))
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
         .lineLimit(1)
     }
 }

@@ -11,15 +11,7 @@ struct UpcomingBillsWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Upcoming Bills"))
         .description(String(localized: "Scheduled bills and upcoming transactions."))
-        .supportedFamilies(Self.families)
-    }
-
-    private static var families: [WidgetFamily] {
-        let base: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge]
-        if #available(iOS 27.0, *) {
-            return base + [.systemExtraLargePortrait]
-        }
-        return base
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -165,7 +157,7 @@ struct UpcomingBillsWidgetView: View {
                 }
                 Spacer()
                 if family == .systemMedium {
-                    updatedText
+                    WidgetUpdatedFooter(date: entry.date)
                 }
             }
 
@@ -191,7 +183,7 @@ struct UpcomingBillsWidgetView: View {
             }
             Spacer(minLength: 0)
             if family != .systemMedium {
-                updatedText
+                WidgetUpdatedFooter(date: entry.date)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -226,27 +218,9 @@ struct UpcomingBillsWidgetView: View {
         }
     }
 
-    private var updatedText: some View {
-        Text(String(
-            format: String(localized: "Updated %@", locale: locale),
-            WidgetDateFormatting.relative(entry.date, locale: locale)
-        ))
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
-    }
-
     private func dateString(for bill: WidgetBillItem) -> String {
-        var comps = DateComponents()
-        comps.year = bill.dueYear
-        comps.month = bill.dueMonth
-        comps.day = bill.dueDay
-        guard let date = Calendar.current.date(from: comps) else {
-            return "\(bill.dueMonth)/\(bill.dueDay)"
-        }
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.setLocalizedDateFormatFromTemplate("MMM d")
-        return formatter.string(from: date)
+        WidgetDateFormatting.shortDate(bill.dueYear * 10000 + bill.dueMonth * 100 + bill.dueDay, locale: locale)
+            ?? "\(bill.dueMonth)/\(bill.dueDay)"
     }
 
     /// Income schedules read green, as in the Schedules list, so a paycheck

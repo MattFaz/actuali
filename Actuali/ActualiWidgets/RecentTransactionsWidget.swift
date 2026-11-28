@@ -11,15 +11,7 @@ struct RecentTransactionsWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Recent Transactions"))
         .description(String(localized: "Your latest transactions across all accounts."))
-        .supportedFamilies(Self.families)
-    }
-
-    private static var families: [WidgetFamily] {
-        let base: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge]
-        if #available(iOS 27.0, *) {
-            return base + [.systemExtraLargePortrait]
-        }
-        return base
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -115,7 +107,7 @@ struct RecentTransactionsWidgetView: View {
 
     private var listLayout: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if isLargeFamily, let total = entry.formattedMonthTotal {
+            if family.isLarge, let total = entry.formattedMonthTotal {
                 monthTotalHeader(total)
             }
             // Drop trailing rows rather than clip them when Dynamic Type (the
@@ -130,27 +122,10 @@ struct RecentTransactionsWidgetView: View {
             // it between them and drops a row that fits.
             .layoutPriority(1)
             Spacer(minLength: 0)
-            Text(String(
-                format: String(localized: "Updated %@", locale: locale),
-                WidgetDateFormatting.relative(entry.date, locale: locale)
-            ))
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    /// Large and Extra Large Portrait; `systemExtraLargePortrait` is iOS
-    /// 27-only, so it's matched behind `#available` rather than a `switch` case.
-    private var isLargeFamily: Bool {
-        if family == .systemLarge {
-            return true
-        }
-        if #available(iOS 27.0, *), family == .systemExtraLargePortrait {
-            return true
-        }
-        return false
     }
 
     /// Net Worth's header pattern; black like Monthly Spending under budget.
@@ -207,7 +182,7 @@ struct RecentTransactionsWidgetView: View {
                 Text(transaction.categoryName ?? "")
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Text(dateString(transaction.date))
+                Text(WidgetDateFormatting.shortDate(transaction.date, locale: locale) ?? "")
                     .lineLimit(1)
             }
             .font(.caption2)
@@ -225,7 +200,7 @@ struct RecentTransactionsWidgetView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 4)
-            Text(dateString(transaction.date))
+            Text(WidgetDateFormatting.shortDate(transaction.date, locale: locale) ?? "")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -251,15 +226,5 @@ struct RecentTransactionsWidgetView: View {
             return .primary
         }
         return transaction.amount > 0 ? .green : .red
-    }
-
-    /// Dates arrive as YYYYMMDD integers, the budget file's format.
-    private func dateString(_ date: Int) -> String {
-        let comps = DateComponents(year: date / 10000, month: date / 100 % 100, day: date % 100)
-        guard let day = Calendar.current.date(from: comps) else { return "" }
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.setLocalizedDateFormatFromTemplate("MMM d")
-        return formatter.string(from: day)
     }
 }
