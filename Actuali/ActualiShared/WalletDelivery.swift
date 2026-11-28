@@ -32,8 +32,8 @@ struct WalletDelivery {
     /// nil when the app group container is unavailable — e.g. a provisioning
     /// profile without the app group capability.
     static func shared() -> WalletDelivery? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: WidgetSnapshotStore.appGroupID)
+        WidgetSnapshotStore.appGroupID
+            .flatMap { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) }
             .map(WalletDelivery.init(containerURL:))
     }
 
