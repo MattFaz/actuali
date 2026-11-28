@@ -114,14 +114,17 @@ struct OverviewWidgetView: View {
         Group {
             if entry.hasSnapshot {
                 // Thirteen rows under the headline overfill the widget above
-                // X Large text, and the fixed order leaves no rows to drop the
-                // way the list widgets do. Keep the user's size wherever it
-                // fits, otherwise step down to the largest size that does.
+                // X Large text. Drop trailing rows first, as the list widgets
+                // do, so the user's text size holds: every section shrinks
+                // toward one row, the longest first. Only if a row per
+                // section still overflows does the text step down.
                 ViewThatFits(in: .vertical) {
-                    content
-                    content.dynamicTypeSize(...DynamicTypeSize.xxLarge)
-                    content.dynamicTypeSize(...DynamicTypeSize.xLarge)
-                    content.dynamicTypeSize(...DynamicTypeSize.large)
+                    ForEach([nil, 3, 2, 1], id: \.self) { rowLimit in
+                        content(rowLimit: rowLimit)
+                    }
+                    content(rowLimit: 1).dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                    content(rowLimit: 1).dynamicTypeSize(...DynamicTypeSize.xLarge)
+                    content(rowLimit: 1).dynamicTypeSize(...DynamicTypeSize.large)
                 }
             } else {
                 emptyState
@@ -143,10 +146,11 @@ struct OverviewWidgetView: View {
         }
     }
 
-    private var content: some View {
+    /// `rowLimit` caps every section; nil shows each in full.
+    private func content(rowLimit: Int?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             headline
-            section(String(localized: "Accounts"), icon: "building.columns", empty: String(localized: "No accounts to show"), rows: entry.accounts) { account in
+            section(String(localized: "Accounts"), icon: "building.columns", empty: String(localized: "No accounts to show"), rows: entry.accounts, limit: rowLimit) { account in
                 row(account.name, amount: account.formattedBalance, color: signColor(account.balance < 0 ? .red : .primary)) {
                     Image(systemName: AccountBalanceWidgetView.iconName(for: account.type))
                         .font(.caption)
@@ -155,17 +159,17 @@ struct OverviewWidgetView: View {
                 }
                 .accessibilityIdentifier("overviewWidget.accountRow")
             }
-            section(String(localized: "Categories"), icon: "chart.pie", empty: String(localized: "No categories to show"), rows: entry.categories) { category in
+            section(String(localized: "Categories"), icon: "chart.pie", empty: String(localized: "No categories to show"), rows: entry.categories, limit: rowLimit) { category in
                 row(category.name, amount: category.formattedAvailable, color: signColor(category.isOverspent ? .red : .green))
                     .accessibilityIdentifier("overviewWidget.categoryRow")
             }
-            section(String(localized: "Recent Transactions"), icon: "list.bullet.rectangle", empty: String(localized: "No transactions yet"), rows: entry.transactions) { transaction in
-                row(transaction.payeeName ?? "", detail: dateString(year: transaction.date / 10000, month: transaction.date / 100 % 100, day: transaction.date % 100),
+            section(String(localized: "Recent Transactions"), icon: "list.bullet.rectangle", empty: String(localized: "No transactions yet"), rows: entry.transactions, limit: rowLimit) { transaction in
+                row(transaction.payeeName ?? "", detail: WidgetDateFormatting.shortDate(transaction.date, locale: locale) ?? "",
                     amount: transaction.formattedAmount, color: signColor(transactionColor(transaction.amount)))
                     .accessibilityIdentifier("overviewWidget.transactionRow")
             }
-            section(String(localized: "Upcoming Bills"), icon: "calendar.badge.clock", empty: String(localized: "No upcoming bills"), rows: entry.bills) { bill in
-                row(bill.title, detail: dateString(year: bill.dueYear, month: bill.dueMonth, day: bill.dueDay),
+            section(String(localized: "Upcoming Bills"), icon: "calendar.badge.clock", empty: String(localized: "No upcoming bills"), rows: entry.bills, limit: rowLimit) { bill in
+                row(bill.title, detail: WidgetDateFormatting.shortDate(bill.dueYear * 10000 + bill.dueMonth * 100 + bill.dueDay, locale: locale) ?? "",
                     amount: bill.formattedAmount, color: signColor(billColor(bill))) {
                         Circle()
                             .fill(statusColor(bill.status))
@@ -176,13 +180,8 @@ struct OverviewWidgetView: View {
                     .accessibilityIdentifier("overviewWidget.billRow")
             }
             Spacer(minLength: 0)
-            Text(String(
-                format: String(localized: "Updated %@", locale: locale),
-                WidgetDateFormatting.relative(entry.date, locale: locale)
-            ))
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
+            WidgetUpdatedFooter(date: entry.date)
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -258,7 +257,8 @@ struct OverviewWidgetView: View {
     }
 
     private func section<Row: Identifiable>(
-        _ title: String, icon: String, empty: String, rows: [Row], @ViewBuilder row: @escaping (Row) -> some View
+        _ title: String, icon: String, empty: String, rows: [Row], limit: Int?,
+        @ViewBuilder row: @escaping (Row) -> some View
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             sectionLabel(title, icon: icon)
@@ -267,7 +267,7 @@ struct OverviewWidgetView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            ForEach(rows, content: row)
+            ForEach(rows.prefix(limit ?? rows.count), content: row)
         }
     }
 
@@ -333,10 +333,5 @@ struct OverviewWidgetView: View {
     /// Every colour goes neutral when hidden so the mask doesn't leak a sign.
     private func signColor(_ color: Color) -> Color {
         entry.balancesHidden ? .primary : color
-    }
-
-    private func dateString(year: Int, month: Int, day: Int) -> String {
-        guard let date = Calendar.current.date(from: DateComponents(year: year, month: month, day: day)) else { return "" }
-        return date.formatted(.dateTime.month(.abbreviated).day().locale(locale))
     }
 }
