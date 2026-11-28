@@ -132,20 +132,17 @@ struct WidgetSnapshot: Codable, Equatable {
     /// amount. Unlike formattedTotalSpending it leaves out transactions dated
     /// later this month, which have no match on last month's side.
     var formattedTotalSpendingToDate: String?
-    /// Last month's net spending from its 1st through today's day number,
-    /// signed like totalSpent (negative = spending), so month to date
+    /// Last month's net spending from its 1st through today's day number, as
+    /// a positive amount like formattedTotalSpending, so month to date
     /// compares with the same point last month. nil when last month had no
     /// spending transactions in that window.
-    var totalSpentLastMonth: Int?
-    /// totalSpentLastMonth as a positive amount, like formattedTotalSpending.
     var formattedTotalSpendingLastMonth: String?
     /// This month's spending minus last month's, in cents; positive means
     /// spending more this month.
     var spendingDifference: Int?
     var formattedSpendingDifference: String?
-    /// spendingDifference over last month's spending (0.5 = 50% more). nil
-    /// when last month had no spending to divide by.
-    var spendingPercentChange: Double?
+    /// spendingDifference over last month's spending ("+50%"). nil when last
+    /// month had no spending to divide by.
     var formattedSpendingPercentChange: String?
 
     // MARK: - Daily rates
@@ -154,11 +151,10 @@ struct WidgetSnapshot: Codable, Equatable {
     /// daysRemaining is 1 on the last day, never 0.
     var daysElapsed: Int?
     var daysRemaining: Int?
-    var averageSpendPerDay: Int?
+    /// Spending to date over daysElapsed.
     var formattedAverageSpendPerDay: String?
     /// Remaining budget (floored at 0) over daysRemaining. nil with nothing
     /// budgeted.
-    var safeDailyRate: Int?
     var formattedSafeDailyRate: String?
     /// The Daily Burn Rate widget's Large and Extra Large Portrait extras:
     /// the month's spending at the current pace, and both rates over a week.
