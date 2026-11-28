@@ -442,7 +442,7 @@ private extension RecentTransactionsEntry {
                 WidgetTransaction(
                     id: "preview-\(index)",
                     payeeName: row.0,
-                    // Mirrors the snapshot: a hidden category's name is blank under the mask.
+                    // Mirrors the snapshot, which blanks a hidden category's name; the masked preview stands in one.
                     categoryName: balancesHidden && index == 1 ? nil : row.1,
                     amount: balancesHidden ? 0 : row.2,
                     formattedAmount: balancesHidden ? "\u{2022}\u{2022}\u{2022}\u{2022}" : (Double(row.2) / 100).formatted(format),
@@ -738,7 +738,7 @@ private extension LargestTransactionsEntry {
                 WidgetTransaction(
                     id: "preview-\(index)",
                     payeeName: row.0,
-                    // Mirrors the snapshot: a hidden category's name is blank under the mask.
+                    // Mirrors the snapshot, which blanks a hidden category's name; the masked preview stands in one.
                     categoryName: balancesHidden && index == 0 ? nil : row.1,
                     amount: balancesHidden ? 0 : row.2,
                     formattedAmount: balancesHidden ? mask : (Double(row.2) / 100).formatted(format),

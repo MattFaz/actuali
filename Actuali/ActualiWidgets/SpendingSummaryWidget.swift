@@ -11,15 +11,7 @@ struct SpendingSummaryWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Monthly Spending"))
         .description(String(localized: "Summary of your spending versus budgeted amount this month."))
-        .supportedFamilies(Self.families)
-    }
-
-    private static var families: [WidgetFamily] {
-        let base: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge]
-        if #available(iOS 27.0, *) {
-            return base + [.systemExtraLargePortrait]
-        }
-        return base
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -109,7 +101,7 @@ struct SpendingSummaryWidgetView: View {
                 emptyState
             } else if family == .systemSmall {
                 smallLayout
-            } else if showsCategoryList {
+            } else if family.isLarge {
                 listLayout
             } else {
                 mediumLayout
@@ -198,12 +190,7 @@ struct SpendingSummaryWidgetView: View {
                     .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                Text(String(
-                    format: String(localized: "Updated %@", locale: locale),
-                    WidgetDateFormatting.relative(entry.date, locale: locale)
-                ))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                WidgetUpdatedFooter(date: entry.date)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -217,18 +204,6 @@ struct SpendingSummaryWidgetView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    /// `systemExtraLargePortrait` is iOS 27-only, so it's matched behind
-    /// `#available` rather than a `switch` case.
-    private var showsCategoryList: Bool {
-        if family == .systemLarge {
-            return true
-        }
-        if #available(iOS 27.0, *), family == .systemExtraLargePortrait {
-            return true
-        }
-        return false
     }
 
     /// Large and Extra Large Portrait: Medium's spent/budgeted progress at the
@@ -274,12 +249,7 @@ struct SpendingSummaryWidgetView: View {
                     .accessibilityIdentifier("spendingSummaryWidget.categoryRow")
             }
             Spacer(minLength: 0)
-            Text(String(
-                format: String(localized: "Updated %@", locale: locale),
-                WidgetDateFormatting.relative(entry.date, locale: locale)
-            ))
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            WidgetUpdatedFooter(date: entry.date)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

@@ -516,8 +516,8 @@ final class BudgetStore: ObservableObject {
     /// `currentBudgetMonth` (which follows whatever month BudgetView is
     /// browsing) so the widget never publishes historical balances.
     var widgetBudgetMonth: BudgetMonth?
-    /// widgetBudgetMonth's comparison figures — see spentLastMonthToDate.
-    var widgetSpentLastMonthByCategory: [String: Int] = [:]
+    /// widgetBudgetMonth's comparison figures — see monthToDateSpending.
+    var widgetMonthToDateSpending: MonthToDateSpending?
 
     /// Where publishWidgetSnapshot() writes; injectable for tests. nil when
     /// the build's provisioning lacks the app group.
@@ -2732,7 +2732,7 @@ final class BudgetStore: ObservableObject {
         requestedBudgetMonth = nil
         currentBudgetMonth = nil
         widgetBudgetMonth = nil
-        widgetSpentLastMonthByCategory = [:]
+        widgetMonthToDateSpending = nil
         accounts = []
         accountGroups = []
         transactions = []
@@ -3191,7 +3191,7 @@ final class BudgetStore: ObservableObject {
                 ? fetchedBudgetMonth
                 : try await openedDb.fetchBudgetMonth(month: currentMonth)
             // A failed comparison read only drops the comparison, not the load.
-            let fetchedWidgetSpentLastMonth = try? await Self.spentLastMonthToDate(
+            let fetchedWidgetMonthToDate = try? await Self.monthToDateSpending(
                 in: openedDb, categoryIds: fetchedWidgetBudgetMonth.categoryBudgets.map(\.categoryId), now: Date()
             )
             #if DEBUG
@@ -3280,7 +3280,7 @@ final class BudgetStore: ObservableObject {
                 requestedBudgetMonth = displayedMonth
                 currentBudgetMonth = fetchedBudgetMonth
             }
-            widgetSpentLastMonthByCategory = fetchedWidgetSpentLastMonth ?? [:]
+            widgetMonthToDateSpending = fetchedWidgetMonthToDate
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             publishSchedules(fetchedSchedules ?? ([], [:], [:]))
             schedulesLoaded = true
@@ -3416,7 +3416,7 @@ final class BudgetStore: ObservableObject {
                 currentBudgetMonth = nil
                 budgetType = .envelope
                 widgetBudgetMonth = nil
-                widgetSpentLastMonthByCategory = [:]
+                widgetMonthToDateSpending = nil
                 accounts = []
                 accountGroups = []
                 transactions = []
@@ -3569,7 +3569,7 @@ final class BudgetStore: ObservableObject {
                 try await database.fetchBudgetMonth(month: currentMonth)
             }
             // A failed comparison read only drops the comparison, not the refresh.
-            let fetchedWidgetSpentLastMonth = try? await Self.spentLastMonthToDate(
+            let fetchedWidgetMonthToDate = try? await Self.monthToDateSpending(
                 in: database, categoryIds: fetchedWidgetBudgetMonth.categoryBudgets.map(\.categoryId), now: Date()
             )
             // Re-read here as well as on load: a sync can bring in a changed
@@ -3648,7 +3648,7 @@ final class BudgetStore: ObservableObject {
             if requestedBudgetMonth == displayedMonth {
                 assignIfChanged(\.currentBudgetMonth, fetchedBudgetMonth)
             }
-            widgetSpentLastMonthByCategory = fetchedWidgetSpentLastMonth ?? [:]
+            widgetMonthToDateSpending = fetchedWidgetMonthToDate
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             assignIfChanged(\.upcomingScheduledTransactionLength, fetchedUpcomingLength)
             // A flag whose write was in flight at any point during these
@@ -9545,35 +9545,32 @@ final class BudgetStore: ObservableObject {
         return formatter
     }()
 
-    /// Last month's net spending per category from its 1st through today's
-    /// day number: on Nov 25 that's Oct 1–25, and Mar 31 clamps to Feb 28.
-    /// Same rules as BudgetMonth.totalSpent (split-aware, on-budget accounts,
-    /// refunds net out) over `categoryIds`, so month-to-date compares like
-    /// for like. A category with no such transactions in that window has no
-    /// key, so an empty result means nothing to compare.
-    nonisolated static func spentLastMonthToDate(
+    /// This month's and last month's net spending per category, each from
+    /// its 1st through today's day number: on Nov 25 that's Nov 1–25 against
+    /// Oct 1–25, and Mar 31 clamps last month to Feb 28. Same rules as
+    /// BudgetMonth.totalSpent (split-aware, on-budget accounts, refunds net
+    /// out) over `categoryIds`, so month-to-date compares like for like and a
+    /// transaction dated later this month stays out of both sides.
+    nonisolated static func monthToDateSpending(
         in database: BudgetDatabase,
         categoryIds: [String],
         now: Date
-    ) async throws -> [String: Int] {
-        guard let sameDay = Calendar.current.date(byAdding: .month, value: -1, to: now) else { return [:] }
-        let parts = Calendar.current.dateComponents([.year, .month, .day], from: sameDay)
-        guard let year = parts.year, let month = parts.month, let day = parts.day else { return [:] }
-        let through = year * 10000 + month * 100 + day
-        // ponytail: one read per visible category, reusing the query behind
-        // each category's Spent figure so the two can't drift. Cost grows
-        // with category count on every refresh; a single grouped SUM in
-        // BudgetDatabase bounded by date is the upgrade path.
-        var spent: [String: Int] = [:]
-        for categoryId in categoryIds {
-            let rows = try await database.fetchCategoryTransactions(
-                categoryId: categoryId, month: String(format: "%04d-%02d", year, month)
-            )
-            for row in rows where row.date <= through {
-                spent[categoryId, default: 0] += row.amount
-            }
+    ) async throws -> MonthToDateSpending {
+        let calendar = Calendar.current
+        let visible = Set(categoryIds)
+        func spent(through date: Date) async throws -> [String: Int] {
+            let parts = calendar.dateComponents([.year, .month, .day], from: date)
+            guard let year = parts.year, let month = parts.month, let day = parts.day else { return [:] }
+            // The grouped read covers every category; keep the visible ones.
+            return try await database.spentByCategory(
+                month: String(format: "%04d-%02d", year, month), through: year * 10000 + month * 100 + day
+            ).filter { visible.contains($0.key) }
         }
-        return spent
+        let thisMonth = try await spent(through: now)
+        guard let sameDayLastMonth = calendar.date(byAdding: .month, value: -1, to: now) else {
+            return MonthToDateSpending(thisMonth: thisMonth, lastMonth: [:])
+        }
+        return try await MonthToDateSpending(thisMonth: thisMonth, lastMonth: spent(through: sameDayLastMonth))
     }
 
     private func currentMonthString() -> String {

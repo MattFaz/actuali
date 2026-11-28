@@ -11,22 +11,9 @@ struct NetWorthWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Net Worth"))
         .description(String(localized: "Total balance across all your accounts."))
-        .supportedFamilies(Self.families)
-    }
-
-    private static var families: [WidgetFamily] {
-        let base: [WidgetFamily] = [
-            .systemSmall,
-            .systemMedium,
-            .systemLarge,
-            .accessoryCircular,
-            .accessoryRectangular,
-            .accessoryInline,
-        ]
-        if #available(iOS 27.0, *) {
-            return base + [.systemExtraLargePortrait]
-        }
-        return base
+        .supportedFamilies(
+            WidgetFamily.systemFamilies(adding: [.accessoryCircular, .accessoryRectangular, .accessoryInline])
+        )
     }
 }
 
@@ -116,16 +103,8 @@ struct NetWorthWidgetView: View {
         .widgetURL(URL(string: "actuali://accounts"))
     }
 
-    /// `systemExtraLargePortrait` is iOS 27-only, so it's matched behind
-    /// `#available` rather than a `switch` case.
     private var showsAccountList: Bool {
-        if family == .systemMedium || family == .systemLarge {
-            return true
-        }
-        if #available(iOS 27.0, *), family == .systemExtraLargePortrait {
-            return true
-        }
-        return false
+        family == .systemMedium || family.isLarge
     }
 
     private var placeholder: String {
@@ -189,12 +168,7 @@ struct NetWorthWidgetView: View {
                 .accessibilityIdentifier("netWorthWidget.accountRow")
             }
             Spacer(minLength: 0)
-            Text(String(
-                format: String(localized: "Updated %@", locale: locale),
-                WidgetDateFormatting.relative(entry.date, locale: locale)
-            ))
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            WidgetUpdatedFooter(date: entry.date)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

@@ -13,15 +13,7 @@ struct CategoryBalanceWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Category Balances"))
         .description(String(localized: "Remaining available amount for your chosen categories."))
-        .supportedFamilies(Self.families)
-    }
-
-    private static var families: [WidgetFamily] {
-        let base: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge]
-        if #available(iOS 27.0, *) {
-            return base + [.systemExtraLargePortrait]
-        }
-        return base
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -84,7 +76,6 @@ struct CategoryBalanceProvider: AppIntentTimelineProvider {
 
 struct CategoryBalanceWidgetView: View {
     @Environment(\.widgetFamily) private var family
-    @Environment(\.locale) private var locale
 
     let entry: CategoryBalanceEntry
 
@@ -146,12 +137,7 @@ struct CategoryBalanceWidgetView: View {
                 }
             }
             Spacer(minLength: 0)
-            Text(String(
-                format: String(localized: "Updated %@", locale: locale),
-                WidgetDateFormatting.relative(entry.date, locale: locale)
-            ))
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            WidgetUpdatedFooter(date: entry.date)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -172,13 +158,12 @@ struct CategoryBalanceWidgetView: View {
         }
     }
 
-    /// Medium rows stay untagged; `systemExtraLargePortrait` is iOS 27-only,
-    /// so it's matched behind `#available` rather than a `switch` case.
+    /// Medium rows stay untagged.
     private var rowIdentifier: String? {
         if family == .systemLarge {
             return "widgetLarge.categoryRow"
         }
-        if #available(iOS 27.0, *), family == .systemExtraLargePortrait {
+        if family.isExtraLargePortrait {
             return "widgetExtraLarge.categoryRow"
         }
         return nil

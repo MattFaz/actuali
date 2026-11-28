@@ -127,6 +127,10 @@ struct WidgetSnapshot: Codable, Equatable {
 
     // MARK: - Month comparison
 
+    /// This month's spending from the 1st through today, as a positive
+    /// amount. Unlike formattedTotalSpending it leaves out transactions dated
+    /// later this month, which have no match on last month's side.
+    var formattedTotalSpendingToDate: String?
     /// Last month's net spending from its 1st through today's day number,
     /// signed like totalSpent (negative = spending), so month to date
     /// compares with the same point last month. nil when last month had no
@@ -190,9 +194,11 @@ struct WidgetSnapshot: Codable, Equatable {
 
     /// Categories with nothing budgeted this month, in budget order, capped
     /// at `limit`. Balance plays no part: carryover can leave money in an
-    /// unbudgeted category.
+    /// unbudgeted category. Every category when hidden: budgeted keeps its
+    /// raw cents under the mask, so filtering on it would reveal which
+    /// categories have nothing assigned.
     func unbudgetedCategories(limit: Int) -> [WidgetCategoryBalance] {
-        Array(categories.filter { $0.budgeted == 0 }.prefix(limit))
+        Array(categories.filter { balancesHidden || $0.budgeted == 0 }.prefix(limit))
     }
 
     /// Share of the month's budget spent, capped at 1 for the Monthly
@@ -255,14 +261,19 @@ struct WidgetSnapshot: Codable, Equatable {
         return Array(movers.prefix(limit).map(\.category))
     }
 
-    /// Categories by spending this month, most spent first, capped at 12.
-    /// Ties (and every row when hidden, where spent is 0) keep budget order.
-    /// Empty for snapshots written before spent existed.
-    var rankedCategories: [WidgetCategoryBalance] {
-        let ranked = categories.enumerated()
+    /// Every category by spending this month, most spent first. Ties (and
+    /// every row when hidden, where spent is 0) keep budget order. Empty for
+    /// snapshots written before spent existed.
+    private var categoriesBySpending: [WidgetCategoryBalance] {
+        categories.enumerated()
             .compactMap { index, category in category.spent.map { (spent: $0, index: index, category: category) } }
             .sorted { ($0.spent, $0.index) < ($1.spent, $1.index) }
-        return Array(ranked.prefix(12).map(\.category))
+            .map(\.category)
+    }
+
+    /// categoriesBySpending capped at 12, the most any widget shows.
+    var rankedCategories: [WidgetCategoryBalance] {
+        Array(categoriesBySpending.prefix(12))
     }
 
     /// The Top Spending widget's rows, capped at `limit`. Categories with no
@@ -274,16 +285,14 @@ struct WidgetSnapshot: Codable, Equatable {
         return Array(spenders.prefix(limit))
     }
 
-    /// The Overspent Alerts widget's rows, most spent first. When hidden,
-    /// every ranked category in budget order instead: available keeps its
-    /// raw cents under the mask, so filtering on it would reveal which
-    /// categories are overspent.
-    /// ponytail: draws on rankedCategories' top 12 by spending, so an
-    /// overspent category outside them (say, one overspent by carryover
-    /// alone in a 13+ category budget) is missed and the count runs low.
-    /// Rank `categories` here instead if that shows up.
+    /// The Overspent Alerts widget's rows, most spent first. Uncapped, so an
+    /// overspent category outside the top 12 spenders (say, one overspent by
+    /// carryover alone) still shows and Small's count matches the Budget
+    /// tab's. When hidden, the first 12 in budget order instead: available
+    /// keeps its raw cents under the mask, so filtering on it would reveal
+    /// which categories are overspent.
     var overspentCategories: [WidgetCategoryBalance] {
-        balancesHidden ? rankedCategories : rankedCategories.filter(\.isOverspent)
+        balancesHidden ? rankedCategories : categoriesBySpending.filter(\.isOverspent)
     }
 
     /// The next bills by due date, capped at `limit`; empty for snapshots

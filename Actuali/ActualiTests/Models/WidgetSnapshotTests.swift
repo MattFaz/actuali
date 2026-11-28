@@ -498,6 +498,39 @@ struct WidgetSnapshotTests {
         }
     }
 
+    /// budgeted keeps its raw cents under the mask, so a filtered list would
+    /// name exactly the categories with nothing assigned. Hidden balances
+    /// list every category in budget order instead.
+    @Test @MainActor func hiddenBalancesListEveryCategoryNotJustTheUnbudgetedOnes() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.widgetBudgetMonth = BudgetMonth(
+            month: "2026-08",
+            categoryBudgets: (0..<15).map {
+                CategoryBudget(
+                    month: "2026-08", categoryId: "c\($0)", categoryName: "Category \($0)",
+                    groupId: "g1", groupName: "Everyday", groupSortOrder: 0, categorySortOrder: Double($0),
+                    budgeted: $0.isMultiple(of: 2) ? 0 : 5000, spent: -500, available: 4500, carryover: 0
+                )
+            },
+            toBudget: 45000
+        )
+        budgetStore.hideBalances = true
+        defer { budgetStore.hideBalances = false }
+        budgetStore.publishWidgetSnapshot()
+
+        let hidden = try #require(store.read())
+        for limit in [toBudgetLargeLimit, toBudgetExtraLargePortraitLimit] {
+            #expect(hidden.unbudgetedCategories(limit: limit).map(\.id) == (0..<limit).map { "c\($0)" })
+        }
+
+        budgetStore.hideBalances = false
+        budgetStore.publishWidgetSnapshot()
+        let shown = try #require(store.read())
+        #expect(shown.unbudgetedCategories(limit: toBudgetLargeLimit).map(\.id) == ["c0", "c2", "c4", "c6", "c8"])
+    }
+
     // SpendingSummaryProvider's per-family category-row limits; Small and
     // Medium show totals only.
     private let spendingLargeLimit = 5
@@ -608,6 +641,21 @@ struct WidgetSnapshotTests {
 
     /// The gallery's `.sample` entries are dated `.now`, which numeric style
     /// renders as "in 0 seconds"; a future date reads the same as now.
+    /// The shared row date must read exactly as the per-widget
+    /// DateFormatter("MMM d") copies it replaced, in every shipped language.
+    @Test(arguments: ["en", "en_GB", "fr", "es", "pt_BR", "de", "it", "nl"])
+    func shortDateMatchesTheMonthDayTemplate(identifier: String) throws {
+        let locale = Locale(identifier: identifier)
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.setLocalizedDateFormatFromTemplate("MMM d")
+        for yyyymmdd in [20_260_105, 20_260_228, 20_260_930, 20_261_231] {
+            let parts = DateComponents(year: yyyymmdd / 10000, month: yyyymmdd / 100 % 100, day: yyyymmdd % 100)
+            let date = try #require(Calendar.current.date(from: parts))
+            #expect(WidgetDateFormatting.shortDate(yyyymmdd, locale: locale) == formatter.string(from: date))
+        }
+    }
+
     @Test(arguments: [0.0, 0.3, 300])
     func relativeDateNeverReadsAsFuture(offset: TimeInterval) {
         let reference = Date(timeIntervalSince1970: 1_750_000_000)
@@ -1090,7 +1138,8 @@ struct WidgetSnapshotTests {
         #expect(largest.allSatisfy { $0.amount == 0 && $0.formattedAmount == "••••" })
     }
 
-    @Test func hiddenBalancesBlankHiddenCategoryNamesOnTransactionRows() throws {
+    @Test(arguments: [true, false])
+    func hiddenCategoryNamesStayOffTransactionRows(balancesHidden: Bool) throws {
         var month = BudgetMonth(month: "2026-08", categoryBudgets: [])
         month.hiddenCategoryBudgets = [CategoryBudget(
             month: "2026-08", categoryId: "secret", categoryName: "Therapy",
@@ -1102,8 +1151,11 @@ struct WidgetSnapshotTests {
             makeTransaction(id: "visible-cat", date: 20_260_809, amount: -300),
         ]
 
+        // Hidden categories stay out of the widget whatever the balance mask
+        // does, as the category rows leave them out (BudgetMonth's split).
         let snapshot = WidgetSnapshot.make(
-            from: [], month: "2026-08", balancesHidden: true, generatedAt: Date(), format: { _ in "••••" },
+            from: [], month: "2026-08", balancesHidden: balancesHidden, generatedAt: Date(),
+            format: { balancesHidden ? "••••" : "$\($0)" },
             accounts: [onBudgetAccount], budgetMonth: month, transactions: transactions
         )
 
@@ -1112,12 +1164,6 @@ struct WidgetSnapshotTests {
         for row in rows {
             #expect(row.categoryName == (row.id == "hidden-cat" ? nil : "Groceries"))
         }
-        // Shown balances keep the name, matching what the Budget tab lists.
-        let shown = WidgetSnapshot.make(
-            from: [], month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" },
-            accounts: [onBudgetAccount], budgetMonth: month, transactions: transactions
-        )
-        #expect(shown.recentTransactions?.first?.categoryName == "Therapy")
     }
 
     @Test func transactionListsAreEmptyWithoutTransactions() {
@@ -1410,7 +1456,15 @@ struct WidgetSnapshotTests {
         WidgetSnapshot.make(
             from: this.categoryBudgets, month: this.month, balancesHidden: balancesHidden, generatedAt: Date(),
             format: { balancesHidden ? "••••" : "$\($0)" },
-            budgetMonth: this, spentLastMonthByCategory: last.map { ["c1": $0] } ?? [:]
+            budgetMonth: this, monthToDateSpending: last.map { toDate(this.categoryBudgets, last: ["c1": $0]) }
+        )
+    }
+
+    /// No transaction in these fixtures is dated after today, so this month
+    /// to date is each category's full Spent figure.
+    private func toDate(_ budgets: [CategoryBudget], last: [String: Int]) -> MonthToDateSpending {
+        MonthToDateSpending(
+            thisMonth: Dictionary(uniqueKeysWithValues: budgets.map { ($0.categoryId, $0.spent) }), lastMonth: last
         )
     }
 
@@ -1430,6 +1484,26 @@ struct WidgetSnapshotTests {
         #expect(snapshot.formattedSpendingPercentChange == 0.5.formatted(
             .percent.precision(.fractionLength(0)).sign(strategy: .always(includingZero: false))
         ))
+    }
+
+    /// A transaction dated later this month (a posted schedule, say) is in
+    /// the full-month Spent figure but has no match on last month's side, so
+    /// the comparison stops at today while the Monthly Spending header keeps
+    /// the whole month.
+    @Test func comparisonUsesSpendingToDateNotTheFullMonth() {
+        let month = spendingMonth("2026-11", spent: -180_000)
+        let snapshot = WidgetSnapshot.make(
+            from: month.categoryBudgets, month: month.month, balancesHidden: false, generatedAt: Date(),
+            format: { "$\($0)" }, budgetMonth: month,
+            monthToDateSpending: MonthToDateSpending(thisMonth: ["c1": -30000], lastMonth: ["c1": -40000])
+        )
+
+        #expect(snapshot.formattedTotalSpending == "$180000")
+        #expect(snapshot.formattedTotalSpendingToDate == "$30000")
+        #expect(snapshot.spendingDifference == -10000)
+        #expect(snapshot.spendingPercentChange == -0.25)
+        #expect(snapshot.spendingTrend == .less)
+        #expect(snapshot.categories.first?.spendingDifference == -10000)
     }
 
     @Test func spendingLessThanLastMonthIsNegativeChange() {
@@ -1475,6 +1549,7 @@ struct WidgetSnapshotTests {
         #expect(snapshot.totalSpentLastMonth == 0)
         #expect(snapshot.spendingDifference == 0)
         #expect(snapshot.spendingPercentChange == 0)
+        #expect(snapshot.formattedTotalSpendingToDate == "••••")
         #expect(snapshot.formattedTotalSpendingLastMonth == "••••")
         #expect(snapshot.formattedSpendingDifference == "••••")
         #expect(snapshot.formattedSpendingPercentChange == "••••")
@@ -1555,12 +1630,13 @@ struct WidgetSnapshotTests {
         """)
         defer { cleanup(url) }
 
-        let spent = try await BudgetStore.spentLastMonthToDate(
+        let spent = try await BudgetStore.monthToDateSpending(
             in: db, categoryIds: ["food", "fun"], now: dayOfMonth(25, month: 11)
         )
 
         // Oct 1–25 only, net of the refund: not October's full total.
-        #expect(spent == ["food": -1000, "fun": -300])
+        #expect(spent.lastMonth == ["food": -1000, "fun": -300])
+        #expect(spent.thisMonth == ["food": -7000])
     }
 
     @Test func lastMonthToDateClampsToTheEndOfAShorterMonth() async throws {
@@ -1571,11 +1647,12 @@ struct WidgetSnapshotTests {
         """)
         defer { cleanup(url) }
 
-        let spent = try await BudgetStore.spentLastMonthToDate(
+        let spent = try await BudgetStore.monthToDateSpending(
             in: db, categoryIds: ["food"], now: dayOfMonth(31, month: 3)
         )
 
-        #expect(spent == ["food": -400])
+        #expect(spent.lastMonth == ["food": -400])
+        #expect(spent.thisMonth == ["food": -900])
     }
 
     @Test func lastMonthToDateIsEmptyWithoutLastMonthData() async throws {
@@ -1586,18 +1663,65 @@ struct WidgetSnapshotTests {
         """)
         defer { cleanup(url) }
 
-        let spent = try await BudgetStore.spentLastMonthToDate(
+        let spent = try await BudgetStore.monthToDateSpending(
             in: db, categoryIds: ["food"], now: dayOfMonth(25, month: 11)
         )
 
-        #expect(spent.isEmpty)
+        #expect(spent.lastMonth.isEmpty)
+    }
+
+    /// On Nov 5 a rent payment dated Nov 30 is already in the budget file;
+    /// it must stay out of "this month so far", as Oct 6 onwards stays out
+    /// of last month's side.
+    @Test func monthToDateLeavesOutTransactionsDatedLaterThisMonth() async throws {
+        let (db, url) = try await lastMonthDatabase("""
+            INSERT INTO transactions (id, acct, category, amount, date) VALUES
+                ('groceries',  'on', 'food', -3000, 20261102),
+                ('today',      'on', 'fun',   -500, 20261105),
+                ('rent',       'on', 'food', -150000, 20261130),
+                ('oct-early',  'on', 'food', -2000, 20261003),
+                ('oct-late',   'on', 'food', -9000, 20261020);
+        """)
+        defer { cleanup(url) }
+
+        let spent = try await BudgetStore.monthToDateSpending(
+            in: db, categoryIds: ["food", "fun"], now: dayOfMonth(5, month: 11)
+        )
+
+        #expect(spent.thisMonth == ["food": -3000, "fun": -500])
+        #expect(spent.lastMonth == ["food": -2000])
+    }
+
+    /// One grouped read with the Spent figure's rules: split children count
+    /// and their parent doesn't, an orphaned child (tombstoned parent) and a
+    /// deleted row count nowhere, off-budget accounts stay out, and a merged
+    /// category's spending lands on the category it was merged into.
+    @Test func spentByCategoryFollowsTheSpentFigureRules() async throws {
+        let (db, url) = try await lastMonthDatabase("""
+            INSERT INTO category_mapping (id, transferId) VALUES ('merged', 'food');
+            INSERT INTO transactions (id, acct, category, amount, date, isParent, isChild, parent_id, tombstone) VALUES
+                ('split',      'on',  'food',   -1000, 20261010, 1, 0, NULL, 0),
+                ('split-a',    'on',  'food',    -600, 20261010, 0, 1, 'split', 0),
+                ('split-b',    'on',  'fun',     -400, 20261010, 0, 1, 'split', 0),
+                ('dead',       'on',  NULL,     -5000, 20261011, 1, 0, NULL, 1),
+                ('orphan',     'on',  'food',   -5000, 20261011, 0, 1, 'dead', 0),
+                ('deleted',    'on',  'food',   -5000, 20261012, 0, 0, NULL, 1),
+                ('off-budget', 'off', 'food',   -5000, 20261012, 0, 0, NULL, 0),
+                ('old-name',   'on',  'merged',  -700, 20261013, 0, 0, NULL, 0),
+                ('after',      'on',  'food',   -5000, 20261016, 0, 0, NULL, 0);
+        """)
+        defer { cleanup(url) }
+
+        let spent = try await db.spentByCategory(month: "2026-10", through: 20_261_015)
+
+        #expect(spent == ["food": -1300, "fun": -400])
     }
 
     @Test @MainActor func publishFillsLastMonthComparisonFromTheStore() throws {
         let budgetStore = BudgetStore.previewInstance()
         let store = try makeStore()
         budgetStore.widgetSnapshotStore = store
-        budgetStore.widgetSpentLastMonthByCategory = ["c1": -40000]
+        budgetStore.widgetMonthToDateSpending = MonthToDateSpending(thisMonth: ["c1": -60000], lastMonth: ["c1": -40000])
         budgetStore.widgetBudgetMonth = spendingMonth("2026-08", spent: -60000)
 
         budgetStore.publishWidgetSnapshot()
@@ -1605,6 +1729,7 @@ struct WidgetSnapshotTests {
         let snapshot = try #require(store.read())
 
         #expect(snapshot.totalSpentLastMonth == -40000)
+        #expect(snapshot.formattedTotalSpendingToDate == budgetStore.displayBalance(60000))
         #expect(snapshot.formattedTotalSpendingLastMonth == budgetStore.displayBalance(40000))
         #expect(snapshot.spendingDifference == 20000)
         #expect(snapshot.formattedSpendingDifference == budgetStore.displayBalance(20000))
@@ -1616,7 +1741,7 @@ struct WidgetSnapshotTests {
         let budgetStore = BudgetStore.previewInstance()
         let store = try makeStore()
         budgetStore.widgetSnapshotStore = store
-        budgetStore.widgetSpentLastMonthByCategory = [:]
+        budgetStore.widgetMonthToDateSpending = MonthToDateSpending(thisMonth: ["c1": -60000], lastMonth: [:])
         budgetStore.widgetBudgetMonth = spendingMonth("2026-08", spent: -60000)
 
         budgetStore.publishWidgetSnapshot()
@@ -1636,7 +1761,7 @@ struct WidgetSnapshotTests {
         let budgetStore = BudgetStore.previewInstance()
         let store = try makeStore()
         budgetStore.widgetSnapshotStore = store
-        budgetStore.widgetSpentLastMonthByCategory = ["c1": -40000]
+        budgetStore.widgetMonthToDateSpending = MonthToDateSpending(thisMonth: ["c1": -60000], lastMonth: ["c1": -40000])
         budgetStore.hideBalances = true
         defer { budgetStore.hideBalances = false }
         // The current month, so the daily rates are filled too.
@@ -1911,6 +2036,54 @@ struct WidgetSnapshotTests {
         #expect(snapshot.overspentCategories.isEmpty)
         // Snapshots written before spent existed rank nothing.
         #expect(sampleSnapshot().overspentCategories.isEmpty)
+    }
+
+    /// Twelve big spenders, none overspent, crowd the top 12. Gifts ($40
+    /// spent, nothing budgeted) and Repairs (overspent by carryover alone)
+    /// sit below them, and must still show and count.
+    private var crowdedBudgets: [CategoryBudget] {
+        (0..<12).map { rankedBudget("big\($0)", order: Double($0), budgeted: 100_000, spent: -50000 - $0) }
+            + [
+                rankedBudget("gifts", order: 12, budgeted: 0, spent: -4000),
+                rankedBudget("repairs", order: 13, budgeted: 0, spent: 0, carryover: -2500),
+            ]
+            + (14..<20).map { rankedBudget("quiet\($0)", order: Double($0), budgeted: 1000, spent: -100) }
+    }
+
+    @Test func overspentAlertsFindOverspentCategoriesOutsideTheTopTwelveSpenders() {
+        let snapshot = WidgetSnapshot.make(
+            from: crowdedBudgets, month: "2026-08", balancesHidden: false, generatedAt: Date(), format: { "$\($0)" }
+        )
+
+        #expect(!snapshot.rankedCategories.contains { $0.isOverspent })
+        #expect(snapshot.overspentCategories.map(\.id) == ["gifts", "repairs"])
+    }
+
+    @Test @MainActor func publishedOverspentCountMatchesTheBudgetTabBadge() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        // 14 overspent of 20: more than the 12 the ranked list keeps.
+        let month = BudgetMonth(month: "2026-08", categoryBudgets: (0..<20).map {
+            rankedBudget("c\($0)", order: Double($0), budgeted: 1000, spent: $0 < 14 ? -2000 - $0 : -500)
+        })
+        budgetStore.widgetBudgetMonth = month
+
+        budgetStore.publishWidgetSnapshot()
+
+        let snapshot = try #require(store.read())
+        #expect(month.overspentCount == 14)
+        #expect(snapshot.overspentCategories.count == month.overspentCount)
+    }
+
+    /// The mask still lists the first 12 in budget order, never the
+    /// overspent ones, however many there are.
+    @Test func hiddenBalancesKeepOverspentAlertsToTheFirstTwelveInBudgetOrder() {
+        let snapshot = WidgetSnapshot.make(
+            from: crowdedBudgets, month: "2026-08", balancesHidden: true, generatedAt: Date(), format: { _ in "••••" }
+        )
+
+        #expect(snapshot.overspentCategories.map(\.id) == (0..<12).map { "big\($0)" })
     }
 
     @Test func hiddenBalancesKeepOverspentAlertsInBudgetOrderMasked() {
@@ -2292,7 +2465,7 @@ struct WidgetSnapshotTests {
             from: budgets, month: "2026-08", balancesHidden: balancesHidden, generatedAt: Date(),
             format: { balancesHidden ? "••••" : "$\($0)" },
             budgetMonth: BudgetMonth(month: "2026-08", categoryBudgets: budgets),
-            spentLastMonthByCategory: last
+            monthToDateSpending: toDate(budgets, last: last)
         )
     }
 
@@ -2397,7 +2570,7 @@ struct WidgetSnapshotTests {
         let budgetStore = BudgetStore.previewInstance()
         let store = try makeStore()
         budgetStore.widgetSnapshotStore = store
-        budgetStore.widgetSpentLastMonthByCategory = moverLastMonth
+        budgetStore.widgetMonthToDateSpending = toDate(moverBudgets, last: moverLastMonth)
         budgetStore.widgetBudgetMonth = BudgetMonth(month: "2026-08", categoryBudgets: moverBudgets)
 
         budgetStore.publishWidgetSnapshot()

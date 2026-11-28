@@ -13,15 +13,7 @@ struct AccountBalanceWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Account Balances"))
         .description(String(localized: "Current balance for your chosen accounts."))
-        .supportedFamilies(Self.families)
-    }
-
-    private static var families: [WidgetFamily] {
-        let base: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge]
-        if #available(iOS 27.0, *) {
-            return base + [.systemExtraLargePortrait]
-        }
-        return base
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -80,7 +72,6 @@ struct AccountBalanceProvider: AppIntentTimelineProvider {
 
 struct AccountBalanceWidgetView: View {
     @Environment(\.widgetFamily) private var family
-    @Environment(\.locale) private var locale
 
     let entry: AccountBalanceEntry
 
@@ -162,12 +153,7 @@ struct AccountBalanceWidgetView: View {
                 }
             }
             Spacer(minLength: 0)
-            Text(String(
-                format: String(localized: "Updated %@", locale: locale),
-                WidgetDateFormatting.relative(entry.date, locale: locale)
-            ))
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            WidgetUpdatedFooter(date: entry.date)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
