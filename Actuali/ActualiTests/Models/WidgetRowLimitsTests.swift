@@ -37,6 +37,11 @@ struct WidgetRowLimitsTests {
         }
     }
 
+    @Test func overviewSectionSizesAreTheGallerysCounts() {
+        let overview = WidgetRowLimits.overview
+        #expect([overview.accounts, overview.categories, overview.transactions, overview.bills] == [3, 4, 3, 3])
+    }
+
     /// WidgetSnapshotBuilder caps every list at 12 (the snapshot's prefix(12)
     /// and rankedCategories), so a bigger limit would leave rows empty; and a
     /// larger family never shows fewer rows than a smaller one.
@@ -46,5 +51,7 @@ struct WidgetRowLimitsTests {
             #expect(counts.allSatisfy { (0...12).contains($0) }, "\(name)")
             #expect(counts == counts.sorted(), "\(name)")
         }
+        let overview = WidgetRowLimits.overview
+        #expect([overview.accounts, overview.categories, overview.transactions, overview.bills].allSatisfy { (1...12).contains($0) })
     }
 }

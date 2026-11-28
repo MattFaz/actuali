@@ -24,4 +24,15 @@ struct WidgetRowLimits: Equatable {
     static let overspentAlerts = WidgetRowLimits(small: 1, medium: 4, large: 8, extraLargePortrait: 12)
     /// Spending vs Last Month's category movers, listed on Large and up.
     static let spendingMovers = WidgetRowLimits(small: 0, medium: 0, large: 1, extraLargePortrait: 4)
+
+    /// The Overview widget's section sizes. It is Extra Large Portrait only,
+    /// so each section has one size rather than one per family.
+    struct Overview: Equatable {
+        let accounts: Int
+        let categories: Int
+        let transactions: Int
+        let bills: Int
+    }
+
+    static let overview = Overview(accounts: 3, categories: 4, transactions: 3, bills: 3)
 }

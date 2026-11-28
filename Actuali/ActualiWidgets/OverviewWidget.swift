@@ -79,7 +79,7 @@ struct OverviewProvider: AppIntentTimelineProvider {
         return Timeline(entries: [entry(for: configuration)], policy: .after(nextMidnight))
     }
 
-    /// Fixed section sizes: one family, so no per-family limits.
+    /// Fixed section sizes (WidgetRowLimits.overview): one family, so no per-family limits.
     private func entry(for configuration: SelectCategoriesIntent) -> OverviewEntry {
         guard let snapshot = WidgetSnapshotStore.standard()?.read(),
               snapshot.isForMonth(containing: .now) else {
@@ -96,10 +96,12 @@ struct OverviewProvider: AppIntentTimelineProvider {
             formattedTotalBudgeted: snapshot.formattedTotalBudgeted,
             spentFraction: snapshot.spentFraction,
             isOverbudget: snapshot.isOverbudget,
-            accounts: snapshot.accounts(matching: [], limit: 3),
-            categories: snapshot.categories(matching: (configuration.categories ?? []).map(\.id), limit: 4),
-            transactions: snapshot.latestTransactions(limit: 3),
-            bills: snapshot.nextBills(limit: 3),
+            accounts: snapshot.accounts(matching: [], limit: WidgetRowLimits.overview.accounts),
+            categories: snapshot.categories(
+                matching: (configuration.categories ?? []).map(\.id), limit: WidgetRowLimits.overview.categories
+            ),
+            transactions: snapshot.latestTransactions(limit: WidgetRowLimits.overview.transactions),
+            bills: snapshot.nextBills(limit: WidgetRowLimits.overview.bills),
             hasSnapshot: true
         )
     }

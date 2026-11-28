@@ -2499,12 +2499,12 @@ struct WidgetSnapshotTests {
 
     // MARK: Overview Extra Large Portrait (#862)
 
-    // OverviewProvider's fixed section sizes; the widget is Extra Large
-    // Portrait only, so there is one limit per section rather than per family.
-    private let overviewAccountLimit = 3
-    private let overviewCategoryLimit = 4
-    private let overviewTransactionLimit = 3
-    private let overviewBillLimit = 3
+    // OverviewProvider's fixed section sizes, from the table it reads; the
+    // widget is Extra Large Portrait only, so one size per section.
+    private let overviewAccountLimit = WidgetRowLimits.overview.accounts
+    private let overviewCategoryLimit = WidgetRowLimits.overview.categories
+    private let overviewTransactionLimit = WidgetRowLimits.overview.transactions
+    private let overviewBillLimit = WidgetRowLimits.overview.bills
 
     private func overviewSnapshot(balancesHidden: Bool = false) -> WidgetSnapshot {
         let budgets = (0..<6).map { index in
