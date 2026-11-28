@@ -176,7 +176,7 @@ struct EnableBankingClientTests {
             """
         )
 
-        let accounts = try await client.enableBankingPollAuthorization(state: "s-1")
+        let accounts = try await client.enableBankingPollAuthorization(state: "s-1", timeout: 280)
 
         let remote = try #require(accounts.first?.remoteAccount)
         #expect(remote.id == "uid-1")
@@ -208,7 +208,7 @@ struct EnableBankingClientTests {
         )
 
         await #expect(throws: EnableBankingAuthError.timedOut) {
-            _ = try await client.enableBankingPollAuthorization(state: "s-1")
+            _ = try await client.enableBankingPollAuthorization(state: "s-1", timeout: 280)
         }
     }
 
@@ -218,18 +218,38 @@ struct EnableBankingClientTests {
         )
 
         await #expect(throws: EnableBankingAuthError.failed("Authorization was denied")) {
-            _ = try await client.enableBankingPollAuthorization(state: "s-1")
+            _ = try await client.enableBankingPollAuthorization(state: "s-1", timeout: 280)
         }
     }
 
-    @Test func pollLetsTransportFailuresPropagate() async throws {
+    /// The caller tells a poll worth repeating from one that isn't by the
+    /// transport error inside.
+    @Test func pollReportsATransportFailureWithItsCause() async throws {
         let session = StubTransport.session { _ in throw URLError(.networkConnectionLost) }
         let client = ActualServerClient(session: session)
         try await client.configure(serverURL: "https://budget.example.com")
         await client.setToken("test-token")
 
-        await #expect(throws: URLError.self) {
-            _ = try await client.enableBankingPollAuthorization(state: "s-1")
+        let error = await #expect(throws: ActualServerError.self) {
+            _ = try await client.enableBankingPollAuthorization(state: "s-1", timeout: 280)
+        }
+        guard case .networkError(let cause as URLError) = error else {
+            Issue.record("expected a network error, got \(String(describing: error))")
+            return
+        }
+        #expect(cause.code == .networkConnectionLost)
+    }
+
+    @Test(arguments: [401, 403])
+    func pollWithARejectedSessionIsUnauthorized(_ status: Int) async throws {
+        let (client, _) = try await makeClient(status: status, responseBody: #"{"status":"error","reason":"unauthorized"}"#)
+
+        let error = await #expect(throws: ActualServerError.self) {
+            _ = try await client.enableBankingPollAuthorization(state: "s-1", timeout: 280)
+        }
+        guard case .unauthorized = error else {
+            Issue.record("expected unauthorized, got \(String(describing: error))")
+            return
         }
     }
 }

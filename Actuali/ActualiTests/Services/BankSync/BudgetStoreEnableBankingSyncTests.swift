@@ -60,8 +60,11 @@ struct BudgetStoreEnableBankingSyncTests {
     """
 
     /// A budget with an Enable Banking account (bank "ING") and, on request,
-    /// a SimpleFIN one.
-    private func makeDatabase(withSimpleFin: Bool = false) async throws -> (BudgetDatabase, URL) {
+    /// a SimpleFIN one or no message log.
+    private func makeDatabase(
+        withSimpleFin: Bool = false,
+        withMessageLog: Bool = true
+    ) async throws -> (BudgetDatabase, URL) {
         var statements = TestSchema.core + [
             TestSchema.preferences, TestSchema.rules,
             "INSERT INTO banks (id, bank_id, name) VALUES ('bank-1', 'bank-1', 'ING')",
@@ -80,6 +83,9 @@ struct BudgetStoreEnableBankingSyncTests {
                     '\(Self.sfExternalId)', 'simpleFin')
             """)
         }
+        if !withMessageLog {
+            statements.append("DROP TABLE messages_crdt")
+        }
         return try await makeTestDatabase(statements)
     }
 
@@ -95,11 +101,13 @@ struct BudgetStoreEnableBankingSyncTests {
 
     /// A store whose server answers by path; a path with no body is a 404.
     /// `unreachable` fails every request as a timeout instead.
+    /// `beforeAnswering` gets each logged request's path and may block.
     private func makeServerStore(
         database: BudgetDatabase,
         bodies: [String: String],
         log: EnableBankingRequestLog? = nil,
-        unreachable: Bool = false
+        unreachable: Bool = false,
+        beforeAnswering: (@Sendable (String) -> Void)? = nil
     ) async throws -> BudgetStore {
         let store = try await makeTestStore(database: database)
         // A budget id and private defaults, as `BudgetStoreBankSyncTests` gives
@@ -114,6 +122,7 @@ struct BudgetStoreEnableBankingSyncTests {
         let serverClient = ActualServerClient(session: StubTransport.session { request in
             let path = request.url?.path ?? ""
             log?.entries.withLock { $0.append(.init(path: path, body: request.bodyData)) }
+            beforeAnswering?(path)
             if unreachable {
                 throw URLError(.timedOut)
             }
@@ -257,6 +266,44 @@ struct BudgetStoreEnableBankingSyncTests {
         #expect(account["bank_sync_status"] == "failed")
     }
 
+    /// One sync is held at the server while two more are asked for. Both wake
+    /// when it ends, and the one that resumes second finds a sync running
+    /// again: it has to wait once more, not come back empty-handed.
+    @Test(.timeLimit(.minutes(5)))
+    func syncsAskedForDuringARunningSyncAllRun() async throws {
+        let (database, url) = try await makeDatabase(withSimpleFin: true)
+        defer { cleanup(url) }
+        let log = EnableBankingRequestLog()
+        let held = Gate()
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let store = try await makeServerStore(database: database, bodies: [
+            "/enablebanking/transactions": Self.okBody(),
+            "/simplefin/status": #"{"status":"ok","data":{"configured":true}}"#,
+            "/simplefin/transactions": Self.simpleFinBody,
+        ], log: log) { path in
+            // Only the first Enable Banking download is held.
+            if path == "/enablebanking/transactions", log.bodies(for: path).count == 1 {
+                held.open()
+                release.wait()
+            }
+        }
+
+        let running = Task { try await store.syncBankAccounts(accountIds: [Self.ebAccountId]) }
+        await held.wait()
+        let first = Task { try await store.syncBankAccountsWhenIdle(accountIds: [Self.ebAccountId]) }
+        let second = Task { try await store.syncBankAccountsWhenIdle(accountIds: [Self.sfAccountId]) }
+        // Both have to be waiting on the running sync before it ends.
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+        release.signal()
+        _ = try await (running.value, first.value, second.value)
+
+        #expect(log.bodies(for: "/enablebanking/transactions").count == 2)
+        #expect(log.bodies(for: "/simplefin/transactions").count == 1)
+    }
+
     @Test func aServerWithoutTheRouteReportsThatItDoesntOfferEnableBanking() async throws {
         let (database, url) = try await makeDatabase()
         defer { cleanup(url) }
@@ -318,7 +365,7 @@ struct BudgetStoreEnableBankingSyncTests {
         #expect(accounts.map(\.institutionName) == ["ING"])
     }
 
-    @Test func linkedAccountsCarryTheirNewestLinkMessageTime() async throws {
+    @Test func linkDatesAreTheNewestLinkMessageTimePerAccount() async throws {
         let (database, url) = try await makeDatabase(withSimpleFin: true)
         defer { cleanup(url) }
         let node = "9f66d38cba0ef956"
@@ -340,11 +387,17 @@ struct BudgetStoreEnableBankingSyncTests {
             }
         }
 
-        let accounts = try await database.fetchBankSyncAccounts()
+        let dates = try await database.fetchBankLinkDates()
 
-        let enableBanking = try #require(accounts.first { $0.id == Self.ebAccountId })
-        let simpleFin = try #require(accounts.first { $0.id == Self.sfAccountId })
-        #expect(enableBanking.linkedAt == Date(timeIntervalSince1970: 1_795_766_549.123))
-        #expect(simpleFin.linkedAt == nil)
+        #expect(dates[Self.ebAccountId] == Date(timeIntervalSince1970: 1_795_766_549.123))
+        #expect(dates[Self.sfAccountId] == nil)
+    }
+
+    @Test func aBudgetWithoutAMessageLogHasNoLinkDatesAndKeepsItsLinks() async throws {
+        let (database, url) = try await makeDatabase(withMessageLog: false)
+        defer { cleanup(url) }
+
+        #expect(try await database.fetchBankLinkDates().isEmpty)
+        #expect(try await database.fetchBankSyncAccounts().map(\.id) == [Self.ebAccountId])
     }
 }

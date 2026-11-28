@@ -40,11 +40,6 @@ struct BankSyncAccount: Sendable, Equatable, Identifiable {
     /// The linked bank's name (`banks.name`); Enable Banking sends it to the
     /// server as `aspspName`.
     var institutionName: String?
-    /// When the newest link message for this account was written, on any
-    /// device; nil if the budget has none. Linking follows a bank
-    /// authorization within minutes, and the server never says when an Enable
-    /// Banking permission ends, so this date is what a person can count from.
-    var linkedAt: Date?
 
     var source: BankSyncSource? {
         BankSyncSource(rawValue: syncSource)

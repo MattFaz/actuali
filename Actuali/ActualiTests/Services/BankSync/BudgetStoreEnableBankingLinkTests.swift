@@ -153,10 +153,14 @@ struct BudgetStoreEnableBankingLinkTests {
             throw URLError(.secureConnectionFailed)
         }
 
-        let error = await #expect(throws: URLError.self) {
+        let error = await #expect(throws: ActualServerError.self) {
             _ = try await store.awaitEnableBankingAuthorization(state: "state-1")
         }
-        #expect(error?.code == .secureConnectionFailed)
+        guard case .networkError(let cause as URLError) = error else {
+            Issue.record("expected a network error, got \(String(describing: error))")
+            return
+        }
+        #expect(cause.code == .secureConnectionFailed)
         #expect(calls.value == 1)
     }
 
@@ -177,9 +181,9 @@ struct BudgetStoreEnableBankingLinkTests {
 
     // MARK: - Linking
 
-    private func enableBankingRemote(id: String) -> BankSyncRemoteAccount {
+    private func enableBankingRemote(id: String, name: String = "Savings") -> BankSyncRemoteAccount {
         BankSyncRemoteAccount(
-            id: id, name: "Savings", institutionId: id, institutionName: "ING",
+            id: id, name: name, institutionId: id, institutionName: "ING",
             balanceCents: 12345, source: .enableBanking
         )
     }
@@ -260,11 +264,9 @@ struct BudgetStoreEnableBankingLinkTests {
         """.utf8)
     }
 
-    /// The linked account already holds two imported transactions; the bank
-    /// returns the same account under a new uid next to another one.
-    @Test func aLinkedAccountIsFoundAmongNewUidsByItsImportedTransactions() async throws {
-        let (database, url) = try await makeDatabase(linked: true)
-        defer { cleanup(url) }
+    /// Gives the linked account the imported transactions `bank-tx-1` and
+    /// `bank-tx-2`.
+    private func importTwoTransactions(into database: BudgetDatabase) async throws {
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
             for id in ["tx-1", "tx-2"] {
@@ -277,6 +279,30 @@ struct BudgetStoreEnableBankingLinkTests {
                 )
             }
         }
+    }
+
+    /// A server whose `/enablebanking/transactions` answers per bank account
+    /// uid; a uid without transactions fails with a 500.
+    private nonisolated static func downloads(_ byUid: [String: [String]]) -> StubTransport.Handler {
+        { request in
+            guard request.url?.path == "/enablebanking/transactions" else {
+                return StubTransport.Response(status: 404)
+            }
+            let body = try JSONSerialization.jsonObject(with: request.bodyData) as? [String: Any]
+            guard let ids = byUid[body?["accountId"] as? String ?? ""] else {
+                return StubTransport.Response(status: 500)
+            }
+            return StubTransport.Response(body: download(ids))
+        }
+    }
+
+    /// The linked account already holds two imported transactions; the bank
+    /// returns the same account under a new uid next to another one.
+    @Test func aLinkedAccountIsFoundAmongNewUidsByItsImportedTransactions() async throws {
+        let (database, url) = try await makeDatabase(linked: true)
+        defer { cleanup(url) }
+        let accountId = Self.accountId
+        try await importTwoTransactions(into: database)
         let asked = CallCounter()
         let store = try await makeStore(database: database) { request in
             guard request.url?.path == "/enablebanking/transactions" else {
@@ -312,5 +338,81 @@ struct BudgetStoreEnableBankingLinkTests {
 
         #expect(matches.isEmpty)
         #expect(asked.value == 0)
+    }
+
+    /// The account the link belongs to fails to download, and another one
+    /// shares a transaction with it (a transfer between the two). Judged on
+    /// what did arrive, the link would move to the wrong account.
+    @Test func nothingIsRecognisedWhenADownloadFailed() async throws {
+        let (database, url) = try await makeDatabase(linked: true)
+        defer { cleanup(url) }
+        try await importTwoTransactions(into: database)
+        let store = try await makeStore(database: database, handler: Self.downloads(["uid-other": ["bank-tx-1"]]))
+        let link = try #require(store.bankSyncAccounts.first { $0.id == Self.accountId })
+
+        let matches = await store.enableBankingMatches(
+            for: [link], among: [enableBankingRemote(id: "uid-mine"), enableBankingRemote(id: "uid-other")]
+        )
+
+        #expect(matches.isEmpty)
+    }
+
+    // MARK: - Which links an authorization renews
+
+    /// Nothing was imported yet, so the transactions prove nothing. The
+    /// returned account carries the linked account's name, which is enough
+    /// when that account is being reauthorized and never when a bank is being
+    /// connected: there it may be someone else's sign-in.
+    @Test func onlyAReauthorizationRenewsWhatTheTransactionsDoNotProve() async throws {
+        let (database, url) = try await makeDatabase(linked: true)
+        defer { cleanup(url) }
+        let asked = CallCounter()
+        let store = try await makeStore(database: database) { _ in
+            asked.increment()
+            return StubTransport.Response(status: 404)
+        }
+        let remotes = [enableBankingRemote(id: "uid-new")]
+
+        let connecting = await store.enableBankingRenewals(of: remotes, bankName: "ING", reauthorizing: nil)
+        let reauthorizing = await store.enableBankingRenewals(
+            of: remotes, bankName: "ING", reauthorizing: Self.accountId
+        )
+
+        #expect(connecting.isEmpty)
+        #expect(reauthorizing.mapValues(\.id) == [Self.accountId: "uid-new"])
+        // One account on each side needs no download to tell them apart.
+        #expect(asked.value == 0)
+    }
+
+    /// By name the linked account would take `uid-named`; its transactions
+    /// come back from `uid-mine`, and they decide.
+    @Test func aReauthorizationGoesByTheTransactionsBeforeTheNames() async throws {
+        let (database, url) = try await makeDatabase(linked: true)
+        defer { cleanup(url) }
+        try await importTwoTransactions(into: database)
+        let store = try await makeStore(database: database, handler: Self.downloads([
+            "uid-named": ["other-1"], "uid-mine": ["bank-tx-1", "bank-tx-2"],
+        ]))
+        let remotes = [enableBankingRemote(id: "uid-named"), enableBankingRemote(id: "uid-mine", name: "Main")]
+
+        let renewals = await store.enableBankingRenewals(of: remotes, bankName: "ING", reauthorizing: Self.accountId)
+
+        #expect(renewals.mapValues(\.id) == [Self.accountId: "uid-mine"])
+    }
+
+    /// Connecting the same bank again for a second account: the account that
+    /// is already linked is recognised, the new one is left to set up.
+    @Test func connectingABankAgainRenewsTheLinkItsTransactionsProve() async throws {
+        let (database, url) = try await makeDatabase(linked: true)
+        defer { cleanup(url) }
+        try await importTwoTransactions(into: database)
+        let store = try await makeStore(database: database, handler: Self.downloads([
+            "uid-second": ["other-1"], "uid-mine": ["bank-tx-1", "bank-tx-2"],
+        ]))
+        let remotes = [enableBankingRemote(id: "uid-second", name: "Current"), enableBankingRemote(id: "uid-mine")]
+
+        let renewals = await store.enableBankingRenewals(of: remotes, bankName: "ING", reauthorizing: nil)
+
+        #expect(renewals.mapValues(\.id) == [Self.accountId: "uid-mine"])
     }
 }

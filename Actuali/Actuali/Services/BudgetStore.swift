@@ -5549,6 +5549,11 @@ final class BudgetStore: ObservableObject {
             summary(locale: .autoupdatingCurrent, bundle: .main)
         }
 
+        /// `summary` on one line, for a toast or a footer.
+        var oneLineSummary: String {
+            summary.replacingOccurrences(of: "\n\n", with: " ")
+        }
+
         func summary(locale: Locale, bundle: Bundle) -> String {
             var lines: [String] = []
             if added > 0 {
@@ -5675,7 +5680,7 @@ final class BudgetStore: ObservableObject {
             if result.problems.isEmpty {
                 showBankSyncNotice(BankSyncNotice(
                     // One line: the toast is a capsule.
-                    text: result.summary.replacingOccurrences(of: "\n\n", with: " "),
+                    text: result.oneLineSummary,
                     offersReview: result.staged > 0
                         || result.importedTransactions.contains { unreviewedTransactions[$0.id] != nil }
                         || result.matchedTransactions.keys.contains { unreviewedTransactions[$0] != nil }
@@ -5714,6 +5719,11 @@ final class BudgetStore: ObservableObject {
         try await serverClient.enableBankingStatus()
     }
 
+    /// When each linked account was last linked, keyed by budget account id.
+    func bankLinkDates() async -> [String: Date] {
+        await (try? database?.fetchBankLinkDates()) ?? [:]
+    }
+
     func enableBankingRedirectURL() async -> URL? {
         await serverClient.enableBankingRedirectURL()
     }
@@ -5731,7 +5741,8 @@ final class BudgetStore: ObservableObject {
 
     private static let enableBankingPollPause: Duration = .seconds(1)
     private static let enableBankingPollDeadline: Duration = .seconds(600)
-    /// The client's default, here so the last poll can be capped at the time left.
+    /// Just under the session's 300 s resource cap; the last poll is capped
+    /// at the time left instead.
     private static let enableBankingPollRequestTimeout: Duration = .seconds(280)
 
     /// Whether asking the server again can still get an answer. Approval often
@@ -5742,7 +5753,7 @@ final class BudgetStore: ObservableObject {
     /// failure, a bad URL, any other HTTP status) won't change on a retry.
     private static func isRecoverablePollFailure(_ error: any Error) -> Bool {
         switch error {
-        case let error as URLError:
+        case ActualServerError.networkError(let error as URLError):
             [
                 .timedOut, .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost,
                 .cannotFindHost, .dnsLookupFailed, .dataNotAllowed,
@@ -5777,6 +5788,33 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// The links a new authorization of `bankName` renews, as the returned
+    /// account for each budget account id. An account that was linked before
+    /// comes back under a new id, so it has to be recognised: by the
+    /// transactions it already imported, and, when `accountId` is being
+    /// reauthorized, by what is unambiguous about the rest. Connecting a bank
+    /// goes by the transactions alone: someone else's sign-in at the same bank
+    /// must never be taken for an account that is already linked.
+    func enableBankingRenewals(
+        of remotes: [BankSyncRemoteAccount],
+        bankName: String,
+        reauthorizing accountId: String?
+    ) async -> [String: BankSyncRemoteAccount] {
+        let linked = bankSyncAccounts
+        let open = EnableBankingLinks.unsettled(of: remotes, bankName: bankName, linked: linked)
+        var proven: [String: BankSyncRemoteAccount] = [:]
+        // One account on each side of a reauthorization leaves nothing to
+        // compare, and skipping it keeps the usual case quick.
+        let isPlain = accountId != nil && open.links.count == 1 && open.remotes.count == 1
+        if !open.links.isEmpty, !isPlain {
+            proven = await enableBankingMatches(for: open.links, among: open.remotes)
+        }
+        guard let accountId else { return proven }
+        return EnableBankingLinks.renewals(
+            of: remotes, reauthorizing: accountId, bankName: bankName, linked: linked, proven: proven
+        )
+    }
+
     /// Which budget account each returned bank account already feeds, judged
     /// by the transactions themselves. A new authorization gives every
     /// account a new id, so nothing about a link says which returned account
@@ -5804,6 +5842,9 @@ final class BudgetStore: ObservableObject {
         let downloads = await EnableBankingProvider(client: serverClient).download(remotes.map {
             BankSyncTarget(externalId: $0.id, startDay: startDay, institutionName: $0.institutionName)
         })
+        // An account whose download failed could be the one a link belongs to,
+        // and "shares the most" among the rest would hand it to another.
+        guard downloads.byAccount.values.allSatisfy(\.accountDataReceived) else { return [:] }
         let returned = downloads.byAccount.mapValues { Set($0.candidates.map(\.importedId)) }
         return Self.accountMatches(imported: imported, returned: returned)
             .compactMapValues { remoteId in remotes.first { $0.id == remoteId } }
@@ -6127,6 +6168,22 @@ final class BudgetStore: ObservableObject {
             throw error
         }
         await refreshDataOnly()
+    }
+
+    /// `syncBankAccounts`, once no other sync is running. Starting on top of
+    /// one returns an empty result, and dropping the request would leave an
+    /// account linked meanwhile without its history until someone finds Sync
+    /// Now.
+    func syncBankAccountsWhenIdle(accountIds: [String]) async throws -> BankSyncResult {
+        // Checked again after every wait: several callers can be waiting on
+        // one sync, and only the first to resume finds the store idle.
+        while isBankSyncing {
+            try Task.checkCancellation()
+            for await syncing in $bankSyncingAccountIds.values where syncing.isEmpty {
+                break
+            }
+        }
+        return try await syncBankAccounts(accountIds: accountIds)
     }
 
     /// Download and import transactions for the linked accounts.

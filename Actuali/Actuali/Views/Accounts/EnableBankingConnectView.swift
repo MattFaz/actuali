@@ -29,7 +29,7 @@ struct EnableBankingConnectView: View {
     @State private var bankLoadError: String?
     @State private var bankId: String?
     @State private var psuChoice = "personal"
-    @State private var isWaiting = false
+    /// The attempt in progress, from the tap until the bank's answer is in.
     @State private var authorizationTask: Task<Void, Never>?
     @State private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     @State private var remoteAccounts: [BankSyncRemoteAccount] = []
@@ -123,11 +123,7 @@ struct EnableBankingConnectView: View {
     /// A bank that offers one usage type only gets that one; the picker is
     /// shown just when there is a real choice.
     nonisolated static func psuType(for bank: EnableBankingBank, choice: String) -> String {
-        let types = bank.psuTypes ?? []
-        if types.contains("personal"), types.contains("business") {
-            return choice
-        }
-        return types.first ?? choice
+        bank.offersBothUsageTypes ? choice : bank.psuTypes?.first ?? choice
     }
 
     /// `cancelled` means the sheet was closed, by the person or by `cancel()`;
@@ -142,69 +138,7 @@ struct EnableBankingConnectView: View {
     /// The bank a linked account was made through, by the name the link stored.
     /// Only the loaded list is searched, so a bank from another country is nil.
     nonisolated static func bank(named name: String?, in banks: [EnableBankingBank]) -> EnableBankingBank? {
-        banks.first { sameName($0.name, name) }
-    }
-
-    private nonisolated static func sameName(_ lhs: String?, _ rhs: String?) -> Bool {
-        guard let lhs, let rhs else { return false }
-        return lhs.trimmingCharacters(in: .whitespacesAndNewlines)
-            .caseInsensitiveCompare(rhs.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
-    }
-
-    /// What a new authorization of `bankName` leaves to settle: this bank's
-    /// links whose account didn't come back under the id they know, and the
-    /// returned accounts nothing imports from. The bank issues new account ids
-    /// every time, so an account that is already linked comes back looking
-    /// like one that is not.
-    nonisolated static func unsettled(
-        of remotes: [BankSyncRemoteAccount],
-        bankName: String,
-        linked: [BankSyncAccount]
-    ) -> (links: [BankSyncAccount], remotes: [BankSyncRemoteAccount]) {
-        let links = linked.filter {
-            $0.source == .enableBanking && !$0.closed && sameName($0.institutionName, bankName)
-                // An id the bank kept is a link that needs nothing done.
-                && !remotes.map(\.id).contains($0.externalAccountId)
-        }
-        return (links, remotes.filter { $0.link(in: linked) == nil })
-    }
-
-    /// The links reauthorizing `accountId` renews, as the returned account for
-    /// each budget account id. `proven` holds the pairs the transactions
-    /// already settled; this adds what can be said about the rest without
-    /// them, and only when the account being reauthorized is one of this
-    /// bank's: picking another bank on the way is a new connection.
-    ///
-    /// ponytail: beyond its transactions a link stores nothing that survives
-    /// a new authorization, so what they leave open is paired on what is
-    /// unambiguous: a name both sides have exactly once, then (upstream's
-    /// `computeInitialLinkState`) the one account still left over for the
-    /// account being reauthorized. The rest is asked. Upgrade path: Enable
-    /// Banking's `identification_hash`, once the server passes it through.
-    nonisolated static func renewals(
-        of remotes: [BankSyncRemoteAccount],
-        reauthorizing accountId: String,
-        bankName: String,
-        linked: [BankSyncAccount],
-        proven: [String: BankSyncRemoteAccount] = [:]
-    ) -> [String: BankSyncRemoteAccount] {
-        let open = unsettled(of: remotes, bankName: bankName, linked: linked)
-        guard open.links.contains(where: { $0.id == accountId }) else { return proven }
-        var renewals = proven
-        let stale = open.links.filter { renewals[$0.id] == nil }
-        var unpaired = open.remotes.filter { remote in !renewals.values.contains { $0.id == remote.id } }
-
-        for link in stale where stale.filter({ sameName($0.name, link.name) }).count == 1 {
-            let named = unpaired.filter { sameName($0.name, link.name) }
-            if named.count == 1 {
-                renewals[link.id] = named[0]
-            }
-        }
-        unpaired.removeAll { remote in renewals.values.contains { $0.id == remote.id } }
-        if renewals[accountId] == nil, unpaired.count == 1 {
-            renewals[accountId] = unpaired[0]
-        }
-        return renewals
+        banks.first { EnableBankingLinks.sameName($0.name, name) }
     }
 
     /// How much of what the bank returned feeds a budget account, which is
@@ -287,25 +221,22 @@ struct EnableBankingConnectView: View {
 
     // MARK: - Sections
 
-    private var sortedCountries: [String] {
-        Self.countries.sorted {
-            Self.countryName($0).localizedCompare(Self.countryName($1)) == .orderedAscending
-        }
+    private static let sortedCountries = countries.sorted {
+        countryName($0).localizedCompare(countryName($1)) == .orderedAscending
+    }
+
+    private var isWaiting: Bool {
+        authorizationTask != nil
     }
 
     private var selectedBank: EnableBankingBank? {
         banks.first { $0.id == bankId }
     }
 
-    private var offersBothUsageTypes: Bool {
-        let types = selectedBank?.psuTypes ?? []
-        return types.contains("personal") && types.contains("business")
-    }
-
     private var bankSection: some View {
         Section {
             Picker("Country", selection: $country) {
-                ForEach(sortedCountries, id: \.self) { code in
+                ForEach(Self.sortedCountries, id: \.self) { code in
                     Text(Self.countryName(code)).tag(code)
                 }
             }
@@ -339,7 +270,7 @@ struct EnableBankingConnectView: View {
                 .accessibilityIdentifier("enableBanking.bank")
             }
 
-            if offersBothUsageTypes {
+            if selectedBank?.offersBothUsageTypes == true {
                 Picker("Usage type", selection: $psuChoice) {
                     Text("Personal").tag("personal")
                     Text("Business").tag("business")
@@ -363,21 +294,32 @@ struct EnableBankingConnectView: View {
             .accessibilityIdentifier("enableBanking.authorize")
 
             if isWaiting {
-                HStack {
-                    ProgressView()
-                    Text("Waiting for your bank…")
-                        .foregroundStyle(.secondary)
-                }
-                Button("Cancel", role: .cancel) {
-                    authorizationTask?.cancel()
-                }
-                .accessibilityIdentifier("enableBanking.cancel")
+                waitingRows
             }
         } footer: {
-            // Always shown: once the bank's page is up it covers this screen,
-            // so this has to be read before leaving.
-            Text("After you approve, come back to Actuali. Your banking app or browser may not return you here by itself, and the result shows on this screen.")
+            Text(returnNote)
         }
+    }
+
+    /// Always under the way to the bank: once the bank's page is up it covers
+    /// this screen, so this has to be read before leaving.
+    private var returnNote: String {
+        String(localized: "After you approve, come back to Actuali. Your banking app or browser may not return you here by itself, and the result shows on this screen.")
+    }
+
+    @ViewBuilder
+    private var waitingRows: some View {
+        HStack {
+            ProgressView()
+            Text("Waiting for your bank…")
+                .foregroundStyle(.secondary)
+        }
+        Button("Cancel", role: .cancel) {
+            // Where a reauthorization skipped the form, cancelling leads to it.
+            showsForm = true
+            authorizationTask?.cancel()
+        }
+        .accessibilityIdentifier("enableBanking.cancel")
     }
 
     /// The bank whose accounts are on screen.
@@ -393,18 +335,9 @@ struct EnableBankingConnectView: View {
     /// the account's bank.
     private var openingSection: some View {
         Section {
-            HStack {
-                ProgressView()
-                Text("Waiting for your bank…")
-                    .foregroundStyle(.secondary)
-            }
-            Button("Cancel", role: .cancel) {
-                showsForm = true
-                authorizationTask?.cancel()
-            }
-            .accessibilityIdentifier("enableBanking.cancel")
+            waitingRows
         } footer: {
-            Text("After you approve, come back to Actuali. Your banking app or browser may not return you here by itself, and the result shows on this screen.")
+            Text(returnNote)
         }
     }
 
@@ -538,6 +471,7 @@ struct EnableBankingConnectView: View {
             Section {
                 Button("Try Again") {
                     remoteAccounts = []
+                    authorize()
                 }
                 .accessibilityIdentifier("enableBanking.reauthorizeAgain")
             }
@@ -627,7 +561,7 @@ struct EnableBankingConnectView: View {
             loadedCountry = requested
             // Nothing is picked yet, so this either selects the account's bank
             // or, when it isn't in this country's list, leaves the choice open.
-            let reauthorizing = budgetStore.bankSyncAccounts.first { $0.id == reauthorizingAccountId }
+            let reauthorizing = reauthorizingAccountId.flatMap(budgetStore.bankSyncAccount(forAccountId:))
             bankId = Self.bank(named: reauthorizing?.institutionName, in: loaded)?.id
         } catch {
             guard !Task.isCancelled, requested == country else { return }
@@ -672,32 +606,6 @@ struct EnableBankingConnectView: View {
         return renewed
     }
 
-    /// The links the bank's answer renews. An account that was linked before
-    /// comes back under a new id, so it has to be recognised: by the
-    /// transactions it already imported, and, when reauthorizing, by what is
-    /// unambiguous about the rest. Connecting a bank goes by the transactions
-    /// alone: someone else's sign-in at the same bank must never be taken for
-    /// an account that is already linked.
-    private func renewalPlan(
-        for accounts: [BankSyncRemoteAccount],
-        bank: EnableBankingBank
-    ) async -> [String: BankSyncRemoteAccount] {
-        let linked = budgetStore.bankSyncAccounts
-        let open = Self.unsettled(of: accounts, bankName: bank.name, linked: linked)
-        var proven: [String: BankSyncRemoteAccount] = [:]
-        // One account on each side of a reauthorization leaves nothing to
-        // compare, and skipping it keeps the usual case quick.
-        let isPlain = reauthorizingAccountId != nil && open.links.count == 1 && open.remotes.count == 1
-        if !open.links.isEmpty, !isPlain {
-            proven = await budgetStore.enableBankingMatches(for: open.links, among: open.remotes)
-        }
-        guard let reauthorizingAccountId else { return proven }
-        return Self.renewals(
-            of: accounts, reauthorizing: reauthorizingAccountId,
-            bankName: bank.name, linked: linked, proven: proven
-        )
-    }
-
     /// The account picked for a reauthorized link: move the link there and
     /// sync it, as a renewal found by itself would.
     private func choose(_ remote: BankSyncRemoteAccount, for accountId: String) {
@@ -724,16 +632,17 @@ struct EnableBankingConnectView: View {
         await loadBanks()
         // Cancel was tapped while the list loaded.
         guard !showsForm else { return }
-        // `loadBanks` picked the account's bank if this country's list has it.
-        guard selectedBank != nil else {
-            showsForm = true
-            return
-        }
         authorize()
     }
 
     private func authorize() {
-        guard let bank = selectedBank else { return }
+        // `loadBanks` picked a reauthorized account's bank if this country's
+        // list has it. Without a bank there is nowhere to go straight to, and
+        // the screen must not be left waiting for nothing.
+        guard let bank = selectedBank else {
+            showsForm = true
+            return
+        }
         let psuType = Self.psuType(for: bank, choice: psuChoice)
         authorizationTask = Task { await runAuthorization(bank: bank, psuType: psuType) }
     }
@@ -746,7 +655,6 @@ struct EnableBankingConnectView: View {
 
     private func runAuthorization(bank: EnableBankingBank, psuType: String) async {
         defer {
-            isWaiting = false
             authorizationTask = nil
             // An attempt that ended without accounts leaves the form to retry
             // from, also where a reauthorization had skipped it.
@@ -754,8 +662,6 @@ struct EnableBankingConnectView: View {
                 showsForm = true
             }
         }
-        // Set before the first request, so the tap shows progress at once.
-        isWaiting = true
         do {
             let start = try await budgetStore.startEnableBankingAuthorization(bank: bank, psuType: psuType)
 
@@ -778,7 +684,7 @@ struct EnableBankingConnectView: View {
             // though, so that ends it.
             Task {
                 do {
-                    _ = try await authenticator.open(start.url, callbackScheme: OpenIDAuthenticator.callbackScheme)
+                    _ = try await authenticator.open(start.url)
                 } catch {
                     guard !Self.isSheetClosed(error) else { return }
                     errorMessage = error.localizedDescription
@@ -796,7 +702,9 @@ struct EnableBankingConnectView: View {
             if UIApplication.shared.applicationState != .active {
                 await BankAuthorizationNotifier.notifyApproved()
             }
-            let renewals = await renewalPlan(for: accounts, bank: bank)
+            let renewals = await budgetStore.enableBankingRenewals(
+                of: accounts, bankName: bank.name, reauthorizing: reauthorizingAccountId
+            )
             // Its own task: leaving the screen cancels this one, which must
             // not stop a renewal between two links.
             let renewed = await Task { await renew(renewals) }.value

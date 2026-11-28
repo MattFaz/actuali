@@ -4302,9 +4302,7 @@ final class BudgetDatabase: Sendable {
             }
             return try Row.fetchAll(db, sql: """
             SELECT id, name, account_id, account_sync_source, offbudget, closed,
-                   (SELECT name FROM banks WHERE banks.id = accounts.bank) AS institution_name,
-                   (SELECT MAX(timestamp) FROM messages_crdt
-                    WHERE dataset = 'accounts' AND "column" = 'account_id' AND "row" = accounts.id) AS linked_at
+                   (SELECT name FROM banks WHERE banks.id = accounts.bank) AS institution_name
             FROM accounts
             WHERE (tombstone = 0 OR tombstone IS NULL)
               AND account_id IS NOT NULL AND account_id <> ''
@@ -4318,11 +4316,33 @@ final class BudgetDatabase: Sendable {
                     syncSource: row["account_sync_source"],
                     offBudget: row["offbudget"] == 1,
                     closed: row["closed"] == 1,
-                    institutionName: row["institution_name"],
-                    // Timestamps are fixed width, so the string max is the newest.
-                    linkedAt: (row["linked_at"] as String?).flatMap(HLCTimestamp.parse)
-                        .map { Date(timeIntervalSince1970: Double($0.millis) / 1000) }
+                    institutionName: row["institution_name"]
                 )
+            }
+        }
+    }
+
+    /// When each account's newest link message was written, on any device,
+    /// keyed by account id. Linking follows a bank authorization within
+    /// minutes, and the server never says when an Enable Banking permission
+    /// ends, so this date is what a person can count from.
+    ///
+    /// Kept out of `fetchBankSyncAccounts`: every reload runs that for every
+    /// provider, one screen shows these dates, and a budget without a message
+    /// log must not lose its linked accounts over them. Reads the accounts
+    /// messages only, through upstream's `messages_crdt_search` index.
+    func fetchBankLinkDates() async throws -> [String: Date] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("messages_crdt") else { return [:] }
+            // Timestamps are fixed width, so the string max is the newest.
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT "row" AS account, MAX(timestamp) AS newest FROM messages_crdt
+            WHERE dataset = 'accounts' AND "column" = 'account_id'
+            GROUP BY "row"
+            """)
+            return rows.reduce(into: [String: Date]()) { dates, row in
+                guard let stamp = (row["newest"] as String?).flatMap(HLCTimestamp.parse) else { return }
+                dates[row["account"] as String] = Date(timeIntervalSince1970: Double(stamp.millis) / 1000)
             }
         }
     }

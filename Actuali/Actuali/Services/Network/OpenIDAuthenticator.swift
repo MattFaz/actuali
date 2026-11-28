@@ -102,7 +102,7 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
     /// - Parameter authorizationURL: the OP authorization URL returned by the server.
     /// - Returns: the Actual session token from the callback's `token` query item.
     func authenticate(authorizationURL: URL) async throws -> String {
-        try await Self.extractToken(from: open(authorizationURL, callbackScheme: Self.callbackScheme))
+        try await Self.extractToken(from: open(authorizationURL))
     }
 
     /// Present `url` in the system's authentication sheet and wait for it to
@@ -113,11 +113,11 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
     /// to the Actual server, and the app learns the outcome by polling. There
     /// the sheet only ends through `cancel()` or the person closing it, and
     /// either way this throws `OpenIDAuthError.cancelled`.
-    func open(_ url: URL, callbackScheme: String) async throws -> URL {
+    func open(_ url: URL) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
             let session = ASWebAuthenticationSession(
                 url: url,
-                callbackURLScheme: callbackScheme
+                callbackURLScheme: Self.callbackScheme
             ) { callbackURL, error in
                 if let error {
                     if let authError = error as? ASWebAuthenticationSessionError,

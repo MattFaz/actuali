@@ -798,7 +798,7 @@ struct BankAccountLinkView: View {
         let open = accounts.filter { !$0.closed && !linkedIds.contains($0.id) }
         guard remoteSource == .enableBanking else { return open }
         let replaceableIds = enableBankingLinkedIds(linked)
-        let attentionIds = Set(linked.filter { replaceableIds.contains($0.id) && $0.needsAttention }.map(\.id))
+        let attentionIds = Set(linked.filter { $0.source == .enableBanking && $0.needsAttention }.map(\.id))
         let replaceableOpen = accounts.filter { !$0.closed && replaceableIds.contains($0.id) }
         return replaceableOpen.filter { attentionIds.contains($0.id) }
             + open

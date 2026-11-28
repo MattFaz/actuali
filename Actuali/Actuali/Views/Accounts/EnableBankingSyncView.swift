@@ -1,4 +1,3 @@
-import Combine
 import SwiftUI
 
 /// Enable Banking runs through the user's Actual server, which holds the
@@ -14,19 +13,17 @@ struct EnableBankingSyncView: View {
         case failed(String)
     }
 
-    /// What "Reauthorize" pushes: the connect screen, set to renew this
-    /// account's link.
-    private struct Reauthorization: Hashable {
-        let accountId: String
-    }
-
     @State private var readiness = Readiness.checking
     @State private var redirectURL: URL?
     @State private var errorMessage: String?
     /// A clean sync's outcome, shown in the footer where Sync Now was tapped.
     @State private var syncSummary: String?
     @State private var unlinkTarget: BankSyncAccount?
-    @State private var reauthorization: Reauthorization?
+    /// Set by "Reauthorize", which pushes the connect screen to renew this
+    /// account's link.
+    @State private var reauthorizingAccountId: String?
+    /// When each linked account was last authorized, by budget account id.
+    @State private var linkDates: [String: Date] = [:]
 
     var body: some View {
         List {
@@ -41,8 +38,13 @@ struct EnableBankingSyncView: View {
         .navigationTitle("Enable Banking")
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadReadiness() }
-        .navigationDestination(item: $reauthorization) { target in
-            EnableBankingConnectView(reauthorizingAccountId: target.accountId)
+        // A link gets a new bank-side id each time it is made, so this reads
+        // the dates again exactly when one of them moved.
+        .task(id: linkedAccounts.map(\.externalAccountId)) {
+            linkDates = await budgetStore.bankLinkDates()
+        }
+        .navigationDestination(item: $reauthorizingAccountId) { accountId in
+            EnableBankingConnectView(reauthorizingAccountId: accountId)
         }
         .confirmationDialog(
             "Unlink \(unlinkTarget?.name ?? "")?",
@@ -82,9 +84,7 @@ struct EnableBankingSyncView: View {
     /// A clean sync's summary on one line, for a footer. Nil when the sync
     /// reported problems, which the alert shows so they wait to be read.
     nonisolated static func cleanSummary(of result: BudgetStore.BankSyncResult) -> String? {
-        result.problems.isEmpty
-            ? result.summary.replacingOccurrences(of: "\n\n", with: " ")
-            : nil
+        result.problems.isEmpty ? result.oneLineSummary : nil
     }
 
     // MARK: - Sections
@@ -112,7 +112,7 @@ struct EnableBankingSyncView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         }
-                        if let linkedAt = account.linkedAt {
+                        if let linkedAt = linkDates[account.id] {
                             Text("Authorized on \(linkedAt.formatted(date: .abbreviated, time: .omitted))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -130,7 +130,7 @@ struct EnableBankingSyncView: View {
                     // it and hides the account while the menu is up.
                     Menu {
                         Button("Reauthorize") {
-                            reauthorization = Reauthorization(accountId: account.id)
+                            reauthorizingAccountId = account.id
                         }
                         .disabled(readiness != .ready)
                         .accessibilityIdentifier("enableBanking.reauthorize.\(account.id)")
@@ -198,24 +198,19 @@ struct EnableBankingSyncView: View {
 
     /// What the server said about Enable Banking, first on the screen because
     /// everything below depends on it.
-    @ViewBuilder
     private var statusSection: some View {
-        switch readiness {
-        case .checking:
-            Section {
+        Section {
+            switch readiness {
+            case .checking:
                 HStack {
                     ProgressView()
                     Text("Checking your server…")
                         .foregroundStyle(.secondary)
                 }
-            }
-        case .unavailable:
-            Section {
+            case .unavailable:
                 Text("Your Actual server doesn't offer Enable Banking. Update the server to use it.")
                     .foregroundStyle(.secondary)
-            }
-        case .notConfigured:
-            Section {
+            case .notConfigured:
                 Text("Enable Banking isn't set up on your Actual server yet. An administrator sets it up once in the Actual web app, under Bank Sync.")
                     .foregroundStyle(.secondary)
                 if let redirectURL {
@@ -228,9 +223,7 @@ struct EnableBankingSyncView: View {
                             .textSelection(.enabled)
                     }
                 }
-            }
-        case .ready:
-            Section {
+            case .ready:
                 Label {
                     Text("Enable Banking is set up")
                 } icon: {
@@ -238,9 +231,7 @@ struct EnableBankingSyncView: View {
                         .foregroundStyle(.green)
                 }
                 .accessibilityIdentifier("enableBanking.status")
-            }
-        case .failed(let message):
-            Section {
+            case .failed(let message):
                 Text(message)
                     .foregroundStyle(.secondary)
                 Button("Try Again") {
@@ -309,21 +300,14 @@ struct EnableBankingSyncView: View {
     }
 
     /// Runs a bank sync for either Enable Banking screen and says how to report
-    /// it: a clean outcome as a footer line, anything else as an alert.
-    ///
-    /// A sync that is already running is waited for, not skipped. Starting on
-    /// top of it would return an empty result, and dropping the request would
-    /// leave an account linked meanwhile without its history until someone
-    /// finds Sync Now.
+    /// it: a clean outcome as a footer line, anything else as an alert. A sync
+    /// that is already running is waited for, not skipped.
     static func runSync(
         of accountIds: [String],
         in store: BudgetStore
     ) async -> (summary: String?, alert: String?) {
-        for await syncing in store.$bankSyncingAccountIds.values where syncing.isEmpty {
-            break
-        }
         do {
-            let result = try await store.syncBankAccounts(accountIds: accountIds)
+            let result = try await store.syncBankAccountsWhenIdle(accountIds: accountIds)
             if let line = cleanSummary(of: result) {
                 return (line, nil)
             }

@@ -456,9 +456,13 @@ actor ActualServerClient {
         return String(path.dropFirst(normalizedPrefix.count))
     }
 
+    /// `allowsFailover` is off for a request whose failure says nothing about
+    /// the address: it is then never replayed at the fallback, and the client
+    /// stays on the address it was using.
     private func send(
         _ request: URLRequest,
-        expectedStatusCodes: Set<Int> = [200]
+        expectedStatusCodes: Set<Int> = [200],
+        allowsFailover: Bool = true
     ) async throws -> (Data, URLResponse) {
         let requestServerURL = serverURL
         let requestFallbackURL = fallbackServerURL
@@ -495,7 +499,8 @@ actor ActualServerClient {
                 startedAt: startedAt
             )
 
-            if let requestFallbackURL,
+            if allowsFailover,
+               let requestFallbackURL,
                let requestURL = request.url,
                let primaryServerURL = requestServerURL,
                requestURL.host == primaryServerURL.host,
@@ -1163,7 +1168,7 @@ actor ActualServerClient {
     /// which is why a route that isn't there and a server that can't be
     /// reached must not look the same: the latter throws.
     func simpleFINStatus(fileId: String?) async throws -> Bool? {
-        let response: SimpleFINStatusResponse? = try await postBankSync(
+        let response: BankSyncStatusResponse? = try await postBankSync(
             path: "/simplefin/status", body: EmptyBody(), fileId: fileId
         )
         return response?.data?.configured
@@ -1237,7 +1242,7 @@ actor ActualServerClient {
     /// Whether the server has Enable Banking credentials, or nil when it has
     /// no `/enablebanking` routes (an Actual release that predates them).
     func enableBankingStatus() async throws -> Bool? {
-        guard let response: SimpleFINStatusResponse = try await postBankSync(
+        guard let response: BankSyncStatusResponse = try await postBankSync(
             path: "/enablebanking/status", body: EmptyBody(), fileId: nil
         ) else { return nil }
         // An answer without the flag isn't a missing route: calling it one
@@ -1285,7 +1290,7 @@ actor ActualServerClient {
             // the outcome from `poll-auth` instead.
             returnToApp: false
         )
-        guard let response: EnableBankingStartResponse = try await postBankSync(
+        guard let response: EnableBankingAuthResponse = try await postBankSync(
             path: "/enablebanking/start-auth", body: body, fileId: nil
         ), let data = response.data else { throw ActualServerError.invalidResponse }
         if let reason = data.failureReason {
@@ -1296,44 +1301,18 @@ actor ActualServerClient {
     }
 
     /// Waits for the person to finish at their bank: the server holds this
-    /// request open for up to 300 s. Goes around `send` on purpose — `send`
-    /// treats a transport failure as an unreachable server and can swap to the
-    /// fallback address, but a poll that dies while iOS has the app suspended
-    /// is neither. A `URLError` therefore propagates untouched, for the caller
-    /// to retry. `timeout` defaults to just under the session's 300 s resource cap.
+    /// request open for up to 300 s, so `timeout` has to stay under the
+    /// session's 300 s resource cap. No failover: a poll that dies while iOS
+    /// has the app suspended doesn't mean the server is unreachable, and the
+    /// caller asks again by itself.
     func enableBankingPollAuthorization(
         state: String,
-        timeout: TimeInterval = 280
+        timeout: TimeInterval
     ) async throws -> [EnableBankingRemoteAccount] {
-        guard let serverURL else { throw ActualServerError.invalidURL }
-        guard let token else { throw ActualServerError.unauthorized }
-
-        var request = makeRequest(serverURL.appendingPathComponent("/enablebanking/poll-auth"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
-        request.httpBody = try JSONEncoder().encode(EnableBankingPollRequest(state: state))
-        request.timeoutInterval = timeout
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ActualServerError.invalidResponse
-        }
-        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-            throw ActualServerError.unauthorized
-        }
-        guard httpResponse.statusCode == 200 else {
-            throw ActualServerError.httpError(
-                statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8)
-            )
-        }
-        let poll: EnableBankingPollResponse
-        do {
-            poll = try JSONDecoder().decode(EnableBankingPollResponse.self, from: data)
-        } catch {
-            throw ActualServerError.decodingError(error)
-        }
-        guard let result = poll.data else { throw ActualServerError.invalidResponse }
+        guard let response: EnableBankingAuthResponse = try await postBankSync(
+            path: "/enablebanking/poll-auth", body: EnableBankingPollRequest(state: state),
+            fileId: nil, timeout: timeout, allowsFailover: false
+        ), let result = response.data else { throw ActualServerError.invalidResponse }
         if let reason = result.failureReason {
             throw result.error == "Polling timed out"
                 ? EnableBankingAuthError.timedOut : EnableBankingAuthError.failed(reason)
@@ -1381,36 +1360,19 @@ actor ActualServerClient {
         }
     }
 
-    private struct EnableBankingStartResponse: Decodable {
-        let data: StartData?
-
-        struct StartData: Decodable {
-            let url: URL?
-            let state: String?
-            let error: String?
-            let errorCode: String?
-            let errorType: String?
-
-            var failureReason: String? {
-                error ?? errorType ?? errorCode
-            }
-
-            private enum CodingKeys: String, CodingKey {
-                case url, state, error
-                case errorCode = "error_code"
-                case errorType = "error_type"
-            }
-        }
-    }
-
     private struct EnableBankingPollRequest: Encodable {
         let state: String
     }
 
-    private struct EnableBankingPollResponse: Decodable {
-        let data: PollData?
+    /// What `start-auth` and `poll-auth` answer: the first with where to send
+    /// the person, the second with the accounts the bank released, and either
+    /// with an error in place of those.
+    private struct EnableBankingAuthResponse: Decodable {
+        let data: AuthData?
 
-        struct PollData: Decodable {
+        struct AuthData: Decodable {
+            let url: URL?
+            let state: String?
             let accounts: [EnableBankingRemoteAccount]?
             let error: String?
             let errorCode: String?
@@ -1421,7 +1383,7 @@ actor ActualServerClient {
             }
 
             private enum CodingKeys: String, CodingKey {
-                case accounts, error
+                case url, state, accounts, error
                 case errorCode = "error_code"
                 case errorType = "error_type"
             }
@@ -1445,7 +1407,7 @@ actor ActualServerClient {
         let startDate: [String]
     }
 
-    private struct SimpleFINStatusResponse: Decodable {
+    private struct BankSyncStatusResponse: Decodable {
         let data: StatusData?
         struct StatusData: Decodable { let configured: Bool? }
     }
@@ -1481,7 +1443,8 @@ actor ActualServerClient {
         path: String,
         body: some Encodable,
         fileId: String?,
-        timeout: TimeInterval? = nil
+        timeout: TimeInterval? = nil,
+        allowsFailover: Bool = true
     ) async throws -> Response? {
         guard let serverURL else { throw ActualServerError.invalidURL }
         guard let token else { throw ActualServerError.unauthorized }
@@ -1498,12 +1461,14 @@ actor ActualServerClient {
 
         let (data, response) = try await send(
             request,
-            expectedStatusCodes: [200, 404, 405, 501]
+            expectedStatusCodes: [200, 404, 405, 501],
+            allowsFailover: allowsFailover
         )
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
         }
-        if httpResponse.statusCode == 403 {
+        // The server answers a session it doesn't know with 401.
+        if [401, 403].contains(httpResponse.statusCode) {
             throw ActualServerError.unauthorized
         }
         // The route genuinely isn't served here — not a failure, just an older
