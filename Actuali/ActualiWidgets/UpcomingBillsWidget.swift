@@ -11,7 +11,7 @@ struct UpcomingBillsWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Upcoming Bills"))
         .description(String(localized: "Scheduled bills and upcoming transactions."))
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -39,15 +39,21 @@ struct UpcomingBillsProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (UpcomingBillsEntry) -> Void) {
-        completion(context.isPreview ? .sample : currentEntry())
+        completion(context.isPreview ? .sample : currentEntry(for: context.family))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<UpcomingBillsEntry>) -> Void) {
         let nextMidnight = Calendar.current.startOfDay(for: .now.addingTimeInterval(86400))
-        completion(Timeline(entries: [currentEntry()], policy: .after(nextMidnight)))
+        completion(Timeline(entries: [currentEntry(for: context.family)], policy: .after(nextMidnight)))
     }
 
-    private func currentEntry() -> UpcomingBillsEntry {
+    private func currentEntry(for family: WidgetFamily) -> UpcomingBillsEntry {
+        let limit = switch family {
+        case .systemSmall: 1
+        case .systemMedium: 3
+        case .systemLarge: 6
+        default: 12 // systemExtraLargePortrait; the case itself is iOS 27-only
+        }
         guard let snapshot = WidgetSnapshotStore.standard()?.read(),
               snapshot.isForMonth(containing: .now) else {
             return UpcomingBillsEntry(date: .now, balancesHidden: false, bills: [], hasSnapshot: false)
@@ -55,7 +61,7 @@ struct UpcomingBillsProvider: TimelineProvider {
         return UpcomingBillsEntry(
             date: snapshot.generatedAt,
             balancesHidden: snapshot.balancesHidden,
-            bills: snapshot.upcomingBills ?? [],
+            bills: snapshot.nextBills(limit: limit),
             hasSnapshot: true
         )
     }
@@ -64,6 +70,7 @@ struct UpcomingBillsProvider: TimelineProvider {
 struct UpcomingBillsWidgetView: View {
     @Environment(\.widgetFamily) private var family
     @Environment(\.locale) private var locale
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let entry: UpcomingBillsEntry
 
@@ -74,7 +81,7 @@ struct UpcomingBillsWidgetView: View {
             } else if family == .systemSmall {
                 smallLayout(bill: entry.bills[0])
             } else {
-                mediumLayout
+                listLayout
             }
         }
         .containerBackground(.fill.tertiary, for: .widget)
@@ -133,7 +140,10 @@ struct UpcomingBillsWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
-    private var mediumLayout: some View {
+    /// Medium, large, and extra-large portrait share this list; only the
+    /// provider's row limit differs per family. Medium keeps "Updated" in the
+    /// header because a footer line under three two-line rows overfills it.
+    private var listLayout: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Label {
@@ -146,15 +156,42 @@ struct UpcomingBillsWidgetView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text(String(
-                    format: String(localized: "Updated %@", locale: locale),
-                    WidgetDateFormatting.relative(entry.date, locale: locale)
-                ))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                if family == .systemMedium {
+                    WidgetUpdatedFooter(date: entry.date)
+                }
             }
 
-            ForEach(Array(entry.bills.prefix(3))) { bill in
+            if family == .systemMedium, dynamicTypeSize <= .large {
+                // Unchanged from before Large existed: three rows that lean
+                // a few points into the bottom content margin, which a fit
+                // check below would count as overflow and cut to two. Above
+                // the default size they overflow outright and clip the
+                // header, so those sizes take the fit check instead.
+                billRows(entry.bills[...])
+            } else {
+                // Drop trailing bills rather than clip them when Dynamic Type
+                // (the widget cap is XXX Large) or a smaller device leaves less
+                // height than the provider's row limit needs. Soonest bills win.
+                ViewThatFits(in: .vertical) {
+                    ForEach((1...entry.bills.count).reversed(), id: \.self) { count in
+                        billRows(entry.bills.prefix(count))
+                    }
+                }
+                // Claim the height before the Spacer below, or the VStack
+                // splits it between them and drops a row that fits.
+                .layoutPriority(1)
+            }
+            Spacer(minLength: 0)
+            if family != .systemMedium {
+                WidgetUpdatedFooter(date: entry.date)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func billRows(_ bills: ArraySlice<WidgetBillItem>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(bills) { bill in
                 HStack(spacing: 8) {
                     Circle()
                         .fill(statusColor(bill.status))
@@ -170,27 +207,20 @@ struct UpcomingBillsWidgetView: View {
                     Spacer(minLength: 8)
                     Text(bill.formattedAmount)
                         .font(.subheadline.weight(.semibold))
+                        .monospacedDigit()
                         .lineLimit(1)
+                        // Truncate the title, never the amount, at large Dynamic Type sizes.
+                        .layoutPriority(1)
                         .foregroundStyle(amountColor(for: bill))
                 }
+                .accessibilityIdentifier("upcomingBillsWidget.billRow")
             }
-            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func dateString(for bill: WidgetBillItem) -> String {
-        var comps = DateComponents()
-        comps.year = bill.dueYear
-        comps.month = bill.dueMonth
-        comps.day = bill.dueDay
-        guard let date = Calendar.current.date(from: comps) else {
-            return "\(bill.dueMonth)/\(bill.dueDay)"
-        }
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.setLocalizedDateFormatFromTemplate("MMM d")
-        return formatter.string(from: date)
+        WidgetDateFormatting.shortDate(bill.dueYear * 10000 + bill.dueMonth * 100 + bill.dueDay, locale: locale)
+            ?? "\(bill.dueMonth)/\(bill.dueDay)"
     }
 
     /// Income schedules read green, as in the Schedules list, so a paycheck

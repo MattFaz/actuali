@@ -1,5 +1,5 @@
 # Companion to ci.yml: PRs that don't touch app code (website, docs) still get
-# passing "Unit Tests (iOS 26)", "Unit Tests (iOS 18)", and "Unit Tests Gate"
+# passing "Unit Tests (iOS 27)", "SwiftFormat", and "Unit Tests Gate"
 # checks, so branch protection can require them unconditionally. The
 # paths-ignore list must mirror ci.yml's paths list exactly.
 #
@@ -26,17 +26,11 @@ jobs:
     steps:
       - run: echo "No app code changed — nothing to gate."
 
-  test-ios26:
-    name: Unit Tests (iOS 26)
+  test-ios27:
+    name: Unit Tests (iOS 27)
     runs-on: ubuntu-latest
     steps:
-      - run: echo "No app code changed — skipping iOS 26 tests."
-
-  test-ios18:
-    name: Unit Tests (iOS 18)
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "No app code changed — skipping iOS 18 tests."
+      - run: echo "No app code changed — skipping iOS 27 tests."
 
   swiftformat:
     name: SwiftFormat

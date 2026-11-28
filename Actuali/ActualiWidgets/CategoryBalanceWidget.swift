@@ -13,7 +13,7 @@ struct CategoryBalanceWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Category Balances"))
         .description(String(localized: "Remaining available amount for your chosen categories."))
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -54,7 +54,12 @@ struct CategoryBalanceProvider: AppIntentTimelineProvider {
     }
 
     private func entry(for configuration: SelectCategoriesIntent, in context: Context) -> CategoryBalanceEntry {
-        let limit = context.family == .systemSmall ? 1 : 4
+        let limit = switch context.family {
+        case .systemSmall: 1
+        case .systemMedium: 4
+        case .systemLarge: 8
+        default: 12 // systemExtraLargePortrait; the case itself is iOS 27-only
+        }
         guard let snapshot = WidgetSnapshotStore.standard()?.read(),
               snapshot.isForMonth(containing: .now) else {
             return CategoryBalanceEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: false)
@@ -71,7 +76,6 @@ struct CategoryBalanceProvider: AppIntentTimelineProvider {
 
 struct CategoryBalanceWidgetView: View {
     @Environment(\.widgetFamily) private var family
-    @Environment(\.locale) private var locale
 
     let entry: CategoryBalanceEntry
 
@@ -82,7 +86,7 @@ struct CategoryBalanceWidgetView: View {
             } else if family == .systemSmall {
                 smallLayout(entry.categories[0])
             } else {
-                mediumLayout
+                listLayout
             }
         }
         .containerBackground(.fill.tertiary, for: .widget)
@@ -110,6 +114,7 @@ struct CategoryBalanceWidgetView: View {
             Spacer(minLength: 0)
             Text(category.formattedAvailable)
                 .font(.title2.weight(.semibold))
+                .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .foregroundStyle(amountColor(for: category))
@@ -120,29 +125,48 @@ struct CategoryBalanceWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
-    private var mediumLayout: some View {
+    /// Medium, large, and extra-large portrait share one single-column list;
+    /// only the provider's row limit differs per family.
+    private var listLayout: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(entry.categories) { category in
-                HStack {
-                    Text(category.name)
-                        .font(.subheadline)
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text(category.formattedAvailable)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .foregroundStyle(amountColor(for: category))
+                if let rowIdentifier {
+                    categoryRow(category).accessibilityIdentifier(rowIdentifier)
+                } else {
+                    categoryRow(category)
                 }
             }
             Spacer(minLength: 0)
-            Text(String(
-                format: String(localized: "Updated %@", locale: locale),
-                WidgetDateFormatting.relative(entry.date, locale: locale)
-            ))
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            WidgetUpdatedFooter(date: entry.date)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func categoryRow(_ category: WidgetCategoryBalance) -> some View {
+        HStack {
+            Text(category.name)
+                .font(.subheadline)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(category.formattedAvailable)
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                // Truncate the name, never the balance, at large Dynamic Type sizes.
+                .layoutPriority(1)
+                .foregroundStyle(amountColor(for: category))
+        }
+    }
+
+    /// Medium rows stay untagged.
+    private var rowIdentifier: String? {
+        if family == .systemLarge {
+            return "widgetLarge.categoryRow"
+        }
+        if family.isExtraLargePortrait {
+            return "widgetExtraLarge.categoryRow"
+        }
+        return nil
     }
 
     /// Matches the Budget tab's row semantics: red when overspent, green

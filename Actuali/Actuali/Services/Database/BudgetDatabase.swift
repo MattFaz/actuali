@@ -1010,6 +1010,22 @@ final class BudgetDatabase: Sendable {
     LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
     """
 
+    /// FROM + WHERE behind every category's Spent figure; see the spent
+    /// query in fetchBudgetMonth for why each condition is there. Callers
+    /// append their own date bounds with AND.
+    private static let spentSource = """
+    FROM transactions t
+    LEFT JOIN category_mapping cm ON cm.id = t.category
+    LEFT JOIN accounts a ON a.id = t.acct
+    LEFT JOIN transactions p ON p.id = t.parent_id
+    WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+      AND \(aliveChildPredicate(parent: "p"))
+      AND (t.isParent = 0 OR t.isParent IS NULL)
+      AND t.category IS NOT NULL
+      AND a.offbudget = 0
+      AND (a.tombstone = 0 OR a.tombstone IS NULL)
+    """
+
     /// SELECT + display-name joins + liveness filter shared by the
     /// creation-detection and single-id transaction queries. The list query
     /// (fetchTransactions) carries additional split-aware joins of its own.
@@ -1768,6 +1784,28 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Net spending per category in one "yyyy-MM" month from its 1st through
+    /// `through` (YYYYMMDD), keyed by the mapped category id. The Spent
+    /// figure's rules (spentSource), bounded by date for month-to-date
+    /// comparisons. A category with no transactions in the window has no key.
+    func spentByCategory(month: String, through: Int) async throws -> [String: Int] {
+        guard let monthInt = Int(month.replacingOccurrences(of: "-", with: "")) else { return [:] }
+        return try await dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+            SELECT COALESCE(cm.transferId, t.category) AS category_id, SUM(t.amount) AS spent
+            \(Self.spentSource)
+              AND (t.date / 100) = ?
+              AND t.date <= ?
+            GROUP BY COALESCE(cm.transferId, t.category)
+            """, arguments: [monthInt, through])
+                .reduce(into: [:]) { result, row in
+                    if let categoryId: String = row["category_id"] {
+                        result[categoryId] = row["spent"] ?? 0
+                    }
+                }
+        }
+    }
+
     /// Every transaction that counts toward a category's spend, newest first,
     /// optionally narrowed to one "yyyy-MM" month (GH #56). Mirrors the
     /// budget month's spent query so the list reconciles with the "Spent"
@@ -2377,16 +2415,7 @@ final class BudgetDatabase: Sendable {
             (t.date / 100) AS month,
             COALESCE(cm.transferId, t.category) AS category_id,
             SUM(t.amount) AS spent
-        FROM transactions t
-        LEFT JOIN category_mapping cm ON cm.id = t.category
-        LEFT JOIN accounts a ON a.id = t.acct
-        LEFT JOIN transactions p ON p.id = t.parent_id
-        WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-          AND \(Self.aliveChildPredicate(parent: "p"))
-          AND (t.isParent = 0 OR t.isParent IS NULL)
-          AND t.category IS NOT NULL
-          AND a.offbudget = 0
-          AND (a.tombstone = 0 OR a.tombstone IS NULL)
+        \(Self.spentSource)
           AND (t.date / 100) <= ?
         GROUP BY (t.date / 100), COALESCE(cm.transferId, t.category)
         """, arguments: [targetMonthInt])

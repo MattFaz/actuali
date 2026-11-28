@@ -13,7 +13,7 @@ struct AccountBalanceWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Account Balances"))
         .description(String(localized: "Current balance for your chosen accounts."))
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
@@ -51,7 +51,12 @@ struct AccountBalanceProvider: AppIntentTimelineProvider {
     }
 
     private func entry(for configuration: SelectAccountsIntent, in context: Context) -> AccountBalanceEntry {
-        let limit = context.family == .systemSmall ? 1 : 4
+        let limit = switch context.family {
+        case .systemSmall: 1
+        case .systemMedium: 4
+        case .systemLarge: 8
+        default: 12 // systemExtraLargePortrait; the case itself is iOS 27-only
+        }
         guard let snapshot = WidgetSnapshotStore.standard()?.read() else {
             return AccountBalanceEntry(date: .now, balancesHidden: false, accounts: [], hasSnapshot: false)
         }
@@ -67,7 +72,6 @@ struct AccountBalanceProvider: AppIntentTimelineProvider {
 
 struct AccountBalanceWidgetView: View {
     @Environment(\.widgetFamily) private var family
-    @Environment(\.locale) private var locale
 
     let entry: AccountBalanceEntry
 
@@ -107,13 +111,14 @@ struct AccountBalanceWidgetView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             } icon: {
-                Image(systemName: iconName(for: account.type))
+                Image(systemName: Self.iconName(for: account.type))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
             Text(account.formattedBalance)
                 .font(.title2.weight(.semibold))
+                .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .foregroundStyle(balanceColor(for: account))
@@ -124,11 +129,13 @@ struct AccountBalanceWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
+    /// Medium, large, and extra-large portrait share this single-column list;
+    /// only the provider's row limit differs per family.
     private var mediumLayout: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(entry.accounts) { account in
                 HStack(spacing: 6) {
-                    Image(systemName: iconName(for: account.type))
+                    Image(systemName: Self.iconName(for: account.type))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(width: 14)
@@ -138,17 +145,15 @@ struct AccountBalanceWidgetView: View {
                     Spacer(minLength: 8)
                     Text(account.formattedBalance)
                         .font(.subheadline.weight(.semibold))
+                        .monospacedDigit()
                         .lineLimit(1)
+                        // Truncate the name, never the balance, at large Dynamic Type sizes.
+                        .layoutPriority(1)
                         .foregroundStyle(balanceColor(for: account))
                 }
             }
             Spacer(minLength: 0)
-            Text(String(
-                format: String(localized: "Updated %@", locale: locale),
-                WidgetDateFormatting.relative(entry.date, locale: locale)
-            ))
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            WidgetUpdatedFooter(date: entry.date)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -160,7 +165,9 @@ struct AccountBalanceWidgetView: View {
         return account.balance < 0 ? .red : .primary
     }
 
-    private nonisolated func iconName(for type: String) -> String {
+    /// Also used by the Net Worth account rows, so every account row
+    /// carries the same symbol.
+    nonisolated static func iconName(for type: String) -> String {
         switch type {
         case "checking": "banknote"
         case "savings": "building.columns"
