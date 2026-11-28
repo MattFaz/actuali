@@ -223,22 +223,18 @@ extension WidgetSnapshot {
     /// summed across categories. Not totalSpent: that counts the whole month,
     /// so a transaction dated later this month would have no match last month.
     private mutating func addMonthComparison(_ spending: MonthToDateSpending, format: (Int) -> String) {
-        let spentLastMonthToDate = spending.lastMonth.values.reduce(0, +)
-        let lastSpending = -spentLastMonthToDate
+        let lastSpending = -spending.lastMonth.values.reduce(0, +)
         let thisSpending = -spending.thisMonth.values.reduce(0, +)
         let difference = thisSpending - lastSpending
         if balancesHidden {
             // format masks every amount when hidden, so format(0) is the mask
             // text without reaching for BudgetStore's main-actor constant.
-            totalSpentLastMonth = 0
             spendingDifference = 0
-            spendingPercentChange = 0
             formattedSpendingPercentChange = format(0)
         } else {
-            totalSpentLastMonth = spentLastMonthToDate
             spendingDifference = difference
-            spendingPercentChange = lastSpending > 0 ? Double(difference) / Double(lastSpending) : nil
-            formattedSpendingPercentChange = spendingPercentChange?.formatted(
+            let percentChange = lastSpending > 0 ? Double(difference) / Double(lastSpending) : nil
+            formattedSpendingPercentChange = percentChange?.formatted(
                 .percent.precision(.fractionLength(0)).sign(strategy: .always(includingZero: false))
             )
         }
@@ -269,13 +265,6 @@ extension WidgetSnapshot {
         let safe = budgetMonth.totalBudgeted > 0
             ? max(budgetMonth.totalBudgeted + budgetMonth.totalSpent, 0) / remaining
             : nil
-        if balancesHidden {
-            averageSpendPerDay = 0
-            safeDailyRate = 0
-        } else {
-            averageSpendPerDay = average
-            safeDailyRate = safe
-        }
         formattedAverageSpendPerDay = format(average)
         formattedSafeDailyRate = balancesHidden ? format(0) : safe.map(format)
         // From the unrounded spend, so the projection doesn't multiply the

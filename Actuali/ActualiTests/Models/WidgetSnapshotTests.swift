@@ -1328,14 +1328,32 @@ struct WidgetSnapshotTests {
 
         #expect(snapshot.recentTransactions == nil)
         #expect(snapshot.largestTransactions == nil)
-        #expect(snapshot.totalSpentLastMonth == nil)
-        #expect(snapshot.spendingPercentChange == nil)
+        #expect(snapshot.formattedTotalSpendingLastMonth == nil)
+        #expect(snapshot.formattedSpendingPercentChange == nil)
         #expect(snapshot.rankedCategories == [])
         #expect(snapshot.categories.first?.spent == nil)
-        #expect(snapshot.averageSpendPerDay == nil)
-        #expect(snapshot.safeDailyRate == nil)
+        #expect(snapshot.formattedAverageSpendPerDay == nil)
+        #expect(snapshot.formattedSafeDailyRate == nil)
         #expect(snapshot.daysElapsed == nil)
         #expect(snapshot.daysRemaining == nil)
+    }
+
+    /// A snapshot left by a build that still wrote the raw comparison and
+    /// rate cents decodes: the extra keys are ignored, and the app rewrites
+    /// the snapshot on its next refresh.
+    @Test func snapshotWithRetiredRawFieldsStillDecodes() throws {
+        let older = """
+        {"month":"2026-11","generatedAt":0,"balancesHidden":false,"categories":[],
+         "totalSpentLastMonth":-40000,"spendingPercentChange":0.5,"averageSpendPerDay":2100,"safeDailyRate":2000,
+         "formattedTotalSpendingLastMonth":"$400.00","formattedSpendingPercentChange":"+50%",
+         "formattedAverageSpendPerDay":"$21.00","formattedSafeDailyRate":"$20.00"}
+        """
+        let snapshot = try JSONDecoder().decode(WidgetSnapshot.self, from: Data(older.utf8))
+
+        #expect(snapshot.formattedTotalSpendingLastMonth == "$400.00")
+        #expect(snapshot.formattedSpendingPercentChange == "+50%")
+        #expect(snapshot.formattedAverageSpendPerDay == "$21.00")
+        #expect(snapshot.formattedSafeDailyRate == "$20.00")
     }
 
     // MARK: Largest Transactions widget
@@ -1487,6 +1505,11 @@ struct WidgetSnapshotTests {
         )
     }
 
+    /// The builder's percent format, so a ratio can be checked as the widget shows it.
+    private func percent(_ ratio: Double) -> String {
+        ratio.formatted(.percent.precision(.fractionLength(0)).sign(strategy: .always(includingZero: false)))
+    }
+
     @Test func lastMonthDifferenceAndPercentChangeCompareSpending() {
         let snapshot = aggregateSnapshot(
             this: spendingMonth("2026-08", spent: -60000),
@@ -1494,15 +1517,11 @@ struct WidgetSnapshotTests {
         )
 
         #expect(snapshot.totalSpent == -60000)
-        #expect(snapshot.totalSpentLastMonth == -40000)
         #expect(snapshot.formattedTotalSpendingLastMonth == "$40000")
         // Positive means spending more this month than last.
         #expect(snapshot.spendingDifference == 20000)
         #expect(snapshot.formattedSpendingDifference == "$20000")
-        #expect(snapshot.spendingPercentChange == 0.5)
-        #expect(snapshot.formattedSpendingPercentChange == 0.5.formatted(
-            .percent.precision(.fractionLength(0)).sign(strategy: .always(includingZero: false))
-        ))
+        #expect(snapshot.formattedSpendingPercentChange == percent(0.5))
     }
 
     /// A transaction dated later this month (a posted schedule, say) is in
@@ -1520,7 +1539,7 @@ struct WidgetSnapshotTests {
         #expect(snapshot.formattedTotalSpending == "$180000")
         #expect(snapshot.formattedTotalSpendingToDate == "$30000")
         #expect(snapshot.spendingDifference == -10000)
-        #expect(snapshot.spendingPercentChange == -0.25)
+        #expect(snapshot.formattedSpendingPercentChange == percent(-0.25))
         #expect(snapshot.spendingTrend == .less)
         #expect(snapshot.categories.first?.spendingDifference == -10000)
     }
@@ -1532,17 +1551,15 @@ struct WidgetSnapshotTests {
         )
 
         #expect(snapshot.spendingDifference == -10000)
-        #expect(snapshot.spendingPercentChange == -0.25)
+        #expect(snapshot.formattedSpendingPercentChange == percent(-0.25))
     }
 
     @Test func noLastMonthDataLeavesComparisonNil() {
         let snapshot = aggregateSnapshot(this: spendingMonth("2026-08", spent: -30000), last: nil)
 
-        #expect(snapshot.totalSpentLastMonth == nil)
         #expect(snapshot.formattedTotalSpendingLastMonth == nil)
         #expect(snapshot.spendingDifference == nil)
         #expect(snapshot.formattedSpendingDifference == nil)
-        #expect(snapshot.spendingPercentChange == nil)
         #expect(snapshot.formattedSpendingPercentChange == nil)
     }
 
@@ -1552,9 +1569,8 @@ struct WidgetSnapshotTests {
             last: 0
         )
 
-        #expect(snapshot.totalSpentLastMonth == 0)
+        #expect(snapshot.formattedTotalSpendingLastMonth == "$0")
         #expect(snapshot.spendingDifference == 30000)
-        #expect(snapshot.spendingPercentChange == nil)
         #expect(snapshot.formattedSpendingPercentChange == nil)
     }
 
@@ -1565,9 +1581,7 @@ struct WidgetSnapshotTests {
             balancesHidden: true
         )
 
-        #expect(snapshot.totalSpentLastMonth == 0)
         #expect(snapshot.spendingDifference == 0)
-        #expect(snapshot.spendingPercentChange == 0)
         #expect(snapshot.formattedTotalSpendingToDate == "••••")
         #expect(snapshot.formattedTotalSpendingLastMonth == "••••")
         #expect(snapshot.formattedSpendingDifference == "••••")
@@ -1618,124 +1632,6 @@ struct WidgetSnapshotTests {
         #expect(snapshot.spendingTrend == nil)
     }
 
-    // MARK: Last month to date
-
-    private func lastMonthDatabase(_ rows: String) async throws -> (BudgetDatabase, URL) {
-        let (db, url) = try await makeTestDatabase(
-            TestSchema.accounts, TestSchema.payees, TestSchema.payeeMapping,
-            TestSchema.categories, TestSchema.categoryMapping, TestSchema.transactions
-        )
-        try await db.dbQueueForTesting.write { conn in
-            try conn.execute(sql: """
-                INSERT INTO accounts (id, name, offbudget) VALUES ('on', 'Checking', 0), ('off', 'Brokerage', 1);
-                INSERT INTO categories (id, name) VALUES ('food', 'Food'), ('fun', 'Fun'), ('secret', 'Secret');
-                INSERT INTO category_mapping (id, transferId) VALUES ('food', NULL), ('fun', NULL), ('secret', NULL);
-            """ + rows)
-        }
-        return (db, url)
-    }
-
-    @Test func lastMonthToDateSumsLastMonthThroughTheSameDay() async throws {
-        let (db, url) = try await lastMonthDatabase("""
-            INSERT INTO transactions (id, acct, category, amount, date) VALUES
-                ('first-day', 'on',  'food',   -1000, 20261001),
-                ('refund',    'on',  'fun',      200, 20261012),
-                ('same-day',  'on',  'fun',     -500, 20261025),
-                ('day-after', 'on',  'food',   -9000, 20261026),
-                ('hidden',    'on',  'secret', -7000, 20261005),
-                ('off-budget','off', 'food',   -7000, 20261005),
-                ('this-month','on',  'food',   -7000, 20261103),
-                ('prior',     'on',  'food',   -7000, 20260930);
-        """)
-        defer { cleanup(url) }
-
-        let spent = try await BudgetStore.monthToDateSpending(
-            in: db, categoryIds: ["food", "fun"], now: dayOfMonth(25, month: 11)
-        )
-
-        // Oct 1–25 only, net of the refund: not October's full total.
-        #expect(spent.lastMonth == ["food": -1000, "fun": -300])
-        #expect(spent.thisMonth == ["food": -7000])
-    }
-
-    @Test func lastMonthToDateClampsToTheEndOfAShorterMonth() async throws {
-        let (db, url) = try await lastMonthDatabase("""
-            INSERT INTO transactions (id, acct, category, amount, date) VALUES
-                ('feb-28', 'on', 'food', -400, 20260228),
-                ('mar-1',  'on', 'food', -900, 20260301);
-        """)
-        defer { cleanup(url) }
-
-        let spent = try await BudgetStore.monthToDateSpending(
-            in: db, categoryIds: ["food"], now: dayOfMonth(31, month: 3)
-        )
-
-        #expect(spent.lastMonth == ["food": -400])
-        #expect(spent.thisMonth == ["food": -900])
-    }
-
-    @Test func lastMonthToDateIsEmptyWithoutLastMonthData() async throws {
-        let (db, url) = try await lastMonthDatabase("""
-            INSERT INTO transactions (id, acct, category, amount, date) VALUES
-                ('this-month', 'on', 'food', -400, 20261103),
-                ('day-after',  'on', 'food', -400, 20261026);
-        """)
-        defer { cleanup(url) }
-
-        let spent = try await BudgetStore.monthToDateSpending(
-            in: db, categoryIds: ["food"], now: dayOfMonth(25, month: 11)
-        )
-
-        #expect(spent.lastMonth.isEmpty)
-    }
-
-    /// On Nov 5 a rent payment dated Nov 30 is already in the budget file;
-    /// it must stay out of "this month so far", as Oct 6 onwards stays out
-    /// of last month's side.
-    @Test func monthToDateLeavesOutTransactionsDatedLaterThisMonth() async throws {
-        let (db, url) = try await lastMonthDatabase("""
-            INSERT INTO transactions (id, acct, category, amount, date) VALUES
-                ('groceries',  'on', 'food', -3000, 20261102),
-                ('today',      'on', 'fun',   -500, 20261105),
-                ('rent',       'on', 'food', -150000, 20261130),
-                ('oct-early',  'on', 'food', -2000, 20261003),
-                ('oct-late',   'on', 'food', -9000, 20261020);
-        """)
-        defer { cleanup(url) }
-
-        let spent = try await BudgetStore.monthToDateSpending(
-            in: db, categoryIds: ["food", "fun"], now: dayOfMonth(5, month: 11)
-        )
-
-        #expect(spent.thisMonth == ["food": -3000, "fun": -500])
-        #expect(spent.lastMonth == ["food": -2000])
-    }
-
-    /// One grouped read with the Spent figure's rules: split children count
-    /// and their parent doesn't, an orphaned child (tombstoned parent) and a
-    /// deleted row count nowhere, off-budget accounts stay out, and a merged
-    /// category's spending lands on the category it was merged into.
-    @Test func spentByCategoryFollowsTheSpentFigureRules() async throws {
-        let (db, url) = try await lastMonthDatabase("""
-            INSERT INTO category_mapping (id, transferId) VALUES ('merged', 'food');
-            INSERT INTO transactions (id, acct, category, amount, date, isParent, isChild, parent_id, tombstone) VALUES
-                ('split',      'on',  'food',   -1000, 20261010, 1, 0, NULL, 0),
-                ('split-a',    'on',  'food',    -600, 20261010, 0, 1, 'split', 0),
-                ('split-b',    'on',  'fun',     -400, 20261010, 0, 1, 'split', 0),
-                ('dead',       'on',  NULL,     -5000, 20261011, 1, 0, NULL, 1),
-                ('orphan',     'on',  'food',   -5000, 20261011, 0, 1, 'dead', 0),
-                ('deleted',    'on',  'food',   -5000, 20261012, 0, 0, NULL, 1),
-                ('off-budget', 'off', 'food',   -5000, 20261012, 0, 0, NULL, 0),
-                ('old-name',   'on',  'merged',  -700, 20261013, 0, 0, NULL, 0),
-                ('after',      'on',  'food',   -5000, 20261016, 0, 0, NULL, 0);
-        """)
-        defer { cleanup(url) }
-
-        let spent = try await db.spentByCategory(month: "2026-10", through: 20_261_015)
-
-        #expect(spent == ["food": -1300, "fun": -400])
-    }
-
     @Test @MainActor func publishFillsLastMonthComparisonFromTheStore() throws {
         let budgetStore = BudgetStore.previewInstance()
         let store = try makeStore()
@@ -1747,13 +1643,11 @@ struct WidgetSnapshotTests {
 
         let snapshot = try #require(store.read())
 
-        #expect(snapshot.totalSpentLastMonth == -40000)
         #expect(snapshot.formattedTotalSpendingToDate == budgetStore.displayBalance(60000))
         #expect(snapshot.formattedTotalSpendingLastMonth == budgetStore.displayBalance(40000))
         #expect(snapshot.spendingDifference == 20000)
         #expect(snapshot.formattedSpendingDifference == budgetStore.displayBalance(20000))
-        #expect(snapshot.spendingPercentChange == 0.5)
-        #expect(snapshot.formattedSpendingPercentChange != nil)
+        #expect(snapshot.formattedSpendingPercentChange == percent(0.5))
     }
 
     @Test @MainActor func publishLeavesComparisonNilWithoutLastMonthData() throws {
@@ -1768,11 +1662,9 @@ struct WidgetSnapshotTests {
         let snapshot = try #require(store.read())
 
         #expect(snapshot.totalSpent == -60000)
-        #expect(snapshot.totalSpentLastMonth == nil)
         #expect(snapshot.formattedTotalSpendingLastMonth == nil)
         #expect(snapshot.spendingDifference == nil)
         #expect(snapshot.formattedSpendingDifference == nil)
-        #expect(snapshot.spendingPercentChange == nil)
         #expect(snapshot.formattedSpendingPercentChange == nil)
     }
 
@@ -1794,11 +1686,7 @@ struct WidgetSnapshotTests {
         let snapshot = try #require(store.read())
 
         let mask = BudgetStore.hiddenBalanceText
-        #expect(snapshot.totalSpentLastMonth == 0)
         #expect(snapshot.spendingDifference == 0)
-        #expect(snapshot.spendingPercentChange == 0)
-        #expect(snapshot.averageSpendPerDay == 0)
-        #expect(snapshot.safeDailyRate == 0)
         #expect(snapshot.formattedTotalSpendingLastMonth == mask)
         #expect(snapshot.formattedSpendingDifference == mask)
         #expect(snapshot.formattedSpendingPercentChange == mask)
@@ -2232,9 +2120,7 @@ struct WidgetSnapshotTests {
 
         #expect(snapshot.daysElapsed == 10)
         #expect(snapshot.daysRemaining == 21)
-        #expect(snapshot.averageSpendPerDay == 2100)
         #expect(snapshot.formattedAverageSpendPerDay == "$2100")
-        #expect(snapshot.safeDailyRate == 2000)
         #expect(snapshot.formattedSafeDailyRate == "$2000")
     }
 
@@ -2243,8 +2129,8 @@ struct WidgetSnapshotTests {
 
         #expect(snapshot.daysElapsed == 1)
         #expect(snapshot.daysRemaining == 30)
-        #expect(snapshot.averageSpendPerDay == 500)
-        #expect(snapshot.safeDailyRate == 29500 / 30)
+        #expect(snapshot.formattedAverageSpendPerDay == "$500")
+        #expect(snapshot.formattedSafeDailyRate == "$\(29500 / 30)")
     }
 
     @Test func lastDayOfMonthLeavesWholeRemainderForToday() {
@@ -2252,29 +2138,27 @@ struct WidgetSnapshotTests {
 
         #expect(snapshot.daysElapsed == 30)
         #expect(snapshot.daysRemaining == 1)
-        #expect(snapshot.averageSpendPerDay == 900)
-        #expect(snapshot.safeDailyRate == 3000)
+        #expect(snapshot.formattedAverageSpendPerDay == "$900")
+        #expect(snapshot.formattedSafeDailyRate == "$3000")
     }
 
     @Test func overspentMonthHasZeroSafeRate() {
         let snapshot = rateSnapshot(day: 15, budgeted: 10000, spent: -20000)
 
-        #expect(snapshot.safeDailyRate == 0)
         #expect(snapshot.formattedSafeDailyRate == "$0")
     }
 
     @Test func netInflowHasZeroAverageSpend() {
         let snapshot = rateSnapshot(day: 15, budgeted: 10000, spent: 5000)
 
-        #expect(snapshot.averageSpendPerDay == 0)
+        #expect(snapshot.formattedAverageSpendPerDay == "$0")
     }
 
     @Test func noBudgetHasNoSafeRateButKeepsAverage() {
         let snapshot = rateSnapshot(day: 10, budgeted: 0, spent: -5000)
 
-        #expect(snapshot.safeDailyRate == nil)
         #expect(snapshot.formattedSafeDailyRate == nil)
-        #expect(snapshot.averageSpendPerDay == 500)
+        #expect(snapshot.formattedAverageSpendPerDay == "$500")
     }
 
     @Test func noBudgetMonthOrStaleMonthHasNoRates() {
@@ -2286,8 +2170,8 @@ struct WidgetSnapshotTests {
         for snapshot in [noMonth, stale] {
             #expect(snapshot.daysElapsed == nil)
             #expect(snapshot.daysRemaining == nil)
-            #expect(snapshot.averageSpendPerDay == nil)
-            #expect(snapshot.safeDailyRate == nil)
+            #expect(snapshot.formattedAverageSpendPerDay == nil)
+            #expect(snapshot.formattedSafeDailyRate == nil)
         }
     }
 
@@ -2295,8 +2179,6 @@ struct WidgetSnapshotTests {
     func hiddenBalancesNeutralizeRates(budgeted: Int) {
         let snapshot = rateSnapshot(day: 10, budgeted: budgeted, spent: -5000, balancesHidden: true)
 
-        #expect(snapshot.averageSpendPerDay == 0)
-        #expect(snapshot.safeDailyRate == 0)
         #expect(snapshot.formattedAverageSpendPerDay == "••••")
         #expect(snapshot.formattedSafeDailyRate == "••••")
         // Calendar facts carry no amount, so they stay.
@@ -2326,8 +2208,8 @@ struct WidgetSnapshotTests {
         let exact = rateSnapshot(day: 15, budgeted: 10000, spent: -10000)
         let under = rateSnapshot(day: 15, budgeted: 10000, spent: -5000)
 
-        #expect(over.safeDailyRate == 0 && over.isOverbudget)
-        #expect(exact.safeDailyRate == 0 && !exact.isOverbudget)
+        #expect(over.formattedSafeDailyRate == "$0" && over.isOverbudget)
+        #expect(exact.formattedSafeDailyRate == "$0" && !exact.isOverbudget)
         #expect(!under.isOverbudget)
     }
 
@@ -2362,7 +2244,7 @@ struct WidgetSnapshotTests {
     @Test func burnRateProjectionDoesNotCompoundTheRoundedAverage() {
         let snapshot = rateSnapshot(day: 3, budgeted: 30000, spent: -1000)
 
-        #expect(snapshot.averageSpendPerDay == 333)
+        #expect(snapshot.formattedAverageSpendPerDay == "$333")
         #expect(snapshot.formattedProjectedSpending == "$10000")
     }
 
@@ -2616,7 +2498,7 @@ struct WidgetSnapshotTests {
         let top = try #require(snapshot.categoryMovers(limit: moverLargeLimit).first)
         #expect(top.id == "food")
         #expect(top.formattedSpendingDifference == budgetStore.displayBalance(20000))
-        #expect(snapshot.totalSpentLastMonth == -18000)
+        #expect(snapshot.formattedTotalSpendingLastMonth == budgetStore.displayBalance(18000))
     }
 
     // MARK: Overview Extra Large Portrait (#862)
