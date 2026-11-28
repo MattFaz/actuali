@@ -62,12 +62,7 @@ struct TopSpendingProvider: TimelineProvider {
     }
 
     private func currentEntry(for family: WidgetFamily) -> TopSpendingEntry {
-        let limit = switch family {
-        case .systemSmall: 1
-        case .systemMedium: 3
-        case .systemLarge: 5
-        default: 8 // systemExtraLargePortrait; the case itself is iOS 27-only
-        }
+        let limit = WidgetRowLimits.topSpending.rows(for: family)
         guard let snapshot = WidgetSnapshotStore.standard()?.read(),
               snapshot.isForMonth(containing: .now) else {
             return TopSpendingEntry(date: .now, balancesHidden: false, categories: [], formattedTotalSpending: nil, hasSnapshot: false)

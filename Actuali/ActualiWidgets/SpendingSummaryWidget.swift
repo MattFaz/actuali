@@ -56,11 +56,7 @@ struct SpendingSummaryProvider: TimelineProvider {
 
     private func currentEntry(for family: WidgetFamily) -> SpendingSummaryEntry {
         // Small and Medium show totals only.
-        let limit = switch family {
-        case .systemSmall, .systemMedium: 0
-        case .systemLarge: 5
-        default: 8 // systemExtraLargePortrait; the case itself is iOS 27-only
-        }
+        let limit = WidgetRowLimits.spendingSummary.rows(for: family)
         guard let snapshot = WidgetSnapshotStore.standard()?.read(),
               snapshot.isForMonth(containing: .now) else {
             return SpendingSummaryEntry(

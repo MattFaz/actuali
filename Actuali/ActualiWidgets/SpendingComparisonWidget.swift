@@ -86,8 +86,8 @@ struct SpendingComparisonProvider: TimelineProvider {
             formattedPercentChange: snapshot.formattedSpendingPercentChange,
             trend: snapshot.spendingTrend,
             hasSnapshot: true,
-            // The Extra Large Portrait count; Large shows the first.
-            movers: snapshot.categoryMovers(limit: 4).map { ($0, snapshot.spendingTrend(of: $0)) }
+            // The Extra Large Portrait count; Large shows fewer.
+            movers: snapshot.categoryMovers(limit: WidgetRowLimits.spendingMovers.extraLargePortrait).map { ($0, snapshot.spendingTrend(of: $0)) }
         )
     }
 }
@@ -184,7 +184,7 @@ struct SpendingComparisonWidgetView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 } else {
-                    ForEach(entry.movers.prefix(family.isExtraLargePortrait ? 4 : 1), id: \.category.id) { mover in
+                    ForEach(entry.movers.prefix(WidgetRowLimits.spendingMovers.rows(for: family)), id: \.category.id) { mover in
                         moverRow(mover.category, trend: mover.trend)
                     }
                 }

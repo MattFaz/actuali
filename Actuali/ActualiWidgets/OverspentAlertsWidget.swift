@@ -81,11 +81,6 @@ struct OverspentAlertsWidgetView: View {
     /// column; scaled so it holds a few characters at any text size.
     @ScaledMetric(relativeTo: .subheadline) private var largeNameWidth: CGFloat = 96
 
-    /// Row caps; mirrored in WidgetSnapshotTests.
-    private static let mediumLimit = 4
-    private static let largeLimit = 8
-    private static let extraLargePortraitLimit = 12
-
     var body: some View {
         Group {
             if let first = entry.categories.first {
@@ -179,7 +174,7 @@ struct OverspentAlertsWidgetView: View {
     }
 
     private var mediumLayout: some View {
-        let shown = entry.categories.prefix(Self.mediumLimit)
+        let shown = entry.categories.prefix(WidgetRowLimits.overspentAlerts.medium)
         return VStack(alignment: .leading, spacing: 4) {
             // Drop trailing rows rather than clip them when Dynamic Type
             // leaves less height than four rows need. The worst wins.
@@ -302,13 +297,7 @@ struct OverspentAlertsWidgetView: View {
 
     /// Large and Extra Large Portrait's row cap, nil for the smaller families.
     private var largeFamilyLimit: Int? {
-        if family == .systemLarge {
-            return Self.largeLimit
-        }
-        if family.isExtraLargePortrait {
-            return Self.extraLargePortraitLimit
-        }
-        return nil
+        family.isLarge ? WidgetRowLimits.overspentAlerts.rows(for: family) : nil
     }
 
     /// Hidden rows are every category, not the overspent ones, so the title

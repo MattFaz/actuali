@@ -53,12 +53,7 @@ struct RecentTransactionsProvider: TimelineProvider {
     }
 
     private func currentEntry(for family: WidgetFamily) -> RecentTransactionsEntry {
-        let limit = switch family {
-        case .systemSmall: 3
-        case .systemMedium: 4
-        case .systemLarge: 8
-        default: 12 // systemExtraLargePortrait; the case itself is iOS 27-only
-        }
+        let limit = WidgetRowLimits.recentTransactions.rows(for: family)
         guard let snapshot = WidgetSnapshotStore.standard()?.read(),
               snapshot.isForMonth(containing: .now) else {
             return RecentTransactionsEntry(date: .now, balancesHidden: false, transactions: [], formattedMonthTotal: nil, hasSnapshot: false)

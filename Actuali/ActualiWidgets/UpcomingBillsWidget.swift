@@ -48,12 +48,7 @@ struct UpcomingBillsProvider: TimelineProvider {
     }
 
     private func currentEntry(for family: WidgetFamily) -> UpcomingBillsEntry {
-        let limit = switch family {
-        case .systemSmall: 1
-        case .systemMedium: 3
-        case .systemLarge: 6
-        default: 12 // systemExtraLargePortrait; the case itself is iOS 27-only
-        }
+        let limit = WidgetRowLimits.upcomingBills.rows(for: family)
         guard let snapshot = WidgetSnapshotStore.standard()?.read(),
               snapshot.isForMonth(containing: .now) else {
             return UpcomingBillsEntry(date: .now, balancesHidden: false, bills: [], hasSnapshot: false)
