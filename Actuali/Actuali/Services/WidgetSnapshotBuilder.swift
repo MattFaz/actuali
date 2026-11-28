@@ -144,17 +144,26 @@ extension WidgetSnapshot {
         snapshot.formattedTotalSpending = budgetMonth.map { format(-$0.totalSpent) }
         snapshot.formattedTotalIncome = budgetMonth.map { format($0.totalIncome) }
         snapshot.upcomingBills = billItems
+        let today = Calendar.current.dateComponents([.year, .month, .day], from: generatedAt)
         snapshot.addTransactions(
             transactions,
             accounts: accounts,
             hiddenCategoryIds: Set(budgetMonth.map { $0.hiddenCategoryBudgets.map(\.categoryId) + $0.hiddenIncomeCategories.map(\.categoryId) } ?? []),
+            through: (today.year ?? 0) * 10000 + (today.month ?? 0) * 100 + (today.day ?? 0),
             format: format
         )
         if let comparison {
             snapshot.addMonthComparison(comparison, format: format)
         }
         if let budgetMonth {
-            snapshot.addDailyRates(budgetMonth, now: generatedAt, format: format)
+            // The month-to-date read leaves out transactions dated later this
+            // month; without it (a failed read) the whole month stands in.
+            snapshot.addDailyRates(
+                budgetMonth,
+                spentToDate: monthToDateSpending?.thisMonth.values.reduce(0, +) ?? budgetMonth.totalSpent,
+                now: generatedAt,
+                format: format
+            )
         }
         return snapshot
     }
@@ -162,11 +171,14 @@ extension WidgetSnapshot {
     /// `format` already masks when balances are hidden; the raw cents are
     /// zeroed as well so nothing leaks through the unformatted fields. Hidden
     /// categories' names are blanked whatever the mask, matching the
-    /// category rows, which leave hidden categories out entirely.
+    /// category rows, which leave hidden categories out entirely. Both lists
+    /// stop at `through` (today, YYYYMMDD): a post-dated bill hasn't happened
+    /// yet, as the month-to-date figures already treat it.
     private mutating func addTransactions(
         _ transactions: [Transaction],
         accounts: [Account],
         hiddenCategoryIds: Set<String>,
+        through: Int,
         format: (Int) -> String
     ) {
         let hidden = balancesHidden
@@ -187,7 +199,8 @@ extension WidgetSnapshot {
         let newestFirst = { (a: Transaction, b: Transaction) in
             (a.date, a.sortOrder ?? 0) > (b.date, b.sortOrder ?? 0)
         }
-        recentTransactions = transactions
+        let happened = transactions.filter { $0.date <= through }
+        recentTransactions = happened
             .sorted(by: newestFirst)
             .prefix(12)
             .map(row)
@@ -195,7 +208,7 @@ extension WidgetSnapshot {
         let monthKey = Int(month.replacingOccurrences(of: "-", with: ""))
         // Hidden balances pick and order by date: ranking by amount, even
         // under masked amounts, would still reveal which purchases were biggest.
-        largestTransactions = transactions
+        largestTransactions = happened
             .filter {
                 $0.amount < 0 && $0.date / 100 == monthKey
                     && $0.transferAcct == nil && !offBudgetIds.contains($0.accountId)
@@ -235,8 +248,16 @@ extension WidgetSnapshot {
     }
 
     /// Only for the calendar month `now` falls in; a stale month has no
-    /// meaningful "today". Integer division rounds both rates down.
-    private mutating func addDailyRates(_ budgetMonth: BudgetMonth, now: Date, format: (Int) -> String) {
+    /// meaningful "today". Integer division rounds both rates down. The pace
+    /// (average, projection) runs on `spentToDate`, so a bill dated later
+    /// this month can't inflate it; the safe rate keeps totalSpent, because
+    /// money already committed this month isn't free to spend.
+    private mutating func addDailyRates(
+        _ budgetMonth: BudgetMonth,
+        spentToDate: Int,
+        now: Date,
+        format: (Int) -> String
+    ) {
         guard isForMonth(containing: now),
               let daysInMonth = Calendar.current.range(of: .day, in: .month, for: now)?.count
         else { return }
@@ -244,7 +265,7 @@ extension WidgetSnapshot {
         let remaining = daysInMonth - elapsed + 1
         daysElapsed = elapsed
         daysRemaining = remaining
-        let average = max(-budgetMonth.totalSpent, 0) / elapsed
+        let average = max(-spentToDate, 0) / elapsed
         let safe = budgetMonth.totalBudgeted > 0
             ? max(budgetMonth.totalBudgeted + budgetMonth.totalSpent, 0) / remaining
             : nil
@@ -259,7 +280,7 @@ extension WidgetSnapshot {
         formattedSafeDailyRate = balancesHidden ? format(0) : safe.map(format)
         // From the unrounded spend, so the projection doesn't multiply the
         // average's rounding by the month's length.
-        formattedProjectedSpending = format(max(-budgetMonth.totalSpent, 0) * daysInMonth / elapsed)
+        formattedProjectedSpending = format(max(-spentToDate, 0) * daysInMonth / elapsed)
         formattedAverageSpendPerWeek = format(average * 7)
         formattedSafeWeeklyRate = balancesHidden ? format(0) : safe.map { format($0 * 7) }
     }

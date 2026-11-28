@@ -118,7 +118,8 @@ struct WidgetSnapshot: Codable, Equatable {
 
     // MARK: - Transactions
 
-    /// Newest first across all accounts, capped at 12.
+    /// Newest first across all accounts, capped at 12. Both lists leave out
+    /// transactions dated after the day the snapshot was made.
     var recentTransactions: [WidgetTransaction]?
     /// This month's on-budget outflows, largest first, capped at 12; newest
     /// first instead when balances are hidden, so the list can't rank by size.

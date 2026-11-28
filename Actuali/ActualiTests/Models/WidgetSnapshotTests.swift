@@ -1083,9 +1083,11 @@ struct WidgetSnapshotTests {
     private let onBudgetAccount = Account(id: "a1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 1, balance: 0)
     private let offBudgetAccount = Account(id: "off", name: "Brokerage", type: .investment, offBudget: true, closed: false, sortOrder: 2, balance: 0)
 
-    private func transactionSnapshot(_ transactions: [Transaction], balancesHidden: Bool = false) -> WidgetSnapshot {
+    private func transactionSnapshot(
+        _ transactions: [Transaction], balancesHidden: Bool = false, generatedAt: Date = Date()
+    ) -> WidgetSnapshot {
         WidgetSnapshot.make(
-            from: [], month: "2026-08", balancesHidden: balancesHidden, generatedAt: Date(),
+            from: [], month: "2026-08", balancesHidden: balancesHidden, generatedAt: generatedAt,
             format: { balancesHidden ? "••••" : "$\($0)" },
             accounts: [onBudgetAccount, offBudgetAccount], transactions: transactions
         )
@@ -1164,6 +1166,23 @@ struct WidgetSnapshotTests {
         for row in rows {
             #expect(row.categoryName == (row.id == "hidden-cat" ? nil : "Groceries"))
         }
+    }
+
+    /// A bill dated later this month hasn't happened yet: it neither tops
+    /// Recent Transactions nor counts as one of this month's purchases.
+    @Test(arguments: [false, true])
+    func transactionListsLeaveOutTransactionsDatedAfterToday(balancesHidden: Bool) throws {
+        let transactions = [
+            makeTransaction(id: "today", date: 20_260_810, amount: -5000),
+            makeTransaction(id: "earlier", date: 20_260_802, amount: -1000),
+            makeTransaction(id: "rent", date: 20_260_825, amount: -145_000),
+        ]
+        let noonOnTheTenth = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 8, day: 10, hour: 12)))
+
+        let snapshot = transactionSnapshot(transactions.shuffled(), balancesHidden: balancesHidden, generatedAt: noonOnTheTenth)
+
+        #expect(try #require(snapshot.recentTransactions).map(\.id) == ["today", "earlier"])
+        #expect(try #require(snapshot.largestTransactions).map(\.id) == ["today", "earlier"])
     }
 
     @Test func transactionListsAreEmptyWithoutTransactions() {
@@ -2171,8 +2190,11 @@ struct WidgetSnapshotTests {
         Calendar.current.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
     }
 
+    /// `spentToDate` is the month-to-date read's figure; nil leaves the read
+    /// out, as when it failed.
     private func rateSnapshot(
-        day: Int, budgeted: Int, spent: Int, balancesHidden: Bool = false, month: String = "2026-11"
+        day: Int, budgeted: Int, spent: Int, spentToDate: Int? = nil,
+        balancesHidden: Bool = false, month: String = "2026-11"
     ) -> WidgetSnapshot {
         let budgetMonth = BudgetMonth(month: month, categoryBudgets: [
             CategoryBudget(
@@ -2184,8 +2206,23 @@ struct WidgetSnapshotTests {
         return WidgetSnapshot.make(
             from: budgetMonth.categoryBudgets, month: month, balancesHidden: balancesHidden,
             generatedAt: dayOfMonth(day), format: { balancesHidden ? "••••" : "$\($0)" },
-            budgetMonth: budgetMonth
+            budgetMonth: budgetMonth,
+            monthToDateSpending: spentToDate.map { MonthToDateSpending(thisMonth: ["c1": $0], lastMonth: [:]) }
         )
+    }
+
+    /// On Nov 2, $50 spent so far plus $1,450 rent dated Nov 25: the pace is
+    /// $25 a day, not the $750 that dividing the whole month by two days gives.
+    /// The safe rate still counts the rent, as that money is already committed.
+    @Test func ratesPaceOnSpendingToDateNotABillDatedLaterThisMonth() {
+        let snapshot = rateSnapshot(day: 2, budgeted: 300_000, spent: -150_000, spentToDate: -5000)
+
+        #expect(snapshot.formattedAverageSpendPerDay == "$2500")
+        #expect(snapshot.formattedProjectedSpending == "$75000")
+        #expect(snapshot.formattedAverageSpendPerWeek == "$17500")
+        // (3,000 budgeted − 1,500 committed) over the 29 days left.
+        #expect(snapshot.formattedSafeDailyRate == "$\(150_000 / 29)")
+        #expect(snapshot.formattedSafeWeeklyRate == "$\(150_000 / 29 * 7)")
     }
 
     @Test func ratesMidMonth() {
