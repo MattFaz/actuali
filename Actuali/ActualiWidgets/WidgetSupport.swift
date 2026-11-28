@@ -27,6 +27,21 @@ extension WidgetFamily {
     }
 }
 
+extension WidgetRowLimits {
+    /// The row count for `family`; accessory families list nothing.
+    func rows(for family: WidgetFamily) -> Int {
+        if family.isExtraLargePortrait {
+            return extraLargePortrait
+        }
+        return switch family {
+        case .systemSmall: small
+        case .systemMedium: medium
+        case .systemLarge: large
+        default: 0
+        }
+    }
+}
+
 /// The "Updated 5 minutes ago" line at the foot of every widget.
 struct WidgetUpdatedFooter: View {
     @Environment(\.locale) private var locale

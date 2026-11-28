@@ -52,12 +52,7 @@ struct NetWorthProvider: TimelineProvider {
     }
 
     private func currentEntry(for family: WidgetFamily) -> NetWorthEntry {
-        let limit = switch family {
-        case .systemSmall, .accessoryCircular, .accessoryRectangular, .accessoryInline: 0
-        case .systemMedium: 3
-        case .systemLarge: 6
-        default: 10 // systemExtraLargePortrait; the case itself is iOS 27-only
-        }
+        let limit = WidgetRowLimits.netWorth.rows(for: family)
         guard let snapshot = WidgetSnapshotStore.standard()?.read() else {
             return NetWorthEntry(date: .now, balancesHidden: false, netWorth: nil, formattedNetWorth: nil, accounts: [], hasSnapshot: false)
         }

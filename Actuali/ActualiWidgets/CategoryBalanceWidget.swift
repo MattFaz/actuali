@@ -54,12 +54,7 @@ struct CategoryBalanceProvider: AppIntentTimelineProvider {
     }
 
     private func entry(for configuration: SelectCategoriesIntent, in context: Context) -> CategoryBalanceEntry {
-        let limit = switch context.family {
-        case .systemSmall: 1
-        case .systemMedium: 4
-        case .systemLarge: 8
-        default: 12 // systemExtraLargePortrait; the case itself is iOS 27-only
-        }
+        let limit = WidgetRowLimits.categoryBalance.rows(for: context.family)
         guard let snapshot = WidgetSnapshotStore.standard()?.read(),
               snapshot.isForMonth(containing: .now) else {
             return CategoryBalanceEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: false)

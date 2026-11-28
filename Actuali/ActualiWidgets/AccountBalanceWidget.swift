@@ -51,12 +51,7 @@ struct AccountBalanceProvider: AppIntentTimelineProvider {
     }
 
     private func entry(for configuration: SelectAccountsIntent, in context: Context) -> AccountBalanceEntry {
-        let limit = switch context.family {
-        case .systemSmall: 1
-        case .systemMedium: 4
-        case .systemLarge: 8
-        default: 12 // systemExtraLargePortrait; the case itself is iOS 27-only
-        }
+        let limit = WidgetRowLimits.accountBalance.rows(for: context.family)
         guard let snapshot = WidgetSnapshotStore.standard()?.read() else {
             return AccountBalanceEntry(date: .now, balancesHidden: false, accounts: [], hasSnapshot: false)
         }

@@ -108,10 +108,9 @@ struct WidgetSnapshotTests {
 
     // MARK: - Large / Extra Large Portrait limits (#862)
 
-    // Mirror CategoryBalanceProvider's per-family limits; the provider lives
-    // in the widget extension, out of this test target's reach.
-    private let largeLimit = 8
-    private let extraLargePortraitLimit = 12
+    // CategoryBalanceProvider's per-family limits, from the table it reads.
+    private let largeLimit = WidgetRowLimits.categoryBalance.large
+    private let extraLargePortraitLimit = WidgetRowLimits.categoryBalance.extraLargePortrait
 
     private func manyCategoriesSnapshot(count: Int = 15) -> WidgetSnapshot {
         WidgetSnapshot(
@@ -199,7 +198,9 @@ struct WidgetSnapshotTests {
         }
     }
 
-    // AccountBalanceProvider uses the same per-family limits as categories.
+    // AccountBalanceProvider's per-family limits, from the table it reads.
+    private let accountLargeLimit = WidgetRowLimits.accountBalance.large
+    private let accountExtraLargePortraitLimit = WidgetRowLimits.accountBalance.extraLargePortrait
 
     private func manyAccountsSnapshot(count: Int = 15) -> WidgetSnapshot {
         var snapshot = manyCategoriesSnapshot(count: 0)
@@ -213,7 +214,7 @@ struct WidgetSnapshotTests {
     func largeShowsChosenAccountsUpToEight(chosen: Int) {
         let ids = (0..<chosen).reversed().map { "a\($0)" }
 
-        let picked = manyAccountsSnapshot().accounts(matching: ids, limit: largeLimit)
+        let picked = manyAccountsSnapshot().accounts(matching: ids, limit: accountLargeLimit)
 
         // No selection falls back to the first eight on-budget accounts.
         #expect(picked.map(\.id) == (chosen == 0 ? (0..<8).map { "a\($0)" } : ids))
@@ -222,7 +223,7 @@ struct WidgetSnapshotTests {
     @Test func largeCapsAccountsAtEightWhenMoreChosen() {
         let ids = (0..<12).map { "a\($0)" }
 
-        let picked = manyAccountsSnapshot().accounts(matching: ids, limit: largeLimit)
+        let picked = manyAccountsSnapshot().accounts(matching: ids, limit: accountLargeLimit)
 
         #expect(picked.map(\.id) == Array(ids.prefix(8)))
     }
@@ -231,7 +232,7 @@ struct WidgetSnapshotTests {
     func extraLargePortraitShowsChosenAccountsUpToTwelve(chosen: Int) {
         let ids = (0..<chosen).reversed().map { "a\($0)" }
 
-        let picked = manyAccountsSnapshot().accounts(matching: ids, limit: extraLargePortraitLimit)
+        let picked = manyAccountsSnapshot().accounts(matching: ids, limit: accountExtraLargePortraitLimit)
 
         #expect(picked.map(\.id) == (chosen == 0 ? (0..<12).map { "a\($0)" } : ids))
     }
@@ -239,7 +240,7 @@ struct WidgetSnapshotTests {
     @Test func extraLargePortraitCapsAccountsAtTwelveWhenMoreChosen() {
         let ids = (0..<15).map { "a\($0)" }
 
-        let picked = manyAccountsSnapshot().accounts(matching: ids, limit: extraLargePortraitLimit)
+        let picked = manyAccountsSnapshot().accounts(matching: ids, limit: accountExtraLargePortraitLimit)
 
         #expect(picked.map(\.id) == Array(ids.prefix(12)))
     }
@@ -247,9 +248,9 @@ struct WidgetSnapshotTests {
     @Test func fewerAccountsThanLimitShowsOnlyWhatExists() {
         let snapshot = manyAccountsSnapshot(count: 3)
 
-        #expect(snapshot.accounts(matching: [], limit: largeLimit).map(\.id) == ["a0", "a1", "a2"])
-        #expect(snapshot.accounts(matching: [], limit: extraLargePortraitLimit).map(\.id) == ["a0", "a1", "a2"])
-        #expect(snapshot.accounts(matching: ["a2", "a0"], limit: extraLargePortraitLimit).map(\.id) == ["a2", "a0"])
+        #expect(snapshot.accounts(matching: [], limit: accountLargeLimit).map(\.id) == ["a0", "a1", "a2"])
+        #expect(snapshot.accounts(matching: [], limit: accountExtraLargePortraitLimit).map(\.id) == ["a0", "a1", "a2"])
+        #expect(snapshot.accounts(matching: ["a2", "a0"], limit: accountExtraLargePortraitLimit).map(\.id) == ["a2", "a0"])
     }
 
     @Test func accountLimitAppliesAfterDroppingUnknownIds() {
@@ -257,8 +258,8 @@ struct WidgetSnapshotTests {
         let ids = known.flatMap { ["deleted-\($0)", $0] }
         let snapshot = manyAccountsSnapshot()
 
-        #expect(snapshot.accounts(matching: ids, limit: largeLimit).map(\.id) == Array(known.prefix(8)))
-        #expect(snapshot.accounts(matching: ids, limit: extraLargePortraitLimit).map(\.id) == Array(known.prefix(12)))
+        #expect(snapshot.accounts(matching: ids, limit: accountLargeLimit).map(\.id) == Array(known.prefix(8)))
+        #expect(snapshot.accounts(matching: ids, limit: accountExtraLargePortraitLimit).map(\.id) == Array(known.prefix(12)))
     }
 
     @Test @MainActor func hiddenBalancesMaskEveryLargeAndExtraLargeAccount() throws {
@@ -275,7 +276,7 @@ struct WidgetSnapshotTests {
         let snapshot = try #require(store.read())
 
         #expect(snapshot.balancesHidden)
-        for limit in [largeLimit, extraLargePortraitLimit] {
+        for limit in [accountLargeLimit, accountExtraLargePortraitLimit] {
             let shown = snapshot.accounts(matching: [], limit: limit)
             #expect(shown.count == limit)
             #expect(shown.allSatisfy { $0.formattedBalance == BudgetStore.hiddenBalanceText })
@@ -284,9 +285,9 @@ struct WidgetSnapshotTests {
 
     // NetWorthProvider has no account picker; it always takes the fallback
     // rows at these per-family limits.
-    private let netWorthMediumLimit = 3
-    private let netWorthLargeLimit = 6
-    private let netWorthExtraLargePortraitLimit = 10
+    private let netWorthMediumLimit = WidgetRowLimits.netWorth.medium
+    private let netWorthLargeLimit = WidgetRowLimits.netWorth.large
+    private let netWorthExtraLargePortraitLimit = WidgetRowLimits.netWorth.extraLargePortrait
 
     @Test func netWorthShowsFirstAccountsUpToFamilyLimit() {
         let snapshot = manyAccountsSnapshot()
@@ -361,8 +362,8 @@ struct WidgetSnapshotTests {
 
     // ToBeBudgetedProvider's per-family unbudgeted-category limits; Medium
     // shows the budgeted/spending summary instead of rows.
-    private let toBudgetLargeLimit = 5
-    private let toBudgetExtraLargePortraitLimit = 8
+    private let toBudgetLargeLimit = WidgetRowLimits.toBeBudgeted.large
+    private let toBudgetExtraLargePortraitLimit = WidgetRowLimits.toBeBudgeted.extraLargePortrait
 
     /// Even indices have nothing budgeted this month, odd ones do.
     private func mixedBudgetedSnapshot(count: Int = 20) -> WidgetSnapshot {
@@ -533,8 +534,8 @@ struct WidgetSnapshotTests {
 
     // SpendingSummaryProvider's per-family category-row limits; Small and
     // Medium show totals only.
-    private let spendingLargeLimit = 5
-    private let spendingExtraLargePortraitLimit = 8
+    private let spendingLargeLimit = WidgetRowLimits.spendingSummary.large
+    private let spendingExtraLargePortraitLimit = WidgetRowLimits.spendingSummary.extraLargePortrait
 
     private func spendingSnapshot(spent: Int?, budgeted: Int?, balancesHidden: Bool = false) -> WidgetSnapshot {
         var snapshot = WidgetSnapshot(
@@ -959,12 +960,11 @@ struct WidgetSnapshotTests {
         #expect(snapshot.upcomingBills?.first?.status == .overdue)
     }
 
-    // UpcomingBillsProvider's per-family limits; the provider lives in the
-    // widget extension, so the tests mirror them here.
-    private let billsSmallLimit = 1
-    private let billsMediumLimit = 3
-    private let billsLargeLimit = 6
-    private let billsExtraLargePortraitLimit = 12
+    // UpcomingBillsProvider's per-family limits, from the table it reads.
+    private let billsSmallLimit = WidgetRowLimits.upcomingBills.small
+    private let billsMediumLimit = WidgetRowLimits.upcomingBills.medium
+    private let billsLargeLimit = WidgetRowLimits.upcomingBills.large
+    private let billsExtraLargePortraitLimit = WidgetRowLimits.upcomingBills.extraLargePortrait
 
     private func billSchedules(count: Int) -> [ScheduleSummary] {
         (1...count).map { day in
@@ -1216,10 +1216,9 @@ struct WidgetSnapshotTests {
         }
     }
 
-    // RecentTransactionsProvider's per-family limits; the provider lives in
-    // the widget extension, so the tests mirror them here.
-    private let recentSmallLimit = 3
-    private let recentMediumLimit = 4
+    // RecentTransactionsProvider's per-family limits, from the table it reads.
+    private let recentSmallLimit = WidgetRowLimits.recentTransactions.small
+    private let recentMediumLimit = WidgetRowLimits.recentTransactions.medium
 
     @Test func recentTransactionsShowNewestUpToFamilyLimit() {
         let snapshot = transactionSnapshot((1...15).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: -100) }.shuffled())
@@ -1263,8 +1262,8 @@ struct WidgetSnapshotTests {
     }
 
     // RecentTransactionsProvider's Large / Extra Large Portrait limits (#862).
-    private let recentLargeLimit = 8
-    private let recentExtraLargePortraitLimit = 12
+    private let recentLargeLimit = WidgetRowLimits.recentTransactions.large
+    private let recentExtraLargePortraitLimit = WidgetRowLimits.recentTransactions.extraLargePortrait
 
     @Test func recentTransactionsLargeAndExtraLargeShowNewestUpToFamilyLimit() {
         let snapshot = transactionSnapshot((1...15).map { makeTransaction(id: "t\($0)", date: 20_260_800 + $0, amount: -100) }.shuffled())
@@ -1358,10 +1357,9 @@ struct WidgetSnapshotTests {
 
     // MARK: Largest Transactions widget
 
-    // LargestTransactionsProvider's per-family limits; the provider lives in
-    // the widget extension, so the tests mirror them here.
-    private let largestSmallLimit = 1
-    private let largestMediumLimit = 3
+    // LargestTransactionsProvider's per-family limits, from the table it reads.
+    private let largestSmallLimit = WidgetRowLimits.largestTransactions.small
+    private let largestMediumLimit = WidgetRowLimits.largestTransactions.medium
 
     @Test func largestTransactionsShowBiggestSpendingUpToFamilyLimit() {
         let spending = (1...5).map { makeTransaction(id: "s\($0)", date: 20_260_800 + $0, amount: -1000 * $0) }
@@ -1412,8 +1410,8 @@ struct WidgetSnapshotTests {
     }
 
     // LargestTransactionsProvider's Large / Extra Large Portrait limits (#862).
-    private let largestLargeLimit = 5
-    private let largestExtraLargePortraitLimit = 8
+    private let largestLargeLimit = WidgetRowLimits.largestTransactions.large
+    private let largestExtraLargePortraitLimit = WidgetRowLimits.largestTransactions.extraLargePortrait
 
     @Test func largestTransactionsLargeAndExtraLargeShowBiggestSpendingUpToFamilyLimit() {
         let spending = (1...10).map { makeTransaction(id: "s\($0)", date: 20_260_800 + $0, amount: -1000 * $0) }
@@ -1763,10 +1761,9 @@ struct WidgetSnapshotTests {
         }
     }
 
-    // TopSpendingProvider's per-family limits; the provider lives in the
-    // widget extension, so the tests mirror them here.
-    private let topSpendingSmallLimit = 1
-    private let topSpendingMediumLimit = 3
+    // TopSpendingProvider's per-family limits, from the table it reads.
+    private let topSpendingSmallLimit = WidgetRowLimits.topSpending.small
+    private let topSpendingMediumLimit = WidgetRowLimits.topSpending.medium
 
     @Test func topSpendingShowsLargestSpendersUpToFamilyLimit() {
         let budgets = (1...5).map { rankedBudget("c\($0)", order: Double($0), budgeted: 0, spent: -100 * $0) }
@@ -1828,8 +1825,8 @@ struct WidgetSnapshotTests {
     }
 
     // TopSpendingProvider's Large / Extra Large Portrait limits (#862).
-    private let topSpendingLargeLimit = 5
-    private let topSpendingExtraLargePortraitLimit = 8
+    private let topSpendingLargeLimit = WidgetRowLimits.topSpending.large
+    private let topSpendingExtraLargePortraitLimit = WidgetRowLimits.topSpending.extraLargePortrait
 
     @Test func topSpendingLargeAndExtraLargeShowLargestSpendersUpToFamilyLimit() {
         let budgets = (1...10).map { rankedBudget("c\($0)", order: Double($0), budgeted: 0, spent: -100 * $0) }
@@ -1897,9 +1894,8 @@ struct WidgetSnapshotTests {
         }
     }
 
-    /// OverspentAlertsWidget's Medium row cap; the widget lives in the
-    /// extension, so the test mirrors it here.
-    private let overspentMediumLimit = 4
+    /// OverspentAlertsWidget's Medium row cap, from the table it reads.
+    private let overspentMediumLimit = WidgetRowLimits.overspentAlerts.medium
 
     @Test func overspentAlertsKeepOnlyOverspentCategoriesMostSpentFirst() {
         let budgets = [
@@ -2016,8 +2012,8 @@ struct WidgetSnapshotTests {
     }
 
     // OverspentAlertsWidget's Large / Extra Large Portrait row caps (#862).
-    private let overspentLargeLimit = 8
-    private let overspentExtraLargePortraitLimit = 12
+    private let overspentLargeLimit = WidgetRowLimits.overspentAlerts.large
+    private let overspentExtraLargePortraitLimit = WidgetRowLimits.overspentAlerts.extraLargePortrait
 
     @Test func overspentAlertsLargeAndExtraLargeShowWorstUpToFamilyLimitWithBudgeted() {
         // c14 spends most, so the worst-first order runs c14 down.
@@ -2372,10 +2368,10 @@ struct WidgetSnapshotTests {
 
     // MARK: Spending vs Last Month Large / Extra Large Portrait (#862)
 
-    // SpendingComparisonWidget's Large / Extra Large Portrait mover counts;
-    // the widget lives in its extension, so the tests mirror them here.
-    private let moverLargeLimit = 1
-    private let moverExtraLargePortraitLimit = 4
+    // SpendingComparisonWidget's Large / Extra Large Portrait mover counts,
+    // from the table it reads.
+    private let moverLargeLimit = WidgetRowLimits.spendingMovers.large
+    private let moverExtraLargePortraitLimit = WidgetRowLimits.spendingMovers.extraLargePortrait
 
     private func moverSnapshot(
         _ budgets: [CategoryBudget], last: [String: Int], balancesHidden: Bool = false
