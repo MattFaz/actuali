@@ -1,5 +1,5 @@
 # Builds the app and runs unit tests on every PR that touches app code. Branch
-# protection requires the "Unit Tests (iOS 26)" check plus "Unit Tests Gate",
+# protection requires the "Unit Tests (iOS 27)" check plus "Unit Tests Gate",
 # which fails on drafts because the test job skips there and a skipped job
 # still reads as passing. ci-noop.yml provides the same check names for PRs
 # that don't touch app code. UI tests are too slow to gate a PR (~50 min) —
@@ -80,6 +80,10 @@ jobs:
   # runtime, so it can't run on the xcode-27 image. Re-add it to the matrix
   # once a runner can provide one. The names are the required checks, so they
   # must stay "Unit Tests (iOS N)".
+  # iOS 27.2 is the image's own runtime, matching Xcode 27.2's SDK. The iOS
+  # 26.5 leg downloaded its runtime, and on this image a downloaded runtime
+  # unmounts mid-job while the preinstalled iOS 27 ones keep running
+  # (runner-images #15374), so no leg downloads one any more.
   # fail-fast off: each leg reports on its own, as separate jobs did.
   test:
     name: Unit Tests (iOS ${{ matrix.ios }})
@@ -88,12 +92,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - ios: 26
-            download: "26.5"
+          - ios: 27
+            runtime: "27.2"
     # Xcode 27 image: the widgets use the iOS 27 SDK (systemExtraLargePortrait),
     # which Xcode 26 lacks, and Xcode 27 needs macOS 26.6+, so neither macos-26
-    # nor macos-15 can build them. The image ships only iOS 27 runtimes, so
-    # each leg downloads its own (~9 GB, a few minutes).
+    # nor macos-15 can build them.
     runs-on: xcode-27
     timeout-minutes: 60
     steps:
@@ -110,44 +113,26 @@ jobs:
           xcrun simctl shutdown all || true
           sudo killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
 
-      # Always a fresh device, created only once the runtime is available and
-      # booted before xcodebuild sees it. The download registers default
-      # devices while the runtime is still mounting; picking one of those gave
-      # a device whose runtime xcodebuild read as (null), so no test ran.
-      - name: Boot iOS ${{ matrix.ios }} simulator
+      # A fresh device on the image's preinstalled runtime, booted before
+      # xcodebuild sees it. No download fallback: if the image drops the
+      # runtime, fail and re-pin rather than fetch one (see the matrix note).
+      # The exact identifier skips the image's separate iOS 27.2 runtime that
+      # only runs iPhone Duo.
+      - name: Boot iOS ${{ matrix.runtime }} simulator
         id: sim
-        timeout-minutes: 30
+        timeout-minutes: 15
         env:
           IOS: ${{ matrix.ios }}
-          DOWNLOAD: ${{ matrix.download }}
+          RUNTIME: ${{ matrix.runtime }}
         run: |
-          runtime() {
-            xcrun simctl list runtimes --json \
-              | jq -r --arg ios "iOS-$IOS-" '[.runtimes[] | select(.isAvailable) | select(.identifier | contains($ios))][0].identifier // empty'
-          }
-          RT=$(runtime)
-          if [ -z "$RT" ]; then
-            xcodebuild -downloadPlatform iOS -buildVersion "$DOWNLOAD"
-            # The runtime mounts asynchronously after the download returns.
-            for _ in $(seq 60); do
-              RT=$(runtime)
-              [ -n "$RT" ] && break
-              sleep 5
-            done
-          fi
-          if [ -z "$RT" ]; then
-            echo "No iOS $IOS runtime available and the download did not provide one" >&2
-            xcrun simctl runtime list >&2
+          RT="com.apple.CoreSimulator.SimRuntime.iOS-${RUNTIME//./-}"
+          if ! xcrun simctl list runtimes --json | jq -e --arg rt "$RT" '.runtimes[] | select(.identifier == $rt and .isAvailable)' > /dev/null; then
+            echo "::error::Runtime $RT is not installed on this image"
+            xcrun simctl list runtimes >&2
             exit 1
           fi
-          # A downloaded runtime has no dyld shared cache yet. CoreSimulator
-          # builds it in the background, and a first boot racing that build
-          # sat in "Waiting on Data Migration" for 8+ minutes and never came
-          # up (15+ locally, with the cache still unbuilt). Building it first
-          # takes ~4 minutes and brings the boot down to ~3.
-          xcrun simctl runtime dyld_shared_cache update "$RT"
-          # From the runtime's own supported list: the image's newest iPhone
-          # device types don't run on older runtimes.
+          # From the runtime's own supported list, so the device type always
+          # runs on it.
           DEVICE_TYPE=$(xcrun simctl list runtimes --json \
             | jq -r --arg rt "$RT" '[.runtimes[] | select(.identifier == $rt) | .supportedDeviceTypes[] | select(.productFamily == "iPhone")][0].identifier')
           SIM_ID=$(xcrun simctl create "ci-ios$IOS" "$DEVICE_TYPE" "$RT")
@@ -174,10 +159,10 @@ jobs:
       # --quiet drops passing-task noise but keeps warnings and errors;
       # pipefail preserves xcodebuild's exit code through the pipe.
       # The result bundle then proves what ran: the job fails unless tests ran
-      # on an iOS N device, and the counts land as an annotation on the check.
-      - name: Build and run unit tests on iOS ${{ matrix.ios }}
+      # on the pinned runtime, and the counts land as an annotation on the check.
+      - name: Build and run unit tests on iOS ${{ matrix.runtime }}
         env:
-          IOS: ${{ matrix.ios }}
+          RUNTIME: ${{ matrix.runtime }}
         run: |
           set -o pipefail
           xcodebuild test \
@@ -193,8 +178,8 @@ jobs:
           OS=$(jq -r '.devicesAndConfigurations[0].device.osVersion' <<< "$SUMMARY")
           TOTAL=$(jq -r '.totalTestCount' <<< "$SUMMARY")
           echo "::notice::$(jq -r '"\(.passedTests) of \(.totalTestCount) tests passed (\(.failedTests) failed, \(.skippedTests) skipped) on \(.devicesAndConfigurations[0].device | "\(.modelName), iOS \(.osVersion) (\(.osBuildNumber))")"' <<< "$SUMMARY")"
-          if [[ "$OS" != "$IOS".* ]] || [ "$TOTAL" -eq 0 ]; then
-            echo "::error::Expected unit tests on iOS $IOS, got $TOTAL tests on iOS $OS"
+          if [[ "$OS" != "$RUNTIME" && "$OS" != "$RUNTIME".* ]] || [ "$TOTAL" -eq 0 ]; then
+            echo "::error::Expected unit tests on iOS $RUNTIME, got $TOTAL tests on iOS $OS"
             exit 1
           fi
 
