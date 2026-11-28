@@ -11,28 +11,31 @@ struct SpendingSummaryWidget: Widget {
         }
         .configurationDisplayName(String(localized: "Monthly Spending"))
         .description(String(localized: "Summary of your spending versus budgeted amount this month."))
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies(WidgetFamily.systemFamilies())
     }
 }
 
 struct SpendingSummaryEntry: TimelineEntry {
     let date: Date
     let balancesHidden: Bool
-    let totalSpent: Int?
+    let spentFraction: Double
+    let isOverbudget: Bool
     let formattedTotalSpent: String?
-    let totalBudgeted: Int?
     let formattedTotalBudgeted: String?
     let formattedTotalIncome: String?
+    /// The budget's first categories in budget order, capped per family.
+    let categories: [WidgetCategoryBalance]
     let hasSnapshot: Bool
 
     static let sample = SpendingSummaryEntry(
         date: .now,
         balancesHidden: false,
-        totalSpent: -184_200,
+        spentFraction: 184_200 / 320_000,
+        isOverbudget: false,
         formattedTotalSpent: "$1,842.00",
-        totalBudgeted: 320_000,
         formattedTotalBudgeted: "$3,200.00",
         formattedTotalIncome: "$4,500.00",
+        categories: CategoryBalanceEntry.sample.categories,
         hasSnapshot: true
     )
 }
@@ -43,36 +46,44 @@ struct SpendingSummaryProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SpendingSummaryEntry) -> Void) {
-        completion(context.isPreview ? .sample : currentEntry())
+        completion(context.isPreview ? .sample : currentEntry(for: context.family))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SpendingSummaryEntry>) -> Void) {
         let nextMidnight = Calendar.current.startOfDay(for: .now.addingTimeInterval(86400))
-        completion(Timeline(entries: [currentEntry()], policy: .after(nextMidnight)))
+        completion(Timeline(entries: [currentEntry(for: context.family)], policy: .after(nextMidnight)))
     }
 
-    private func currentEntry() -> SpendingSummaryEntry {
+    private func currentEntry(for family: WidgetFamily) -> SpendingSummaryEntry {
+        // Small and Medium show totals only.
+        let limit = switch family {
+        case .systemSmall, .systemMedium: 0
+        case .systemLarge: 5
+        default: 8 // systemExtraLargePortrait; the case itself is iOS 27-only
+        }
         guard let snapshot = WidgetSnapshotStore.standard()?.read(),
               snapshot.isForMonth(containing: .now) else {
             return SpendingSummaryEntry(
                 date: .now,
                 balancesHidden: false,
-                totalSpent: nil,
+                spentFraction: 0,
+                isOverbudget: false,
                 formattedTotalSpent: nil,
-                totalBudgeted: nil,
                 formattedTotalBudgeted: nil,
                 formattedTotalIncome: nil,
+                categories: [],
                 hasSnapshot: false
             )
         }
         return SpendingSummaryEntry(
             date: snapshot.generatedAt,
             balancesHidden: snapshot.balancesHidden,
-            totalSpent: snapshot.totalSpent,
+            spentFraction: snapshot.spentFraction,
+            isOverbudget: snapshot.isOverbudget,
             formattedTotalSpent: snapshot.formattedTotalSpent,
-            totalBudgeted: snapshot.totalBudgeted,
             formattedTotalBudgeted: snapshot.formattedTotalBudgeted,
             formattedTotalIncome: snapshot.formattedTotalIncome,
+            categories: snapshot.categories(matching: [], limit: limit),
             hasSnapshot: true
         )
     }
@@ -84,27 +95,14 @@ struct SpendingSummaryWidgetView: View {
 
     let entry: SpendingSummaryEntry
 
-    private var spentFraction: Double {
-        guard !entry.balancesHidden,
-              let spent = entry.totalSpent,
-              let budgeted = entry.totalBudgeted, budgeted > 0
-        else { return 0 }
-        return min(max(Double(abs(spent)) / Double(budgeted), 0.0), 1.0)
-    }
-
-    private var isOverbudget: Bool {
-        guard let spent = entry.totalSpent, let budgeted = entry.totalBudgeted, budgeted > 0 else {
-            return false
-        }
-        return abs(spent) > budgeted
-    }
-
     var body: some View {
         Group {
             if !entry.hasSnapshot {
                 emptyState
             } else if family == .systemSmall {
                 smallLayout
+            } else if family.isLarge {
+                listLayout
             } else {
                 mediumLayout
             }
@@ -144,18 +142,7 @@ struct SpendingSummaryWidgetView: View {
                 .foregroundStyle(spendingColor)
 
             if let formattedBudget = entry.formattedTotalBudgeted {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.secondary.opacity(0.2))
-                            .frame(height: 5)
-                        Capsule()
-                            .fill(progressColor)
-                            .frame(width: geo.size.width * spentFraction, height: 5)
-                    }
-                }
-                .frame(height: 5)
-                .padding(.vertical, 2)
+                progressBar(height: 5)
 
                 Text(String(
                     format: String(localized: "of %@ budgeted", locale: locale),
@@ -193,18 +180,7 @@ struct SpendingSummaryWidgetView: View {
                     .foregroundStyle(spendingColor)
 
                 if let formattedBudget = entry.formattedTotalBudgeted {
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color.secondary.opacity(0.2))
-                                .frame(height: 6)
-                            Capsule()
-                                .fill(progressColor)
-                                .frame(width: geo.size.width * spentFraction, height: 6)
-                        }
-                    }
-                    .frame(height: 6)
-                    .padding(.vertical, 2)
+                    progressBar(height: 6)
 
                     Text(String(
                         format: String(localized: "of %@ budgeted", locale: locale),
@@ -214,12 +190,7 @@ struct SpendingSummaryWidgetView: View {
                     .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                Text(String(
-                    format: String(localized: "Updated %@", locale: locale),
-                    WidgetDateFormatting.relative(entry.date, locale: locale)
-                ))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                WidgetUpdatedFooter(date: entry.date)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -233,6 +204,94 @@ struct SpendingSummaryWidgetView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Large and Extra Large Portrait: Medium's spent/budgeted progress at the
+    /// top, then the provider's category rows; only the row limit differs.
+    private var listLayout: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label {
+                Text(String(localized: "Monthly Spending"))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            } icon: {
+                Image(systemName: "creditcard")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(entry.formattedTotalSpent ?? "—")
+                .font(.title.weight(.bold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .foregroundStyle(spendingColor)
+                .accessibilityIdentifier("spendingSummaryWidget.spent")
+            if let formattedBudget = entry.formattedTotalBudgeted {
+                progressBar(height: 6)
+                Text(String(
+                    format: String(localized: "of %@ budgeted", locale: locale),
+                    formattedBudget
+                ))
+                .font(.caption2)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .accessibilityIdentifier("spendingSummaryWidget.budgeted")
+            }
+            if entry.categories.isEmpty {
+                Text(String(localized: "No categories to show"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(entry.categories) { category in
+                categoryRow(category)
+                    .accessibilityIdentifier("spendingSummaryWidget.categoryRow")
+            }
+            Spacer(minLength: 0)
+            WidgetUpdatedFooter(date: entry.date)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func categoryRow(_ category: WidgetCategoryBalance) -> some View {
+        HStack {
+            Text(category.name)
+                .font(.subheadline)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(category.formattedAvailable)
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                // Truncate the name, never the balance, at large Dynamic Type sizes.
+                .layoutPriority(1)
+                .foregroundStyle(availableColor(for: category))
+        }
+    }
+
+    /// Category Balances' colours: red when overspent, green otherwise, and
+    /// neutral when hidden so the mask doesn't leak the sign.
+    private func availableColor(for category: WidgetCategoryBalance) -> Color {
+        if entry.balancesHidden {
+            return .primary
+        }
+        return category.isOverspent ? .red : .green
+    }
+
+    private func progressBar(height: CGFloat) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.2))
+                    .frame(height: height)
+                Capsule()
+                    .fill(progressColor)
+                    .frame(width: geo.size.width * entry.spentFraction, height: height)
+            }
+        }
+        .frame(height: height)
+        .padding(.vertical, 2)
     }
 
     private func statBlock(title: String, value: String, color: Color) -> some View {
@@ -250,13 +309,13 @@ struct SpendingSummaryWidgetView: View {
         if entry.balancesHidden {
             return .primary
         }
-        return isOverbudget ? .red : .primary
+        return entry.isOverbudget ? .red : .primary
     }
 
     private var progressColor: Color {
         if entry.balancesHidden {
             return .primary
         }
-        return isOverbudget ? .red : .blue
+        return entry.isOverbudget ? .red : .blue
     }
 }

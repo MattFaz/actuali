@@ -10,6 +10,15 @@ struct ActualiWidgetsBundle: WidgetBundle {
         ToBeBudgetedWidget()
         UpcomingBillsWidget()
         SpendingSummaryWidget()
+        RecentTransactionsWidget()
+        TopSpendingWidget()
+        DailyBurnRateWidget()
+        SpendingComparisonWidget()
+        LargestTransactionsWidget()
+        OverspentAlertsWidget()
+        if #available(iOS 27.0, *) {
+            OverviewWidget()
+        }
         QuickAddTransactionWidget()
     }
 }
