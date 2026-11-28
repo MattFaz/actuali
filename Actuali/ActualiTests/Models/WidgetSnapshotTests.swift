@@ -3,6 +3,15 @@ import Testing
 @testable import Actuali
 
 struct WidgetSnapshotTests {
+    /// The app group comes from the ACTUALI_APP_GROUP_ID build setting via
+    /// Info.plist, the same setting that fills the entitlements.
+    @Test func appGroupIDComesFromTheBuildSetting() throws {
+        let fromPlist = try #require(Bundle.main.object(forInfoDictionaryKey: "ActualiAppGroupID") as? String)
+        #expect(!fromPlist.contains("$("))
+        #expect(fromPlist.hasPrefix("group."))
+        #expect(WidgetSnapshotStore.appGroupID == fromPlist)
+    }
+
     private func makeStore() throws -> WidgetSnapshotStore {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("WidgetSnapshotTests-\(UUID().uuidString)", isDirectory: true)
