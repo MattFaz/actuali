@@ -196,10 +196,12 @@ struct EnableBankingClientTests {
             responseBody: #"{"status":"ok","data":{"session_id":"x","aspsp":{},"accounts":[]}}"#
         )
 
-        _ = try await client.enableBankingPollAuthorization(state: "s-1", timeout: 42)
+        // The timeout is real, so it has to be one a starved CI runner can't
+        // reach before the stub answers: 42 s has been tripped.
+        _ = try await client.enableBankingPollAuthorization(state: "s-1", timeout: 1800)
 
         let (request, _) = try #require(captured.all.withLock { $0.first })
-        #expect(request.timeoutInterval == 42)
+        #expect(request.timeoutInterval == 1800)
     }
 
     @Test func pollTimeoutMapsToTimedOut() async throws {
